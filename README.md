@@ -16,4 +16,6 @@ Create and open projects from the home page. Each project has its own tasks; use
 
 Active project pages also let you rename a project. Names are trimmed and required; renaming preserves the project URL, creation order, tasks, and completion counts. Archived projects cannot be renamed until restored. Renamed names persist across restarts.
 
-Run the integration checks with `npm test`. They use temporary SQLite databases and verify validation, creation order, escaping, navigation, health, task ownership, filtering, schema migration, archive/restore, renaming, completion summaries, and persistence across server restarts.
+Each task row also provides New task title and Rename task controls. Titles are trimmed and required; renaming preserves ownership, creation order, completion, filter membership, and summary counts. Task renaming is disabled for archived projects and enabled after restoration. Renamed titles persist across restarts.
+
+Run the integration checks with `npm test`. They use temporary SQLite databases and verify validation, creation order, escaping, navigation, health, task ownership, filtering, schema migration, archive/restore, project and task renaming, completion summaries, and persistence across server restarts.
