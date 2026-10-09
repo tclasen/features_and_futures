@@ -66,7 +66,8 @@ function parseBody(req) {
 </head>
 <body>
 <h1>Workboard</h1>
-<input id="project-name" placeholder="Project name" aria-label="Project name" />
+<label for="project-name">Project name</label>
+<input id="project-name" placeholder="Project name" />
 <button id="create-project">Create project</button>
 <div id="alert" style="color:red;display:none;"></div>
 <div id="project-list"></div>
@@ -78,11 +79,11 @@ async function loadProjects() {
   list.innerHTML = '';
   for (const p of projects) {
     const row = document.createElement('div');
-    row.dataset.testid = 'project-row';
+    row.setAttribute('data-testid', 'project-row');
     row.textContent = p.name + ' ';
     const btn = document.createElement('button');
     btn.textContent = 'Open project';
-    btn.onclick = () => { location.href = `/projects/${p.id}`; };
+    btn.onclick = () => { location.href = `/projects/\${p.id}`; };
     row.appendChild(btn);
     list.appendChild(row);
   }
