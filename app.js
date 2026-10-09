@@ -48,6 +48,33 @@ export function createApp(store) {
         }
         return json(response, 201, store.createProject(input.name));
       }
+      const tasks = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+      if (tasks) {
+        const projectId = Number(tasks[1]);
+        if (!store.getProject(projectId)) {
+          return json(response, 404, { error: 'Project not found' });
+        }
+        if (!tasks[2] && request.method === 'GET') {
+          return json(response, 200, store.listTasks(projectId));
+        }
+        if (!tasks[2] && request.method === 'POST') {
+          const input = await readJson(request);
+          if (typeof input?.title !== 'string' || !input.title.trim()) {
+            return json(response, 400, { error: 'Task title is required' });
+          }
+          return json(response, 201, store.createTask(projectId, input.title));
+        }
+        if (tasks[2] && request.method === 'PATCH') {
+          const input = await readJson(request);
+          if (typeof input?.completed !== 'boolean') {
+            return json(response, 400, { error: 'Completed must be a boolean' });
+          }
+          const task = store.setTaskCompleted(projectId, Number(tasks[2]), input.completed);
+          return task
+            ? json(response, 200, task)
+            : json(response, 404, { error: 'Task not found' });
+        }
+      }
       const detail = path.match(/^\/api\/projects\/([1-9]\d*)$/);
       if (request.method === 'GET' && detail) {
         const project = store.getProject(Number(detail[1]));
