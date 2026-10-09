@@ -7,11 +7,23 @@ const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
 const database = new DatabaseSync(databasePath);
 database.exec(`
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
-  )
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  );
+  CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id);
 `);
+
+function taskData(task) {
+  return { ...task, completed: Boolean(task.completed) };
+}
 
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -53,6 +65,35 @@ const server = createServer(async (request, response) => {
       if (!name) return json(response, 400, { error: 'Project name is required' });
       const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
       return json(response, 201, { id: Number(result.lastInsertRowid), name });
+    }
+    const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+    if (tasksMatch) {
+      const [, projectId, taskId] = tasksMatch;
+      const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      if (!taskId && request.method === 'GET') {
+        const tasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+        return json(response, 200, tasks.map(taskData));
+      }
+      if ((!taskId && request.method === 'POST') || (taskId && request.method === 'PATCH')) {
+        let input;
+        try {
+          input = await readJson(request);
+        } catch {
+          return json(response, 400, { error: 'Invalid JSON request' });
+        }
+        if (!taskId) {
+          const title = typeof input?.title === 'string' ? input.title.trim() : '';
+          if (!title) return json(response, 400, { error: 'Task title is required' });
+          const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+          return json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+        }
+        const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+        if (!task) return json(response, 404, { error: 'Task not found' });
+        if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
+        database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(input.completed), taskId, projectId);
+        return json(response, 200, { ...taskData(task), completed: input.completed });
+      }
     }
     const projectMatch = path.match(/^\/api\/projects\/(\d+)$/);
     if (request.method === 'GET' && projectMatch) {
