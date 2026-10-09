@@ -9,6 +9,8 @@ const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const taskList = document.querySelector('#tasks');
 const projectFilter = document.querySelector('#project-filter');
+const renameForm = document.querySelector('#rename-project');
+const newNameInput = document.querySelector('#new-project-name');
 let projectId;
 let archived = false;
 let projectData = [];
@@ -163,18 +165,47 @@ taskForm.addEventListener('submit', async (event) => {
   }
 });
 
+function showProjectName(name) {
+  document.querySelector('#project-title').textContent = name;
+  document.title = `${name} — Workboard`;
+}
+
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (archived) return;
+  showError('');
+  const name = newNameInput.value.trim();
+  if (!name) return showError('Project name is required');
+  const button = renameForm.querySelector('button');
+  button.disabled = true;
+  try {
+    const project = await request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    showProjectName(project.name);
+    newNameInput.value = '';
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = archived;
+  }
+});
+
 async function loadPage() {
   const match = window.location.pathname.match(/^\/projects\/([1-9]\d*)$/);
   try {
     if (match) {
       detailView.hidden = false;
       const project = await request(`/api/projects/${match[1]}`);
-      document.querySelector('#project-title').textContent = project.name;
-      document.title = `${project.name} — Workboard`;
+      showProjectName(project.name);
       projectId = project.id;
       archived = Boolean(project.archived);
       document.querySelector('#archived-notice').hidden = !archived;
       taskForm.querySelector('button').disabled = archived;
+      newNameInput.disabled = archived;
+      renameForm.querySelector('button').disabled = archived;
       tasks = await request(`/api/projects/${projectId}/tasks`);
       renderTasks();
     } else {

@@ -178,6 +178,10 @@ test('archived project is visibly read-only and task filtering remains usable', 
   });
   assert.equal(element('#archived-notice').hidden, false);
   assert.equal(element('#create-task').querySelector('button').disabled, true);
+  assert.equal(element('#new-project-name').disabled, true);
+  assert.equal(element('#rename-project').querySelector('button').disabled, true);
+  element('#new-project-name').value = 'Blocked rename';
+  await element('#rename-project').trigger('submit');
   assert.equal(element('#tasks').children.length, 2);
   for (const row of element('#tasks').children) assert.equal(row.children[1].disabled, true);
   element('#task-title').value = 'Blocked';
@@ -189,4 +193,41 @@ test('archived project is visibly read-only and task filtering remains usable', 
   assert.equal(element('#tasks').children.length, 1);
   assert.equal(element('#tasks').children[0].children[0].textContent, 'Done');
   assert.equal(element('#tasks').children[0].children[1].disabled, true);
+});
+
+test('rename UI validates, updates heading without navigation, and preserves tasks on errors', async () => {
+  let writes = 0;
+  let fail = false;
+  const project = { id: 1, name: 'Original', archived: false };
+  const { element, window } = await loadUI('/projects/1', async (path, options) => {
+    if (options) {
+      writes++;
+      assert.equal(path, '/api/projects/1');
+      assert.equal(options.method, 'PATCH');
+      if (fail) return { ok: false, json: async () => ({ error: 'Save failed' }) };
+      project.name = JSON.parse(options.body).name;
+    }
+    const data = path.endsWith('/tasks') ? [{ id: 3, title: 'Saved task', completed: true }] : project;
+    return { ok: true, json: async () => structuredClone(data) };
+  });
+  assert.equal(element('#new-project-name').disabled, false);
+  assert.equal(element('#rename-project').querySelector('button').disabled, false);
+  element('#new-project-name').value = ' \t ';
+  await element('#rename-project').trigger('submit');
+  assert.equal(writes, 0);
+  assert.equal(element('#error').textContent, 'Project name is required');
+  assert.equal(element('#project-title').textContent, 'Original');
+  element('#new-project-name').value = '  Renamed <project>  ';
+  await element('#rename-project').trigger('submit');
+  assert.equal(writes, 1);
+  assert.equal(element('#project-title').textContent, 'Renamed <project>');
+  assert.equal(window.location.pathname, '/projects/1');
+  assert.equal(element('#tasks').children[0].children[0].textContent, 'Saved task');
+  assert.equal(element('#tasks').children[0].children[1].checked, true);
+  fail = true;
+  element('#new-project-name').value = 'Failed rename';
+  await element('#rename-project').trigger('submit');
+  assert.equal(element('#project-title').textContent, 'Renamed <project>');
+  assert.equal(element('#error').textContent, 'Save failed');
+  assert.equal(element('#rename-project').querySelector('button').disabled, false);
 });

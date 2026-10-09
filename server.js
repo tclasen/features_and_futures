@@ -62,6 +62,7 @@ export function createApplication(dbPath = process.env.DB_PATH || './data/workbo
   const listProjects = database.prepare(`${projectSelect} ORDER BY p.id`);
   const getProject = database.prepare(`${projectSelect} WHERE p.id = ?`);
   const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const projectData = (project) => ({ ...project, archived: Boolean(project.archived) });
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
@@ -122,6 +123,13 @@ export function createApplication(dbPath = process.env.DB_PATH || './data/workbo
         if (request.method === 'GET') return json(response, 200, projectData(project));
         if (request.method === 'PATCH') {
           const input = await readJson(request);
+          if (input && Object.hasOwn(input, 'name')) {
+            const name = typeof input.name === 'string' ? input.name.trim() : '';
+            if (!name) return json(response, 400, { error: 'Project name is required' });
+            if (getProject.get(id).archived) return json(response, 409, { error: 'Archived project is read-only' });
+            renameProject.run(name, id);
+            return json(response, 200, projectData(getProject.get(id)));
+          }
           if (typeof input?.archived !== 'boolean') {
             return json(response, 400, { error: 'Archived must be a boolean' });
           }
