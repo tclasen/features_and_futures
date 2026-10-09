@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #172033; background: #f4f6fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(720px, calc(100% - 32px)); margin: 64px auto; }
+    h1 { margin: 0 0 24px; font-size: 2rem; letter-spacing: -.03em; }
+    form, .project-detail, .project-row { background: #fff; border: 1px solid #dce2ec; border-radius: 12px; }
+    form { padding: 20px; display: flex; gap: 12px; align-items: end; }
+    label { display: grid; gap: 6px; font-weight: 600; flex: 1; }
+    input { width: 100%; font: inherit; border: 1px solid #aeb9ca; border-radius: 7px; padding: 10px 12px; }
+    button { font: inherit; font-weight: 600; color: white; background: #315bd6; border: 0; border-radius: 7px; padding: 10px 16px; cursor: pointer; }
+    button:hover { background: #244bbd; }
+    .rows { display: grid; gap: 10px; margin-top: 20px; }
+    .project-row { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .project-row button { flex: none; }
+    .project-detail { padding: 20px; }
+    .project-detail h1 { margin: 0 0 18px; }
+    .back { margin-bottom: 20px; background: #46536c; }
+    .alert { color: #a4212c; margin: 8px 0 0; }
+    [hidden] { display: none !important; }
+    @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const button = (label, action) => {
+      const el = document.createElement('button'); el.type = 'button'; el.textContent = label; el.addEventListener('click', action); return el;
+    };
+    async function request(path, options) {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+    async function showProjects() {
+      app.replaceChildren();
+      const heading = document.createElement('h1'); heading.textContent = 'Workboard'; app.append(heading);
+      const form = document.createElement('form');
+      const label = document.createElement('label'); label.textContent = 'Project name';
+      const input = document.createElement('input'); input.type = 'text'; input.name = 'name'; input.setAttribute('aria-label', 'Project name'); label.append(input);
+      const submit = document.createElement('button'); submit.type = 'submit'; submit.textContent = 'Create project';
+      form.append(label, submit); app.append(form);
+      const alert = document.createElement('p'); alert.className = 'alert'; alert.setAttribute('role', 'alert'); alert.hidden = true; form.after(alert);
+      const rows = document.createElement('section'); rows.className = 'rows'; rows.setAttribute('aria-label', 'Projects'); app.append(rows);
+      async function loadRows() {
+        rows.replaceChildren();
+        for (const project of await request('/api/projects')) {
+          const row = document.createElement('div'); row.className = 'project-row'; row.dataset.testid = 'project-row';
+          const name = document.createElement('span'); name.textContent = project.name;
+          row.append(name, button('Open project', () => { location.href = `/projects/${project.id}`; }));
+          rows.append(row);
+        }
+      }
+      form.addEventListener('submit', async event => {
+        event.preventDefault(); alert.hidden = true;
+        try {
+          await request('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+          input.value = ''; await loadRows();
+        } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+      });
+      try { await loadRows(); } catch { alert.textContent = 'Unable to load projects'; alert.hidden = false; }
+    }
+    async function showProject(id) {
+      app.replaceChildren();
+      const back = button('Projects', () => { location.href = '/'; }); back.className = 'back'; app.append(back);
+      try {
+        const project = await request(`/api/projects/${encodeURIComponent(id)}`);
+        const section = document.createElement('section'); section.className = 'project-detail';
+        const heading = document.createElement('h1'); heading.textContent = project.name; section.append(heading); app.append(section);
+      } catch {
+        const heading = document.createElement('h1'); heading.textContent = 'Project not found'; app.append(heading);
+      }
+    }
+    const match = location.pathname.match(/^\/projects\/(\d+)$/);
+    if (match) showProject(match[1]); else showProjects();
+  </script>
+</body>
+</html>
