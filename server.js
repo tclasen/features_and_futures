@@ -136,8 +136,19 @@ const server = http.createServer(async (req, res) => {
   <button id="createBtn">Create project</button>
 </div>
 <div id="projectsList"></div>
+<div id="alertContainer" role="alert" style="color: red; display: none; margin-top: 0.5rem;"></div>
 <script>
+function showAlert(message) {
+  const el = document.getElementById('alertContainer');
+  el.textContent = message;
+  el.style.display = 'block';
+}
+function hideAlert() {
+  const el = document.getElementById('alertContainer');
+  el.style.display = 'none';
+}
   async function loadProjects() {
+    hideAlert();
     const resp = await fetch('/api/projects');
     const projects = await resp.json();
     const listDiv = document.getElementById('projectsList');
@@ -161,7 +172,7 @@ const server = http.createServer(async (req, res) => {
     const input = document.getElementById('projectNameInput');
     const name = input.value.trim();
     if (!name) {
-      alert('Project name is required');
+      showAlert('Project name is required');
       return;
     }
     const resp = await fetch('/api/projects', {
@@ -174,7 +185,7 @@ const server = http.createServer(async (req, res) => {
       loadProjects();
     } else {
       const err = await resp.json();
-      alert(err.error || 'Error creating project');
+      showAlert(err.error || 'Error creating project');
     }
   });
 
