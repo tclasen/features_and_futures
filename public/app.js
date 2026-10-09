@@ -114,6 +114,26 @@ async function render() {
             } catch (error) { alert.textContent = error.message; alert.hidden = false; }
           });
           row.append(title, checkbox);
+          const renameForm = document.createElement('form');
+          const renameInput = document.createElement('input');
+          renameInput.type = 'text';
+          renameInput.value = task.title;
+          renameInput.setAttribute('aria-label', 'New task title');
+          renameInput.disabled = Boolean(project.archived);
+          const renameButton = document.createElement('button');
+          renameButton.type = 'submit';
+          renameButton.textContent = 'Rename task';
+          renameButton.disabled = Boolean(project.archived);
+          renameForm.append(renameInput, renameButton);
+          renameForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            alert.hidden = true;
+            try {
+              await request(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: renameInput.value }) });
+              await loadTasks();
+            } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+          });
+          row.append(renameForm);
           list.append(row);
         }
       }

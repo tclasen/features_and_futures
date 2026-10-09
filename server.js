@@ -33,6 +33,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 
 function sendJson(res, status, value) {
@@ -104,11 +105,16 @@ const server = http.createServer(async (req, res) => {
     catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
-    if (typeof input.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
     if (!getTask.get(taskId, projectId)) return sendJson(res, 404, { error: 'Task not found' });
     if (getProject.get(projectId).archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
-    updateTask.run(input.completed ? 1 : 0, taskId, projectId);
-    return sendJson(res, 200, { ok: true });
+    if (typeof input.completed === 'boolean') {
+      updateTask.run(input.completed ? 1 : 0, taskId, projectId);
+      return sendJson(res, 200, { ok: true });
+    }
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
+    if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+    renameTask.run(title, taskId, projectId);
+    return sendJson(res, 200, { id: taskId, projectId, title });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectMatch) {
