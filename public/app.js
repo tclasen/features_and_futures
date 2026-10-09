@@ -23,11 +23,30 @@ function showAlert(message) {
   alert.textContent = message;
 }
 
-function projectRow(project) {
+function projectRow(project, onArchiveChange) {
   const row = element('div', undefined, { 'data-testid': 'project-row', class: 'project-row' });
   const open = element('button', 'Open project', { type: 'button' });
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(element('span', project.name), open);
+  const archive = element('button', project.archived ? 'Restore project' : 'Archive project', { type: 'button' });
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    try {
+      const updated = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      onArchiveChange(updated);
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      archive.disabled = false;
+    }
+  });
+  row.append(element('span', project.name), element('span', `${project.completed_count}/${project.total_count} completed`, {
+    'data-testid': 'project-summary',
+  }), open, archive);
   return row;
 }
 
@@ -39,8 +58,22 @@ async function showProjects() {
   const submit = element('button', 'Create project', { type: 'submit' });
   form.append(label, input, submit);
   const list = element('section', undefined, { 'aria-label': 'Projects' });
-  app.append(form, list);
-  for (const project of await request('/api/projects')) list.append(projectRow(project));
+  const filter = element('select', undefined, { id: 'project-filter' });
+  for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
+  app.append(form, element('label', 'Project filter', { for: 'project-filter' }), filter, list);
+  let projects = await request('/api/projects');
+  function renderProjects() {
+    list.replaceChildren();
+    for (const project of projects) {
+      if (project.archived !== (filter.value === 'Archived')) continue;
+      list.append(projectRow(project, (updated) => {
+        projects = projects.map((existing) => existing.id === updated.id ? updated : existing);
+        renderProjects();
+      }));
+    }
+  }
+  filter.addEventListener('change', renderProjects);
+  renderProjects();
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!input.value.trim()) return showAlert('Project name is required');
@@ -51,7 +84,8 @@ async function showProjects() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: input.value }),
       });
-      list.append(projectRow(project));
+      projects.push(project);
+      renderProjects();
       input.value = '';
       app.querySelector('[role="alert"]')?.remove();
       input.focus();
@@ -69,10 +103,12 @@ async function showProject(id) {
   app.append(back);
   const project = await request(`/api/projects/${id}`);
   app.append(element('h1', project.name));
+  if (project.archived) app.append(element('p', 'Archived project'));
   document.title = `${project.name} · Workboard`;
   const form = element('form');
   const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
   const submit = element('button', 'Create task', { type: 'submit' });
+  submit.disabled = project.archived;
   form.append(element('label', 'Task title', { for: 'task-title' }), input, submit);
   const filter = element('select', undefined, { id: 'task-filter' });
   for (const value of ['All', 'Open', 'Completed']) {
@@ -92,6 +128,7 @@ async function showProject(id) {
         type: 'checkbox', 'aria-label': `Complete ${task.title}`,
       });
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
         try {
@@ -119,6 +156,7 @@ async function showProject(id) {
   renderTasks();
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (project.archived) return;
     if (!input.value.trim()) return showAlert('Task title is required');
     submit.disabled = true;
     try {

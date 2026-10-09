@@ -52,14 +52,29 @@ export function createApp(store) {
           ? json(response, 200, project)
           : json(response, 404, { error: 'Project not found' });
       }
+      if (request.method === 'PATCH' && projectMatch) {
+        if (!store.find(projectMatch[1])) return json(response, 404, { error: 'Project not found' });
+        let body;
+        try {
+          body = await readJson(request);
+        } catch {
+          return json(response, 400, { error: 'Invalid JSON request' });
+        }
+        if (typeof body?.archived !== 'boolean') {
+          return json(response, 400, { error: 'Archive state must be a boolean' });
+        }
+        return json(response, 200, store.setArchived(projectMatch[1], body.archived));
+      }
       const tasksMatch = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
       if (tasksMatch) {
         const [, projectId, taskId] = tasksMatch;
-        if (!store.find(projectId)) return json(response, 404, { error: 'Project not found' });
+        const project = store.find(projectId);
+        if (!project) return json(response, 404, { error: 'Project not found' });
         if (!taskId && request.method === 'GET') {
           return json(response, 200, store.listTasks(projectId));
         }
         if ((!taskId && request.method === 'POST') || (taskId && request.method === 'PATCH')) {
+          if (project.archived) return json(response, 409, { error: 'Archived projects cannot be edited' });
           let body;
           try {
             body = await readJson(request);
