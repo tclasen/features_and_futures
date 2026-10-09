@@ -12,6 +12,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
 
 const html = `<!doctype html>
 <html lang="en">
@@ -76,8 +83,37 @@ const html = `<!doctype html>
       let project;
       try { project = await request('/api/projects/' + encodeURIComponent(id)); }
       catch { navigate('/'); return; }
-      root.innerHTML = '<button class="back" type="button">Projects</button><h1>' + esc(project.name) + '</h1>';
+      root.innerHTML = '<button class="back" type="button">Projects</button><h1>' + esc(project.name) + '</h1><form id="task-form"><label for="task-title" style="position:absolute;left:-10000px">Task title</label><input id="task-title" name="title" aria-label="Task title" autocomplete="off"><button type="submit">Create task</button></form><div id="task-message" role="alert"></div><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><div class="project-list" id="tasks"></div>';
       root.querySelector('.back').addEventListener('click', () => navigate('/'));
+      const renderTasks = async () => {
+        const filter = root.querySelector('#task-filter').value;
+        const tasks = await request('/api/projects/' + encodeURIComponent(id) + '/tasks');
+        const visible = tasks.filter(task => filter === 'All' || (filter === 'Open' ? !task.completed : !!task.completed));
+        const list = root.querySelector('#tasks');
+        list.replaceChildren();
+        if (!visible.length) { list.innerHTML = '<p class="empty">No tasks yet.</p>'; return; }
+        for (const task of visible) {
+          const row = document.createElement('div');
+          row.dataset.testid = 'task-row';
+          row.innerHTML = '<span>' + esc(task.title) + '</span><input type="checkbox" aria-label="Complete ' + esc(task.title) + '"' + (task.completed ? ' checked' : '') + '>';
+          row.querySelector('input').addEventListener('change', async (event) => {
+            await request('/api/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: event.target.checked }) });
+            renderTasks();
+          });
+          list.append(row);
+        }
+      };
+      root.querySelector('#task-filter').addEventListener('change', renderTasks);
+      root.querySelector('#task-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = root.querySelector('#task-title').value.trim();
+        if (!title) { root.querySelector('#task-message').textContent = 'Task title is required'; return; }
+        await request('/api/projects/' + encodeURIComponent(id) + '/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+        root.querySelector('#task-title').value = '';
+        root.querySelector('#task-message').textContent = '';
+        renderTasks();
+      });
+      renderTasks();
     }
     function render() {
       const id = projectIdFromPath();
@@ -117,6 +153,32 @@ const server = http.createServer(async (request, response) => {
     if (!name) { sendJson(response, 400, { error: 'Project name is required' }); return; }
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
+    return;
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && request.method === 'GET') {
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
+    if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+    sendJson(response, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC').all(tasksMatch[1]).map(task => ({ ...task, completed: !!task.completed })));
+    return;
+  }
+  if (tasksMatch && request.method === 'POST') {
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
+    if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+    const body = await readBody(request);
+    const title = typeof body?.title === 'string' ? body.title.trim() : '';
+    if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
+    const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(tasksMatch[1], title);
+    sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+    return;
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskMatch && request.method === 'PATCH') {
+    const body = await readBody(request);
+    if (typeof body?.completed !== 'boolean') { sendJson(response, 400, { error: 'Completion state is required' }); return; }
+    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
+    if (!result.changes) { sendJson(response, 404, { error: 'Task not found' }); return; }
+    sendJson(response, 200, { status: 'ok' });
     return;
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
