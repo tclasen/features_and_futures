@@ -14,6 +14,8 @@ PORT=8080 DB_PATH=/tmp/workboard.sqlite npm start
 ```
 
 Open `http://localhost:8080/` to create and open projects.
+On a project page, create tasks, toggle their completion checkboxes, and choose
+All, Open, or Completed from Task filter. Tasks and completion persist in SQLite.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks:
