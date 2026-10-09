@@ -36,6 +36,9 @@ export function openProjects(databasePath) {
   const taskInsert = database.prepare('INSERT INTO tasks (project_id, title) SELECT id, ? FROM projects WHERE id = ? AND archived = 0');
   const taskUpdate = database.prepare(`UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)`);
+  const taskFind = database.prepare('SELECT id FROM tasks WHERE project_id = ? AND id = ?');
+  const taskRename = database.prepare(`UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)`);
 
   return {
     list: (archived = false) => list.all(archived ? 1 : 0),
@@ -53,6 +56,12 @@ export function openProjects(databasePath) {
       return renameUpdate.run(trimmedName, id).changes === 1;
     },
     listTasks: (projectId) => taskList.all(projectId),
+    hasTask: (projectId, taskId) => Boolean(taskFind.get(projectId, taskId)),
+    renameTask(projectId, taskId, title) {
+      const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+      if (!trimmedTitle) return false;
+      return taskRename.run(trimmedTitle, projectId, taskId).changes === 1;
+    },
     createTask(projectId, title) {
       const trimmedTitle = typeof title === 'string' ? title.trim() : '';
       if (!trimmedTitle) return null;

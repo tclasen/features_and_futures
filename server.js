@@ -34,8 +34,10 @@ function page(title, content) {
     .project { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid #dce3ec; padding: 18px 0; }
     .project span { overflow-wrap: anywhere; min-width: 0; }
     .project form { flex-shrink: 0; }
-    .task { display: flex; align-items: center; gap: 12px; border-top: 1px solid #dce3ec; padding: 18px 0; overflow-wrap: anywhere; }
-    .task input { flex: none; width: 20px; height: 20px; }
+    .task { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-top: 1px solid #dce3ec; padding: 18px 0; overflow-wrap: anywhere; }
+    .task-completion { display: flex; align-items: center; gap: 12px; width: 100%; }
+    .task input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+    .task-rename { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; }
     .task label { margin: 0; font-weight: 400; min-width: 0; }
     .task-controls { margin-top: 28px; }
     select { padding: 10px; font: inherit; border: 1px solid #8192a5; border-radius: 6px; }
@@ -93,11 +95,19 @@ function normalizeFilter(value) {
 function projectPage(project, filter = 'All', error = '') {
   const rows = projects.listTasks(project.id)
     .filter((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
-    .map((task) => `<form class="task" data-testid="task-row" action="/projects/${project.id}/tasks/${task.id}" method="post">
+    .map((task) => `<div class="task" data-testid="task-row">
+      <form class="task-completion" action="/projects/${project.id}/tasks/${task.id}" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <input id="task-${task.id}" type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} onchange="this.form.requestSubmit()">
       <label for="task-${task.id}">${escapeHtml(task.title)}</label>
-    </form>`).join('');
+      </form>
+      <form class="task-rename" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-task-title-${task.id}">New task title</label>
+        <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+      </form>
+    </div>`).join('');
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
@@ -203,23 +213,32 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/.exec(pathname);
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(pathname);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const taskId = taskMatch[2] ? Number(taskMatch[2]) : null;
       const project = Number.isSafeInteger(projectId) ? projects.find(projectId) : null;
       if (project && (taskId === null || Number.isSafeInteger(taskId))) {
-        if (project.archived) {
-          sendHtml(response, 403, projectPage(project, normalizeFilter(searchParams.get('filter')), 'Archived project is read-only'));
-          return;
-        }
         const body = await readForm(request);
         if (!body) {
           sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
           return;
         }
         const filter = normalizeFilter(body.get('filter'));
-        if (taskId === null) {
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project is read-only'));
+          return;
+        }
+        if (taskMatch[3]) {
+          if (!projects.hasTask(projectId, taskId)) {
+            sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
+          if (!projects.renameTask(projectId, taskId, body.get('title'))) {
+            sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+        } else if (taskId === null) {
           if (!projects.createTask(projectId, body.get('title'))) {
             sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
             return;
