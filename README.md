@@ -40,3 +40,5 @@ Read [AGENTS.md](AGENTS.md) for PM behavior, [the experiment protocol](docs/expe
 ## Current state
 
 The authorized engineering pilot now has a measured runner, isolated inference gateway, native token accounting, a three-task Workboard acceptance suite and recoverable builder histories. Pilots 001 through 003 retain aborted PM infrastructure attempts. Pilot 004 verified private workspaces, databases and native pre-parser accounting but was superseded after a PM test defect and a provider accounting gap. Pilot 005 uses a corrected frozen suite and fresh builder repositories. See [the pilot runtime](docs/pilot-runtime.md), [evidence decisions](docs/evidence-analysis.md) and run reports for actual status. The indefinite main experiment remains separate and requires its statistical evidence method to be frozen.
+
+The PM must maintain [evidence-linked lessons](docs/lessons-learned.md) and [their append-only journal](lessons/records.jsonl) during the pilot and every follow-on evaluation, and verify the controls adopted from them.

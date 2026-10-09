@@ -53,3 +53,19 @@ Before changing measurement or stopping behavior, read [the evidence decisions](
 Freeze the exact local provider/model catalog and any observation-only instrumentation. Do not repair generated tool arguments in the gateway. Preserve native parser failures as measured attempts; distinguish missing counters and transport/resource failures from builder defects. Keep real provider credentials and the native accounting sidecar outside builder sandboxes. Recheck direct network access with proxy settings bypassed.
 
 Never claim that one three-task pilot establishes maintainability effects. Preregister the main experiment's independent replication, practical margins and repeated-look/multiple-comparison rule before its first task. Use uncached native-token reference cost as the primary cost outcome and keep cache-aware estimates separately visible.
+
+## Authorized pilot completion and publication
+
+The user explicitly grants full authority to complete and refine the pilot without further approval requests before completion. Diagnose and recover stalled attempts, preserve failures and original measurements, and version comparison changes through new runs. This authority does not authorize fabricated evidence or weakening requirements. Finish the pilot and readiness verification before starting the real evaluation.
+
+The user explicitly authorizes publishing pilot/evaluation source, independent Git histories, Codex/chat logs, timing, costs, and other experimental evidence to the configured GitHub remote. Never publish keys or secrets. Scan working files, decoded archives, and reachable historical Git objects before publication; keep credentials outside builder sandboxes. No extra publication-scope approval is needed.
+
+## Required lessons and self-improvement
+
+Maintain durable, evidence-linked lessons throughout this pilot and every follow-on evaluation. Read [the lessons procedure](docs/lessons-learned.md) and review applicable entries in [the lesson journal](lessons/records.jsonl) before preparing a run, changing infrastructure or analysis, or dispatching a new task round.
+
+Record confirmed infrastructure defects, protocol/test ambiguities, recurring failure mechanisms, accounting gaps, and effective recoveries promptly. Include what happened, affected run/task/attempt, evidence links and uncertainty, root cause, correction/prevention, verification, and comparison implications. Distinguish hypotheses from confirmed findings. Append transitions and superseding corrections rather than rewriting observations.
+
+Turn accepted lessons into concrete PM controls, regression checks, preparation gates or versioned protocol improvements. Record adoption and verification in the lesson journal and the run's decisions/lessons-applied.md. Revisit pending lessons at checkpoints and explain any deferred action. A fix is not verified merely because it was written.
+
+Keep PM lessons outside builder sandboxes and task packets. Do not contaminate instruction treatments with PM engineering advice, repair builder implementations, or silently change frozen comparisons. Changes affecting the comparison require an explicit new revision/run. Retain every prior failure and its measured exposure.
