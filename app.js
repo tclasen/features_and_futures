@@ -71,6 +71,44 @@ async function renderRoute() {
   back.textContent = 'Projects';
   back.addEventListener('click', () => { location.href = '/'; });
   detail.append(heading, back);
+  const renameForm = document.createElement('form');
+  renameForm.className = 'task-form';
+  const renameLabel = document.createElement('label');
+  renameLabel.htmlFor = 'new-project-name';
+  renameLabel.textContent = 'New project name';
+  const renameControls = document.createElement('div');
+  renameControls.className = 'form-row';
+  const renameInput = document.createElement('input');
+  renameInput.id = 'new-project-name';
+  renameInput.type = 'text';
+  renameInput.autocomplete = 'off';
+  renameInput.disabled = Boolean(project.archived);
+  const renameButton = document.createElement('button');
+  renameButton.type = 'submit';
+  renameButton.textContent = 'Rename project';
+  renameButton.disabled = Boolean(project.archived);
+  renameControls.append(renameInput, renameButton);
+  const renameError = document.createElement('p');
+  renameError.setAttribute('role', 'alert');
+  renameError.hidden = true;
+  renameForm.append(renameLabel, renameControls, renameError);
+  renameForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    renameError.hidden = true;
+    const name = renameInput.value.trim();
+    if (!name) { renameError.textContent = 'Project name is required'; renameError.hidden = false; return; }
+    const response = await fetch(`/api/projects/${project.id}/rename`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    });
+    if (!response.ok) {
+      const result = await response.json();
+      renameError.textContent = result.error || 'Unable to rename project';
+      renameError.hidden = false;
+      return;
+    }
+    await renderRoute();
+  });
+  detail.append(renameForm);
   if (project.archived) {
     const archivedNotice = document.createElement('p');
     archivedNotice.textContent = 'Archived project';

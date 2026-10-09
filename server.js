@@ -14,12 +14,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   archived INTEGER NOT NULL DEFAULT 0
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
-  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
-const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
-const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -27,6 +21,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
+const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -40,6 +41,22 @@ const server = http.createServer(async (req, res) => {
   };
   if (req.method === 'GET' && url.pathname === '/health') {
     return send(200, 'application/json; charset=utf-8', JSON.stringify({ status: 'ok' }));
+  }
+  const projectRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (projectRenameRoute && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const payload = JSON.parse(body || '{}');
+      const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+      if (!name) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project name is required' }));
+      const id = Number(projectRenameRoute[1]);
+      const project = findProject.get(id);
+      if (!project) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+      renameProject.run(name, id);
+      return send(200, 'application/json; charset=utf-8', JSON.stringify(findProject.get(id)));
+    } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
   const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (projectStateRoute && req.method === 'PATCH') {
