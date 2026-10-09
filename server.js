@@ -11,8 +11,14 @@ const database = new DatabaseSync(dbPath);
 database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Add the archive flag when opening a database created by an earlier version.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -39,7 +45,20 @@ const app = http.createServer(async (request, response) => {
     return send(response, 200, JSON.stringify({ status: 'ok' }));
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return send(response, 200, JSON.stringify(database.prepare('SELECT id, name FROM projects ORDER BY id').all()));
+    const projects = database.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS total_count, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completed_count
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all();
+    return send(response, 200, JSON.stringify(projects.map((project) => ({
+      id: project.id, name: project.name, archived: Boolean(project.archived),
+      totalCount: project.total_count, completedCount: project.completed_count,
+    }))));
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (request.method === 'POST' && archiveMatch) {
+    const archived = archiveMatch[2] === 'archive' ? 1 : 0;
+    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived, Number(archiveMatch[1]));
+    if (!result.changes) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+    return send(response, 200, JSON.stringify({ id: Number(archiveMatch[1]), archived: Boolean(archived) }));
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let name;
@@ -53,12 +72,13 @@ const app = http.createServer(async (request, response) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && ['GET', 'POST'].includes(request.method)) {
     const projectId = Number(tasksMatch[1]);
-    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
     if (request.method === 'GET') {
       const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
       return send(response, 200, JSON.stringify(tasks.map((task) => ({ ...task, completed: Boolean(task.completed) }))));
     }
+    if (project.archived) return send(response, 400, JSON.stringify({ error: 'Archived project' }));
     let title;
     try { title = String((await readJson(request)).title ?? '').trim(); } catch {
       return send(response, 400, JSON.stringify({ error: 'Invalid request' }));
@@ -73,7 +93,7 @@ const app = http.createServer(async (request, response) => {
     try { completed = Boolean((await readJson(request)).completed); } catch {
       return send(response, 400, JSON.stringify({ error: 'Invalid request' }));
     }
-    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(taskMatch[1]));
+    const result = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(completed ? 1 : 0, Number(taskMatch[1]));
     if (!result.changes) return send(response, 404, JSON.stringify({ error: 'Task not found' }));
     return send(response, 200, JSON.stringify({ id: Number(taskMatch[1]), completed }));
   }
