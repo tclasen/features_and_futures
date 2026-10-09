@@ -26,6 +26,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -51,11 +52,21 @@ const server = http.createServer(async (request, response) => {
       let raw = '';
       for await (const chunk of request) raw += chunk;
       const payload = JSON.parse(raw);
-      if (typeof payload.archived !== 'boolean') return send(response, 400, JSON.stringify({ error: 'Invalid archive state' }));
       const id = Number(projectRoute[1]);
-      if (!findProject.get(id)) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
-      updateProjectArchived.run(payload.archived ? 1 : 0, id);
-      return send(response, 200, JSON.stringify({ ...findProject.get(id), archived: payload.archived }));
+      const project = findProject.get(id);
+      if (!project) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+      if (typeof payload.archived === 'boolean') {
+        updateProjectArchived.run(payload.archived ? 1 : 0, id);
+        return send(response, 200, JSON.stringify({ ...findProject.get(id), archived: payload.archived }));
+      }
+      if (typeof payload.name === 'string') {
+        const name = payload.name.trim();
+        if (!name) return send(response, 400, JSON.stringify({ error: 'Project name is required' }));
+        if (project.archived) return send(response, 409, JSON.stringify({ error: 'Archived projects cannot be renamed' }));
+        updateProjectName.run(name, id);
+        return send(response, 200, JSON.stringify(findProject.get(id)));
+      }
+      return send(response, 400, JSON.stringify({ error: 'Invalid project update' }));
     } catch { return send(response, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
