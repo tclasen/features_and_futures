@@ -34,6 +34,8 @@ export function openProjects(databasePath) {
   const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+  const updateTaskTitle = database.prepare(`UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
   const taskValue = (task) => task ? { ...task, completed: Boolean(task.completed) } : null;
   const projectValue = (project) => project ? { ...project, archived: Boolean(project.archived) } : null;
 
@@ -64,6 +66,12 @@ export function openProjects(databasePath) {
       if (!trimmedTitle) return null;
       const result = insertTask.run(projectId, trimmedTitle);
       return taskValue(findTask.get(projectId, result.lastInsertRowid));
+    },
+    renameTask(projectId, taskId, title) {
+      const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+      if (!trimmedTitle) return null;
+      const result = updateTaskTitle.run(trimmedTitle, projectId, taskId, projectId);
+      return result.changes ? taskValue(findTask.get(projectId, taskId)) : null;
     },
     setTaskCompleted(projectId, taskId, completed) {
       const project = find.get(projectId);

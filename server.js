@@ -72,6 +72,18 @@ const server = createServer(async (request, response) => {
         const taskId = Number(taskRoute[2]);
         if (!Number.isSafeInteger(taskId)) return json(response, 404, { error: 'Task not found' });
         const body = await readJson(request);
+        if (Object.hasOwn(body ?? {}, 'title')) {
+          if (Object.hasOwn(body, 'completed')) {
+            return json(response, 400, { error: 'Change task title and completion separately' });
+          }
+          if (typeof body.title !== 'string' || !body.title.trim()) {
+            return json(response, 400, { error: 'Task title is required' });
+          }
+          const task = projects.renameTask(projectId, taskId, body.title);
+          return task
+            ? json(response, 200, task)
+            : json(response, 404, { error: 'Task not found' });
+        }
         if (typeof body?.completed !== 'boolean') {
           return json(response, 400, { error: 'Completion must be a boolean' });
         }

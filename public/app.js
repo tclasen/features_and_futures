@@ -194,7 +194,43 @@ async function showProject(id) {
           checkbox.disabled = project.archived;
         }
       });
-      row.append(checkbox, element('span', task.title));
+      const details = element('div', '', { class: 'task-details' });
+      const title = element('span', task.title);
+      const renameForm = element('form', '', { class: 'task-rename' });
+      const renameInput = element('input', '', { id: `new-task-title-${task.id}`, type: 'text' });
+      const renameButton = element('button', 'Rename task', { type: 'submit' });
+      renameInput.disabled = project.archived;
+      renameButton.disabled = project.archived;
+      renameForm.append(element('label', 'New task title', { for: renameInput.id }), renameInput, renameButton);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (project.archived) return;
+        alert.hidden = true;
+        if (!renameInput.value.trim()) {
+          showError('Task title is required');
+          renameInput.focus();
+          return;
+        }
+        renameButton.disabled = true;
+        try {
+          const saved = await api(`${taskPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: renameInput.value }),
+          });
+          task.title = saved.title;
+          title.textContent = task.title;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          renameInput.value = '';
+          renameInput.focus();
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          renameButton.disabled = project.archived;
+        }
+      });
+      details.append(title, renameForm);
+      row.append(checkbox, details);
       return row;
     }));
     empty.textContent = tasks.length ? 'No tasks match this filter.' : 'No tasks yet. Create your first task above.';

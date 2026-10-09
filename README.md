@@ -33,3 +33,9 @@ Active project pages also support renaming via New project name and Rename
 project. Names are trimmed and must be nonblank. Renaming preserves the URL,
 creation order, tasks, and completion summary. Archived projects cannot be
 renamed until restored. The integration tests verify these rules and persistence.
+
+Each task row supports New task title and Rename task. Titles are trimmed and
+must be nonblank. Renaming preserves ownership, creation order, completion,
+filter membership, and summary counts. Archived projects disable task renaming
+until restored. These changes persist in the same SQLite file without a schema
+change.
