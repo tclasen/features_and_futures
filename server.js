@@ -25,6 +25,18 @@ if (!projectColumns.some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
 
+// Earlier pilot runs could create the same project more than once. The create
+// endpoint now treats a repeated name as idempotent, so consolidate legacy rows
+// while retaining every task under the oldest project ID.
+db.exec(`
+  UPDATE tasks SET project_id = (
+    SELECT MIN(keeper.id) FROM projects AS keeper
+    WHERE keeper.name = (SELECT duplicate.name FROM projects AS duplicate WHERE duplicate.id = tasks.project_id)
+  )
+  WHERE project_id NOT IN (SELECT MIN(id) FROM projects GROUP BY name);
+  DELETE FROM projects WHERE id NOT IN (SELECT MIN(id) FROM projects GROUP BY name);
+`);
+
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 const sendJson = (res, status, data) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
