@@ -31,6 +31,52 @@ async function start(dbPath) {
   };
 }
 
+test('tasks: validation, ownership, completion, and persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const dbPath = join(directory, 'tasks.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const api = (path, method = 'GET', body) => fetch(server.url + path, {
+      method, headers: { 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const first = await (await api('/api/projects', 'POST', { name: 'First' })).json();
+    const second = await (await api('/api/projects', 'POST', { name: 'Second' })).json();
+    const path = `/api/projects/${first.id}/tasks`;
+    const other = `/api/projects/${second.id}/tasks`;
+    for (const title of ['', '  \t ']) {
+      const response = await api(path, 'POST', { title });
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error, 'Task title is required');
+    }
+    assert.deepEqual(await (await api(path)).json(), []);
+    const task = await (await api(path, 'POST', { title: '  Build it  ' })).json();
+    const next = await (await api(path, 'POST', { title: 'Ship it' })).json();
+    assert.equal(task.title, 'Build it');
+    assert.equal(task.completed, false);
+    assert.deepEqual(await (await api(path)).json(), [task, next]);
+    assert.deepEqual(await (await api(other)).json(), []);
+    assert.equal((await api(`${other}/${task.id}`, 'PATCH', { completed: true })).status, 404);
+    assert.equal((await api(`${path}/${task.id}`, 'PATCH', { completed: 'yes' })).status, 400);
+    const completed = await (await api(`${path}/${task.id}`, 'PATCH', { completed: true })).json();
+    assert.equal(completed.completed, true);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(await (await api(path)).json(), [completed, next]);
+    assert.equal((await api(`/projects/${first.id}`)).status, 200);
+    const reopened = await (await api(`${path}/${task.id}`, 'PATCH', { completed: false })).json();
+    assert.equal(reopened.completed, false);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(await (await api(path)).json(), [reopened, next]);
+    assert.deepEqual(await (await api(other)).json(), []);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects: validation, ordering, routes, and persistence across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const dbPath = join(directory, 'projects.sqlite');
