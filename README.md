@@ -12,7 +12,9 @@ Open `http://localhost:8080`. The server binds to `0.0.0.0` and uses the configu
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
-Verify project creation, blank-name validation, HTML escaping, navigation, ordering, and persistence across server restarts:
+Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. Tasks belong to their project and persist with completion state in SQLite.
+
+Verify project and task creation, blank-input validation, HTML escaping, navigation, ordering, filtering, project isolation, and persistence across server restarts:
 
 ```sh
 npm test
