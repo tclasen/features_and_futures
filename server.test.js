@@ -84,3 +84,75 @@ test('project validation, ordering, navigation, escaping and restart persistence
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, stay within their project, and persist completion across restarts', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let app;
+  try {
+    const dbPath = join(dir, 'workboard.sqlite');
+    app = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${app.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${app.base}${path}`)).text();
+    const rows = html => [...html.matchAll(/<div class="task-row" data-testid="task-row">([\s\S]*?)<\/div>/g)].map(match => match[1]);
+    await post('/projects', { name: 'Alpha' });
+    await post('/projects', { name: 'Beta' });
+    const initial = await get('/projects/1');
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option>/);
+    assert.match(initial, /<option>Open<\/option>/);
+    assert.match(initial, /<option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await (await post('/projects/1/tasks', { title })).text();
+      assert.match(invalid, /role="alert">Task title is required/);
+      assert.equal(rows(invalid).length, 0);
+    }
+    assert.equal((await post('/projects/1/tasks', { title: '  First task  ' })).status, 303);
+    await post('/projects/1/tasks', { title: '<Second & "task">' });
+    await post('/projects/2/tasks', { title: 'Private Beta task' });
+    const all = await get('/projects/1');
+    const taskRows = rows(all);
+    assert.equal(taskRows.length, 2);
+    assert.match(taskRows[0], /aria-label="Complete First task"/);
+    assert.match(taskRows[1], /aria-label="Complete &lt;Second &amp; &quot;task&quot;&gt;"/);
+    assert.doesNotMatch(all, /Private Beta task/);
+    assert.doesNotMatch(taskRows.join(''), / checked/);
+    assert.equal(rows(await get('/projects/1?filter=Open')).length, 2);
+    assert.equal(rows(await get('/projects/1?filter=Completed')).length, 0);
+    assert.equal((await post('/projects/2/tasks/1/completion', { completed: '1' })).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Orphan' })).status, 404);
+    const completed = await post('/projects/1/tasks/1/completion?filter=Open', { completed: '1' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    assert.match(rows(await get('/projects/1'))[0], / checked/);
+    const open = rows(await get('/projects/1?filter=Open'));
+    assert.equal(open.length, 1);
+    assert.match(open[0], /Second/);
+    const done = rows(await get('/projects/1?filter=Completed'));
+    assert.equal(done.length, 1);
+    assert.match(done[0], /First task/);
+    const beforeInvalid = await get('/projects/1');
+    await post('/projects/1/tasks', { title: '   ' });
+    assert.equal(await get('/projects/1'), beforeInvalid);
+    const beta = await get('/projects/2');
+    assert.equal(rows(beta).length, 1);
+    assert.doesNotMatch(beta, /First task|Second/);
+    await app.stop();
+    app = await start(dbPath);
+    assert.equal(await get('/projects/1'), beforeInvalid);
+    assert.equal(await get('/projects/2'), beta);
+    assert.equal(rows(await get('/projects/1?filter=Completed')).length, 1);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 303);
+    assert.doesNotMatch(rows(await get('/projects/1')).join(''), / checked/);
+    await app.stop();
+    app = await start(dbPath);
+    assert.equal(rows(await get('/projects/1?filter=Open')).length, 2);
+    assert.equal(rows(await get('/projects/1?filter=Completed')).length, 0);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
