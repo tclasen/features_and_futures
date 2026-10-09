@@ -49,6 +49,34 @@ const server = createServer(async (request, response) => {
           : json(response, 400, { error: 'Project name is required' });
       }
     }
+    const taskRoute = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+    if (taskRoute) {
+      const projectId = Number(taskRoute[1]);
+      if (!Number.isSafeInteger(projectId) || !projects.find(projectId)) {
+        return json(response, 404, { error: 'Project not found' });
+      }
+      if (!taskRoute[2]) {
+        if (request.method === 'GET') return json(response, 200, projects.listTasks(projectId));
+        if (request.method === 'POST') {
+          const body = await readJson(request);
+          const task = projects.createTask(projectId, body?.title);
+          return task
+            ? json(response, 201, task)
+            : json(response, 400, { error: 'Task title is required' });
+        }
+      } else if (request.method === 'PATCH') {
+        const taskId = Number(taskRoute[2]);
+        if (!Number.isSafeInteger(taskId)) return json(response, 404, { error: 'Task not found' });
+        const body = await readJson(request);
+        if (typeof body?.completed !== 'boolean') {
+          return json(response, 400, { error: 'Completion must be a boolean' });
+        }
+        const task = projects.setTaskCompleted(projectId, taskId, body.completed);
+        return task
+          ? json(response, 200, task)
+          : json(response, 404, { error: 'Task not found' });
+      }
+    }
     const projectRoute = pathname.match(/^\/api\/projects\/([1-9]\d*)$/);
     if (request.method === 'GET' && projectRoute) {
       const id = Number(projectRoute[1]);
