@@ -49,6 +49,14 @@ if(path.startsWith('/projects/')){
   const heading=document.createElement('h1'); heading.textContent=project?.name ?? 'Project not found'; app.append(heading);
   if(project){
     if(project.archived){const notice=document.createElement('p');notice.textContent='Archived project';app.append(notice)}
+    const renameForm=document.createElement('form');renameForm.id='rename-form';
+    const renameField=document.createElement('div');const renameLabel=document.createElement('label');renameLabel.htmlFor='new-project-name';renameLabel.textContent='New project name';
+    const renameInput=document.createElement('input');renameInput.id='new-project-name';renameInput.type='text';renameInput.value=project.name;
+    const renameButton=document.createElement('button');renameButton.type='submit';renameButton.textContent='Rename project';
+    renameField.append(renameLabel,renameInput);renameForm.append(renameField,renameButton);app.append(renameForm);
+    if(project.archived){renameInput.disabled=true;renameButton.disabled=true}
+    const renameMessage=document.createElement('p');renameMessage.className='alert';renameMessage.setAttribute('role','alert');renameMessage.hidden=true;app.append(renameMessage);
+    renameForm.addEventListener('submit',async event=>{event.preventDefault();const name=renameInput.value.trim();if(!name){renameMessage.textContent='Project name is required';renameMessage.hidden=false;return}const response=await fetch('/api/projects/'+encodeURIComponent(id),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name})});if(response.ok){project.name=name;heading.textContent=name;renameInput.value=name;renameMessage.hidden=true;renameMessage.textContent=''}});
     const form=document.createElement('form'); form.id='task-form';
     const field=document.createElement('div'); const label=document.createElement('label'); label.htmlFor='task-title'; label.textContent='Task title';
     const input=document.createElement('input'); input.id='task-title'; input.type='text'; field.append(label,input);
@@ -89,10 +97,16 @@ const server = http.createServer(async (request, response) => {
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'PATCH' && archiveMatch) {
     let body=''; for await (const chunk of request) body += chunk;
-    let archived; try { archived=JSON.parse(body).archived; } catch { return sendJson(response,400,{error:'Invalid request'}); }
-    if(typeof archived!=='boolean') return sendJson(response,400,{error:'Invalid archive state'});
+    let payload; try { payload=JSON.parse(body); } catch { return sendJson(response,400,{error:'Invalid request'}); }
     const project=getProject.get(Number(archiveMatch[1])); if(!project) return sendJson(response,404,{error:'Project not found'});
-    updateArchive.run(archived?1:0,project.id); return sendJson(response,200,{ok:true});
+    if(typeof payload.archived==='boolean') updateArchive.run(payload.archived?1:0,project.id);
+    if(Object.hasOwn(payload,'name')) {
+      if(project.archived) return sendJson(response,409,{error:'Archived project'});
+      if(typeof payload.name!=='string'||!payload.name.trim()) return sendJson(response,400,{error:'Project name is required'});
+      db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(payload.name.trim(),project.id);
+    }
+    if(typeof payload.archived!=='boolean'&&!Object.hasOwn(payload,'name')) return sendJson(response,400,{error:'Invalid project update'});
+    return sendJson(response,200,{ok:true});
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
