@@ -26,6 +26,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
   COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
@@ -63,8 +64,9 @@ async function render() {
     const refreshTasks = async () => {
       const tasks = await (await fetch('/api/projects/' + match[1] + '/tasks')).json();
       const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
-      document.getElementById('tasks').innerHTML = shown.map(task => '<div class="task-row" data-testid="task-row"><span>' + escapeHtml(task.title) + '</span><input type="checkbox" aria-label="Complete ' + escapeHtml(task.title) + '" data-task="' + task.id + '" ' + (task.completed ? 'checked' : '') + (project.archived ? ' disabled' : '') + '></div>').join('');
+      document.getElementById('tasks').innerHTML = shown.map(task => '<div class="task-row" data-testid="task-row"><span>' + escapeHtml(task.title) + '</span><input type="checkbox" aria-label="Complete ' + escapeHtml(task.title) + '" data-task="' + task.id + '" ' + (task.completed ? 'checked' : '') + (project.archived ? ' disabled' : '') + '><form class="task-rename" data-rename="' + task.id + '"><label>New task title<input name="title" type="text" ' + (project.archived ? 'disabled' : '') + '></label><button type="submit" ' + (project.archived ? 'disabled' : '') + '>Rename task</button></form></div>').join('');
       document.querySelectorAll('[data-task]').forEach(box => box.onchange = async () => { await fetch('/api/projects/' + match[1] + '/tasks/' + box.dataset.task, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({completed:box.checked})}); await refreshTasks(); });
+      document.querySelectorAll('[data-rename]').forEach(form => form.onsubmit = async event => { event.preventDefault(); const title = new FormData(form).get('title').trim(); if (!title) { taskError.textContent = 'Task title is required'; taskError.hidden = false; return; } const response = await fetch('/api/projects/' + match[1] + '/tasks/' + form.dataset.rename, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})}); if (response.ok) { taskError.hidden = true; await refreshTasks(); } });
     };
     filter.onchange = refreshTasks;
     taskForm.onsubmit = async event => {
@@ -165,12 +167,18 @@ const server = createServer(async (request, response) => {
   if (taskMatch && request.method === 'PATCH') {
     let body = '';
     for await (const chunk of request) body += chunk;
-    let completed;
-    try { completed = JSON.parse(body).completed; } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
-    if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completed value' });
+    let value;
+    try { value = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
-    if (!updateTask.run(completed ? 1 : 0, taskId, projectId).changes) return sendJson(response, 404, { error: 'Not found' });
+    const project = getProject.get(projectId);
+    if (!project || project.archived) return sendJson(response, project ? 403 : 404, { error: project ? 'Archived project' : 'Not found' });
+    if (typeof value.title === 'string') {
+      if (!value.title.trim()) return sendJson(response, 400, { error: 'Task title is required' });
+      if (!renameTask.run(value.title.trim(), taskId, projectId).changes) return sendJson(response, 404, { error: 'Not found' });
+    } else if (typeof value.completed === 'boolean') {
+      if (!updateTask.run(value.completed ? 1 : 0, taskId, projectId).changes) return sendJson(response, 404, { error: 'Not found' });
+    } else return sendJson(response, 400, { error: 'Invalid task update' });
     return sendJson(response, 200, getTask.get(taskId));
   }
   if (request.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
