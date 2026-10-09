@@ -1,105 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Workboard</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    .alert { color: red; margin-top: 10px; }
-    .project-row { margin: 5px 0; }
-    button { margin-left: 5px; }
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    .alert { color: red; margin-top: 0.5rem; }
+    .project-row { display: flex; align-items: center; margin-top: 0.5rem; }
+    .project-row button { margin-left: 1rem; }
   </style>
 </head>
 <body>
-  <div id="app"></div><!-- Updated for commit consistency -->
+  <h1>Workboard</h1>
+  <label for="projectNameInput">Project name</label>
+  <input type="text" id="projectNameInput" />
+  <button id="createBtn">Create project</button>
+  <div id="alert" class="alert" style="display:none;"></div>
+  <div id="projectList"></div>
+
   <script>
-    const apiBase = '/api';
-    async function loadProjects() {
-      const resp = await fetch(`${apiBase}/projects`);
-      return resp.ok ? resp.json() : [];
+    const apiBase = '/api/projects';
+    const alertDiv = document.getElementById('alert');
+    const projectListDiv = document.getElementById('projectList');
+
+    function showAlert(message) {
+      alertDiv.textContent = message;
+      alertDiv.style.display = 'block';
     }
-    async function createProject(name) {
-      const resp = await fetch(`${apiBase}/projects`, {
+
+    function clearAlert() {
+      alertDiv.style.display = 'none';
+    }
+
+    async function loadProjects() {
+      const resp = await fetch(apiBase);
+      const projects = await resp.json();
+      renderProjects(projects);
+    }
+
+    function renderProjects(projects) {
+      projectListDiv.innerHTML = projects
+        .map(p => `
+          <div class="project-row" data-testid="project-row"><span class="project-name">${p.name}</span><button class="open-btn" data-id="${p.id}">Open project</button></div>
+        `)
+        .join('');
+      document.querySelectorAll('.open-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          window.location.href = `/projects/${id}`;
+        });
+      });
+    }
+
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      clearAlert();
+      const nameInput = document.getElementById('projectNameInput');
+      const name = nameInput.value.trim();
+      if (!name) {
+        showAlert('Project name is required');
+        return;
+      }
+      const resp = await fetch(apiBase, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name })
       });
       if (!resp.ok) {
         const err = await resp.json();
-        throw new Error(err.error || 'Error');
+        showAlert(err.error || 'Error');
+        return;
       }
-      return resp.json();
-    }
-    async function getProject(id) {
-      const resp = await fetch(`${apiBase}/projects/${id}`);
-      if (!resp.ok) throw new Error('Not found');
-      return resp.json();
-    }
-    function renderRoot() {
-      const app = document.getElementById('app');
-      app.innerHTML = `
-        <h1>Workboard</h1>
-        <!-- The input receives an explicit ARIA label so that Playwright's getByRole('textbox', { name: 'Project name' }) can locate it reliably across browsers. -->
-        <label for="project-name">Project name</label>
-        <input type="text" id="project-name" aria-label="Project name">
-        <button id="create-btn">Create project</button>
-        <!-- Accessible alert for validation messages. The role="alert" attribute ensures that assistive technologies and Playwright's getByRole('alert') can locate it. -->
-        <div id="alert" class="alert" role="alert" style="display:none"></div>
-        <div id="list"></div>
-      `;
-      document.getElementById('create-btn').onclick = async () => {
-        const input = document.getElementById('project-name');
-        const name = input.value.trim();
-        const alertDiv = document.getElementById('alert');
-        alertDiv.style.display = 'none';
-        if (!name) {
-          alertDiv.textContent = 'Project name is required';
-          alertDiv.style.display = 'block';
-          return;
-        }
-        try {
-          await createProject(name);
-          input.value = '';
-          await renderList();
-        } catch (e) {
-          alertDiv.textContent = e.message;
-          alertDiv.style.display = 'block';
-        }
-      };
-      renderList();
-    }
-    async function renderList() {
-      const listDiv = document.getElementById('list');
-      const projects = await loadProjects();
-      listDiv.innerHTML = projects.map(p => `
-        <div class="project-row" data-testid="project-row">
-          ${p.name}
-          <button class="open-btn" data-id="${p.id}">Open project</button>
-        </div>
-      `).join('');
-      document.querySelectorAll('.open-btn').forEach(btn => {
-        btn.onclick = function() { window.location.href = '/projects/' + btn.dataset.id; };
-      });
-    }
-    async function renderProject(id) {
-      const app = document.getElementById('app');
-      const proj = await getProject(id);
-      app.innerHTML = `
-        <h1>${proj.name}</h1>
-        <button id="back">Projects</button>
-        <div>Project ID: ${proj.id}</div>
-      `;
-      document.getElementById('back').onclick = () => { window.location.href = '/'; };
-    }
-    const path = window.location.pathname;
-    if (path === '/' ) {
-      renderRoot();
-    } else if (path.startsWith('/projects/')) {
-      const id = path.split('/')[2];
-      renderProject(id);
-    } else {
-      renderRoot();
-    }
+      nameInput.value = '';
+      await loadProjects();
+    });
+
+    // Initial load
+    loadProjects();
   </script>
 </body>
 </html>
+

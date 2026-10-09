@@ -1,119 +1,117 @@
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
-import path from 'node:path';
-import { promises as fs } from 'node:fs';
 import sqlite from 'node:sqlite';
+import sqlite3 from 'node:sqlite3';
 
-const PORT = process.env.PORT || 8080;
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'workboard.db');
+const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+const DB_PATH = process.env.DB_PATH || 'workboard.db';
 
-let db;
-function initDb() {
-  // Use the experimental synchronous SQLite API bundled with Node.
-  db = new sqlite.DatabaseSync(DB_PATH);
-  db.exec(`CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
-  );`);
-}
+// Initialize SQLite database and ensure the projects table exists.
+const dbPromise = (async () => {
+  const db = await sqlite.open({ filename: DB_PATH, driver: sqlite3.Database });
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL
+    )
+  `);
+  return db;
+})();
 
-function getJsonBody(req) {
-  return new Promise(resolve => {
-    let data = '';
-    req.on('data', chunk => { data += chunk; });
-    req.on('end', () => {
-      try { resolve(JSON.parse(data)); } catch (_) { resolve({}); }
-    });
-  });
-}
-
-function handleApi(req, url) {
-  const method = req.method;
-  const pathname = url.pathname;
-  if (pathname === '/api/projects') {
-    if (method === 'GET') {
-      const rows = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
-      return { status: 200, json: rows };
-    }
-    if (method === 'POST') {
-      // Body parsing is asynchronous, but we treat it as a promise.
-      return getJsonBody(req).then(body => {
-        const name = typeof body.name === 'string' ? body.name.trim() : '';
-        if (!name) {
-          return { status: 400, json: { error: 'Project name is required' } };
-        }
-        const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
-        const id = result.lastInsertRowid;
-        return { status: 201, json: { id, name } };
-      });
-    }
+/** Utility to collect request body as text */
+async function getRequestBody(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
   }
-  if (pathname.startsWith('/api/projects/')) {
-    const id = parseInt(pathname.split('/')[3], 10);
-    if (Number.isNaN(id)) {
-      return { status: 400, json: { error: 'Invalid ID' } };
-    }
-    if (method === 'GET') {
-      const row = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
-      if (!row) return { status: 404, json: { error: 'Not found' } };
-      return { status: 200, json: row };
-    }
-  }
-  return { status: 404, json: { error: 'Not found' } };
+  return Buffer.concat(chunks).toString();
 }
 
-async function serveStatic(filePath) {
+const server = http.createServer(async (req, res) => {
   try {
-    const data = await fs.readFile(filePath);
-    const ext = path.extname(filePath).toLowerCase();
-    const mime = {
-      '.html': 'text/html',
-      '.js': 'application/javascript',
-      '.css': 'text/css',
-      '.json': 'application/json',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-    }[ext] || 'application/octet-stream';
-    return { status: 200, headers: { 'Content-Type': mime }, body: data };
-  } catch {
-    return { status: 404, body: Buffer.from('Not found') };
-  }
-}
+    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    const pathname = parsedUrl.pathname;
 
-async function requestHandler(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
-    return;
-  }
-  if (url.pathname.startsWith('/api/')) {
-    const result = await handleApi(req, url);
-    // result may be a promise (for POST body parsing)
-    const final = await Promise.resolve(result);
-    res.writeHead(final.status, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(final.json));
-    return;
-  }
-  // Serve static files; fallback to index.html for SPA routes.
-  let filePath = path.join(process.cwd(), 'public', url.pathname);
-  if (url.pathname === '/' || url.pathname.endsWith('/')) {
-    filePath = path.join(process.cwd(), 'public', 'index.html');
-  }
-  const staticResult = await serveStatic(filePath);
-  if (staticResult.status === 404) {
-    const fallback = await serveStatic(path.join(process.cwd(), 'public', 'index.html'));
-    res.writeHead(fallback.status, fallback.headers || { 'Content-Type': 'text/html' });
-    res.end(fallback.body);
-  } else {
-    res.writeHead(staticResult.status, staticResult.headers || { 'Content-Type': 'text/plain' });
-    res.end(staticResult.body);
-  }
-}
+    // Health endpoint
+    if (req.method === 'GET' && pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+      return;
+    }
 
-initDb();
+    // API routes
+    if (pathname === '/api/projects') {
+      const db = await dbPromise;
+      if (req.method === 'GET') {
+        const rows = await db.all('SELECT id, name FROM projects ORDER BY id');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(rows));
+        return;
+      }
+      if (req.method === 'POST') {
+        const body = await getRequestBody(req);
+        let payload;
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+        const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+        if (!name) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Project name is required' }));
+          return;
+        }
+        const result = await db.run('INSERT INTO projects (name) VALUES (?)', name);
+        const newProject = { id: result.lastID, name };
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(newProject));
+        return;
+      }
+    }
 
-const server = http.createServer(requestHandler);
+    // Get a single project
+    if (pathname.startsWith('/api/projects/') && req.method === 'GET') {
+      const id = Number(pathname.split('/').pop());
+      const db = await dbPromise;
+      const row = await db.get('SELECT id, name FROM projects WHERE id = ?', id);
+      if (!row) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(row));
+      return;
+    }
+
+    // Serve static HTML files
+    if (pathname === '/' || pathname === '/index.html') {
+      const html = await readFile('public/index.html', 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+      return;
+    }
+    if (pathname.startsWith('/projects/') && /^\/projects\/\d+$/.test(pathname)) {
+      const html = await readFile('public/project.html', 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+      return;
+    }
+
+    // Fallback 404
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
+  } catch (e) {
+    console.error('Server error', e);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Internal Server Error');
+  }
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
