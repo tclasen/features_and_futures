@@ -39,6 +39,7 @@ const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const taskJson = (task) => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['public/index.html', 'text/html; charset=utf-8']],
@@ -104,10 +105,19 @@ const server = http.createServer(async (request, response) => {
       if (taskId !== null && request.method === 'PATCH') {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const body = await readJson(request);
-        if (typeof body?.completed !== 'boolean') {
-          return json(response, 400, { error: 'Completed must be a boolean' });
+        if (body && Object.hasOwn(body, 'title')) {
+          if (Object.hasOwn(body, 'completed')) {
+            return json(response, 400, { error: 'Rename and completion must be separate requests' });
+          }
+          const title = typeof body.title === 'string' ? body.title.trim() : '';
+          if (!title) return json(response, 400, { error: 'Task title is required' });
+          renameTask.run(title, projectId, taskId);
+        } else {
+          if (typeof body?.completed !== 'boolean') {
+            return json(response, 400, { error: 'Completed must be a boolean' });
+          }
+          updateTask.run(Number(body.completed), projectId, taskId);
         }
-        updateTask.run(Number(body.completed), projectId, taskId);
         return json(response, 200, taskJson(findTask.get(projectId, taskId)));
       }
     }

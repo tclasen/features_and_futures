@@ -133,7 +133,48 @@ function renderTasks() {
         checkbox.disabled = archived;
       }
     });
-    row.append(title, checkbox);
+    const renameTaskForm = document.createElement('form');
+    renameTaskForm.className = 'task-rename';
+    const label = document.createElement('label');
+    label.htmlFor = `new-task-title-${task.id}`;
+    label.textContent = 'New task title';
+    const newTitleInput = document.createElement('input');
+    newTitleInput.type = 'text';
+    newTitleInput.id = label.htmlFor;
+    newTitleInput.disabled = archived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = archived;
+    const controls = document.createElement('div');
+    controls.className = 'form-controls';
+    controls.append(newTitleInput, renameButton);
+    renameTaskForm.append(label, controls);
+    renameTaskForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      alert.hidden = true;
+      if (archived) return;
+      if (!newTitleInput.value.trim()) {
+        showError('Task title is required');
+        return;
+      }
+      renameButton.disabled = true;
+      try {
+        const saved = await api(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitleInput.value }),
+        });
+        Object.assign(task, saved);
+        renderTasks();
+        document.getElementById(newTitleInput.id)?.focus();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        renameButton.disabled = archived;
+      }
+    });
+    row.append(title, checkbox, renameTaskForm);
     tasksElement.append(row);
   }
 }
