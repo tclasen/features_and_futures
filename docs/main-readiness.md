@@ -1,13 +1,13 @@
 # Gates before the main evaluation
 
-The engineering pilot remains incomplete until all 12 hosted configurations accept all three tasks and the full evidence checks pass. These gates prevent a successful small workload from being mistaken for proof that the long-horizon runner is ready. They do not authorize starting the main evaluation.
+Pilot 008 passed the three-task engineering pilot with all 12 hosted configurations and complete evidence checks. Remaining gates below still require verification before the long-horizon main evaluation. These gates prevent a successful small workload from being mistaken for proof that the long-horizon runner is ready. They do not authorize starting the main evaluation.
 
 | Gate | Evidence required | Current status |
 | --- | --- | --- |
-| Shared pilot completion | 36 accepted commits, 36 promotions and post-promotion checks; identical cumulative suite with upgrade/restart phases | Verified pilot008:336 successful phase checks |
-| Native accounting | Original pilot report plus independent native-receipt and dispatch/usage/finish audits; no unknown or omitted requests | Verified pilot008:467 requests, zero unknown receipts; original report reproduced exactly |
-| Stronger acceptance coverage | Prepared v005 suite checked against all 36 immutable hosted-only submissions; fixtures exercise public requirements without adding architecture constraints | Verified all36 pilot008 immutable submissions against v005 |
-| Source and history | Checksums, independent bundle restoration and original remote checkpoint IDs | Verified53 original history restorations; terminal remote publication pending |
+| Shared pilot completion | 36 accepted commits, 36 promotions and post-promotion checks; identical cumulative suite with upgrade/restart phases | Verified pilot-008: 336 successful phase checks |
+| Native accounting | Original pilot report plus independent native-receipt and dispatch/usage/finish audits; no unknown or omitted requests | Verified pilot-008: 467 requests, zero unknown receipts; original report reproduced exactly |
+| Stronger acceptance coverage | Prepared v005 suite checked against all 36 immutable hosted-only submissions; fixtures exercise public requirements without adding architecture constraints | Verified all 36 pilot-008 immutable submissions against v005 |
+| Source and history | Checksums, independent bundle restoration and original remote checkpoint IDs | Verified 53 original history restorations; published target `51c8e9e` verified with 596 original checkpoint refs; later snapshots need another scan |
 | Comparable diagnostics | Explicit future feedback revision; original native errors/schemas, factual browser expectations without PM source; declared notification fingerprint | Prepared components tested; versioned adoption pending |
 | Context and compaction | Effective model/harness context budgets, input/output reserve and compaction policy recorded; native compaction stress probes for every model/harness pair with all calls metered | Pending |
 | Liveness and process timing | Observation-only monitor checked; future uniform recovery policy and harness-exit timing separated from observer drain before freezing main rules | Monitor adopted; remaining execution revision pending |

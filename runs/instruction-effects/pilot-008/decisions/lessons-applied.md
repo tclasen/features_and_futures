@@ -16,7 +16,7 @@ The frozen manifest, original profiles, canonical v004 workload and hashed task 
 
 ## Deferred gates
 
-L008 missing-receipt bounds remain proposed; strict missing evidence cannot pass readiness. L010 prepared v005 acceptance assertions must recheck all36 immutable submissions without rewriting original outcomes. L014 notification fingerprint refinement and browser feedback sanitization require explicit future execution adoption. L015 context/compaction probes now cover four hosted pairs; all original preflight usage must remain metered. Broader stability probes, process-exit timing, longitudinal extension/replay and main preregistration remain readiness gates. The full65-test fixture pass does not prove live or long-horizon readiness.
+L008 missing-receipt bounds remain proposed; strict missing evidence cannot pass readiness. L010 prepared v005 acceptance assertions must recheck all 36 immutable submissions without rewriting original outcomes. L014 notification fingerprint refinement and browser feedback sanitization require explicit future execution adoption. L015 context/compaction probes now cover four hosted pairs; all original preflight usage must remain metered. Broader stability probes, process-exit timing, longitudinal extension/replay and main preregistration remain readiness gates. The full65-test fixture pass does not prove live or long-horizon readiness.
 
 ## Scheduling
 
@@ -28,4 +28,4 @@ All12 configurations accepted task001 on attempt001 and task002 after two object
 
 ## Terminal pilot verification
 
-Pilot008 completed all36 checkpoints, with336 successful frozen-suite phase checks and467 completely reconciled native requests. The original report reproduces exactly, all53 rejected/accepted source-history archives restore, and all36 immutable accepted submissions pass the independent v005 suite. Both targeted factual recoveries succeeded on the next native attempt; all prior rejects and pause exposure remain retained. The independent scheduling audit verifies all three round barriers and peak12 concurrent attempts. This completes the three-task engineering pilot, not the remaining long-horizon main-readiness gates. See `preflight/terminal-verification/summary.json`.
+Pilot008 completed all 36 checkpoints, with336 successful frozen-suite phase checks and467 completely reconciled native requests. The original report reproduces exactly, all 53 rejected/accepted source-history archives restore, and all 36 immutable accepted submissions pass the independent v005 suite. Both targeted factual recoveries succeeded on the next native attempt; all prior rejects and pause exposure remain retained. The independent scheduling audit verifies all three round barriers and peak12 concurrent attempts. This completes the three-task engineering pilot, not the remaining long-horizon main-readiness gates. See `preflight/terminal-verification/summary.json`.
