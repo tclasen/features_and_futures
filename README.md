@@ -23,5 +23,7 @@ npm test
 Tests exercise project and task validation, creation order, escaped names and
 titles, navigation, project isolation, completion, filtering, health, and
 persistence across server restarts using temporary SQLite files.
-The UI uses native HTML forms with a small browser script to submit checkbox
-and filter changes automatically.
+The UI uses native HTML forms for creation and filtering. Checkbox changes
+save synchronously before the interaction finishes, so an immediate reload
+cannot interrupt the completion update. UI regression tests cover this timing,
+filtered rows, and failed-save recovery.
