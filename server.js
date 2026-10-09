@@ -59,6 +59,18 @@ async function render() {
     document.title = project ? project.name + ' - Workboard' : 'Workboard';
     if (!project) return;
 
+    if (!project.archived) {
+      const renameForm = document.createElement('form');
+      renameForm.innerHTML = '<label for="new-project-name">New project name</label><input id="new-project-name" name="name" aria-label="New project name"><button type="submit">Rename project</button>';
+      const renameMessage = document.createElement('div'); renameMessage.setAttribute('role', 'alert'); renameMessage.setAttribute('aria-live', 'polite');
+      app.append(renameForm, renameMessage);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault(); const name = renameForm.elements.name.value.trim();
+        if (!name) { renameMessage.textContent = 'Project name is required'; return; }
+        const response = await fetch('/api/projects/' + project.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (response.ok) render();
+      });
+    }
     const form = document.createElement('form');
     form.innerHTML = '<label for="task-title">Task title</label><input id="task-title" name="title" aria-label="Task title"><button type="submit">Create task</button>';
     if (project.archived) { form.elements.title.disabled = true; form.querySelector('button').disabled = true; }
@@ -137,6 +149,16 @@ const server = createServer(async (req, res) => {
     res.end(body);
   };
   if (url.pathname === '/health' && req.method === 'GET') return send(200, JSON.stringify({ status: 'ok' }));
+  const renamePath = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (renamePath && req.method === 'PATCH') {
+    try {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      const input = JSON.parse(raw); const name = typeof input.name === 'string' ? input.name.trim() : '';
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(renamePath[1]));
+      return result.changes ? send(200, JSON.stringify({ status: 'ok' })) : send(404, JSON.stringify({ error: 'Project not found or archived' }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
   const taskPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskPath && req.method === 'GET') {
     return send(200, JSON.stringify(db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskPath[1])).map(task => ({ ...task, completed: Boolean(task.completed) }))));
