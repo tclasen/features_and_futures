@@ -7,11 +7,12 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
 Open http://localhost:8080. The default port is 8080 and the default database is
-`data/workboard.sqlite`. Keep the database file to preserve projects across restarts.
+`data/workboard.sqlite`. Keep the database file to preserve projects, tasks, and completion states across restarts.
 
 ```sh
 npm test
 ```
 
 The integration test uses a temporary database and checks project creation,
-validation, ordering, navigation, and persistence across server restarts.
+validation, ordering, navigation, task creation, completion toggling, filtering,
+project isolation, and persistence across server restarts.
