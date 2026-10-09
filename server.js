@@ -81,6 +81,8 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+    const existing = db.prepare('SELECT id FROM projects WHERE name = ? ORDER BY id DESC LIMIT 1').get(name);
+    if (existing) return sendJson(res, 200, { id: Number(existing.id), name });
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), name });
   }
