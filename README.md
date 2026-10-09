@@ -8,7 +8,8 @@ npm start
 
 The server binds to `0.0.0.0` on `PORT` (default `8080`). Set `DB_PATH` to the
 SQLite file to use (default `data/workboard.sqlite`). Its parent directory is
-created automatically. Keep this file to preserve projects across restarts.
+created automatically. Keep this file to preserve projects, tasks, and completion
+state across restarts. Existing project databases are upgraded automatically.
 `GET /health` returns `{"status":"ok"}`.
 
 ```sh
@@ -19,4 +20,8 @@ npm test
 
 Project creation uses a standard HTML form and server-side validation. Names are
 trimmed before storage and escaped when rendered. Projects appear in increasing
-creation ID order. Tests use isolated temporary databases and remove them afterward.
+creation ID order. Each project owns its tasks, whose titles are also trimmed and
+escaped. Task checkboxes save completion when changed. The Task filter selects
+All, Open, or Completed tasks in creation order; its selection is carried through
+task changes on the current page. Project pages initially show All tasks.
+Tests use isolated temporary databases and remove them afterward.
