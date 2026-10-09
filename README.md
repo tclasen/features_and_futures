@@ -22,6 +22,8 @@ The **Project filter** starts at **Active**. Select **Archive project** to move 
 
 On an active project page, enter a **New project name** and select **Rename project**. Names are trimmed and required. Renaming preserves the project's URL, creation order, tasks, completion state, and summary. Archived projects cannot be renamed until restored. Renamed projects persist across reloads and restarts.
 
+Each task row has a **New task title** field and **Rename task** button. Titles are trimmed and required. Renaming updates the task title and completion checkbox label while preserving ownership, order, completion, filters, and project counts. Archived projects disable task renaming until restored. Renamed tasks persist across reloads and restarts.
+
 Run the integration checks with:
 
 ```sh
