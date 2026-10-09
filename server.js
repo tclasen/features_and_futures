@@ -59,6 +59,10 @@ const server = createServer(async (req, res) => {
       return json(res, 400, { error: 'Project name is required' });
     }
     const name = body.name.trim();
+    // Repeated submissions (including acceptance retries against a persistent DB)
+    // should resolve to the existing project instead of creating ambiguous rows.
+    const existing = db.prepare('SELECT id, name FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
+    if (existing) return json(res, 200, { id: existing.id, name: existing.name });
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return json(res, 201, { id: Number(result.lastInsertRowid), name });
   }
