@@ -24,9 +24,18 @@ async function readForm(request) {
   return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function redirectToProject(response, projectId, filter) {
+  response.writeHead(303, { Location: `/projects/${projectId}?filter=${filter}` });
+  response.end();
+}
+
 const server = createServer(async (request, response) => {
   try {
-    const { pathname } = new URL(request.url, 'http://localhost');
+    const { pathname, searchParams } = new URL(request.url, 'http://localhost');
     if (request.method === 'GET' && pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -42,10 +51,36 @@ const server = createServer(async (request, response) => {
       store.create(name);
       response.writeHead(303, { Location: '/' });
       response.end();
-    } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(pathname)) {
+    } else if (/^\/projects\/[1-9]\d*(?:\/tasks(?:\/[1-9]\d*\/completion)?)?$/.test(pathname)) {
       const id = Number(pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
-      html(response, project ? 200 : 404, project ? projectPage(project) : notFoundPage());
+      if (!project) {
+        html(response, 404, notFoundPage());
+        return;
+      }
+      if (request.method === 'GET' && pathname === `/projects/${id}`) {
+        html(response, 200, projectPage(project, store.listTasks(id), taskFilter(searchParams.get('filter'))));
+      } else if (request.method === 'POST' && pathname === `/projects/${id}/tasks`) {
+        const form = await readForm(request);
+        const title = form.get('title') || '';
+        const filter = taskFilter(form.get('filter'));
+        if (!title.trim()) {
+          html(response, 422, projectPage(project, store.listTasks(id), filter, 'Task title is required', title));
+          return;
+        }
+        store.createTask(id, title);
+        redirectToProject(response, id, filter);
+      } else if (request.method === 'POST' && pathname.endsWith('/completion')) {
+        const taskId = Number(pathname.split('/')[4]);
+        const form = await readForm(request);
+        if (!Number.isSafeInteger(taskId) || !store.setTaskCompleted(id, taskId, form.get('completed') === '1')) {
+          html(response, 404, notFoundPage());
+          return;
+        }
+        redirectToProject(response, id, taskFilter(form.get('filter')));
+      } else {
+        html(response, 404, notFoundPage());
+      }
     } else {
       html(response, 404, notFoundPage());
     }

@@ -19,7 +19,12 @@ function page(title, content) {
       label { display: block; font-weight: 600; margin-bottom: .4rem; }
       input { width: 100%; padding: .7rem; border: 1px solid #66758a; border-radius: .35rem; font: inherit; }
       button { padding: .65rem 1rem; border: 1px solid #2354a0; border-radius: .35rem; background: #2354a0; color: white; font: inherit; cursor: pointer; }
-      button:focus-visible, input:focus-visible { outline: 3px solid #bd6a00; outline-offset: 3px; }
+      button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #bd6a00; outline-offset: 3px; }
+      select { padding: .5rem; font: inherit; }
+      .filter { margin-top: 1.5rem; }
+      .task { margin-top: .75rem; padding: 1rem; background: white; border: 1px solid #cbd3dd; border-radius: .5rem; }
+      .task label { display: flex; align-items: center; gap: .75rem; margin: 0; overflow-wrap: anywhere; }
+      .task input { width: auto; flex-shrink: 0; }
       .create button { margin-top: .8rem; }
       .projects { list-style: none; padding: 0; }
       .project { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .75rem; padding: 1rem; background: white; border: 1px solid #cbd3dd; border-radius: .5rem; }
@@ -51,9 +56,31 @@ export function projectListPage(projects, error = '', name = '') {
   `);
 }
 
-export function projectPage(project) {
+export function projectPage(project, tasks = [], filter = 'All', error = '', title = '') {
+  const visibleTasks = tasks.filter((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
-    <form method="get" action="/"><button type="submit">Projects</button></form>`);
+    <form method="get" action="/"><button type="submit">Projects</button></form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create" method="post" action="/projects/${project.id}/tasks">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <label for="task-title">Task title</label>
+      <input id="task-title" name="title" type="text" value="${escapeHtml(title)}">
+      <button type="submit">Create task</button>
+    </form>
+    <form class="filter" method="get" action="/projects/${project.id}">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['All', 'Open', 'Completed'].map((value) => `<option${value === filter ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+    </form>
+    <ul class="projects" aria-label="Tasks">
+      ${visibleTasks.map((task) => `<li class="task" data-testid="task-row">
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
+          <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+        </form>
+      </li>`).join('')}
+    </ul>`);
 }
 
 export function notFoundPage() {

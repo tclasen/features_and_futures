@@ -9,3 +9,9 @@ The parent database directory is created on startup. `GET /health` returns
 
 Run `npm test` for integration checks using temporary databases, including
 validation, project navigation, and persistence across server restarts.
+
+Each project supports task creation, completion checkboxes, and an All/Open/Completed
+filter. Names and titles are trimmed before saving. Tasks belong to one project;
+their order and completion state persist in SQLite. Filters are stored in the page
+URL and applied after task changes. The browser uses native forms with JavaScript
+to submit filter and checkbox changes automatically.
