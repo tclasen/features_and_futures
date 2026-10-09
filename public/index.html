@@ -20,6 +20,11 @@
     [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
     [role="alert"] { margin: 0 0 16px; color: #a12b21; }
     .back { margin-bottom: 24px; }
+    .task-controls { display: flex; align-items: end; gap: 16px; margin-bottom: 20px; }
+    .task-list { display: grid; gap: 10px; }
+    [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; padding: 13px 15px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    [data-testid="task-row"] input { width: auto; }
+    select { padding: 10px 12px; border: 1px solid #aab4c0; border-radius: 6px; background: white; font: inherit; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -75,8 +80,54 @@
     async function showProject(id) {
       try {
         const project = await request(`/api/projects/${id}`);
-        app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1>`;
+        const tasks = await request(`/api/projects/${id}/tasks`);
+        app.innerHTML = `
+          <button class="back" type="button">Projects</button>
+          <h1>${escapeText(project.name)}</h1>
+          <form id="create-task">
+            <div class="field"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"></div>
+            <button type="submit">Create task</button>
+          </form>
+          <p id="error" role="alert" hidden></p>
+          <div class="task-controls"><div><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div></div>
+          <section id="task-list" class="task-list" aria-label="Tasks"></section>`;
         app.querySelector('button').addEventListener('click', () => { location.href = '/'; });
+        const list = app.querySelector('#task-list');
+        const filter = app.querySelector('#task-filter');
+        function renderTasks() {
+          const visibleTasks = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
+          list.innerHTML = visibleTasks.map(task => `<div data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeText(task.title)}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
+          list.querySelectorAll('[data-task-id]').forEach(checkbox => checkbox.addEventListener('change', async () => {
+            const task = tasks.find(item => item.id === Number(checkbox.dataset.taskId));
+            try {
+              await request(`/api/projects/${id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+              task.completed = checkbox.checked;
+              renderTasks();
+            } catch (problem) {
+              checkbox.checked = task.completed;
+              const error = app.querySelector('#error');
+              error.textContent = problem.message;
+              error.hidden = false;
+            }
+          }));
+        }
+        filter.addEventListener('change', renderTasks);
+        renderTasks();
+        app.querySelector('#create-task').addEventListener('submit', async event => {
+          event.preventDefault();
+          const input = app.querySelector('#task-title');
+          const error = app.querySelector('#error');
+          try {
+            const task = await request(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: input.value }) });
+            tasks.push(task);
+            input.value = '';
+            error.hidden = true;
+            renderTasks();
+          } catch (problem) {
+            error.textContent = problem.message;
+            error.hidden = false;
+          }
+        });
       } catch {
         app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>';
         app.querySelector('button').addEventListener('click', () => { location.href = '/'; });
