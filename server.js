@@ -67,7 +67,15 @@ async function renderProject(id) {
     const response = await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks?filter='+filter);
     if (!response.ok) return;
     const tasks = await response.json(); const list = document.querySelector('#tasks');
-    list.innerHTML = tasks.map(t => '<div data-testid="task-row" class="task-row"><span>'+escapeHtml(t.title)+'</span><label class="check-label"><input type="checkbox" data-id="'+t.id+'" aria-label="Complete '+escapeHtml(t.title)+'" '+(t.completed ? 'checked' : '')+' '+(p.archived ? 'disabled' : '')+'> Completed</label></div>').join('');
+    list.innerHTML = tasks.map(t => '<div data-testid="task-row" class="task-row"><span>'+escapeHtml(t.title)+'</span><form class="rename-task" data-id="'+t.id+'"><label for="new-task-title-'+t.id+'">New task title</label><input id="new-task-title-'+t.id+'" name="title" type="text" value="'+escapeHtml(t.title)+'" '+(p.archived ? 'disabled' : '')+'><button type="submit" '+(p.archived ? 'disabled' : '')+'>Rename task</button></form><label class="check-label"><input type="checkbox" data-id="'+t.id+'" aria-label="Complete '+escapeHtml(t.title)+'" '+(t.completed ? 'checked' : '')+' '+(p.archived ? 'disabled' : '')+'> Completed</label></div>').join('');
+    list.querySelectorAll('.rename-task').forEach(form => form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const title = new FormData(form).get('title').trim();
+      const alert = document.querySelector('#task-alert');
+      if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+      const response = await fetch('/api/tasks/'+encodeURIComponent(form.dataset.id), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title})});
+      if (response.ok) { alert.hidden = true; loadTasks(); }
+    }));
     list.querySelectorAll('input[type=checkbox]').forEach(box => box.addEventListener('change', async () => {
       await fetch('/api/tasks/'+encodeURIComponent(box.dataset.id), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({completed:box.checked})});
       loadTasks();
@@ -154,12 +162,19 @@ const server = http.createServer(async (req, res) => {
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (req.method === 'PATCH' && taskMatch) {
     try {
-      const { completed } = await readJson(req);
-      if (typeof completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
+      const update = await readJson(req);
       const task = db.prepare('SELECT tasks.project_id, projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(Number(taskMatch[1]));
+      if (!task) return send(res, 404, { error: 'Task not found' });
       if (task?.archived) return send(res, 409, {error:'Archived project'});
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(taskMatch[1]));
-      return result.changes ? send(res, 200, { status: 'ok' }) : send(res, 404, { error: 'Task not found' });
+      if (Object.hasOwn(update, 'title')) {
+        const trimmed = typeof update.title === 'string' ? update.title.trim() : '';
+        if (!trimmed) return send(res, 400, { error: 'Task title is required' });
+        db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(trimmed, Number(taskMatch[1]));
+        return send(res, 200, { status: 'ok' });
+      }
+      if (typeof update.completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
+      db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(update.completed ? 1 : 0, Number(taskMatch[1]));
+      return send(res, 200, { status: 'ok' });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'GET' && assets[url.pathname]) { const [body, type] = assets[url.pathname]; return send(res, 200, body, type); }
