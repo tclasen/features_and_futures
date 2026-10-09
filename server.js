@@ -9,7 +9,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,6 +19,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`);
+// Upgrade databases created before archive support.
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 
 const publicDir = new URL('./public/', import.meta.url);
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -33,6 +39,7 @@ const server = createServer(async (req, res) => {
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
     if (req.method === 'GET' && !taskRoute[2]) {
       return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
     }
@@ -43,12 +50,14 @@ const server = createServer(async (req, res) => {
       body = JSON.parse(raw);
     } catch { return json(res, 400, { error: 'Invalid request' }); }
     if (req.method === 'POST' && !taskRoute[2]) {
+      if (project.archived) return json(res, 403, { error: 'Archived projects are read-only' });
       if (typeof body.title !== 'string' || !body.title.trim()) return json(res, 400, { error: 'Task title is required' });
       const title = body.title.trim();
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
       return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: 0 });
     }
     if (req.method === 'PATCH' && taskRoute[2]) {
+      if (project.archived) return json(res, 403, { error: 'Archived projects are read-only' });
       if (typeof body.completed !== 'boolean') return json(res, 400, { error: 'Completion must be boolean' });
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), Number(taskRoute[2]), projectId);
       if (!result.changes) return json(res, 404, { error: 'Task not found' });
@@ -56,8 +65,21 @@ const server = createServer(async (req, res) => {
     }
     return json(res, 405, { error: 'Method not allowed' });
   }
+  const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectRoute && req.method === 'PATCH') {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); }
+    catch { return json(res, 400, { error: 'Invalid request' }); }
+    if (typeof body.archived !== 'boolean') return json(res, 400, { error: 'Archive state must be boolean' });
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), Number(projectRoute[1]));
+    if (!result.changes) return json(res, 404, { error: 'Project not found' });
+    return json(res, 200, { ok: true });
+  }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return json(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p ORDER BY p.id`).all());
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
