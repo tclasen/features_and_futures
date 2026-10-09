@@ -27,6 +27,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -43,6 +44,20 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') return sendJson(res, 200, listProjects.all(url.searchParams.get('archived') === 'true' ? 1 : 0));
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/name$/);
+  if (renameMatch && req.method === 'PATCH') {
+    let input;
+    try { let body = ''; for await (const chunk of req) body += chunk; input = JSON.parse(body); }
+    catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    const id = Number(renameMatch[1]);
+    const project = getProject.get(id);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be renamed' });
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+    updateProjectName.run(name, id);
+    return sendJson(res, 200, { id, name });
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (archiveMatch && req.method === 'PATCH') {
     let input;

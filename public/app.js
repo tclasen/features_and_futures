@@ -19,7 +19,35 @@ async function render() {
   if (match) {
     try {
       const project = await request(`/api/projects/${match[1]}`);
-      app.append(heading(project.name));
+      const projectHeading = heading(project.name);
+      app.append(projectHeading);
+      const renameForm = document.createElement('form');
+      const renameLabel = document.createElement('label');
+      renameLabel.htmlFor = 'new-project-name';
+      renameLabel.textContent = 'New project name';
+      const renameInput = document.createElement('input');
+      renameInput.id = 'new-project-name';
+      renameInput.type = 'text';
+      renameInput.value = project.name;
+      renameInput.disabled = Boolean(project.archived);
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename project';
+      renameButton.disabled = Boolean(project.archived);
+      const renameAlert = document.createElement('p');
+      renameAlert.setAttribute('role', 'alert');
+      renameAlert.hidden = true;
+      renameForm.append(renameLabel, renameInput, renameButton, renameAlert);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        renameAlert.hidden = true;
+        try {
+          const updated = await request(`/api/projects/${match[1]}/name`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: renameInput.value }) });
+          projectHeading.textContent = updated.name;
+          renameInput.value = updated.name;
+        } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
+      });
+      app.append(renameForm);
       if (project.archived) {
         const status = document.createElement('p');
         status.textContent = 'Archived project';
