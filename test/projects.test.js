@@ -17,7 +17,7 @@ async function freePort() {
   return port;
 }
 
-test('projects validate, navigate, and persist across server restarts', async () => {
+test('projects and scoped tasks validate, filter, and persist across server restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
@@ -84,10 +84,62 @@ test('projects validate, navigate, and persist across server restarts', async ()
     assert.match(detail, /<h1>First project<\/h1>/);
     assert.match(detail, /action="\/"/);
     assert.match(detail, />Projects<\/button>/);
+    async function post(path, fields) {
+      return fetch(base + path, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+    }
+    async function projectHtml(query = '') {
+      return (await fetch(base + paths[0] + query)).text();
+    }
+    assert.match(detail, /<label for="task-title">Task title<\/label>/);
+    assert.match(detail, />Create task<\/button>/);
+    assert.match(detail, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(detail, /value="all" selected>All/);
+    for (const title of ['', '  \t\n']) {
+      const response = await post(paths[0] + '/tasks', { title });
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.doesNotMatch(html, /data-testid="task-row"/);
+    }
+    for (const title of ['  First task  ', '<Second & "task">']) {
+      assert.equal((await post(paths[0] + '/tasks', { title })).status, 303);
+    }
+    const tasks = await projectHtml();
+    assert.equal((tasks.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(tasks, /<span>First task<\/span>/);
+    assert.match(tasks, /aria-label="Complete First task"/);
+    assert.match(tasks, /aria-label="Complete &lt;Second &amp; &quot;task&quot;&gt;"/);
+    assert.ok(tasks.indexOf('First task') < tasks.indexOf('&lt;Second'));
+    assert.doesNotMatch(tasks, / checked/);
+    assert.doesNotMatch(await (await fetch(base + paths[1])).text(), /data-testid="task-row"/);
+    const taskPaths = [...tasks.matchAll(/action="([^" ]+\/tasks\/[^" ]+)"/g)].map((match) => match[1]);
+    assert.equal(taskPaths.length, 2);
+    assert.equal((await post(taskPaths[0], { completed: 'on' })).status, 303);
+    const open = await projectHtml('?filter=open');
+    assert.doesNotMatch(open, /<span>First task<\/span>/);
+    assert.match(open, /<span>&lt;Second/);
+    const completed = await projectHtml('?filter=completed');
+    assert.match(completed, /<span>First task<\/span>/);
+    assert.doesNotMatch(completed, /<span>&lt;Second/);
+    assert.match(completed, /value="completed" selected>Completed/);
+    assert.match(completed, / checked/);
+    // A task cannot be updated through another project's URL.
+    const foreignPath = taskPaths[0].replace(paths[0], paths[1]);
+    assert.equal((await post(foreignPath, {})).status, 404);
+    const savedDetail = await projectHtml();
     await stop();
     await start();
     assert.equal(await (await fetch(base)).text(), listing);
-    assert.equal(await (await fetch(base + paths[0])).text(), detail);
+    assert.equal(await projectHtml(), savedDetail);
+    assert.equal(await projectHtml('?filter=completed'), completed);
+    assert.equal((await post(taskPaths[0], { filter: 'completed' })).status, 303);
+    assert.doesNotMatch(await projectHtml('?filter=completed'), /data-testid="task-row"/);
+    assert.equal((await projectHtml('?filter=open')).match(/data-testid="task-row"/g).length, 2);
+    await stop();
+    await start();
+    assert.doesNotMatch(await projectHtml(), / checked/);
     assert.equal((await fetch(`${base}/projects/missing`)).status, 404);
   } finally {
     await stop();
