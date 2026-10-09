@@ -150,7 +150,7 @@ const server = http.createServer(async (req, res) => {
       const btn = document.createElement('button');
       btn.textContent = 'Open project';
       btn.addEventListener('click', () => {
-        location.href = `/projects/${p.id}`;
+        location.href = \`/projects/\${p.id}\`;
       });
       row.appendChild(btn);
       listDiv.appendChild(row);
