@@ -60,3 +60,9 @@ The user then authorized all hosted builders to run in parallel while retaining 
 Pilot010 completed its12-builder first-round barrier with30-second health and behavioral observations. Host disk exhaustion interrupted its second round. Its224 recorded native receipts verify, but eight of232 dispatched requests lack terminal receipts; cost is therefore a lower bound. Three interrupted Git histories cannot export, so their raw objects and own working trees are preserved alongside earlier valid checkpoints. All28 interrupted sandbox resources were archived and removed. The run is superseded.
 
 The successor uses [the versioned storage policy](storage-policy.md). Its real trusted sandbox removal fixture restores the exact archived Git commit and SQLite sentinel with no model calls.105 PM checks pass; a fresh native cohort must still verify adoption.
+
+## Superseded011and fresh012
+
+011retains507dispatched/finished requests, with506verified native receipts and one503transport response whose token cost is unknown. Independent scheduling finds a peak of12active attempts and two completed round barriers. All12terminal source histories and remaining application resources were archived before their exact-name removal. The run stopped before its longitudinal gate; original builder failures and PM diagnostics remain.
+
+012starts fresh on v009with a preselected v010fifth task. The required visible error announcement is asserted without requiring one global alert region. Five identical own-task failures trigger a uniform archive-first restoration to the builder's own last accepted checkpoint; all earlier timing, costs, rejected Git refs and dirty source remain. This control's real PM-only sandbox fixture restores rejected history and untracked source without model calls.117PM tests and25declared phase listings pass. The cohort is running in parallel with full acceptance/promotion/observation barriers; completion and full accounting remain pending.
