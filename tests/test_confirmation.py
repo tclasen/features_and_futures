@@ -23,6 +23,15 @@ class ConfirmationLedgerTests(unittest.TestCase):
             record_look(journal,'second',self.replicates('b'),'candidate','plan')
             starts=[r for r in read_jsonl(journal) if r['kind']=='confirmation_look_started']
             self.assertEqual([r['look'] for r in starts],[1,2,3])
+    def test_invalid_evidence_load_consumes_look_before_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            journal=Path(tmp)/'looks.jsonl'
+            def missing():raise ValueError('Missing native counters')
+            with self.assertRaises(ValueError):record_look(journal,'first',[{'run_id':'bad'}],'candidate','plan',evidence_loader=missing)
+            record_look(journal,'first',self.replicates('a'),'candidate','plan')
+            starts=[r for r in read_jsonl(journal) if r['kind']=='confirmation_look_started']
+            self.assertEqual([r['look'] for r in starts],[1,2])
+
     def test_small_samples_never_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
             journal=Path(tmp)/'looks.jsonl'

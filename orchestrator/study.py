@@ -54,21 +54,23 @@ def confirm(discovery, run_ids, batch):
     original,_,_=evidence(discovery)
     candidate_path=discovery/'analysis/candidate.json';candidate=json.loads(candidate_path.read_text())
     if candidate['task_stream_input_sha256']!=stream_input_hash(discovery):raise InfrastructureError('Replay candidate frozen prefix before further discovery changes')
-    replicates=[];locations=set()
-    for run_id in run_ids:
-        run=ROOT/'runs/instruction-effects'/run_id;manifest,report,binding=evidence(run)
-        if manifest['purpose']!='research-confirmation' or run.resolve()==discovery.resolve():raise InfrastructureError('Independent research confirmation required')
-        if manifest['research']['analysis_plan']!=original['research']['analysis_plan']:raise InfrastructureError('Analysis plan differs')
-        verify_replay(discovery,run)
-        for key in ('image_digest','harness_versions','model_mappings','harness_context','storage_policy'):
-            if manifest['runtime'].get(key)!=original['runtime'].get(key):raise InfrastructureError('Confirmation runtime differs: '+key)
-        if manifest['pricing']!=original['pricing'] or manifest['provenance']['starter_tree']!=original['provenance']['starter_tree']:raise InfrastructureError('Pricing or starter differs')
-        location=Path(manifest['paths']['builders']).resolve()
-        if location in locations or location==Path(original['paths']['builders']).resolve():raise InfrastructureError('Repositories are reused')
-        locations.add(location)
-        replicates.append({'run_id':run_id,'manifest_sha256':digest_json(manifest),'input_binding':binding,'contrasts':trajectory_contrasts(manifest['runtime']['builder_configurations'],report['tasks'],candidate['selected_window']['task_ids'])})
+    def load_replicates():
+        replicates=[];locations=set()
+        for run_id in run_ids:
+            run=ROOT/'runs/instruction-effects'/run_id;manifest,report,binding=evidence(run)
+            if manifest['purpose']!='research-confirmation' or run.resolve()==discovery.resolve():raise InfrastructureError('Independent research confirmation required')
+            if manifest['research']['analysis_plan']!=original['research']['analysis_plan']:raise InfrastructureError('Analysis plan differs')
+            verify_replay(discovery,run)
+            for key in ('image_digest','harness_versions','model_mappings','harness_context','storage_policy'):
+                if manifest['runtime'].get(key)!=original['runtime'].get(key):raise InfrastructureError('Confirmation runtime differs: '+key)
+            if manifest['pricing']!=original['pricing'] or manifest['provenance']['starter_tree']!=original['provenance']['starter_tree']:raise InfrastructureError('Pricing or starter differs')
+            location=Path(manifest['paths']['builders']).resolve()
+            if location in locations or location==Path(original['paths']['builders']).resolve():raise InfrastructureError('Repositories are reused')
+            locations.add(location)
+            replicates.append({'run_id':run_id,'manifest_sha256':digest_json(manifest),'input_binding':binding,'contrasts':trajectory_contrasts(manifest['runtime']['builder_configurations'],report['tasks'],candidate['selected_window']['task_ids'])})
+        return replicates
     journal=discovery/'analysis/confirmation-looks.jsonl'
-    record_look(journal,batch,replicates,digest_bytes(candidate_path.read_bytes()),original['research']['analysis_plan']['sha256'])
+    record_look(journal,batch,[{'run_id':run_id} for run_id in run_ids],digest_bytes(candidate_path.read_bytes()),original['research']['analysis_plan']['sha256'],evidence_loader=load_replicates)
     return confirmed_stop(read_jsonl(journal))
 
 def main():

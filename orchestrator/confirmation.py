@@ -56,7 +56,7 @@ def evaluate(replicates, look_number):
         results[key] = {**interval, 'classification': classify(interval, *margins)}
     return results
 
-def record_look(journal, batch, replicates, candidate_hash, plan_hash):
+def record_look(journal, batch, replicates, candidate_hash, plan_hash, evidence_loader=None):
     """Reserve j before validation, so failed and inconclusive analyses consume looks."""
     journal = Path(journal)
     previous = read_jsonl(journal) if journal.exists() else []
@@ -73,8 +73,13 @@ def record_look(journal, batch, replicates, candidate_hash, plan_hash):
                 raise ValueError('Independent confirmation batches cannot reuse runs')
             if prior['plan_sha256'] != plan_hash:
                 raise ValueError('Plan changed; create a new study journal')
+        if evidence_loader is not None:
+            replicates = evidence_loader()
+            if [r['run_id'] for r in replicates] != binding['run_ids']:
+                raise ValueError('Evidence loader changed planned run identities')
         results = evaluate(replicates, j)
         append_json(journal, {'kind': 'confirmation_look_finished', 'utc': timestamp(), **binding,
+                             'analysis_inputs_sha256': digest_json(replicates), 'replicates': replicates,
                              'results': results, 'all_classified': all(r['classification'] != 'unresolved' for r in results.values())})
         return results
     except Exception as error:
