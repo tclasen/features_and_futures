@@ -88,6 +88,8 @@ const page = `<!doctype html>
     .task-row { display: flex; align-items: center; gap: .65rem; padding: .65rem .9rem; margin: .5rem 0; background: white; border: 1px solid #d9e0e8; border-radius: 8px; }
     .task-row input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; }
     .task-row label { flex: 1; }
+    .task-rename { display: flex; gap: .5rem; align-items: center; flex: 1; }
+    .task-rename input { min-width: 6rem; }
     .filter { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
   </style>
@@ -262,6 +264,35 @@ const page = `<!doctype html>
             if (update.ok) await refresh();
           });
           row.append(checkbox, element('span', task.title));
+          const renameForm = element('form', undefined, { class: 'task-rename' });
+          const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', value: task.title });
+          const renameButton = element('button', 'Rename task', { type: 'submit' });
+          if (project.archived) {
+            renameInput.disabled = true;
+            renameButton.disabled = true;
+          }
+          renameForm.append(renameInput, renameButton);
+          renameForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const title = renameInput.value.trim();
+            if (!title) {
+              alert.textContent = 'Task title is required';
+              alert.hidden = false;
+              renameInput.focus();
+              return;
+            }
+            alert.hidden = true;
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+            });
+            if (update.ok) await refresh();
+            else {
+              const result = await update.json();
+              alert.textContent = result.error || 'Could not rename task';
+              alert.hidden = false;
+            }
+          });
+          row.append(renameForm);
           list.append(row);
         }
       }
@@ -424,11 +455,19 @@ const server = createServer(async (request, response) => {
   if (taskMatch && request.method === 'PATCH') {
     try {
       const body = await readJson(request);
-      if (typeof body.completed !== 'boolean') { sendJson(response, 400, { error: 'Completion must be a boolean' }); return; }
+      const renaming = Object.hasOwn(body, 'title');
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (renaming && !title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
+      if (!renaming && typeof body.completed !== 'boolean') { sendJson(response, 400, { error: 'Completion must be a boolean' }); return; }
       const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskMatch[1]);
       if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
       const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id);
       if (project.archived) { sendJson(response, 409, { error: 'Archived project tasks cannot be changed' }); return; }
+      if (renaming) {
+        database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskMatch[1]);
+        sendJson(response, 200, { id: taskMatch[1], title });
+        return;
+      }
       const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
       if (!result.changes) { sendJson(response, 404, { error: 'Task not found' }); return; }
       sendJson(response, 200, { id: taskMatch[1], completed: body.completed });
