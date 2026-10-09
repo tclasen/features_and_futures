@@ -54,6 +54,9 @@ def main():
         if data==(run/"events.jsonl").read_bytes() and state_data==(run/"state.json").read_bytes():break
     else:raise RuntimeError("Evidence is still changing; retry audit without restarting builders")
     manifest=json.loads((run/"manifest.json").read_text());state=json.loads(state_data)
+    if manifest['execution'].get('task_stream_revision')=='append-only-rounds-v1':
+        from .task_stream import task_stream
+        manifest['tasks']=task_stream(run,manifest)
     events=[json.loads(line) for line in data.splitlines() if line]
     report=audit(manifest,events,state["status"]=="completed")
     report.update({"schema_version":1,"state":state["status"],"inputs":{"events_sha256":digest_bytes(data),"state_sha256":digest_bytes(state_data),"manifest_sha256":digest_json(manifest)},"audit_module_sha256":digest_bytes(Path(__file__).read_bytes()),"limitations":["Live audit excludes future events; open attempts remain unresolved.","Attempt intervals include harness and observer drain; peak overlap does not imply peak provider concurrency."]})

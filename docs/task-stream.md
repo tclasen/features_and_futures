@@ -1,0 +1,11 @@
+# Continued development through immutable rounds
+
+A run can explicitly select `append-only-rounds-v1` before it starts. Its original manifest, starter, treatments, pricing and baseline definitions remain unchanged. Each later round adds `tasks/task-NNN/round.json`, public requirements, one identical cumulative packet and a complete PM-owned acceptance-suite snapshot. The record hashes all files and links the previous packet hash. Loading the stream rejects gaps, changed files and mismatched links. Task IDs sort numerically beyond999.
+
+The controller uses the suite frozen for each stage, including the predecessor's upgrade-persistence check. It sends only the assigned packet/profile to a builder, keeps one native attempt per builder and waits for the full acceptance/promotion/observation barrier before releasing another requirement. Every later task participates in request reconciliation, common-packet checks, source/history restoration and scheduling audits.
+
+When all currently frozen rounds pass, an unsealed pilot stops in `awaiting_frozen_round`; it has not completed its declared extension gate. Freeze and commit the next canonical requirement and suite, then resume the same controller. Earlier completed barriers are idempotent and do not dispatch another model call. A pilot stream seal is permitted only for `engineering-longitudinal-pilot` and only after its declared minimum task count is frozen. Seals bind the entire stream input hash and refuse extensions. This seal cannot claim that a research stopping criterion was met.
+
+Pilot010 uses a four-task prefix from Workboardv007, with task005 selected in advance from v008. The fifth task will be frozen after the fourth checkpoint barrier to exercise actual incremental release. All twelve fresh builders implement both renaming features through their own measured attempts. Native verification remains pending; a unit-tested stream alone is not a completed readiness gate.
+
+The long-horizon research run still needs its separate frozen analysis plan and launch command. A pilot seal does not start or stop that main study. Exact confirmation repeats must verify every frozen packet, cumulative suite and expected phase count through `verify_replay`; never copy source or feedback from another builder.

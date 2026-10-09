@@ -47,7 +47,7 @@ def prepare():
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    if args.project_revision not in ("v003", "v004", "v005", "v006"): raise ValueError("Unsupported project revision")
+    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007"): raise ValueError("Unsupported project revision")
     project = ROOT / "projects/workboard/revisions" / args.project_revision
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
@@ -116,7 +116,7 @@ def prepare():
                            "memory_bytes":int(checked(["sysctl","-n","hw.memsize"])),
                            "cpu":checked(["sysctl","-n","machdep.cpu.brand_string"])},
                    "context_policy":"fresh home/session for every instruction; private sandbox repository persists",
-                   **({"harness_context":{
+                   **({"deployment_lifecycle":"foreground-sbx-exec-v2","harness_context":{
                        "codex":{"context_window":272000,"auto_compact_token_limit":255616,
                                 "output_reserve":"Native Codex Responses behavior; no independent CLI output cap verified"},
                        "pi":{"context_window":272000,"max_output_tokens":16384,

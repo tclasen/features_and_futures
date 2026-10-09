@@ -18,6 +18,9 @@ def main():
     events=read_jsonl(run/"events.jsonl"); usage=read_jsonl(run/"usage.jsonl")
     problems=[]
     if digest_json(m)!=(run/"manifest.sha256").read_text().strip(): problems.append("manifest checksum mismatch")
+    if m["execution"].get("task_stream_revision")=="append-only-rounds-v1":
+        from .task_stream import task_stream, stream_input_hash
+        m["tasks"]=task_stream(run,m)
     counts=Counter(e["kind"] for e in events)
     if len({u["request_id"] for u in usage})!=len(usage): problems.append("duplicate inference requests")
     costs={}
@@ -174,7 +177,8 @@ def main():
     expected_checkpoints=len(required_checkpoints(m))
     complete=(state["status"]=="completed" and not problems)
     report={"schema_version":1,"readiness_passed":complete,"state":state["status"],
-        "expected_checkpoints":expected_checkpoints,"manifest_sha256":digest_json(m),"analysis_code_sha256":digest_bytes(Path(__file__).read_bytes()),
+        "expected_checkpoints":expected_checkpoints,"manifest_sha256":digest_json(json.loads((run/"manifest.json").read_text())),
+        **({"task_stream_input_sha256":stream_input_hash(run)} if m["execution"].get("task_stream_revision")=="append-only-rounds-v1" else {}),"analysis_code_sha256":digest_bytes(Path(__file__).read_bytes()),
         "inputs":{"events_sha256":digest_bytes((run/"events.jsonl").read_bytes()),
                   "usage_sha256":digest_bytes((run/"usage.jsonl").read_bytes())},
         "event_counts":dict(counts),"requests":len(usage),

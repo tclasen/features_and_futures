@@ -75,6 +75,10 @@ def main():
         report['problems'].append('Frozen manifest hash mismatch')
     if file_hashes(run/'definitions') != manifest['provenance']['definition_hashes']:
         report['problems'].append('Frozen definition hash mismatch')
+    if manifest['execution'].get('task_stream_revision')=='append-only-rounds-v1':
+        from .task_stream import task_stream,stream_input_hash
+        manifest['tasks']=task_stream(run,manifest)
+        report['inputs']['task_stream_input_sha256']=stream_input_hash(run)
     for task in manifest['tasks']:
         if digest_bytes((run/'tasks'/task['task_id']/'packet.md').read_bytes()) != task['packet_sha256']:
             report['problems'].append('Frozen packet hash mismatch: '+task['task_id'])

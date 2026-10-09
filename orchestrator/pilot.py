@@ -1,4 +1,4 @@
-"""Resume the synchronized, measured three-round pilot; never start a main run."""
+"""Resume synchronized measured engineering pilots; never start a main run."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
@@ -13,7 +13,7 @@ from .adapters import execute_attempt, isolation_probe, sandbox_policy, invoke
 from .evidence import Ledger, digest_bytes, digest_json, read_jsonl, timestamp
 from .gateway import InferenceGateway
 from .prepare import ROOT, checked, file_hashes, git, write_json, InfrastructureError
-from .validation import Deployment, run_suite
+from .validation import Deployment, run_suite, launch_deployment
 from .private import WORK, sandbox_git, initialize, export
 from .diagnostics import tool_diagnostics
 from .recovery import append_recovery_instruction
@@ -234,7 +234,7 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         ledger.event("validation_started",commit=head,**attrs)
         if not diagnostics:
             try:
-                deployment=Deployment(manifest,bid,task_id,attempt_id,repo,head,output,accepted)
+                deployment=launch_deployment(manifest,bid,task_id,attempt_id,repo,head,output,accepted)
                 if accepted:
                     ok,errors,counts=run_suite(ROOT,run,deployment,output,
                         accepted["stage"],"upgrade",accepted["fixture_prefix"])
@@ -347,6 +347,12 @@ def main():
     manifest_hash=digest_json(manifest)
     assert manifest_hash==(run/"manifest.sha256").read_text().strip()
     assert file_hashes(run/"definitions")==manifest["provenance"]["definition_hashes"]
+    if manifest["purpose"] not in ("engineering-pilot","engineering-longitudinal-pilot"):
+        raise InfrastructureError("This command only dispatches authorized engineering pilots")
+    streaming=manifest["execution"].get("task_stream_revision")=="append-only-rounds-v1"
+    if streaming:
+        from .task_stream import task_stream, stream_sealed
+        manifest["tasks"]=task_stream(run,manifest)
     instructions=json.loads((run/"definitions/instructions.json").read_text())
     state=json.loads((run/"state.json").read_text())
     if state["status"]=="completed":
@@ -383,10 +389,16 @@ def main():
                 lambda builder: run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,provider_args),
                 stop_event)
             record_round_completion(ledger,state,builders,task)
-        state["status"]="completed"; state["completed_at"]=timestamp()
-        write_json(run/"state.json",state)
-        ledger.event("pilot_completed",accepted_tasks=len(builders)*len(manifest["tasks"]))
-        print(f"PILOT COMPLETED: {len(builders)} builders, {len(manifest['tasks'])} rounds.",flush=True)
+        if streaming and not stream_sealed(run):
+            state["status"]="awaiting_frozen_round"
+            write_json(run/"state.json",state)
+            ledger.event("task_stream_waiting",completed_rounds=len(manifest["tasks"]))
+            print("Awaiting next frozen round; current checkpoint barrier complete.",flush=True)
+        else:
+            state["status"]="completed"; state["completed_at"]=timestamp()
+            write_json(run/"state.json",state)
+            ledger.event("pilot_completed",accepted_tasks=len(builders)*len(manifest["tasks"]))
+            print(f"PILOT COMPLETED: {len(builders)} builders, {len(manifest['tasks'])} rounds.",flush=True)
     except BaseException as error:
         state["status"]="infrastructure_attention";state["last_error"]=str(error)
         write_json(run/"state.json",state)
