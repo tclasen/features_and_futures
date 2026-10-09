@@ -1,0 +1,17 @@
+# Workboard
+
+Requires Node.js 22.22.1. No dependencies to install.
+
+```sh
+PORT=8080 DB_PATH=./data/workboard.sqlite npm start
+```
+
+Open http://localhost:8080. The default port is 8080 and the default database is
+`data/workboard.sqlite`. Keep the database file to preserve projects across restarts.
+
+```sh
+npm test
+```
+
+The integration test uses a temporary database and checks project creation,
+validation, ordering, navigation, and persistence across server restarts.
