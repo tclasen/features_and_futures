@@ -10,10 +10,12 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +24,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
+  FROM projects p WHERE p.archived = ? ORDER BY p.id`);
 const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -70,11 +76,13 @@ async function render() {
       form.innerHTML = '<label for="task-title">Task title</label><input id="task-title" type="text"><button type="submit">Create task</button>';
       const alert = document.createElement('p');
       alert.className = 'alert'; alert.setAttribute('role', 'alert'); alert.hidden = true;
+      if (project.archived) { const archived = document.createElement('p'); archived.textContent = 'Archived project'; app.append(back, heading, archived); }
       const filterLabel = document.createElement('label'); filterLabel.htmlFor = 'task-filter'; filterLabel.textContent = 'Task filter';
       const filter = document.createElement('select'); filter.id = 'task-filter';
       for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
       const list = document.createElement('section'); list.setAttribute('aria-label', 'Tasks');
-      app.append(back, heading, form, alert, filterLabel, filter, list);
+      if (!project.archived) app.append(back, heading, form, alert);
+      app.append(filterLabel, filter, list);
       async function loadTasks() {
         const tasks = await (await fetch('/api/projects/' + match[1] + '/tasks')).json();
         list.replaceChildren();
@@ -82,7 +90,7 @@ async function render() {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'task-row';
           const title = document.createElement('span'); title.textContent = task.title;
-          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'task-check'; checkbox.checked = !!task.completed; checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'task-check'; checkbox.checked = !!task.completed; checkbox.setAttribute('aria-label', 'Complete ' + task.title); checkbox.disabled = !!project.archived;
           checkbox.addEventListener('change', async () => { await fetch('/api/projects/' + match[1] + '/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); await loadTasks(); });
           row.append(title, checkbox); list.append(row);
         }
@@ -93,13 +101,14 @@ async function render() {
       return;
     }
   }
-  app.innerHTML = '<h1>Workboard</h1><form><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form><p class="alert" role="alert" hidden></p><section aria-label="Projects"></section>';
+  app.innerHTML = '<h1>Workboard</h1><label for="project-filter">Project filter</label> <select id="project-filter"><option>Active</option><option>Archived</option></select><form><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form><p class="alert" role="alert" hidden></p><section aria-label="Projects"></section>';
   const form = app.querySelector('form');
   const input = app.querySelector('input');
   const alert = app.querySelector('[role="alert"]');
   const list = app.querySelector('section');
   async function load() {
-    const projects = await (await fetch('/api/projects')).json();
+    const archived = app.querySelector('#project-filter').value === 'Archived';
+    const projects = await (await fetch('/api/projects?filter=' + (archived ? 'Archived' : 'Active'))).json();
     list.replaceChildren();
     for (const project of projects) {
       const row = document.createElement('div');
@@ -110,10 +119,15 @@ async function render() {
       const open = document.createElement('button');
       open.textContent = 'Open project';
       open.addEventListener('click', () => { location.href = escapePath(project.id); });
-      row.append(name, open);
+      const summary = document.createElement('span'); summary.dataset.testid = 'project-summary'; summary.textContent = project.completed_count + '/' + project.total_count + ' completed';
+      const archive = document.createElement('button');
+      archive.textContent = archived ? 'Restore project' : 'Archive project';
+      archive.addEventListener('click', async () => { await fetch('/api/projects/' + project.id + '/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !archived }) }); await load(); });
+      row.append(name, summary, open, archive);
       list.append(row);
     }
   }
+  app.querySelector('#project-filter').addEventListener('change', load);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = input.value.trim();
@@ -139,7 +153,11 @@ async function readJson(req) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { status: 'ok' });
-  if (req.method === 'GET' && url.pathname === '/api/projects') return send(res, 200, listProjects.all());
+  if (req.method === 'GET' && url.pathname === '/api/projects') return send(res, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    try { const body = await readJson(req); if (typeof body.archived !== 'boolean') return send(res, 400, { error: 'Invalid archive state' }); const id = Number(archiveMatch[1]); if (!getProject.get(id)) return send(res, 404, { error: 'Project not found' }); setArchived.run(body.archived ? 1 : 0, id); return send(res, 200, getProject.get(id)); } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (tasksMatch && req.method === 'GET') {
@@ -151,6 +169,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req); const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) return send(res, 400, { error: 'Task title is required' });
       if (!getProject.get(Number(tasksMatch[1]))) return send(res, 404, { error: 'Project not found' });
+      if (getProject.get(Number(tasksMatch[1])).archived) return send(res, 409, { error: 'Project is archived' });
       const result = insertTask.run(Number(tasksMatch[1]), title);
       return send(res, 201, { ...getTask.get(Number(result.lastInsertRowid), Number(tasksMatch[1])), completed: false });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
@@ -161,6 +180,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof body.completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
       const projectId = Number(taskMatch[1]), taskId = Number(taskMatch[2]);
       if (!getTask.get(taskId, projectId)) return send(res, 404, { error: 'Task not found' });
+      if (getProject.get(projectId).archived) return send(res, 409, { error: 'Project is archived' });
       updateTask.run(body.completed ? 1 : 0, taskId, projectId);
       return send(res, 200, { ...getTask.get(taskId, projectId), completed: body.completed });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
