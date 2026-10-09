@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17212b; background: #f5f7fa; }
+    body { max-width: 760px; margin: 0 auto; padding: 3rem 1.25rem; }
+    h1 { margin-top: 0; }
+    form { display: flex; gap: .65rem; flex-wrap: wrap; margin: 1.5rem 0; }
+    label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    input, button { font: inherit; padding: .65rem .85rem; border: 1px solid #9ba8b5; border-radius: .4rem; }
+    input { flex: 1; min-width: 12rem; }
+    button { cursor: pointer; background: #164f86; border-color: #164f86; color: white; }
+    button.secondary { background: white; color: #164f86; }
+    [role="alert"] { color: #a52121; }
+    [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; padding: 1rem; margin: .65rem 0; background: white; border: 1px solid #dce2e8; border-radius: .5rem; }
+    .empty { color: #536271; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+      if (match) {
+        let project;
+        try {
+          const response = await fetch('/api/projects');
+          project = (await response.json()).find((item) => item.id === decodeURIComponent(match[1]));
+        } catch { /* show not-found state */ }
+        app.innerHTML = project
+          ? `<button class="secondary" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`
+          : '<h1>Project not found</h1><button class="secondary" id="back">Projects</button>';
+        document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+        return;
+      }
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" aria-label="Project name" autocomplete="off"><button type="submit">Create project</button></form>
+        <p id="message" role="alert" hidden></p><section id="projects" aria-label="Projects"></section>`;
+      const list = document.querySelector('#projects');
+      async function load() {
+        const response = await fetch('/api/projects');
+        if (!response.ok) throw new Error('Could not load projects');
+        const projects = await response.json();
+        list.innerHTML = projects.length ? projects.map((project) =>
+          `<article data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-id="${escapeHtml(project.id)}">Open project</button></article>`
+        ).join('') : '<p class="empty">No projects yet.</p>';
+        list.querySelectorAll('button[data-id]').forEach((button) => button.addEventListener('click', () => {
+          location.href = `/projects/${encodeURIComponent(button.dataset.id)}`;
+        }));
+      }
+      await load();
+      document.querySelector('#create-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.querySelector('#project-name');
+        const message = document.querySelector('#message');
+        const name = input.value.trim();
+        if (!name) {
+          message.textContent = 'Project name is required';
+          message.hidden = false;
+          return;
+        }
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!response.ok) {
+          const result = await response.json();
+          message.textContent = result.error || 'Could not create project';
+          message.hidden = false;
+          return;
+        }
+        input.value = '';
+        message.textContent = '';
+        message.hidden = true;
+        await load();
+      });
+    }
+    render().catch(() => { app.innerHTML = '<h1>Workboard</h1><p role="alert">Could not load projects</p>'; });
+  </script>
+</body>
+</html>
