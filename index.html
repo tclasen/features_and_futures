@@ -10,6 +10,8 @@
     main { max-width: 760px; margin: 4rem auto; padding: 0 1.25rem; }
     h1 { margin-bottom: 1.5rem; }
     form, .project-row { display: flex; gap: .75rem; align-items: center; }
+    .task-row { display: flex; gap: .75rem; align-items: center; background: white; padding: .85rem 1rem; border: 1px solid #dce2eb; border-radius: .5rem; margin: .65rem 0; }
+    select { font: inherit; padding: .65rem .8rem; border: 1px solid #bbc5d5; border-radius: .4rem; }
     form { margin-bottom: 1.5rem; }
     label { display: grid; gap: .35rem; flex: 1; font-weight: 600; }
     input, button { font: inherit; padding: .65rem .8rem; border: 1px solid #bbc5d5; border-radius: .4rem; }
@@ -116,7 +118,83 @@
       }
       const heading = document.createElement('h1');
       heading.textContent = project.name;
-      app.append(heading);
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Task title');
+      label.append(input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create task';
+      form.append(label, submit);
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.textContent = value;
+        option.value = value;
+        filter.append(option);
+      }
+      filterLabel.append(filter);
+      const list = document.createElement('section');
+      list.setAttribute('aria-label', 'Tasks');
+      app.append(heading, form, filterLabel, list);
+
+      async function refresh() {
+        const result = await fetch(`/api/projects/${id}/tasks`);
+        if (!result.ok) return;
+        const tasks = await result.json();
+        list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          const row = document.createElement('div');
+          row.className = 'task-row';
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            const update = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked })
+            });
+            if (!update.ok) checkbox.checked = task.completed;
+            else await refresh();
+          });
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          row.append(checkbox, title);
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', refresh);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          showError('Task title is required');
+          input.focus();
+          return;
+        }
+        const result = await fetch(`/api/projects/${id}/tasks`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (!result.ok) {
+          const error = await result.json();
+          showError(error.error || 'Could not create task');
+          return;
+        }
+        app.querySelector('[role="alert"]')?.remove();
+        input.value = '';
+        await refresh();
+      });
+      await refresh();
     }
 
     async function render() {
