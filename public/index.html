@@ -25,6 +25,9 @@
     .completed { color: #657080; text-decoration: line-through; }
     .filter { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
     .filter select { min-width: 150px; border: 1px solid #aab4c0; border-radius: 6px; padding: 9px 12px; font: inherit; background: white; }
+    .project-actions { display: flex; align-items: center; gap: 10px; }
+    .project-summary { color: #657080; font-size: .9rem; }
+    .secondary { background: #526174; }
     [role="alert"] { min-height: 1.5em; margin: 0 0 10px; color: #b42318; }
     .back { margin-bottom: 24px; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
@@ -53,6 +56,17 @@
       const alert = element('p', '', '');
       alert.setAttribute('role', 'alert');
       app.append(alert);
+      const filterWrap = element('div', undefined, 'filter');
+      const filterLabel = element('label', 'Project filter');
+      filterLabel.htmlFor = 'project-filter';
+      const filter = document.createElement('select');
+      filter.id = 'project-filter';
+      filter.setAttribute('aria-label', 'Project filter');
+      for (const value of ['Active', 'Archived']) {
+        const option = element('option', value); option.value = value; filter.append(option);
+      }
+      filterWrap.append(filterLabel, filter);
+      app.append(filterWrap);
       const form = document.createElement('form');
       const label = element('label', 'Project name');
       label.htmlFor = 'project-name';
@@ -72,16 +86,42 @@
         list.replaceChildren();
         const projects = await api('/api/projects');
         for (const project of projects) {
+          if (filter.value === 'Active' && project.archived || filter.value === 'Archived' && !project.archived) continue;
           const row = element('div', undefined, 'project-row');
           row.dataset.testid = 'project-row';
-          row.append(element('span', project.name, 'project-name'));
+          const name = element('span', project.name, 'project-name');
+          name.tabIndex = 0;
+          name.title = 'Rename project';
+          name.addEventListener('click', () => renameProject(project));
+          row.append(name);
+          const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, 'project-summary');
+          summary.dataset.testid = 'project-summary';
+          row.append(summary);
+          const actions = element('div', undefined, 'project-actions');
           const open = element('button', 'Open project');
           open.type = 'button';
           open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-          row.append(open);
+          actions.append(open);
+          const archive = element('button', project.archived ? 'Restore project' : 'Archive project', 'secondary');
+          archive.type = 'button';
+          archive.addEventListener('click', async () => {
+            await api(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+            await refresh();
+          });
+          actions.append(archive);
+          row.append(actions);
           list.append(row);
         }
       }
+      async function renameProject(project) {
+        const newName = window.prompt('Project name', project.name);
+        if (newName === null) return;
+        try {
+          await api(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: newName }) });
+          await refresh();
+        } catch (error) { alert.textContent = error.message; }
+      }
+      filter.addEventListener('change', refresh);
       form.addEventListener('submit', async event => {
         event.preventDefault();
         alert.textContent = '';
@@ -109,6 +149,7 @@
       try {
         const project = await api(`/api/projects/${encodeURIComponent(id)}`);
         app.append(element('h1', project.name));
+        if (project.archived) app.append(element('p', 'Archived project'));
         const alert = element('p', '');
         alert.setAttribute('role', 'alert');
         app.append(alert);
@@ -121,6 +162,7 @@
         input.setAttribute('aria-label', 'Task title');
         const submit = element('button', 'Create task');
         submit.type = 'submit';
+        submit.disabled = project.archived;
         form.append(label, input, submit);
         app.append(form);
         const filterWrap = element('div', undefined, 'filter');
@@ -149,6 +191,7 @@
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = task.completed;
+            checkbox.disabled = project.archived;
             checkbox.setAttribute('aria-label', `Complete ${task.title}`);
             const title = element('span', task.title, `task-title${task.completed ? ' completed' : ''}`);
             checkbox.addEventListener('change', async () => {
