@@ -1,130 +1,161 @@
-import http from "node:http";
-import path from "node:path";
-import { URL } from "node:url";
-import { promises as fs } from "node:fs";
-import sqlite from "node:sqlite";
+import http from 'http';
+import url from 'url';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Environment configuration
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
-const DB_PATH = process.env.DB_PATH || path.resolve(process.cwd(), "workboard.db");
-const PUBLIC_DIR = path.resolve(process.cwd(), "public");
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 
 let db;
+
 async function initDb() {
- db = new sqlite.DatabaseSync(DB_PATH);
-  db.prepare('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)').run();
-}
-function dbAll(sql, params) { return db.prepare(sql).all(params); }function dbGet(sql, params) { return db.prepare(sql).get(params); }function dbRun(sql, params) { return db.prepare(sql).run(params); }
-
-function mime(ext) {
-  const map = {
-    ".html": "text/html",
-    ".js": "application/javascript",
-    ".css": "text/css",
-    ".json": "application/json",
-    ".png": "image/png",
-    ".svg": "image/svg+xml"
-  };
-  return map[ext] || "application/octet-stream";
+  db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+  await db.exec(`CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+  );`);
 }
 
-async function serveFile(filePath, res) {
-  try {
-    const data = await fs.readFile(filePath);
-    const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": mime(ext) });
+function sendJson(res, status, obj) {
+  const data = JSON.stringify(obj);
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) });
+  res.end(data);
+}
+
+function sendFile(res, filePath, contentType) {
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': contentType });
     res.end(data);
-  } catch {
-    res.writeHead(404);
-    res.end("Not found");
-  }
-}
-
-function parseJson(req) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    req.on("data", chunk => (raw += chunk));
-    req.on("end", () => {
-      try { resolve(raw ? JSON.parse(raw) : {}); }
-      catch (e) { reject(e); }
-    });
   });
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const pathname = url.pathname;
+async function handleRequest(req, res) {
+  const parsedUrl = url.parse(req.url, true);
+  const pathname = decodeURIComponent(parsedUrl.pathname);
 
-  if (pathname === "/health" && req.method === "GET") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
+  // Health endpoint
+  if (pathname === '/health' && req.method === 'GET') {
+    sendJson(res, 200, { status: 'ok' });
     return;
   }
 
-  if (pathname.startsWith("/api/")) {
-    if (!db) await initDb();
-    if (pathname === "/api/projects" && req.method === "GET") {
-      const rows = dbAll("SELECT id, name FROM projects ORDER BY id ASC");
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(rows));
+  // Static assets under /static/
+  if (pathname.startsWith('/static/') && req.method === 'GET') {
+    const relativePath = pathname.slice(1); // remove leading '/'
+    const filePath = path.join(PUBLIC_DIR, relativePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.svg': 'image/svg+xml'
+    }[ext] || 'application/octet-stream';
+    sendFile(res, filePath, mime);
+    return;
+  }
+
+  // API routes
+  if (pathname === '/api/projects') {
+    if (req.method === 'GET') {
+      const rows = await db.all('SELECT id, name FROM projects ORDER BY id ASC');
+      sendJson(res, 200, rows);
       return;
     }
-    if (pathname === "/api/projects" && req.method === "POST") {
-      try {
-        const body = await parseJson(req);
-        const name = typeof body.name === "string" ? body.name.trim() : "";
-        if (!name) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Project name is required" }));
-          return;
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => (body += chunk));
+      req.on('end', async () => {
+        try {
+          const { name } = JSON.parse(body);
+          const trimmed = (name || '').trim();
+          if (!trimmed) {
+            sendJson(res, 400, { error: 'Project name is required' });
+            return;
+          }
+          const result = await db.run('INSERT INTO projects (name) VALUES (?)', trimmed);
+          const newProject = { id: result.lastID, name: trimmed };
+          sendJson(res, 201, newProject);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid request' });
         }
-        const result = dbRun("INSERT INTO projects (name) VALUES (?)", name);
-        const proj = { id: result.lastID, name };
-        res.writeHead(201, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(proj));
-        return;
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-        return;
-      }
-    }
-    const match = pathname.match(/^\/api\/projects\/(\d+)$/);
-    if (match && req.method === "GET") {
-      const proj = dbGet("SELECT id, name FROM projects WHERE id = ?", Number(match[1]));
-      if (!proj) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Project not found" }));
-        return;
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(proj));
+      });
       return;
     }
-    res.writeHead(404);
-    res.end("Not found");
+  }
+
+  // Project page route
+  const projectPageMatch = pathname.match(/^\/projects\/(\d+)$/);
+  if (projectPageMatch && req.method === 'GET') {
+    const projectId = Number(projectPageMatch[1]);
+    const row = await db.get('SELECT id, name FROM projects WHERE id = ?', projectId);
+    if (!row) {
+      res.writeHead(404);
+      res.end('Project not found');
+      return;
+    }
+    // Serve a simple HTML page rendered server‑side
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Project – ${row.name}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+  <body>
+    <h1>${row.name}</h1>
+    <button id="backBtn">Projects</button>
+    <script>
+      document.getElementById('backBtn').addEventListener('click', () => {
+        window.location.href = '/';
+      });
+    </script>
+  </body>
+</html>`;
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
     return;
   }
 
-  if (pathname === "/" && req.method === "GET") {
-    await serveFile(path.join(PUBLIC_DIR, "index.html"), res);
-    return;
-  }
-  if (pathname.startsWith("/projects/") && req.method === "GET") {
-    await serveFile(path.join(PUBLIC_DIR, "project.html"), res);
-    return;
-  }
-  if (pathname.startsWith("/static/") && req.method === "GET") {
-    const filePath = path.join(PUBLIC_DIR, pathname);
-    await serveFile(filePath, res);
+  // Root page – serve index.html
+  if (pathname === '/' && req.method === 'GET') {
+    const filePath = path.join(PUBLIC_DIR, 'index.html');
+    sendFile(res, filePath, 'text/html');
     return;
   }
 
+  // Fallback 404
   res.writeHead(404);
-  res.end("Not found");
-});
+  res.end('Not found');
+}
 
 await initDb();
-server.listen(PORT, "0.0.0.0", () => {
+
+const server = http.createServer((req, res) => {
+  // Catch async errors
+  handleRequest(req, res).catch(err => {
+    console.error('Error handling request', err);
+    res.writeHead(500);
+    res.end('Internal Server Error');
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
 
