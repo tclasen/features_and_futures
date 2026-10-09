@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Workboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="page">
+      <section id="projects-view" aria-labelledby="page-heading" hidden>
+        <h1 id="page-heading">Workboard</h1>
+        <form id="project-form" novalidate>
+          <label for="project-name">Project name</label>
+          <div class="form-row">
+            <input id="project-name" name="name" type="text" autocomplete="off">
+            <button type="submit">Create project</button>
+          </div>
+          <p id="project-error" class="alert" role="alert" hidden></p>
+        </form>
+        <div id="project-list" class="project-list" aria-live="polite"></div>
+      </section>
+
+      <section id="project-view" aria-labelledby="project-heading" hidden>
+        <button id="back-button" class="back-button" type="button">Projects</button>
+        <h1 id="project-heading"></h1>
+      </section>
+    </main>
+    <script type="module">
+      const projectsView = document.querySelector('#projects-view');
+      const projectView = document.querySelector('#project-view');
+      const projectList = document.querySelector('#project-list');
+      const form = document.querySelector('#project-form');
+      const nameInput = document.querySelector('#project-name');
+      const errorMessage = document.querySelector('#project-error');
+
+      async function loadProjects() {
+        const response = await fetch('/api/projects');
+        const projects = await response.json();
+        projectList.replaceChildren();
+        for (const project of projects) {
+          const row = document.createElement('div');
+          row.className = 'project-row';
+          row.dataset.testid = 'project-row';
+          const name = document.createElement('span');
+          name.textContent = project.name;
+          const openButton = document.createElement('button');
+          openButton.type = 'button';
+          openButton.textContent = 'Open project';
+          openButton.addEventListener('click', () => {
+            window.location.href = `/projects/${project.id}`;
+          });
+          row.append(name, openButton);
+          projectList.append(row);
+        }
+      }
+
+      async function showPage() {
+        const match = window.location.pathname.match(/^\/projects\/(\d+)$/);
+        if (!match) {
+          projectView.hidden = true;
+          projectsView.hidden = false;
+          await loadProjects();
+          return;
+        }
+
+        projectsView.hidden = true;
+        projectView.hidden = false;
+        const response = await fetch(`/api/projects/${match[1]}`);
+        if (!response.ok) {
+          window.location.replace('/');
+          return;
+        }
+        const project = await response.json();
+        document.querySelector('#project-heading').textContent = project.name;
+        document.title = `${project.name} · Workboard`;
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = nameInput.value.trim();
+        if (!name) {
+          errorMessage.textContent = 'Project name is required';
+          errorMessage.hidden = false;
+          return;
+        }
+        errorMessage.hidden = true;
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!response.ok) return;
+        nameInput.value = '';
+        await loadProjects();
+      });
+
+      nameInput.addEventListener('input', () => {
+        errorMessage.hidden = true;
+      });
+      document.querySelector('#back-button').addEventListener('click', () => {
+        window.location.href = '/';
+      });
+      showPage();
+    </script>
+  </body>
+</html>
