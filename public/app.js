@@ -35,21 +35,44 @@ async function showProjects() {
   alert.hidden = true;
   const list = element('section', undefined, 'project-list');
   list.setAttribute('aria-label', 'Projects');
-  app.append(heading, form, alert, list);
+  const filterLabel = element('label', 'Project filter');
+  filterLabel.htmlFor = 'project-filter';
+  const filter = document.createElement('select');
+  filter.id = 'project-filter';
+  for (const name of ['Active', 'Archived']) {
+    const option = element('option', name);
+    option.value = name.toLowerCase();
+    filter.append(option);
+  }
+  app.append(heading, form, alert, filterLabel, filter, list);
 
   async function refresh() {
     const projects = await request('/api/projects');
-    list.replaceChildren(...projects.map((project) => {
+    const visibleProjects = projects.filter((project) => Boolean(project.archived) === (filter.value === 'archived'));
+    list.replaceChildren(...visibleProjects.map((project) => {
       const row = element('article', undefined, 'project-row');
       row.dataset.testid = 'project-row';
       const name = element('span', project.name);
       const open = element('button', 'Open project');
       open.type = 'button';
       open.addEventListener('click', () => navigate(`/projects/${project.id}`));
-      row.append(name, open);
+      const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, 'project-summary');
+      summary.dataset.testid = 'project-summary';
+      const archive = element('button', project.archived ? 'Restore project' : 'Archive project');
+      archive.type = 'button';
+      archive.addEventListener('click', async () => {
+        await request(`/api/projects/${project.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ archived: !project.archived }),
+        });
+        await refresh();
+      });
+      row.append(name, summary, open, archive);
       return row;
     }));
   }
+
+  filter.addEventListener('change', refresh);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -78,6 +101,7 @@ async function showProject(id) {
   back.type = 'button';
   back.addEventListener('click', () => navigate('/'));
   const heading = element('h1', project.name);
+  const archivedNotice = project.archived ? element('p', 'Archived project') : null;
   const form = document.createElement('form');
   form.className = 'task-form';
   const label = element('label', 'Task title');
@@ -89,6 +113,8 @@ async function showProject(id) {
   input.autocomplete = 'off';
   const submit = element('button', 'Create task');
   submit.type = 'submit';
+  input.disabled = Boolean(project.archived);
+  submit.disabled = Boolean(project.archived);
   form.append(label, input, submit);
 
   const alert = element('p', '', 'alert');
@@ -105,7 +131,9 @@ async function showProject(id) {
   }
   const list = element('section', undefined, 'task-list');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(back, heading, form, alert, filterLabel, filter, list);
+  app.append(back, heading);
+  if (archivedNotice) app.append(archivedNotice);
+  app.append(form, alert, filterLabel, filter, list);
 
   async function refresh() {
     const tasks = await request(`/api/projects/${id}/tasks`);
@@ -120,6 +148,7 @@ async function showProject(id) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = Boolean(task.completed);
+      checkbox.disabled = Boolean(project.archived);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         try {

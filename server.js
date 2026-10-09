@@ -14,6 +14,7 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS tasks (
@@ -25,9 +26,20 @@ database.exec(`
   );
 `);
 
-const projectList = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const projectById = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Existing databases from earlier pilot tasks need the archive field added in place.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+
+const projectSelect = `SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount,
+  COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
+const projectList = database.prepare(`${projectSelect} GROUP BY p.id ORDER BY p.id`);
+const projectById = database.prepare(`${projectSelect} WHERE p.id = ? GROUP BY p.id`);
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const taskList = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const taskById = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -77,6 +89,24 @@ const server = createServer(async (request, response) => {
   }
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (request.method === 'PATCH' && projectMatch) {
+    try {
+      const { archived } = await readJson(request);
+      if (typeof archived !== 'boolean') {
+        sendJson(response, 400, { error: 'Archive state is required' });
+        return;
+      }
+      const result = updateProjectArchive.run(archived ? 1 : 0, Number(projectMatch[1]));
+      if (!Number(result.changes)) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      sendJson(response, 200, projectById.get(Number(projectMatch[1])));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    return;
+  }
   if (request.method === 'GET' && projectMatch) {
     const project = projectById.get(Number(projectMatch[1]));
     sendJson(response, project ? 200 : 404, project || { error: 'Project not found' });
