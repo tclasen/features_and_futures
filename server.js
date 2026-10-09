@@ -4,7 +4,7 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { open } from 'node:sqlite';
-import sqlite3 from 'sqlite3';
+// No external sqlite3 dependency; use the built‑in experimental sqlite module.
 
 // Resolve __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -15,7 +15,7 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 
 let db;
 async function initDb() {
-  db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+  db = await open({ filename: DB_PATH });
   await db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
