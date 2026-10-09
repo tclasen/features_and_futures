@@ -42,8 +42,17 @@ async function renderProject(id) {
   const r = await fetch('/api/projects/'+encodeURIComponent(id));
   if (!r.ok) { renderList(); return; }
   const p = await r.json();
-  app.innerHTML = '<button type="button" id="back">Projects</button><h1>'+escapeHtml(p.name)+'</h1>'+(p.archived ? '<p>Archived project</p>' : '')+'<form id="create-task"><label for="task-title">Task title</label><div class="form-row"><input id="task-title" name="title" type="text" '+(p.archived ? 'disabled' : '')+'><button type="submit" '+(p.archived ? 'disabled' : '')+'>Create task</button></div></form><p id="task-alert" class="alert" role="alert" hidden></p><div class="filter-row"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div><section id="tasks" aria-label="Tasks"></section>';
+  app.innerHTML = '<button type="button" id="back">Projects</button><h1>'+escapeHtml(p.name)+'</h1>'+(p.archived ? '<p>Archived project</p>' : '')+'<form id="rename-project"><label for="new-project-name">New project name</label><div class="form-row"><input id="new-project-name" name="name" type="text" value="'+escapeHtml(p.name)+'" '+(p.archived ? 'disabled' : '')+'><button type="submit" '+(p.archived ? 'disabled' : '')+'>Rename project</button></div></form><p id="project-alert" class="alert" role="alert" hidden></p><form id="create-task"><label for="task-title">Task title</label><div class="form-row"><input id="task-title" name="title" type="text" '+(p.archived ? 'disabled' : '')+'><button type="submit" '+(p.archived ? 'disabled' : '')+'>Create task</button></div></form><p id="task-alert" class="alert" role="alert" hidden></p><div class="filter-row"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div><section id="tasks" aria-label="Tasks"></section>';
   document.querySelector('#back').addEventListener('click', () => { location.href='/'; });
+  const renameForm = document.querySelector('#rename-project');
+  renameForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = new FormData(renameForm).get('name').trim();
+    const alert = document.querySelector('#project-alert');
+    if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+    const response = await fetch('/api/projects/'+encodeURIComponent(id), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name})});
+    if (response.ok) renderProject(id);
+  });
   const form = document.querySelector('#create-task');
   form.addEventListener('submit', async e => {
     e.preventDefault(); const title = new FormData(form).get('title').trim();
@@ -104,6 +113,18 @@ const server = http.createServer(async (req, res) => {
     const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (project) project.archived = !!project.archived;
     return project ? send(res, 200, project) : send(res, 404, { error: 'Project not found' });
+  }
+  if (req.method === 'PATCH' && projectMatch) {
+    try {
+      const { name } = await readJson(req);
+      const trimmed = typeof name === 'string' ? name.trim() : '';
+      if (!trimmed) return send(res, 400, { error: 'Project name is required' });
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+      if (!project) return send(res, 404, { error: 'Project not found' });
+      if (project.archived) return send(res, 409, { error: 'Archived project' });
+      db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(trimmed, Number(projectMatch[1]));
+      return send(res, 200, { status: 'ok' });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (req.method === 'POST' && archiveMatch) {
