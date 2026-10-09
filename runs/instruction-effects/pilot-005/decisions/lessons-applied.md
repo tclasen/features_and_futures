@@ -19,3 +19,7 @@ The frozen manifest SHA-256 is `4c512fc3a9cdbb009a8eb72f01ae961ffe71d7480d5c0fb7
 L008 conservative missing-cost bounds, L009 revised feedback rendering and browser-source sanitization, and L010 stronger v005 cumulative acceptance coverage are prepared or pending. They are not active pilot-005 comparison rules. Validate them against raw evidence and immutable submissions, then adopt through an explicit new revision/run when they affect comparisons. Do not rewrite this pilot's outcomes or inject lessons into builder contexts.
 
 Review this record and outstanding journal entries at shared checkpoints and after incidents. Append evidence-linked journal transitions as verification or adoption changes; preserve this record's historical claims through dated follow-up sections.
+
+## Readiness review, 2026-10-09
+
+Reviewed pending lessons while task-001 was still in progress, before the next shared round. Parser and browser feedback revisions and stronger acceptance assertions remain deferred from pilot-005. A separate b001 immutable submission smoke check passed v005 stage-1 normal and restart checks; it does not prove later-stage or full-corpus coverage. The historical and decoded-archive publication gate passed, and remote commit/checkpoint IDs were verified; see the publication preflight record. Further evidence snapshots require another scan.
