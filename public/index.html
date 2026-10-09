@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { background: #fff; border-bottom: 1px solid #e2e7ef; padding: 1rem max(1.25rem, calc((100% - 900px) / 2)); }
+    main { max-width: 900px; margin: 2.5rem auto; padding: 0 1.25rem; }
+    h1 { margin: 0 0 1.5rem; font-size: 2rem; }
+    form { display: flex; gap: .65rem; margin-bottom: 1.5rem; }
+    input { flex: 1; min-width: 0; padding: .7rem .8rem; border: 1px solid #aab5c5; border-radius: 6px; font: inherit; }
+    button { padding: .65rem 1rem; border: 0; border-radius: 6px; color: white; background: #315dcc; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #2449a5; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; margin-bottom: .7rem; background: white; border: 1px solid #e0e5ed; border-radius: 8px; }
+    .project-name { font-weight: 600; }
+    .error { color: #a32020; margin: .75rem 0; }
+    .back { margin-bottom: 1.5rem; }
+    @media (max-width: 520px) { form { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header><strong>Workboard</strong></header>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const projectRoute = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+
+    async function showProjects() {
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      app.innerHTML = `
+        <h1>Workboard</h1>
+        <form id="create-form">
+          <input id="project-name" name="name" aria-label="Project name" placeholder="Project name" autocomplete="off">
+          <button type="submit">Create project</button>
+        </form>
+        <p class="error" id="error" role="alert" hidden></p>
+        <section aria-label="Projects" id="projects"></section>`;
+      const list = document.querySelector('#projects');
+      list.innerHTML = projects.map(project => `
+        <div class="project-row" data-testid="project-row">
+          <span class="project-name">${escapeHtml(project.name)}</span>
+          <button type="button" data-project-id="${project.id}">Open project</button>
+        </div>`).join('');
+      document.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
+        location.href = `/projects/${button.dataset.projectId}`;
+      }));
+      document.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = document.querySelector('#project-name');
+        const name = input.value.trim();
+        const error = document.querySelector('#error');
+        if (!name) {
+          error.textContent = 'Project name is required';
+          error.hidden = false;
+          input.focus();
+          return;
+        }
+        const result = await fetch('/api/projects', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (result.ok) showProjects();
+      });
+    }
+
+    async function showProject(id) {
+      const projects = await (await fetch('/api/projects')).json();
+      const project = projects.find(item => String(item.id) === id);
+      if (!project) {
+        app.innerHTML = '<h1>Project not found</h1><button type="button" id="back">Projects</button>';
+      } else {
+        app.innerHTML = `<button class="back" type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      }
+      document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+    }
+
+    if (projectRoute) showProject(projectRoute[1]);
+    else showProjects();
+  </script>
+</body>
+</html>
