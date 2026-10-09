@@ -1,7 +1,6 @@
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 
 const port = Number(process.env.PORT || 8080);
 const databasePath = process.env.DB_PATH || './workboard.sqlite';
