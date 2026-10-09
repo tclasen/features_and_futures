@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
 
 async function freePort() {
   const server = createServer();
@@ -65,6 +66,9 @@ test('project and task validation, isolation, order, and persistence across rest
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'Alpha 🐱');
+    assert.equal(first.archived, false);
+    assert.equal(first.total, 0);
+    assert.equal(first.completed, 0);
     const second = await (await create('<script>Second</script>')).json();
     const expected = [first, second];
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
@@ -106,14 +110,86 @@ test('project and task validation, isolation, order, and persistence across rest
       assert.deepEqual(await response.json(), { ...task, completed });
     }
     const savedTasks = [{ ...task, completed: true }, nextTask];
+    Object.assign(first, { total: 2, completed: 1 });
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    assert.equal((await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: 'true' })).status, 400);
+    assert.equal((await taskRequest('/api/projects/99999', 'PATCH', { archived: true })).status, 404);
+    const archiveResponse = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: true });
+    assert.equal(archiveResponse.status, 200);
+    first.archived = true;
+    assert.deepEqual(await archiveResponse.json(), first);
+    assert.equal((await taskRequest(taskPath, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await taskRequest(`${taskPath}/${task.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await (await fetch(`${base}${taskPath}`)).json(), savedTasks);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(`${base}${taskPath}`)).json(), savedTasks);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}/tasks`)).json(), []);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    const restoreResponse = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: false });
+    assert.equal(restoreResponse.status, 200);
+    first.archived = false;
+    assert.deepEqual(await restoreResponse.json(), first);
+    assert.deepEqual(await (await fetch(`${base}${taskPath}`)).json(), savedTasks);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    assert.equal((await taskRequest(`${taskPath}/${task.id}`, 'PATCH', { completed: false })).status, 200);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), { ...first, completed: 0 });
   } finally {
     await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('upgrades a pre-archive database without losing existing data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    INSERT INTO projects (id, name) VALUES (7, 'Existing project');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES (9, 7, 'Existing task', 1);
+  `);
+  database.close();
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ['server.js'], {
+    env: { ...process.env, PORT: String(port), DB_PATH: databasePath },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let errors = '';
+  child.stderr.on('data', (data) => { errors += data; });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (child.exitCode !== null) throw new Error(errors);
+      try {
+        ready = (await fetch(`${base}/health`)).ok;
+        if (ready) break;
+      } catch { /* Wait for the server to bind. */ }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(ready, errors);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [
+      { id: 7, name: 'Existing project', archived: false, total: 1, completed: 1 },
+    ]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
+      { id: 9, title: 'Existing task', completed: true },
+    ]);
+  } finally {
+    if (child.exitCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });

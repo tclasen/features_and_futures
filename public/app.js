@@ -3,6 +3,9 @@ const alert = document.querySelector('#alert');
 const form = document.querySelector('#create-project');
 const nameInput = document.querySelector('#project-name');
 const projects = document.querySelector('#projects');
+const projectFilter = document.querySelector('#project-filter');
+let projectItems = [];
+let archived = false;
 const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
@@ -34,10 +37,40 @@ function addProject(project) {
   open.addEventListener('click', () => {
     window.location.href = `/projects/${project.id}`;
   });
-  row.append(name, open);
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completed}/${project.total} completed`;
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    alert.hidden = true;
+    archive.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, saved);
+      renderProjects();
+    } catch (error) {
+      showError(error.message);
+      archive.disabled = false;
+    }
+  });
+  row.append(name, summary, open, archive);
   projects.append(row);
-  document.querySelector('#empty').hidden = true;
 }
+
+function renderProjects() {
+  projects.replaceChildren();
+  const items = projectItems.filter((project) => project.archived === (projectFilter.value === 'Archived'));
+  items.forEach(addProject);
+  document.querySelector('#empty').hidden = items.length !== 0;
+}
+
+projectFilter.addEventListener('change', renderProjects);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -54,7 +87,8 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: nameInput.value }),
     });
-    addProject(project);
+    projectItems.push(project);
+    renderProjects();
     nameInput.value = '';
     nameInput.focus();
   } catch (error) {
@@ -77,6 +111,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = archived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       alert.hidden = true;
@@ -93,7 +128,7 @@ function renderTasks() {
         checkbox.checked = task.completed;
         showError(error.message);
       } finally {
-        checkbox.disabled = false;
+        checkbox.disabled = archived;
       }
     });
     row.append(title, checkbox);
@@ -105,6 +140,7 @@ taskFilter.addEventListener('change', renderTasks);
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   alert.hidden = true;
+  if (archived) return;
   if (!titleInput.value.trim()) {
     showError('Task title is required');
     return;
@@ -124,7 +160,7 @@ taskForm.addEventListener('submit', async (event) => {
   } catch (error) {
     showError(error.message);
   } finally {
-    submit.disabled = false;
+    submit.disabled = archived;
   }
 });
 
@@ -137,15 +173,18 @@ async function loadPage() {
   if (match) {
     document.querySelector('#project-detail').hidden = false;
     const project = await api(`/api/projects/${match[1]}`);
+    archived = project.archived;
+    document.querySelector('#archived-notice').hidden = !archived;
+    taskForm.querySelector('button').disabled = archived;
+    titleInput.disabled = archived;
     heading.textContent = project.name;
     document.title = `${project.name} · Workboard`;
     tasks = await api(`/api/projects/${project.id}/tasks`);
     renderTasks();
   } else {
     document.querySelector('#project-list').hidden = false;
-    const items = await api('/api/projects');
-    document.querySelector('#empty').hidden = items.length !== 0;
-    items.forEach(addProject);
+    projectItems = await api('/api/projects');
+    renderProjects();
   }
 }
 
