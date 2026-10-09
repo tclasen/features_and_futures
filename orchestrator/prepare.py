@@ -36,12 +36,13 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    project = ROOT / "projects/workboard/revisions/v003"
+    if args.project_revision not in ("v003", "v004"): raise ValueError("Unsupported project revision")
+    project = ROOT / "projects/workboard/revisions" / args.project_revision
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
     profiles_text = (ROOT / "docs/builder-instructions.md").read_text()
@@ -94,9 +95,9 @@ def prepare():
     write_json(frozen / "local-provider.json",local_provider)
     manifest = {
         "schema_version":1, "status":"running", "experiment_id":"instruction-effects",
-        "experiment_revision":"pilot-v004", "run_id":args.run, "purpose":"engineering-pilot",
-        "project_id":"workboard","project_revision":"v003",
-        "lineage":{"source_run":"pilot-003","variation":"Isolated exact local model and native pre-parser accounting; explicit built-in modules and browser network isolation"}, "frozen_at":timestamp(),
+        "experiment_revision":"pilot-v005", "run_id":args.run, "purpose":"engineering-pilot",
+        "project_id":"workboard","project_revision":args.project_revision,
+        "lineage":{"source_run":"pilot-004","variation":"Row locators accept direct and wrapped visible text; original strict native accounting and legacy feedback preserved"}, "frozen_at":timestamp(),
         "runtime":{"local_provider":local_provider,"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
                    "image":IMAGE,"image_digest":IMAGE_DIGEST, "sbx_version":"0.47.0",
                    "node":"22.22.1","playwright":"1.64.0","chromium":"156.0.8078.4",
@@ -118,7 +119,7 @@ def prepare():
                       "definition_hashes":file_hashes(frozen)},
         "tasks":tasks,"pricing":prices,
         "execution":{"scheduling_seed":43,"order":"sequential; rotate by six builder positions per round",
-                     "retry_limit":None,"unchanged_failure_notify_after":10},
+                     "retry_limit":None,"feedback_rendering":"legacy-v1","unchanged_failure_notify_after":10},
         "evidence_policy":{"purpose":"infrastructure readiness; no claim of instruction effect",
                            "stop":"all 18 builders accepted all three tasks with complete native usage",
                            "post_deployment_window_seconds":5,

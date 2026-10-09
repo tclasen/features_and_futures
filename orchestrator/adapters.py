@@ -111,6 +111,19 @@ def execute_attempt(sandbox, harness, model, key, gateway_port, prompt, output,
 
 
 def sandbox_policy(sandbox, gateway_port):
+    # Remove only this sandbox's obsolete gateway allow rules on resume.
+    current=invoke(["sbx","policy","ls",sandbox,"--json"])
+    if current.returncode:
+        raise RuntimeError(current.stderr)
+    desired={f"host.docker.internal:{gateway_port}",f"localhost:{gateway_port}"}
+    for rule in json.loads(current.stdout)["rules"]:
+        resources=rule.get("resources",[])
+        if (rule.get("scope")==f"sandbox:{sandbox}" and rule.get("resource_type")=="network"
+            and rule.get("decision")=="allow" and rule.get("editable")
+            and resources and all(__import__("re").fullmatch(r"(host[.]docker[.]internal|localhost):[0-9]+",r) for r in resources)
+            and not set(resources)<=desired):
+            removed=invoke(["sbx","policy","rm","network","--sandbox",sandbox,"--id",rule["id"],"--force"])
+            if removed.returncode:raise RuntimeError(removed.stderr)
     result = invoke(["sbx", "policy", "allow", "network", "--sandbox", sandbox,
                      f"host.docker.internal:{gateway_port},localhost:{gateway_port}"])
     if result.returncode:

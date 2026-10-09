@@ -14,6 +14,7 @@ from .gateway import InferenceGateway
 from .prepare import ROOT, checked, file_hashes, git, write_json, InfrastructureError
 from .validation import Deployment, run_suite
 from .private import WORK, sandbox_git, initialize, export
+from .diagnostics import tool_diagnostics
 
 class CommitObserver:
     def __init__(self, sandbox, ledger, identity):
@@ -83,7 +84,9 @@ def main():
         native_usage_path=provider["native_usage_file"])
     state["status"]="running"; state["last_error"]=None
     write_json(run/"state.json",state)
-    ledger.event("runner_started",process_id=os.getpid())
+    ledger.event("runner_started",process_id=os.getpid(),
+        feedback_rendering_revision=manifest["execution"].get("feedback_rendering", "legacy-v1"),
+        execution_code_commit=git(ROOT,"rev-parse","HEAD"))
     builders=manifest["runtime"]["builder_configurations"]
     try:
         for task in manifest["tasks"]:
@@ -128,7 +131,29 @@ def main():
                 if previous:
                     last=previous[-1]/"feedback.json"
                     if last.exists():
-                        feedback="\n\nFeedback on your previous submission:\n"+last.read_text()
+                        prior_feedback=json.loads(last.read_text())
+                        prior_usage=[u for u in read_jsonl(run/"usage.jsonl")
+                            if u.get("builder_id")==bid and u.get("task_id")==task_id
+                            and u.get("attempt_id")==previous[-1].name]
+                        concise=(tool_diagnostics(prior_usage,previous[-1])
+                            if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else [])
+                        if concise:
+                            revised=dict(prior_feedback)
+                            revised["observations"]=concise+[o for o in prior_feedback["observations"]
+                                if o.get("contract")!="Generated tool arguments must be valid for the assigned harness"]
+                            revised["feedback_rendering_revision"]="native-parser-and-supplied-schemas-v2"
+                            supplement=previous[-1]/"feedback-rendering-v2.json"
+                            if not supplement.exists():
+                                write_json(supplement,revised)
+                                ledger.event("feedback_rendering_superseded",
+                                    attempt_id=previous[-1].name,
+                                    original_feedback_sha256=digest_bytes(last.read_bytes()),
+                                    revised_feedback_sha256=digest_bytes(supplement.read_bytes()),
+                                    change="Return exact parser error and supplied schemas; original evidence retained",
+                                    **task_identity)
+                            feedback="\n\nFeedback on your previous submission:\n"+supplement.read_text()
+                        else:
+                            feedback="\n\nFeedback on your previous submission:\n"+last.read_text()
                     else:
                         ledger.event("interrupted_attempt_retained",attempt_id=previous[-1].name,**task_identity)
                         feedback="\n\nThe PM runner was interrupted. Continue the same task from your own current repository and submit a committed implementation."
@@ -174,9 +199,11 @@ def main():
                         raise RuntimeError(f"{bid} {attempt_id}: incomplete native accounting; preserve and diagnose before retrying")
                     if any(u["status"]!=200 and u.get("outcome")!="builder-invalid-tool-call" for u in usage):
                         raise RuntimeError(f"{bid} {attempt_id}: provider failure; preserve and diagnose")
-                    diagnostics=[{"contract":"Generated tool arguments must be valid for the assigned harness",
-                        "observed_parser_error":u["tool_parser_error"]} for u in usage
-                        if u.get("outcome")=="builder-invalid-tool-call"]
+                    diagnostics=(tool_diagnostics(usage,output)
+                        if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else
+                        [{"contract":"Generated tool arguments must be valid for the assigned harness",
+                          "observed":u["tool_parser_error"]} for u in usage
+                         if u.get("outcome")=="builder-invalid-tool-call"])
                     if result.returncode:
                         diagnostics.append({"contract":"Harness exited unsuccessfully",
                                             "exit_code":result.returncode})
