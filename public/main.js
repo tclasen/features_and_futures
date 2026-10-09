@@ -28,8 +28,14 @@ async function fetchJson(url, opts = {}) {
 }
 
 function showAlert(msg) {
-  // Simple visible alert using window.alert (acceptable for visibility)
-  alert(msg);
+  // Render a visible alert element with role="alert"
+  let alertEl = document.getElementById('alert');
+  if (!alertEl) {
+    alertEl = createEl('div', { id: 'alert', role: 'alert', style: 'color: red; margin: 0.5rem 0;' });
+    const app = $('#app');
+    app.prepend(alertEl);
+  }
+  alertEl.textContent = msg;
 }
 
 async function renderProjectList() {
@@ -53,7 +59,7 @@ async function loadProjectsPage() {
   app.innerHTML = '';
   const heading = createEl('h1', {}, 'Workboard');
   const form = createEl('div', {},
-    createEl('label', { for: 'project-name' }, 'Project name'),
+    createEl('label', { htmlFor: 'project-name' }, 'Project name'),
     createEl('input', { type: 'text', id: 'project-name' }),
     createEl('button', { id: 'create-btn' }, 'Create project')
   );
