@@ -9,3 +9,7 @@ Builder source and live deployment directories are independent siblings outside 
 `python3 -m orchestrator.recheck_acceptance --run pilot-005 --suite-revision v005` validates currently accepted immutable submissions against the separately prepared stronger suite, including original prior-stage database snapshots and real restart checks. It creates separate diagnostic evidence and isolated app sandboxes; it neither dispatches builders nor changes original results. A successful partial corpus is not a full 54-checkpoint validation. Optional `--builder` and `--stage` filters support preparation smoke checks.
 
 The browser-feedback renderer under `proposals/` is tested but inactive. Adoption must be explicit in a future frozen execution revision.
+
+`python3 -m orchestrator.audit_native_receipts --run pilot-005` independently decodes archived SSE/JSON receipts and local native completion observations, checks ledger counters/raw hashes, and recomputes decimal reference arithmetic. Its immutable report names the usage snapshot and raw hashes. A live snapshot excludes requests not yet recorded and cannot establish complete-run readiness.
+
+`python3 -m orchestrator.watch_pilot --run pilot-005 --idle-seconds 300 --interval-seconds 15` writes a separate observation journal for prolonged inference/commit inactivity and missing runner handles. It neither terminates processes nor changes budgets, feedback or outcomes. Investigate alerts against native evidence before attributing a failure.

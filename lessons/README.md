@@ -10,7 +10,7 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L004 | Leased inference transport | verified |
 | L005 | Behavioral row locators | verified |
 | L006 | Rejected database cleanup | verified |
-| L007 | Tool timeout units and foreground servers | observed |
+| L007 | Tool timeout units and foreground servers | adopted |
 | L008 | Missing terminal provider usage | prepared |
 | L009 | Factual feedback without source duplication | prepared |
 | L010 | Cumulative acceptance coverage | prepared |
