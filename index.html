@@ -41,7 +41,9 @@
       if (className) node.className = className;
       return node;
     }
+    let listRender = 0;
     async function showList(message = '', selectedFilter = 'Active') {
+      const renderId = ++listRender;
       app.replaceChildren();
       app.append(element('h1', 'Workboard'));
       if (message) {
@@ -74,7 +76,9 @@
       const list = element('section');
       list.setAttribute('aria-label', 'Projects');
       try {
-        for (const project of await api(`/api/projects?filter=${filter.value}`)) {
+        const projects = await api(`/api/projects?filter=${filter.value}`);
+        if (renderId !== listRender) return;
+        for (const project of projects) {
           const row = element('div', undefined, 'project-row'); row.dataset.testid = 'project-row';
           row.append(element('span', project.name, 'project-name'));
           const summary = element('span', `${project.completedCount}/${project.totalCount} completed`); summary.dataset.testid = 'project-summary'; row.append(summary);
@@ -85,8 +89,8 @@
           archive.addEventListener('click', async () => { await api(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) }); await showList(); });
           row.append(archive); list.append(row);
         }
-      } catch (error) { app.append(element('p', error.message, 'alert')); }
-      app.append(list);
+      } catch (error) { if (renderId === listRender) app.append(element('p', error.message, 'alert')); }
+      if (renderId === listRender) app.append(list);
       filter.addEventListener('change', () => showList('', filter.value));
     }
     async function showProject(project, message = '') {
