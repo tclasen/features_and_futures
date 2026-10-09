@@ -60,11 +60,41 @@ function page(title, content) {
 </head>
 <body><main>${content}</main>
 <script>
-  // Prevent another interaction from interrupting a pending save/navigation.
-  // Snapshot first: disabled controls are omitted from native form submissions.
+  let pendingSave = Promise.resolve();
   document.addEventListener('submit', event => {
+    event.preventDefault();
     const form = event.target;
     const values = new FormData(form);
+    const checkbox = form.querySelector('input[type="checkbox"]');
+    if (checkbox) {
+      // Save in place: replacing the page can restore stale checkbox state
+      // or interrupt a subsequent filter/navigation interaction.
+      const checked = checkbox.checked;
+      checkbox.disabled = true;
+      pendingSave = pendingSave.then(async () => {
+        try {
+          const response = await fetch(form.action, {
+            method: 'POST', body: new URLSearchParams(values),
+          });
+          if (!response.ok) throw new Error('Save failed');
+          const filter = values.get('filter');
+          if ((filter === 'Open' && checked) || (filter === 'Completed' && !checked)) {
+            form.closest('li').remove();
+          }
+        } catch (error) {
+          checkbox.checked = !checked;
+          const alert = document.createElement('p');
+          alert.setAttribute('role', 'alert');
+          alert.textContent = 'Task completion could not be saved. Please try again.';
+          form.append(alert);
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+      return;
+    }
+    // Wait for completion saves before leaving the page. Snapshot first,
+    // since disabled controls are omitted from native form submissions.
     document.querySelectorAll('input, select, button').forEach(control => {
       control.disabled = true;
     });
@@ -75,6 +105,7 @@ function page(title, content) {
       input.value = value;
       form.append(input);
     }
+    pendingSave.then(() => form.submit());
   });
   // Back/forward cache can restore a page captured while it was submitting.
   window.addEventListener('pageshow', event => {

@@ -56,13 +56,13 @@ test('tasks validate, filter, stay project-scoped, and persist completion', asyn
     assert.match(html, /aria-label="Complete Alpha &amp; &lt;task&gt;"/);
     assert.equal((html.match(/data-testid="task-row"/g) || []).length, 2);
     assert.ok(html.indexOf('<span>Alpha') < html.indexOf('<span>Beta'));
-    assert.doesNotMatch(html, / checked/);
+    assert.doesNotMatch(html, /<input[^>]* checked[ >]/);
     assert.doesNotMatch(await get('/projects/2'), /data-testid="task-row"/);
     assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
     await post('/projects/1/tasks/1', { completed: '1' });
     const completed = await get('/projects/1?filter=Completed');
     assert.match(completed, /<span>Alpha &amp; &lt;task&gt;<\/span>/);
-    assert.match(completed, / checked/);
+    assert.match(completed, /<input[^>]* checked[ >]/);
     assert.doesNotMatch(completed, /<span>Beta/);
     const open = await get('/projects/1?filter=Open');
     assert.match(open, /<span>Beta/);
@@ -81,7 +81,7 @@ test('tasks validate, filter, stay project-scoped, and persist completion', asyn
   }
 });
 
-test('submission locks competing controls and preserves checked and unchecked saves', async () => {
+test('completion saves in place and navigation waits for checked and unchecked saves', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp('data/test-submission-');
   let server;
@@ -106,24 +106,49 @@ test('submission locks competing controls and preserves checked and unchecked sa
         .filter(field => !field.disabled && field.name &&
           (field.type !== 'checkbox' || field.checked))
         .map(field => [field.name, field.value]);
-      const form = { fields, append(input) { this.fields.push(input); } };
-      runInNewContext(script, {
+      let submitted = false;
+      let releaseSave;
+      const saveGate = new Promise(resolve => { releaseSave = resolve; });
+      const form = {
+        fields, action: `${server.url}/projects/1/tasks/1`,
+        querySelector() { return fields[1]; },
+        closest() { return { remove() { throw new Error('All filter must retain the row'); } }; },
+        append(input) { this.fields.push(input); },
+      };
+      const context = {
         document: {
           addEventListener(name, listener) { listeners[name] = listener; },
           querySelectorAll() { return controls; },
           createElement() { return {}; },
         },
         window: { addEventListener() {} },
+        URLSearchParams,
+        fetch: async (...args) => {
+          await saveGate;
+          return fetch(...args);
+        },
         FormData: class {
           constructor(form) { this.values = successfulValues(form); }
+          get(name) { return this.values.find(entry => entry[0] === name)?.[1] || null; }
           [Symbol.iterator]() { return this.values[Symbol.iterator](); }
         },
-      });
-      const expected = successfulValues(form);
-      listeners.submit({ target: form });
-      assert.ok(controls.every(control => control.disabled));
-      assert.deepEqual(successfulValues(form), expected);
-      await post('/projects/1/tasks/1', successfulValues(form));
+      };
+      runInNewContext(script + '\n globalThis.waitForSave = () => pendingSave;', context);
+      listeners.submit({ target: form, preventDefault() {} });
+      assert.equal(fields[1].disabled, true);
+      assert.equal(filter.disabled, undefined);
+      assert.equal(fields.length, 2, 'completion does not create hidden duplicate fields');
+      const navigation = {
+        fields: [filter], querySelector() { return null; },
+        append(input) { this.fields.push(input); },
+        submit() { submitted = true; },
+      };
+      listeners.submit({ target: navigation, preventDefault() {} });
+      assert.equal(submitted, false, 'filter navigation waits for the save');
+      releaseSave();
+      await context.waitForSave();
+      assert.equal(submitted, true);
+      assert.deepEqual(successfulValues(navigation), [['filter', 'All']]);
       const saved = await (await fetch(`${server.url}/projects/1`)).text();
       assert.equal(/aria-label="Complete Done task" checked/.test(saved), checked);
     }
