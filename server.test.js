@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -165,6 +166,79 @@ test('tasks validate, filter, complete, stay in their project, and persist acros
     await server.stop();
     server = await startServer(databasePath);
     assert.equal(rows(await detail()).filter(row => / checked/.test(row)).length, 0);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('checkbox changes save explicit states before filter navigation and survive restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-checkbox-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields),
+    });
+    await post('/projects', { name: 'Checkbox regression' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    const html = await (await fetch(`${server.baseUrl}/projects/1`)).text();
+    const handlers = {};
+    const checkbox = {
+      checked: false,
+      form: { action: `${server.baseUrl}/projects/1/tasks/1` },
+      addEventListener(event, handler) { handlers.checkbox = handler; },
+    };
+    let navigations = 0;
+    const filter = {
+      value: 'All',
+      form: { requestSubmit() { navigations++; } },
+      addEventListener(event, handler) { handlers.filter = handler; },
+    };
+    const saveError = { hidden: true };
+    const requests = [];
+    runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], {
+      URLSearchParams,
+      document: {
+        getElementById(id) { return id === 'task-filter' ? filter : saveError; },
+        querySelectorAll() { return [checkbox]; },
+      },
+      async fetch(url, options) {
+        requests.push(options.body.get('completed'));
+        const response = await fetch(url, options);
+        assert.deepEqual(await response.json(), { completed: options.body.get('completed') === '1' });
+        return response;
+      },
+    });
+
+    checkbox.checked = true;
+    handlers.checkbox();
+    await handlers.filter();
+    assert.equal(checkbox.checked, true);
+    assert.match(await (await fetch(`${server.baseUrl}/projects/1`)).text(), /aria-label="Complete Done task" checked/);
+
+    checkbox.checked = false;
+    handlers.checkbox();
+    const navigation = handlers.filter();
+    assert.equal(navigations, 1, 'navigation waits for the unchecked state to save');
+    await navigation;
+    assert.equal(checkbox.checked, false);
+    assert.equal(saveError.hidden, true);
+    assert.deepEqual(requests, ['1', '0']);
+    const saved = await (await fetch(`${server.baseUrl}/projects/1`)).text();
+    assert.doesNotMatch(saved, /aria-label="Complete Done task" checked/);
+
+    // Rapid changes must be saved in their event order.
+    checkbox.checked = true;
+    handlers.checkbox();
+    checkbox.checked = false;
+    handlers.checkbox();
+    await handlers.filter();
+    assert.deepEqual(requests, ['1', '0', '1', '0']);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await (await fetch(`${server.baseUrl}/projects/1`)).text(), saved);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

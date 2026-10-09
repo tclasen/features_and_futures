@@ -124,7 +124,7 @@ function projectPage(project, filter = 'All', error = '') {
     <h2>Tasks</h2>
     <form class="filter" method="get" action="/projects/${project.id}">
       <label for="task-filter">Task filter</label>
-      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+      <select id="task-filter" name="filter">
         ${['All', 'Open', 'Completed'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
@@ -133,10 +133,47 @@ function projectPage(project, filter = 'All', error = '') {
         <div class="task" data-testid="task-row">
           <form method="post" action="/projects/${project.id}/tasks/${task.id}">
             <input type="hidden" name="filter" value="${filter}">
-            <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+            <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}><span>${escapeHtml(task.title)}</span></label>
           </form>
         </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
-    </div>`);
+    </div>
+    <p id="task-save-error" class="alert" role="alert" hidden></p>
+    <script>
+      let pendingUpdates = Promise.resolve();
+      const taskFilter = document.getElementById('task-filter');
+      const saveError = document.getElementById('task-save-error');
+      document.querySelectorAll('input[name="completed"]').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+          const completed = checkbox.checked;
+          const form = checkbox.form;
+          const body = new URLSearchParams({ completed: completed ? '1' : '0' });
+          pendingUpdates = pendingUpdates.then(async () => {
+            try {
+              const response = await fetch(form.action, {
+                method: 'POST',
+                headers: { Accept: 'application/json' },
+                body,
+                keepalive: true,
+              });
+              if (!response.ok) throw new Error('Unable to save task');
+              saveError.hidden = true;
+              const filter = taskFilter.value;
+              if (checkbox.checked === completed && filter !== 'All' && completed !== (filter === 'Completed')) {
+                checkbox.closest('[data-testid="task-row"]').remove();
+              }
+            } catch (error) {
+              if (checkbox.checked === completed) checkbox.checked = !completed;
+              saveError.textContent = 'Unable to save task. Please try again.';
+              saveError.hidden = false;
+            }
+          });
+        });
+      });
+      taskFilter.addEventListener('change', async () => {
+        await pendingUpdates;
+        taskFilter.form.requestSubmit();
+      });
+    </script>`);
 }
 
 async function readForm(request) {
@@ -194,8 +231,13 @@ const server = http.createServer(async (request, response) => {
           createTask.run(project.id, title);
         } else {
           const taskId = Number(parts[4]);
-          if (!Number.isSafeInteger(taskId) || !updateTask.run(form.has('completed') ? 1 : 0, taskId, project.id).changes) {
+          if (!Number.isSafeInteger(taskId) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id).changes) {
             sendHtml(response, 404, page('Task not found', '<h1>Task not found</h1>'));
+            return;
+          }
+          if (request.headers.accept === 'application/json') {
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({ completed: form.get('completed') === '1' }));
             return;
           }
         }
