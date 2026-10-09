@@ -97,3 +97,74 @@ test('projects validate, navigate, and persist across restarts', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, stay in their project, and persist completion', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const dbPath = join(directory, 'tasks.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, values) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.base}${path}`)).text();
+    for (const name of ['First', 'Second']) await post('/projects', { name });
+    let document = await get('/projects/1');
+    assert.match(document, /<label for="task-title">Task title<\/label>/);
+    assert.match(document, /<button type="submit">Create task<\/button>/);
+    assert.match(document, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(document, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 400);
+      document = await response.text();
+      assert.match(document, /role="alert">Task title is required/);
+      assert.equal(document.includes('data-testid="task-row"'), false);
+    }
+    for (const title of ['  First task  ', 'Second <task> & "friends"']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1');
+    }
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    document = await get('/projects/1');
+    assert.equal((document.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(document, /aria-label="Complete First task"/);
+    assert.match(document, /aria-label="Complete Second &lt;task&gt; &amp; &quot;friends&quot;"/);
+    assert.ok(document.indexOf('Complete First task') < document.indexOf('Complete Second'));
+    assert.equal(document.includes(' checked'), false);
+    assert.equal(document.includes('Other project task'), false);
+    assert.equal((await get('/projects/2')).includes('First task'), false);
+
+    const completed = await post('/projects/1/tasks/1', { completed: '1', filter: 'Open' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    document = await get('/projects/1');
+    assert.match(document, /aria-label="Complete First task" checked/);
+    const open = await get('/projects/1?filter=Open');
+    assert.equal(open.includes('First task'), false);
+    assert.equal((open.match(/data-testid="task-row"/g) || []).length, 1);
+    const done = await get('/projects/1?filter=Completed');
+    assert.match(done, /Complete First task/);
+    assert.equal(done.includes('Complete Second'), false);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '0' })).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Missing project' })).status, 404);
+
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), document);
+    assert.equal(await get('/projects/1?filter=Open'), open);
+    assert.equal(await get('/projects/1?filter=Completed'), done);
+    assert.match(await get('/projects/2'), /Other project task/);
+    assert.equal((await post('/projects/1/tasks/1', {})).status, 303);
+    assert.equal((await get('/projects/1')).includes(' checked'), false);
+    assert.equal((await get('/projects/1?filter=Completed')).includes('data-testid="task-row"'), false);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal((await get('/projects/1')).includes(' checked'), false);
+    assert.equal(((await get('/projects/1?filter=Open')).match(/data-testid="task-row"/g) || []).length, 2);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
