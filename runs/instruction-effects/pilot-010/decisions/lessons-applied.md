@@ -1,0 +1,7 @@
+# Pilot010 preparation
+
+Use twelve fresh hosted configurations, parallel native harnesses and the full-cohort barrier. Preserve009 PM failures, all129 consumed requests and original source/history. Adopt L023 foreground native deployment sessions and partial-launch cleanup; L024 persisted-row readiness synchronization. Retain L015 context/compaction accounting, L020/L021 uniform factual visible-state feedback and exact native-return timing, and L022 equal30-second behavioral observations with a measured same-revision restart policy.
+
+Four prefix packets and their declared phases are frozen before dispatch. Task005requirements were selected in advance and remain PM-only until its round is frozen and released after the fourth barrier. The new append-only registry hashes cumulative packets and suites, rejects changes/gaps and participates in audits. Minimum5tasks and a matching stream seal are required for completion. Fresh contexts persist each builder's own repository only; no implementation or diagnosis from009 enters010contexts.
+
+Ninety-nine PM checks pass; all25phase counts from corrected v007and planned v008match pinned Playwright lists. The unchanged rejected009b010source passes corrected acceptance plus real restart in a separate VM. Matched trusted services verified background failure at30seconds and foreground health beyond45seconds. Native adoption, all60checkpoints and exact replay verification remain pending. No instruction-effect or main-run readiness claim follows from preparation.
