@@ -13,4 +13,6 @@ PORT=8080 DB_PATH=data/workboard.sqlite npm start
 npm test
 ```
 
-`GET /health` returns `{"status":"ok"}`. Tests use a temporary database and verify validation, creation order, project identity, page routes, and persistence across server restarts.
+Open a project to create tasks, toggle completion, and filter by All, Open, or Completed. Projects and tasks are saved in SQLite.
+
+`GET /health` returns `{"status":"ok"}`. Tests use a temporary database and verify validation, creation order, project identity, task ownership, completion updates, page routes, and persistence across server restarts.
