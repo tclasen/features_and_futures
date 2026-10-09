@@ -16,6 +16,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,12 +73,15 @@ async function render() {
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
+      const renameForm = document.createElement('form');
+      renameForm.innerHTML = '<label for="new-project-name">New project name</label><input id="new-project-name" type="text"><button type="submit">Rename project</button>';
+      if (project.archived) { renameForm.querySelector('input').disabled = true; renameForm.querySelector('button').disabled = true; }
       const form = document.createElement('form');
       form.innerHTML = '<label for="task-title">Task title</label><input id="task-title" type="text"><button type="submit">Create task</button>';
       if (project.archived) { form.querySelector('input').disabled = true; form.querySelector('button').disabled = true; }
       const alert = document.createElement('p');
       alert.className = 'alert'; alert.setAttribute('role', 'alert'); alert.hidden = true;
-      app.append(back, heading);
+      app.append(back, heading, renameForm, alert);
       if (project.archived) { const archived = document.createElement('p'); archived.textContent = 'Archived project'; app.append(archived); }
       const filterLabel = document.createElement('label'); filterLabel.htmlFor = 'task-filter'; filterLabel.textContent = 'Task filter';
       const filter = document.createElement('select'); filter.id = 'task-filter';
@@ -97,6 +101,14 @@ async function render() {
         }
       }
       filter.addEventListener('change', loadTasks);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = renameForm.querySelector('input').value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+        alert.hidden = true;
+        const response = await fetch('/api/projects/' + match[1], { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (response.ok) { project.name = name; heading.textContent = name; renameForm.querySelector('input').value = ''; }
+      });
       form.addEventListener('submit', async event => { event.preventDefault(); const input = form.querySelector('input'); const title = input.value.trim(); if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; } alert.hidden = true; const response = await fetch('/api/projects/' + match[1] + '/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }); if (response.ok) { input.value = ''; await loadTasks(); } });
       await loadTasks();
       return;
@@ -190,6 +202,19 @@ const server = http.createServer(async (req, res) => {
   if (projectMatch && req.method === 'GET') {
     const project = getProject.get(Number(projectMatch[1]));
     return project ? send(res, 200, project) : send(res, 404, { error: 'Project not found' });
+  }
+  if (projectMatch && req.method === 'PATCH') {
+    try {
+      const body = await readJson(req);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return send(res, 400, { error: 'Project name is required' });
+      const id = Number(projectMatch[1]);
+      const project = getProject.get(id);
+      if (!project) return send(res, 404, { error: 'Project not found' });
+      if (project.archived) return send(res, 409, { error: 'Project is archived' });
+      renameProject.run(name, id);
+      return send(res, 200, getProject.get(id));
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
