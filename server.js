@@ -3,8 +3,7 @@ import url from 'url';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { open } from 'node:sqlite';
-import { Database } from 'node:sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,9 +16,10 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 
 let db;
 
-async function initDb() {
-  db = await open({ filename: DB_PATH, driver: Database });
-  await db.exec(`CREATE TABLE IF NOT EXISTS projects (
+function initDb() {
+  // Use the synchronous experimental API; it works without callbacks and fits the simple query needs.
+  db = new DatabaseSync(DB_PATH);
+  db.exec(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   );`);
@@ -73,7 +73,7 @@ async function handleRequest(req, res) {
   // API routes
   if (pathname === '/api/projects') {
     if (req.method === 'GET') {
-      const rows = await db.all('SELECT id, name FROM projects ORDER BY id ASC');
+      const rows = db.prepare('SELECT id, name FROM projects ORDER BY id ASC').all();
       sendJson(res, 200, rows);
       return;
     }
@@ -88,8 +88,9 @@ async function handleRequest(req, res) {
             sendJson(res, 400, { error: 'Project name is required' });
             return;
           }
-          const result = await db.run('INSERT INTO projects (name) VALUES (?)', trimmed);
-          const newProject = { id: result.lastID, name: trimmed };
+          const stmt = db.prepare('INSERT INTO projects (name) VALUES (?)');
+          const info = stmt.run(trimmed);
+          const newProject = { id: info.lastInsertRowid, name: trimmed };
           sendJson(res, 201, newProject);
         } catch (e) {
           sendJson(res, 400, { error: 'Invalid request' });
@@ -103,7 +104,7 @@ async function handleRequest(req, res) {
   const projectPageMatch = pathname.match(/^\/projects\/(\d+)$/);
   if (projectPageMatch && req.method === 'GET') {
     const projectId = Number(projectPageMatch[1]);
-    const row = await db.get('SELECT id, name FROM projects WHERE id = ?', projectId);
+    const row = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(projectId);
     if (!row) {
       res.writeHead(404);
       res.end('Project not found');
@@ -144,7 +145,7 @@ async function handleRequest(req, res) {
   res.end('Not found');
 }
 
-await initDb();
+initDb();
 
 const server = http.createServer((req, res) => {
   // Catch async errors
