@@ -71,14 +71,54 @@ test('projects validate, preserve order, open and persist across restarts', asyn
     assert.ok(content.indexOf('First project') < content.indexOf('Second &lt;project&gt;'));
     const paths = [...content.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]);
     assert.equal(paths.length, 2);
-    const detail = await (await fetch(base + paths[0])).text();
+    let detail = await (await fetch(base + paths[0])).text();
     assert.match(detail, /<h1>First project<\/h1>/);
     assert.match(detail, /action="\/".*>Projects<\/button>/);
     assert.equal((await fetch(`${base}/projects/9999`)).status, 404);
+    const projectPath = paths[0];
+    async function postTask(path, values) {
+      return fetch(base + path, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+    }
+    const taskRows = html => [...html.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    assert.match(detail, /Task title<input/);
+    assert.match(detail, /<option value="all" selected>All/);
+    for (const title of ['', '   ']) {
+      const invalid = await (await postTask(`${projectPath}/tasks`, { title })).text();
+      assert.match(invalid, /role="alert">Task title is required/);
+      assert.equal(taskRows(invalid).length, 0);
+    }
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: '  First task  ' })).status, 303);
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: 'Second <task>' })).status, 303);
+    detail = await (await fetch(base + projectPath)).text();
+    let rows = taskRows(detail);
+    assert.equal(rows.length, 2);
+    assert.match(rows[0], /<span>First task<\/span>/);
+    assert.match(rows[0], /aria-label="Complete First task"/);
+    assert.match(rows[1], /Second &lt;task&gt;/);
+    assert.ok(rows.every(row => !row.includes(' checked')));
+    const taskPath = rows[0].match(/action="([^"]+)"/)[1];
+    assert.equal((await postTask(taskPath, { completed: '1' })).status, 303);
+    rows = taskRows(await (await fetch(`${base}${projectPath}?filter=completed`)).text());
+    assert.equal(rows.length, 1);
+    assert.match(rows[0], / checked/);
+    assert.match(rows[0], /First task/);
+    rows = taskRows(await (await fetch(`${base}${projectPath}?filter=open`)).text());
+    assert.equal(rows.length, 1);
+    assert.match(rows[0], /Second &lt;task&gt;/);
+    assert.equal(taskRows(await (await fetch(base + paths[1])).text()).length, 0);
+    const foreignTaskPath = taskPath.replace(projectPath, paths[1]);
+    assert.equal((await postTask(foreignTaskPath, {})).status, 404);
+    detail = await (await fetch(base + projectPath)).text();
     await stop();
     await start();
     assert.equal(await (await fetch(base)).text(), content);
     assert.equal(await (await fetch(base + paths[0])).text(), detail);
+    assert.equal((await postTask(taskPath, {})).status, 303);
+    rows = taskRows(await (await fetch(base + projectPath)).text());
+    assert.ok(rows.every(row => !row.includes(' checked')));
+    assert.equal(taskRows(await (await fetch(`${base}${projectPath}?filter=completed`)).text()).length, 0);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
