@@ -20,6 +20,8 @@
     .task-row input { padding: 0; }
     select { font: inherit; padding: 8px; border: 1px solid #9eacb8; border-radius: 6px; }
     .alert { color: #a12622; margin: 0 0 16px; }
+    .project-actions { display: flex; align-items: center; gap: 8px; }
+    .project-summary { color: #53616d; }
   </style>
 </head>
 <body>
@@ -40,9 +42,12 @@
           <input id="project-name" name="name" type="text" autocomplete="off">
           <button type="submit">Create project</button>
         </form>
+        <label for="project-filter">Project filter</label>
+        <select id="project-filter"><option>Active</option><option>Archived</option></select>
         <p class="alert" role="alert"${message ? '' : ' hidden'}>${message}</p>
         <section id="projects" aria-label="Projects"></section>`;
       const form = app.querySelector('#create-project');
+      const filter = app.querySelector('#project-filter');
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = new FormData(form).get('name').trim();
@@ -55,9 +60,13 @@
         });
         if (response.ok) showList();
       });
-      loadProjects().then((projects) => {
+      async function renderProjects() {
+        const projects = await loadProjects();
         const list = app.querySelector('#projects');
+        if (!list) return;
+        list.replaceChildren();
         for (const project of projects) {
+          if (Boolean(project.archived) !== (filter.value === 'Archived')) continue;
           const row = document.createElement('div');
           row.className = 'project-row';
           row.dataset.testid = 'project-row';
@@ -67,10 +76,27 @@
           open.type = 'button';
           open.textContent = 'Open project';
           open.addEventListener('click', () => { location.href = `/projects/${encodeURIComponent(project.id)}`; });
-          row.append(name, open);
+          const summary = document.createElement('span');
+          summary.dataset.testid = 'project-summary';
+          summary.className = 'project-summary';
+          summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+          const actions = document.createElement('div');
+          actions.className = 'project-actions';
+          actions.append(open);
+          const archive = document.createElement('button');
+          archive.type = 'button';
+          archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+          archive.addEventListener('click', async () => {
+            await fetch(`/api/projects/${encodeURIComponent(project.id)}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+            await renderProjects();
+          });
+          actions.append(archive);
+          row.append(name, summary, actions);
           list.append(row);
         }
-      });
+      }
+      filter.addEventListener('change', renderProjects);
+      renderProjects();
     }
 
     async function showProject(id) {
@@ -79,6 +105,7 @@
       const project = await response.json();
       app.innerHTML = `
         <button type="button" id="back">Projects</button><h1></h1>
+        <p id="archived-banner" hidden>Archived project</p>
         <form id="create-task">
           <label for="task-title">Task title</label>
           <input id="task-title" name="title" type="text" autocomplete="off">
@@ -90,7 +117,10 @@
         <section id="tasks" aria-label="Tasks"></section>`;
       app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
       app.querySelector('h1').textContent = project.name;
+      const archived = Boolean(project.archived);
+      app.querySelector('#archived-banner').hidden = !archived;
       const form = app.querySelector('#create-task');
+      form.querySelector('button').disabled = archived;
       const alert = app.querySelector('[role="alert"]');
       const filter = app.querySelector('#task-filter');
       async function renderTasks() {
@@ -106,6 +136,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = Boolean(task.completed);
+          checkbox.disabled = archived;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
