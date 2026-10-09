@@ -55,7 +55,7 @@ const server = createServer(async (req, res) => {
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
       FROM projects p
-      WHERE p.id = (SELECT MIN(p2.id) FROM projects p2 WHERE p2.name = p.name)
+      WHERE p.id = (SELECT MIN(p2.id) FROM projects p2 WHERE lower(trim(p2.name)) = lower(trim(p.name)))
       ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) })));
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
@@ -66,7 +66,7 @@ const server = createServer(async (req, res) => {
     const name = body.name.trim();
     // Repeated submissions (including acceptance retries against a persistent DB)
     // should resolve to the existing project instead of creating ambiguous rows.
-    const existing = db.prepare('SELECT id, name FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
+    const existing = db.prepare('SELECT id, name FROM projects WHERE lower(trim(name)) = lower(trim(?)) ORDER BY id LIMIT 1').get(name);
     if (existing) return json(res, 200, { id: existing.id, name: existing.name });
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return json(res, 201, { id: Number(result.lastInsertRowid), name });
