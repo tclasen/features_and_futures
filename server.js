@@ -32,6 +32,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -69,6 +70,23 @@ const server = http.createServer(async (req, res) => {
       if (!findProject.get(id)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
       setArchived.run(payload.archived ? 1 : 0, id);
       return send(200, 'application/json; charset=utf-8', JSON.stringify(findProject.get(id)));
+    } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
+  }
+  const taskRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename$/);
+  if (taskRenameRoute && req.method === 'PATCH') {
+    const projectId = Number(taskRenameRoute[1]);
+    const taskId = Number(taskRenameRoute[2]);
+    if (!findProject.get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+    if (findProject.get(projectId).archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const payload = JSON.parse(body || '{}');
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
+      if (!findTask.get(taskId, projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
+      renameTask.run(title, taskId, projectId);
+      return send(200, 'application/json; charset=utf-8', JSON.stringify(findTask.get(taskId, projectId)));
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
