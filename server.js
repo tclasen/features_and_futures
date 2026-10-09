@@ -8,15 +8,27 @@ const dbPath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     position INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS tasks (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  );
 `);
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY position');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
+
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY position');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title) VALUES (?, ?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -48,6 +60,11 @@ function page(title, content) {
     .project span { overflow-wrap: anywhere; min-width: 0; }
     .project form { flex-shrink: 0; }
     .empty { color: #5b687b; }
+    .task-create { margin-top: 24px; }
+    .task-filter { margin-top: 24px; }
+    select { padding: 10px; font: inherit; }
+    .task label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
+    .task input { width: auto; margin: 0; flex-shrink: 0; }
   </style>
 </head>
 <body><main>${content}</main></body>
@@ -75,6 +92,55 @@ function projectList(error = '') {
     </section>`);
 }
 
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function projectPage(project, filter = 'All', error = '') {
+  const path = `/projects/${project.id}`;
+  const tasks = listTasks.all(project.id).filter(task =>
+    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+  return page(project.name, `
+    <h1>${escapeHtml(project.name)}</h1>
+    <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form class="card task-create" action="${path}/tasks" method="post">
+      ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <input id="task-title" name="title" type="text">
+      <button type="submit">Create task</button>
+    </form>
+    <form class="task-filter" action="${path}" method="get">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['All', 'Open', 'Completed'].map(value => `<option${filter === value ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+    </form>
+    <section class="projects" aria-label="Tasks">
+      ${tasks.length ? tasks.map(task => `
+        <div class="card task" data-testid="task-row">
+          <form action="${path}/tasks/${task.id}" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          </form>
+        </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
+    </section>`);
+}
+
+async function readForm(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk.toString();
+    if (Buffer.byteLength(body) > 65536) return null;
+  }
+  return new URLSearchParams(body);
+}
+
+function redirect(res, location) {
+  res.writeHead(303, { Location: location });
+  res.end();
+}
+
 function sendHtml(res, status, html) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(html);
@@ -93,31 +159,53 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/projects') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk.toString();
-        if (Buffer.byteLength(body) > 65536) {
-          sendHtml(res, 413, page('Request too large', '<h1>Request too large</h1>'));
-          return;
-        }
+      const form = await readForm(req);
+      if (!form) {
+        sendHtml(res, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
       }
-      const name = (new URLSearchParams(body).get('name') || '').trim();
+      const name = (form.get('name') || '').trim();
       if (!name) {
         sendHtml(res, 400, projectList('Project name is required'));
         return;
       }
       insertProject.run(randomUUID(), name);
-      res.writeHead(303, { Location: '/' });
-      res.end();
+      redirect(res, '/');
       return;
+    }
+    const taskMatch = url.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+))?$/);
+    if (req.method === 'POST' && taskMatch) {
+      const project = findProject.get(taskMatch[1]);
+      if (project) {
+        const form = await readForm(req);
+        if (!form) {
+          sendHtml(res, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = taskFilter(form.get('filter'));
+        if (taskMatch[2]) {
+          const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
+          if (!result.changes) {
+            sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+            return;
+          }
+        } else {
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            sendHtml(res, 400, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          insertTask.run(randomUUID(), project.id, title);
+        }
+        redirect(res, `/projects/${project.id}?filter=${filter}`);
+        return;
+      }
     }
     const match = url.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)$/);
     if (req.method === 'GET' && match) {
       const project = findProject.get(match[1]);
       if (project) {
-        sendHtml(res, 200, page(project.name, `
-          <h1>${escapeHtml(project.name)}</h1>
-          <form action="/" method="get"><button type="submit">Projects</button></form>`));
+        sendHtml(res, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
         return;
       }
     }
