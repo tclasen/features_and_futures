@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 async function start(databasePath) {
   const process = spawn(globalThis.process.execPath, ['server.js'], {
@@ -74,6 +75,58 @@ test('tasks validate, filter, stay project-scoped, and persist completion', asyn
     await post('/projects/1/tasks/1', {});
     assert.doesNotMatch(await get('/projects/1?filter=Completed'), /data-testid="task-row"/);
     assert.equal(((await get('/projects/1?filter=Open')).match(/data-testid="task-row"/g) || []).length, 2);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('submission locks competing controls and preserves checked and unchecked saves', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp('data/test-submission-');
+  let server;
+  try {
+    server = await start(resolve(directory, 'test.sqlite'));
+    const post = (path, values) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Project' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    const html = await (await fetch(`${server.url}/projects/1`)).text();
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+    for (const checked of [true, false]) {
+      const fields = [
+        { type: 'hidden', name: 'filter', value: 'All' },
+        { type: 'checkbox', name: 'completed', value: '1', checked },
+      ];
+      const filter = { name: 'filter', value: 'All' };
+      const controls = [...fields, filter, {}];
+      const listeners = {};
+      const successfulValues = form => form.fields
+        .filter(field => !field.disabled && field.name &&
+          (field.type !== 'checkbox' || field.checked))
+        .map(field => [field.name, field.value]);
+      const form = { fields, append(input) { this.fields.push(input); } };
+      runInNewContext(script, {
+        document: {
+          addEventListener(name, listener) { listeners[name] = listener; },
+          querySelectorAll() { return controls; },
+          createElement() { return {}; },
+        },
+        window: { addEventListener() {} },
+        FormData: class {
+          constructor(form) { this.values = successfulValues(form); }
+          [Symbol.iterator]() { return this.values[Symbol.iterator](); }
+        },
+      });
+      const expected = successfulValues(form);
+      listeners.submit({ target: form });
+      assert.ok(controls.every(control => control.disabled));
+      assert.deepEqual(successfulValues(form), expected);
+      await post('/projects/1/tasks/1', successfulValues(form));
+      const saved = await (await fetch(`${server.url}/projects/1`)).text();
+      assert.equal(/aria-label="Complete Done task" checked/.test(saved), checked);
+    }
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

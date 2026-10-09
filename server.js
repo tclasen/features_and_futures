@@ -58,7 +58,30 @@ function page(title, content) {
     @media (max-width: 600px) { main { margin: 20px 12px; padding: 24px; } }
   </style>
 </head>
-<body><main>${content}</main></body>
+<body><main>${content}</main>
+<script>
+  // Prevent another interaction from interrupting a pending save/navigation.
+  // Snapshot first: disabled controls are omitted from native form submissions.
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    const values = new FormData(form);
+    document.querySelectorAll('input, select, button').forEach(control => {
+      control.disabled = true;
+    });
+    for (const [name, value] of values) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    }
+  });
+  // Back/forward cache can restore a page captured while it was submitting.
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) window.location.reload();
+  });
+</script>
+</body>
 </html>`;
 }
 
