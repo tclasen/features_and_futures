@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #182230; background: #f4f6f8; }
+    body { margin: 0; padding: 48px 20px; }
+    main { max-width: 720px; margin: auto; padding: 32px; background: white; border-radius: 12px; box-shadow: 0 4px 18px #18223012; }
+    h1 { margin-top: 0; } form { display: flex; gap: 12px; margin-bottom: 28px; }
+    label { display: block; font-weight: 600; margin-bottom: 7px; }
+    .field { flex: 1; } input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
+    button { border: 0; border-radius: 6px; padding: 10px 16px; background: #2459c4; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #19469f; } .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid #e2e6eb; }
+    .row-name { overflow-wrap: anywhere; } [role=alert] { color: #b42318; margin: 10px 0; }
+    @media (max-width: 500px) { form { flex-direction: column; } main { padding: 24px; } }
+  </style>
+</head>
+<body>
+<main id="app"><h1>Workboard</h1><div id="content"></div></main>
+<script>
+const content = document.querySelector('#content');
+const escapePath = id => `/projects/${encodeURIComponent(id)}`;
+async function projects() {
+  const response = await fetch('/api/projects');
+  if (!response.ok) throw new Error('Could not load projects');
+  return response.json();
+}
+function showList() {
+  document.querySelector('h1').textContent = 'Workboard';
+  content.innerHTML = '<form id="create-form"><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"></div><button type="submit">Create project</button></form><div id="alert" role="alert" aria-live="polite"></div><section id="project-list" aria-label="Projects"></section>';
+  const form = document.querySelector('#create-form');
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const name = new FormData(form).get('name').trim();
+    const alert = document.querySelector('#alert');
+    if (!name) { alert.textContent = 'Project name is required'; return; }
+    const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    if (!response.ok) { alert.textContent = 'Could not create project'; return; }
+    history.pushState({}, '', '/');
+    await renderList();
+  });
+  renderList();
+}
+async function renderList() {
+  const list = document.querySelector('#project-list');
+  if (!list) return;
+  try {
+    const items = await projects();
+    list.replaceChildren();
+    for (const project of items) {
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.testid = 'project-row';
+      const name = document.createElement('span'); name.className = 'row-name'; name.textContent = project.name;
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open project';
+      button.addEventListener('click', () => { history.pushState({}, '', escapePath(project.id)); render(); });
+      row.append(name, button); list.append(row);
+    }
+  } catch { list.textContent = 'Could not load projects'; }
+}
+async function render() {
+  const match = location.pathname.match(/^\/projects\/([^/]+)$/);
+  if (!match) { showList(); return; }
+  let project;
+  try { project = (await projects()).find(item => item.id === decodeURIComponent(match[1])); } catch {}
+  document.querySelector('h1').textContent = project ? project.name : 'Project not found';
+  content.replaceChildren();
+  const back = document.createElement('button'); back.type = 'button'; back.textContent = 'Projects';
+  back.addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+  content.append(back);
+}
+window.addEventListener('popstate', render);
+render();
+</script>
+</body>
+</html>
