@@ -23,20 +23,6 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-// Older persistent pilot databases may contain duplicate rows from retried runs.
-// Keep the oldest project ID, preserving its tasks and any archived state.
-db.exec(`
-  UPDATE tasks SET project_id = (
-    SELECT MIN(keeper.id) FROM projects AS keeper
-    WHERE keeper.name = (SELECT duplicate.name FROM projects AS duplicate WHERE duplicate.id = tasks.project_id)
-  )
-  WHERE project_id NOT IN (SELECT MIN(id) FROM projects GROUP BY name);
-  UPDATE projects SET archived = 0
-  WHERE id = (SELECT MIN(id) FROM projects AS keeper WHERE keeper.name = projects.name)
-    AND EXISTS (SELECT 1 FROM projects AS duplicate WHERE duplicate.name = projects.name AND duplicate.archived = 0);
-  DELETE FROM projects WHERE id NOT IN (SELECT MIN(id) FROM projects GROUP BY name);
-`);
-
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 const sendJson = (res, status, data) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -93,13 +79,6 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) return sendJson(res, 400, { error: 'Project name is required' });
-    // Treat repeated submissions as retries so a rerun against a persistent
-    // pilot database does not create ambiguous duplicate rows.
-    const existing = db.prepare('SELECT id, name, archived FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
-    if (existing) {
-      if (existing.archived) db.prepare('UPDATE projects SET archived = 0 WHERE id = ?').run(existing.id);
-      return sendJson(res, 200, { id: Number(existing.id), name: existing.name });
-    }
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), name });
   }

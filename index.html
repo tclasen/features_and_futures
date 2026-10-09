@@ -90,16 +90,14 @@
       const form = app.querySelector('#create-form');
       const error = app.querySelector('.error');
       const list = app.querySelector('#project-list');
+      let refreshVersion = 0;
       async function refresh() {
-        list.replaceChildren();
+        const version = ++refreshVersion;
         const archivedFilter = app.querySelector('#project-filter').value === 'Archived';
         const projects = (await loadProjects()).filter(project => project.archived === archivedFilter);
-        const visibleNames = new Set();
+        if (version !== refreshVersion) return;
+        const rows = document.createDocumentFragment();
         for (const project of projects) {
-          // Persistent pilot databases may contain retry-created duplicate names.
-          // Keep one visible row so project actions remain unambiguous.
-          if (visibleNames.has(project.name)) continue;
-          visibleNames.add(project.name);
           const row = document.createElement('div'); row.className = 'row'; row.dataset.testid = 'project-row';
           const name = document.createElement('span'); name.textContent = project.name;
           const open = document.createElement('button'); open.textContent = 'Open project';
@@ -110,8 +108,9 @@
             const response = await fetch(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
             if (response.ok) await refresh();
           });
-          row.append(name, summary, open, action); list.append(row);
+          row.append(name, summary, open, action); rows.append(row);
         }
+        list.replaceChildren(rows);
       }
       app.querySelector('#project-filter').addEventListener('change', refresh);
       form.addEventListener('submit', async event => {
