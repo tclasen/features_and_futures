@@ -10,7 +10,7 @@
     body { margin: 0; }
     main { width: min(760px, calc(100% - 32px)); margin: 56px auto; }
     h1 { margin: 0 0 28px; font-size: 2rem; }
-    form, .project-row { display: flex; align-items: center; gap: 12px; }
+    form, .project-row, .task-row { display: flex; align-items: center; gap: 12px; }
     form { margin-bottom: 20px; }
     label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     input { flex: 1; min-width: 0; border: 1px solid #aab4c0; border-radius: 6px; padding: 10px 12px; font: inherit; background: white; }
@@ -19,6 +19,12 @@
     button:focus-visible, input:focus-visible { outline: 3px solid #92b5ff; outline-offset: 2px; }
     .project-row { justify-content: space-between; padding: 14px 16px; margin: 10px 0; border: 1px solid #d7dde5; border-radius: 8px; background: white; }
     .project-name { font-weight: 600; }
+    .task-row { padding: 12px 16px; margin: 8px 0; border: 1px solid #d7dde5; border-radius: 8px; background: white; }
+    .task-row input { flex: 0 0 auto; width: 18px; height: 18px; }
+    .task-title { flex: 1; }
+    .completed { color: #657080; text-decoration: line-through; }
+    .filter { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
+    .filter select { min-width: 150px; border: 1px solid #aab4c0; border-radius: 6px; padding: 9px 12px; font: inherit; background: white; }
     [role="alert"] { min-height: 1.5em; margin: 0 0 10px; color: #b42318; }
     .back { margin-bottom: 24px; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
@@ -103,6 +109,71 @@
       try {
         const project = await api(`/api/projects/${encodeURIComponent(id)}`);
         app.append(element('h1', project.name));
+        const alert = element('p', '');
+        alert.setAttribute('role', 'alert');
+        app.append(alert);
+        const form = document.createElement('form');
+        const label = element('label', 'Task title');
+        label.htmlFor = 'task-title';
+        const input = document.createElement('input');
+        input.id = 'task-title';
+        input.type = 'text';
+        input.setAttribute('aria-label', 'Task title');
+        const submit = element('button', 'Create task');
+        submit.type = 'submit';
+        form.append(label, input, submit);
+        app.append(form);
+        const filterWrap = element('div', undefined, 'filter');
+        const filterLabel = element('label', 'Task filter');
+        filterLabel.htmlFor = 'task-filter';
+        const filter = document.createElement('select');
+        filter.id = 'task-filter';
+        filter.setAttribute('aria-label', 'Task filter');
+        for (const value of ['All', 'Open', 'Completed']) {
+          const option = element('option', value);
+          option.value = value;
+          filter.append(option);
+        }
+        filterWrap.append(filterLabel, filter);
+        app.append(filterWrap);
+        const list = element('section');
+        list.setAttribute('aria-label', 'Tasks');
+        app.append(list);
+        async function refresh() {
+          const tasks = await api(`/api/projects/${encodeURIComponent(id)}/tasks`);
+          list.replaceChildren();
+          for (const task of tasks) {
+            if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+            const row = element('div', undefined, 'task-row');
+            row.dataset.testid = 'task-row';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = task.completed;
+            checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+            const title = element('span', task.title, `task-title${task.completed ? ' completed' : ''}`);
+            checkbox.addEventListener('change', async () => {
+              try {
+                await api(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+                await refresh();
+              } catch (error) { alert.textContent = error.message; }
+            });
+            row.append(checkbox, title);
+            list.append(row);
+          }
+        }
+        filter.addEventListener('change', refresh);
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          alert.textContent = '';
+          const title = input.value.trim();
+          if (!title) { alert.textContent = 'Task title is required'; input.focus(); return; }
+          try {
+            await api(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+            input.value = '';
+            await refresh();
+          } catch (error) { alert.textContent = error.message; }
+        });
+        await refresh();
       } catch {
         app.append(element('h1', 'Project not found'));
       }
