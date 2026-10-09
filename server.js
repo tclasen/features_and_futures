@@ -40,6 +40,7 @@ const insertProject = db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)'
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY position');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -78,6 +79,8 @@ function page(title, content) {
     select { padding: 10px; font: inherit; }
     .task label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
     .task input { width: auto; margin: 0; flex-shrink: 0; }
+    .task .task-rename { margin-top: 16px; }
+    .task .task-rename input { width: 100%; margin: 8px 0 16px; }
   </style>
 </head>
 <body><main>${content}</main></body>
@@ -157,6 +160,12 @@ function projectPage(project, filter = 'All', error = '') {
           <form action="${path}/tasks/${task.id}" method="post">
             <input type="hidden" name="filter" value="${filter}">
             <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          </form>
+          <form class="task-rename" action="${path}/tasks/${task.id}/rename" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
         </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </section>`);
@@ -240,7 +249,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const taskMatch = url.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+))?$/);
+    const taskMatch = url.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(\/rename)?)?$/);
     if (req.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (project) {
@@ -255,7 +264,17 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         if (taskMatch[2]) {
-          const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
+          let result;
+          if (taskMatch[3]) {
+            const title = (form.get('title') || '').trim();
+            if (!title) {
+              sendHtml(res, 400, projectPage(project, filter, 'Task title is required'));
+              return;
+            }
+            result = renameTask.run(title, taskMatch[2], project.id);
+          } else {
+            result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
+          }
           if (!result.changes) {
             sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
             return;
