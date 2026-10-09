@@ -40,6 +40,7 @@ const projectQuery = `SELECT p.id, p.name, p.archived,
 const listProjects = db.prepare(`${projectQuery} ORDER BY p.id ASC`);
 const findProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -63,8 +64,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PATCH' && match) {
       if (!findProject.get(match[1])) return json(res, 404, { error: 'Project not found' });
       const input = await readBody(req);
-      if (typeof input?.archived !== 'boolean') return json(res, 400, { error: 'Archive state must be a boolean' });
-      updateProject.run(Number(input.archived), match[1]);
+      if (Object.hasOwn(input || {}, 'name')) {
+        if (findProject.get(match[1]).archived) return json(res, 409, { error: 'Archived project' });
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return json(res, 400, { error: 'Project name is required' });
+        renameProject.run(name, match[1]);
+      } else {
+        if (typeof input?.archived !== 'boolean') return json(res, 400, { error: 'Archive state must be a boolean' });
+        updateProject.run(Number(input.archived), match[1]);
+      }
       return json(res, 200, findProject.get(match[1]));
     }
     const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);

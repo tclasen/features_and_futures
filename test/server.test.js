@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects, tasks and archive summaries survive migration and server restart', async () => {
+test('projects, tasks, archive summaries and renames survive migration and server restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
   legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
@@ -98,6 +98,9 @@ test('projects, tasks and archive summaries survive migration and server restart
     const archived = await taskRequest(projectPath, 'PATCH', { archived: true });
     assert.equal(archived.status, 200);
     assert.deepEqual(await archived.json(), { ...summary, archived: 1 });
+    const blockedRename = await taskRequest(projectPath, 'PATCH', { name: 'Forbidden rename' });
+    assert.equal(blockedRename.status, 409);
+    assert.deepEqual(await (await fetch(base + projectPath)).json(), { ...summary, archived: 1 });
     assert.equal((await taskRequest(tasksPath, 'POST', { title: 'Forbidden task' })).status, 409);
     assert.equal((await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { completed: false })).status, 409);
     await stop();
@@ -108,14 +111,26 @@ test('projects, tasks and archive summaries survive migration and server restart
     const restored = await taskRequest(projectPath, 'PATCH', { archived: false });
     assert.equal(restored.status, 200);
     assert.deepEqual(await restored.json(), summary);
+    for (const name of ['', '   ']) {
+      const invalidRename = await taskRequest(projectPath, 'PATCH', { name });
+      assert.equal(invalidRename.status, 400);
+      assert.equal((await invalidRename.json()).error, 'Project name is required');
+      assert.deepEqual(await (await fetch(base + projectPath)).json(), summary);
+    }
+    const renamedResponse = await taskRequest(projectPath, 'PATCH', { name: '  Renamed project  ' });
+    assert.equal(renamedResponse.status, 200);
+    const renamed = { ...summary, name: 'Renamed project' };
+    assert.deepEqual(await renamedResponse.json(), renamed);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    assert.deepEqual(await (await fetch(base + tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
     const unchecked = await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { completed: false });
     assert.equal(unchecked.status, 200);
     assert.equal((await unchecked.json()).completed, false);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(base + tasksPath)).json(), [task, nextTask]);
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [{ ...first, total: 2 }, second]);
-    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), { ...first, total: 2 });
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [{ ...renamed, completed: 0 }, second]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), { ...renamed, completed: 0 });
     for (const path of ['/', `/projects/${first.id}`]) {
       const response = await fetch(base + path);
       assert.equal(response.status, 200);

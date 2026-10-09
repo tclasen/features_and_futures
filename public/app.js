@@ -114,9 +114,47 @@ async function render() {
     app.append(button('Projects', () => { location.href = '/'; }));
     try {
       const project = await request(`/api/projects/${match[1]}`);
-      app.append(element('h1', project.name));
+      const heading = element('h1', project.name);
+      app.append(heading);
       document.title = `${project.name} · Workboard`;
       if (project.archived) app.append(element('p', 'Archived project'));
+      const renameForm = element('form');
+      const renameLabel = element('label', 'New project name');
+      renameLabel.htmlFor = 'new-project-name';
+      const renameInput = element('input');
+      renameInput.id = 'new-project-name';
+      renameInput.type = 'text';
+      renameInput.value = project.name;
+      renameInput.disabled = Boolean(project.archived);
+      const rename = element('button', 'Rename project');
+      rename.type = 'submit';
+      rename.disabled = Boolean(project.archived);
+      const renameErrors = element('div');
+      renameForm.append(renameLabel, renameInput, rename);
+      app.append(renameForm, renameErrors);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        renameErrors.replaceChildren();
+        const name = renameInput.value.trim();
+        if (!name) {
+          renameErrors.append(alert('Project name is required'));
+          renameInput.focus();
+          return;
+        }
+        rename.disabled = true;
+        try {
+          const saved = await request(`/api/projects/${project.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          });
+          project.name = saved.name;
+          heading.textContent = saved.name;
+          document.title = `${saved.name} · Workboard`;
+          renameInput.value = saved.name;
+        } catch (error) { renameErrors.append(alert(error.message)); }
+        finally { rename.disabled = Boolean(project.archived); }
+      });
       await renderTasks(project.id, project.archived);
     } catch (error) { app.append(alert(error.message)); }
     return;
