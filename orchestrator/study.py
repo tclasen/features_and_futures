@@ -63,6 +63,8 @@ def confirm(discovery, run_ids, batch):
             verify_replay(discovery,run)
             for key in ('image_digest','harness_versions','model_mappings','harness_context','storage_policy'):
                 if manifest['runtime'].get(key)!=original['runtime'].get(key):raise InfrastructureError('Confirmation runtime differs: '+key)
+            if manifest['execution']!=original['execution'] or manifest['evidence_policy']!=original['evidence_policy'] or manifest['provenance']['definition_hashes']!=original['provenance']['definition_hashes']:
+                raise InfrastructureError('Replay changes execution, recovery, observations or instruction/specification bytes')
             if manifest['pricing']!=original['pricing'] or manifest['provenance']['starter_tree']!=original['provenance']['starter_tree']:raise InfrastructureError('Pricing or starter differs')
             location=Path(manifest['paths']['builders']).resolve()
             if location in locations or location==Path(original['paths']['builders']).resolve():raise InfrastructureError('Repositories are reused')

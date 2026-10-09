@@ -15,8 +15,10 @@ PLAN=Path('experiments/instruction-effects/revisions/research-v001/analysis-plan
 
 def prepare(run_id, source_id, confirmation=False):
     if not re.fullmatch(r'eval-[0-9]{3}(?:-repeat-[0-9]{3})?',run_id):raise ValueError('Invalid research run ID')
+    if not re.fullmatch(r'(?:pilot-[0-9]{3}|eval-[0-9]{3}(?:-repeat-[0-9]{3})?)',source_id):raise ValueError('Invalid source run ID')
     source=ROOT/'runs/instruction-effects'/source_id
     original=json.loads((source/'manifest.json').read_text())
+    if confirmation and original['purpose']!='research-discovery':raise InfrastructureError('Confirmation replays a frozen research discovery prefix')
     state=json.loads((source/'state.json').read_text())
     if state['status'] not in (('awaiting_frozen_round','completed') if confirmation else ('completed',)):
         raise InfrastructureError('Source must have a complete shared checkpoint')

@@ -30,6 +30,10 @@ def validate_research_manifest(run):
         for key in ('image_digest','harness_versions','model_mappings','harness_context','storage_policy'):
             if original['runtime'].get(key)!=manifest['runtime'].get(key):
                 raise InfrastructureError('Confirmation changes runtime: '+key)
+        if original['execution']!=manifest['execution'] or original['evidence_policy']!=manifest['evidence_policy']:
+            raise InfrastructureError('Confirmation changes execution, recovery or observation policy')
+        if original['provenance']['definition_hashes']!=manifest['provenance']['definition_hashes'] or original['provenance']['starter_tree']!=manifest['provenance']['starter_tree']:
+            raise InfrastructureError('Confirmation changes starter, specification or instructions')
         if original['pricing']!=manifest['pricing']:
             raise InfrastructureError('Confirmation changes reference pricing')
         if original['paths']['builders']==manifest['paths']['builders']:

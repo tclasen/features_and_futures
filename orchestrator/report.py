@@ -184,14 +184,14 @@ def main():
         "event_counts":dict(counts),"requests":len(usage),
         "native_count_coverage":sum(u["counts"] is not None for u in usage)/len(usage) if usage else None,
         "archive_checkpoints":archive_count,"problems":problems,"builders":builder_rows,"tasks":tasks,
-        "limitations":["Strict clean-working-tree validation also rejects untracked runtime artifacts; clarify this operational contract before the main run.",
-            "One trajectory and three tasks per configuration do not establish instruction effects.",
+        "limitations":["The frozen submission contract requires a clean tracked/untracked working tree; runtime artifacts must satisfy that contract.",
+            f"One trajectory and {len(m['tasks'])} tasks per configuration do not establish instruction effects.",
             "Subscription models, host contention and native caches are not experimentally controlled.",
             "Native provider counters are observed; hidden/provider-added tokens cannot be independently reconstructed.",
             "PM conversation usage and invoice cost are unavailable; costs are frozen OpenRouter reference estimates.",
-            "Five-second health checks supply narrow stability evidence; no recovery sample when no incidents.",
-            "Attempt wall time includes a small PM observer/gateway drain overhead after harness return.",
-            "Main-run sequential statistical stopping and independent replication still require preregistration."]}
+            f"The {m['evidence_policy']['post_deployment_window_seconds']}-second surrogate observation supplies bounded stability evidence; no recovery sample without incidents.",
+            ("Native-return timing separates observer/gateway drain from builder execution." if m["execution"].get("timing_revision")=="harness-return-v2" else "Attempt wall time includes a small PM observer/gateway drain overhead after harness return."),
+            "The separate research-v001 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect."]}
     version=run/"reports"/("report-"+digest_json(report)[:16]+".json")
     write_json(version,report)
     write_json(run/"reports/latest.json",{"report":version.name,"sha256":digest_bytes(version.read_bytes())})
