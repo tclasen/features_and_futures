@@ -1,23 +1,19 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
-import sqlite from 'node:sqlite';
-import sqlite3 from 'node:sqlite3';
+import * as sqlite from 'node:sqlite';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const DB_PATH = process.env.DB_PATH || 'workboard.db';
 
-// Initialize SQLite database and ensure the projects table exists.
-const dbPromise = (async () => {
-  const db = await sqlite.open({ filename: DB_PATH, driver: sqlite3.Database });
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS projects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL
-    )
-  `);
-  return db;
-})();
+// Initialize SQLite database using the synchronous API from `node:sqlite`.
+const db = new sqlite.default.DatabaseSync(DB_PATH);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+  );
+`);
 
 /** Utility to collect request body as text */
 async function getRequestBody(req) {
@@ -42,9 +38,9 @@ const server = http.createServer(async (req, res) => {
 
     // API routes
     if (pathname === '/api/projects') {
-      const db = await dbPromise;
+      // Use the synchronous db instance.
       if (req.method === 'GET') {
-        const rows = await db.all('SELECT id, name FROM projects ORDER BY id');
+        const rows = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(rows));
         return;
@@ -65,8 +61,9 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ error: 'Project name is required' }));
           return;
         }
-        const result = await db.run('INSERT INTO projects (name) VALUES (?)', name);
-        const newProject = { id: result.lastID, name };
+        const stmt = db.prepare('INSERT INTO projects (name) VALUES (?)');
+        const info = stmt.run(name);
+        const newProject = { id: info.lastInsertRowid, name };
         res.writeHead(201, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(newProject));
         return;
@@ -76,8 +73,7 @@ const server = http.createServer(async (req, res) => {
     // Get a single project
     if (pathname.startsWith('/api/projects/') && req.method === 'GET') {
       const id = Number(pathname.split('/').pop());
-      const db = await dbPromise;
-      const row = await db.get('SELECT id, name FROM projects WHERE id = ?', id);
+      const row = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
       if (!row) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not found' }));
