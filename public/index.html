@@ -8,13 +8,13 @@
     :root { font-family: system-ui, sans-serif; color: #192333; background: #f4f6fa; }
     body { max-width: 760px; margin: 3rem auto; padding: 0 1.25rem; }
     h1 { margin-bottom: 1.5rem; }
-    form { display: flex; gap: .65rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-    input, button { font: inherit; padding: .65rem .8rem; border: 1px solid #aab4c3; border-radius: 6px; }
+    form { display: flex; gap: .65rem; flex-wrap: wrap; margin: 1.25rem 0; }
+    input, button, select { font: inherit; padding: .65rem .8rem; border: 1px solid #aab4c3; border-radius: 6px; }
     input { flex: 1; min-width: 220px; background: white; }
     button { background: #244fa3; color: white; border-color: #244fa3; cursor: pointer; }
     button:hover { background: #193c80; }
-    .project-list { display: grid; gap: .7rem; }
-    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; background: white; border: 1px solid #dce1e9; border-radius: 8px; }
+    .project-list, .task-list { display: grid; gap: .7rem; }
+    .project-row, .task-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; background: white; border: 1px solid #dce1e9; border-radius: 8px; }
     .alert { color: #a32323; min-height: 1.5em; }
   </style>
 </head>
@@ -29,6 +29,7 @@
       return response.json();
     }
     function go(path) { history.pushState({}, '', path); render(); }
+    const request = (path, method, body) => fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     async function render() {
       const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
       if (match) {
@@ -37,6 +38,19 @@
         app.replaceChildren();
         const back = document.createElement('button'); back.textContent = 'Projects'; back.onclick = () => go('/'); app.append(back);
         const heading = document.createElement('h1'); heading.textContent = project ? project.name : 'Project not found'; app.append(heading);
+        if (!project) return;
+        app.insertAdjacentHTML('beforeend', `<form id="task-form"><label for="task-title">Task title</label><input id="task-title" type="text" aria-label="Task title"><button type="submit">Create task</button></form><p class="alert" role="alert" aria-live="polite"></p><label for="task-filter">Task filter</label> <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><section class="task-list" aria-label="Tasks"></section>`);
+        const alert = app.querySelector('.alert');
+        app.querySelector('#task-form').addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = app.querySelector('#task-title').value.trim();
+          if (!title) { alert.textContent = 'Task title is required'; return; }
+          const response = await request(`/api/projects/${match[1]}/tasks`, 'POST', { title });
+          if (!response.ok) { alert.textContent = 'Task title is required'; return; }
+          app.querySelector('#task-form').reset(); alert.textContent = ''; await renderTasks(match[1]);
+        });
+        app.querySelector('#task-filter').addEventListener('change', () => renderTasks(match[1]));
+        await renderTasks(match[1]);
         return;
       }
       app.innerHTML = `<h1>Workboard</h1>
@@ -48,7 +62,7 @@
         event.preventDefault();
         const name = app.querySelector('input').value.trim();
         if (!name) { alert.textContent = 'Project name is required'; return; }
-        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        const response = await request('/api/projects', 'POST', { name });
         if (!response.ok) { alert.textContent = 'Project name is required'; return; }
         form.reset(); alert.textContent = ''; await render();
       });
@@ -58,6 +72,21 @@
         const name = document.createElement('span'); name.textContent = project.name;
         const open = document.createElement('button'); open.textContent = 'Open project'; open.onclick = () => go(escapePath(project.id));
         row.append(name, open); list.append(row);
+      }
+    }
+    async function renderTasks(projectId) {
+      const response = await fetch(`/api/projects/${projectId}/tasks`);
+      if (!response.ok) return;
+      const tasks = await response.json();
+      const filter = app.querySelector('#task-filter').value;
+      const list = app.querySelector('.task-list'); list.replaceChildren();
+      for (const task of tasks) {
+        if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+        const row = document.createElement('div'); row.className = 'task-row'; row.dataset.testid = 'task-row';
+        const title = document.createElement('span'); title.textContent = task.title;
+        const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        checkbox.addEventListener('change', async () => { await request(`/api/tasks/${task.id}`, 'PATCH', { completed: checkbox.checked }); });
+        row.append(title, checkbox); list.append(row);
       }
     }
     window.addEventListener('popstate', render);
