@@ -70,21 +70,23 @@ export function renderProject(project, tasks = [], filter = 'all', error = '') {
       <input id="task-title" name="title" type="text">
       <button type="submit">Create task</button>
     </form>
-    <form class="task-controls" action="${projectPath}" method="get">
+    <form class="task-controls" id="task-filter-form" action="${projectPath}" method="get">
       <label for="task-filter">Task filter</label>
-      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+      <select id="task-filter" name="filter">
         ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
           `<option value="${value}"${filter === value ? ' selected' : ''}>${label}</option>`).join('')}
       </select>
     </form>
     <ul class="projects">${tasks.map((task) => `
       <li class="task" data-testid="task-row">
-        <form action="${projectPath}/tasks/${escapeHtml(task.id)}" method="post">
+        <form class="task-completion" action="${projectPath}/tasks/${escapeHtml(task.id)}" method="post">
           <input type="hidden" name="filter" value="${filter}">
-          <label><input type="checkbox" name="completed" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          <label><input type="checkbox" name="completed" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}><span>${escapeHtml(task.title)}</span></label>
         </form>
       </li>`).join('')}
-    </ul>`);
+    </ul>
+    <p id="task-save-error" role="alert" hidden></p>
+    <script type="module" src="/project-controls.js"></script>`);
 }
 
 export function renderNotFound() {

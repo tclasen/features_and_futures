@@ -1,10 +1,11 @@
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { renderProjects, renderProject, renderNotFound } from './views.js';
 
+const projectControls = readFileSync(new URL('./project-controls.js', import.meta.url));
 const databasePath = resolve(process.env.DB_PATH || 'data/workboard.sqlite');
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = new DatabaseSync(databasePath);
@@ -74,6 +75,11 @@ const server = createServer(async (request, response) => {
       response.end(JSON.stringify({ status: 'ok' }));
       return;
     }
+    if (request.method === 'GET' && url.pathname === '/project-controls.js') {
+      response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      response.end(projectControls);
+      return;
+    }
     if (request.method === 'GET' && url.pathname === '/') {
       sendHtml(response, 200, renderProjects(listProjects.all()));
       return;
@@ -106,9 +112,15 @@ const server = createServer(async (request, response) => {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         if (match[2]) {
-          const result = updateTask.run(form.get('completed') === 'on' ? 1 : 0, match[2], project.id);
+          const completed = form.get('completed') === 'on';
+          const result = updateTask.run(completed ? 1 : 0, match[2], project.id);
           if (!result.changes) {
             sendHtml(response, 404, renderNotFound());
+            return;
+          }
+          if (request.headers.accept === 'application/json') {
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({ completed }));
             return;
           }
         } else {

@@ -16,7 +16,9 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `/` to create and open projects. Each project page supports task creation, completion checkboxes, and All/Open/Completed filters. Filters default to All and can be preserved in the page URL. `GET /health` returns `{"status":"ok"}`.
 
-Run the automated HTTP integration tests (including restart persistence):
+Completion changes save in place; filter navigation waits for pending saves to avoid losing checkbox updates. Failed saves restore the last saved state and display an alert.
+
+Run the automated interaction regression and HTTP integration tests (including restart persistence):
 
 ```sh
 npm test

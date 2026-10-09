@@ -134,7 +134,15 @@ test('projects and scoped tasks validate, filter, and persist across server rest
     assert.equal(await (await fetch(base)).text(), listing);
     assert.equal(await projectHtml(), savedDetail);
     assert.equal(await projectHtml('?filter=completed'), completed);
-    assert.equal((await post(taskPaths[0], { filter: 'completed' })).status, 303);
+    const uncheck = await fetch(base + taskPaths[0], {
+      method: 'POST', body: new URLSearchParams({ filter: 'completed' }),
+      headers: { Accept: 'application/json' }, redirect: 'manual',
+    });
+    assert.equal(uncheck.status, 200);
+    assert.deepEqual(await uncheck.json(), { completed: false });
+    const controls = await fetch(base + '/project-controls.js');
+    assert.equal(controls.status, 200);
+    assert.match(controls.headers.get('content-type'), /text\/javascript/);
     assert.doesNotMatch(await projectHtml('?filter=completed'), /data-testid="task-row"/);
     assert.equal((await projectHtml('?filter=open')).match(/data-testid="task-row"/g).length, 2);
     await stop();
