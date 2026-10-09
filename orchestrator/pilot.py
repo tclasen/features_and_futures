@@ -98,6 +98,8 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
     bid=builder["builder_id"]; accepted=state["accepted"].get(bid)
     if accepted and accepted["stage"]>=stage:
         return
+    from .storage import require_space, retire_deployment
+    require_space(manifest, run)
     repo=Path(manifest["paths"]["builders"])/bid
     sandbox="ff-"+run.name+"-"+bid
     known=invoke(["sbx","inspect",sandbox,"--json"])
@@ -177,6 +179,7 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         provider="ollama" if builder["model"]=="gpt-oss:120b" else "subscription"
         key=gateway.lease(builder["model"],bid,task_id,attempt_id,provider)
         started=[]
+        require_space(manifest, run)
         def on_start():
             started.append(ledger.event("attempt_started",pre_commit=pre_head,**attrs))
         observer=CommitObserver(sandbox,ledger,attrs); observer.start()
@@ -300,9 +303,11 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
                 except RuntimeError as error:
                     ledger.event("incident_detected",observed=str(error),commit=head,**attrs)
                     raise
+            accepted_prior=accepted
             accepted={"stage":stage,"commit":head,"tree":tree,
                       "sandbox":deployment.name,"database":str(deployment.database),
-                      "fixture_prefix":task_id}
+                      "fixture_prefix":task_id, "archive_output":str(output),
+                      "checkpoint_archive":str(run/"builders"/bid/"checkpoints"/(task_id+"-"+attempt_id))}
             with state_lock:
                 state["accepted"][bid]=accepted
                 write_json(run/"state.json",state)
@@ -313,9 +318,15 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
                 if file.exists(): shutil.copy2(file,output/("accepted.sqlite"+suffix))
             log=deployment.source/".runtime/server.log"
             if log.exists(): shutil.copy2(log,output/"server.log")
+            if accepted_prior and manifest["runtime"].get("storage_policy"):
+                retire_deployment(manifest, accepted_prior["sandbox"], accepted_prior["archive_output"], accepted_prior["checkpoint_archive"])
             print(f"{task_id} {bid} ACCEPTED {attempt_id} requests={len(usage)}",flush=True)
             break
-        if deployment: deployment.stop()
+        if deployment:
+            deployment.stop()
+            if deployment.database.exists() and not (output/"cleanup.json").exists():
+                shutil.copy2(deployment.database, output/"retired.sqlite")
+            retire_deployment(manifest, deployment.name, output, run/"builders"/bid/"checkpoints"/(task_id+"-"+attempt_id))
         if accepted:
             ledger.event("prior_deployment_preserved",commit=accepted["commit"],**attrs)
         recovery={"decision":"correction_in_place","actor":"pm",

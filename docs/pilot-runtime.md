@@ -54,3 +54,9 @@ Prepare using `python3 -B -m orchestrator.prepare --run pilot-007 --experiment-r
 ## Parallel hosted scheduling, 2026-10-09
 
 The user then authorized all hosted builders to run in parallel while retaining lock-step requirement release. Pilot 007 was prepared sequentially but never dispatched; Pilot 008 freezes parallel scheduling with 12 workers. Each worker owns its gateway listener and lease, private sandbox, repository, home/session and output paths. Shared evidence appends and PM state writes are serialized; state replacement is atomic. A round barrier waits for every worker to accept, promote, check and archive its checkpoint before the next round begins. Infrastructure exceptions signal the cohort to stop starting new attempts; active attempts drain and preserve their evidence. Parallel host contention and provider rate limits remain measured confounds, and this scheduling revision must not be pooled with sequential runs as an exact repeat.
+
+## Storage recovery after pilot010
+
+Pilot010 completed its12-builder first-round barrier with30-second health and behavioral observations. Host disk exhaustion interrupted its second round. Its224 recorded native receipts verify, but eight of232 dispatched requests lack terminal receipts; cost is therefore a lower bound. Three interrupted Git histories cannot export, so their raw objects and own working trees are preserved alongside earlier valid checkpoints. All28 interrupted sandbox resources were archived and removed. The run is superseded.
+
+The successor uses [the versioned storage policy](storage-policy.md). Its real trusted sandbox removal fixture restores the exact archived Git commit and SQLite sentinel with no model calls.105 PM checks pass; a fresh native cohort must still verify adoption.

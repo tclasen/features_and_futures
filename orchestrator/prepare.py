@@ -42,7 +42,7 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2","native-and-visible-state-v3"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="hosted");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="parallel-rounds");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--storage-policy",choices=("legacy-retain-v1","archive-before-remove-v1"),default="legacy-retain-v1");parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2","native-and-visible-state-v3"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="hosted");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="parallel-rounds");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
@@ -122,6 +122,7 @@ def prepare():
                        "pi":{"context_window":272000,"max_output_tokens":16384,
                              "compaction":{"enabled":True,"reserveTokens":16384,"keepRecentTokens":20000}}}}
                       if args.feedback_rendering=="native-and-visible-state-v3" else {}),
+                   **({"storage_policy":{"revision":"archive-before-remove-v1","minimum_free_bytes":64*1024**3,"scope":"PM host volume; refuse new attempts below reserve; archive and remove rejected and superseded app sandboxes; retain active builder and accepted app sandboxes"}} if args.storage_policy=="archive-before-remove-v1" else {}),
                    "egress":"deny by default; only the PM leased inference gateway allowed",
                    "model_mappings":{**({"gpt-oss:120b":local_provider["model"]} if local_runtime else {}),
                        "gpt-6-luna":{"provider":"OpenAI subscription", "reasoning":"medium"},
