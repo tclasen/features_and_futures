@@ -42,7 +42,7 @@ Maintain the experiment code with clear interfaces, reviewable changes, and targ
 
 ## Authority and scope
 
-Documentation and repository-structure work do not start an evaluation. When an evaluation is authorized, the PM owns application, stack, feature sequence, and routine execution choices within the agreed protocol. The initial evaluation uses the user's OpenAI subscription without a spending cap and local Ollama, while tracking hypothetical OpenRouter-equivalent cost. Do not silently switch to paid API access. Record unresolved preparation choices rather than presenting proposed values as established facts.
+Documentation and repository-structure work do not start an evaluation. When an evaluation is authorized, the PM owns application, stack, feature sequence, and routine execution choices within the agreed protocol. The current hosted-only evaluation uses the user's OpenAI subscription without a spending cap, while tracking hypothetical OpenRouter-equivalent cost. Local Ollama belongs only to retained historical runs and is excluded from subsequent pilots and evals. Do not silently switch to paid API access. Record unresolved preparation choices rather than presenting proposed values as established facts.
 
 Builder dispatch, orchestration, and the recovery actions above are part of an authorized evaluation. The PM may perform a reversion directly or instruct the builder to do it without requesting permission for each action. Preserve and verify the failed-attempt archive before changing the working repository. Using conversational sub-agents as builders is not equivalent to running the specified model/harness combinations in Docker.
 
