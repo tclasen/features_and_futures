@@ -16,6 +16,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const findTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -30,8 +33,13 @@ async function readBody(req) {
   try { return JSON.parse(body); }
   catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
 }
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const projectQuery = `SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
+  FROM projects p`;
+const listProjects = db.prepare(`${projectQuery} ORDER BY p.id ASC`);
+const findProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
+const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -52,6 +60,13 @@ const server = http.createServer(async (req, res) => {
       const project = findProject.get(match[1]);
       return json(res, project ? 200 : 404, project || { error: 'Project not found' });
     }
+    if (req.method === 'PATCH' && match) {
+      if (!findProject.get(match[1])) return json(res, 404, { error: 'Project not found' });
+      const input = await readBody(req);
+      if (typeof input?.archived !== 'boolean') return json(res, 400, { error: 'Archive state must be a boolean' });
+      updateProject.run(Number(input.archived), match[1]);
+      return json(res, 200, findProject.get(match[1]));
+    }
     const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (tasksMatch) {
       const [, projectId, taskId] = tasksMatch;
@@ -59,6 +74,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET' && !taskId) return json(res, 200, listTasks.all(projectId).map(taskData));
       if (req.method === 'POST' && !taskId) {
         const input = await readBody(req);
+        if (findProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
         const result = createTask.run(projectId, title);
@@ -67,6 +83,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'PATCH' && taskId) {
         if (!findTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
         const input = await readBody(req);
+        if (findProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
         if (typeof input?.completed !== 'boolean') return json(res, 400, { error: 'Completion must be a boolean' });
         updateTask.run(Number(input.completed), projectId, taskId);
         return json(res, 200, taskData(findTask.get(projectId, taskId)));
@@ -77,7 +94,7 @@ const server = http.createServer(async (req, res) => {
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return json(res, 400, { error: 'Project name is required' });
       const result = createProject.run(name);
-      return json(res, 201, { id: Number(result.lastInsertRowid), name });
+      return json(res, 201, findProject.get(Number(result.lastInsertRowid)));
     }
     const asset = assets.get(path) || (/^\/projects\/\d+$/.test(path) ? assets.get('/') : undefined);
     if (req.method === 'GET' && asset) {
