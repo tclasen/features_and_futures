@@ -2,9 +2,13 @@ const heading = document.querySelector('#heading');
 const list = document.querySelector('#project-list');
 const detail = document.querySelector('#project-detail');
 const projects = document.querySelector('#projects');
+const tasks = document.querySelector('#tasks');
 const alert = document.querySelector('#alert');
 const form = document.querySelector('#create-form');
 const nameInput = document.querySelector('#project-name');
+const taskForm = document.querySelector('#task-form');
+const taskTitleInput = document.querySelector('#task-title');
+const taskFilter = document.querySelector('#task-filter');
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -27,6 +31,7 @@ async function render() {
     try {
       const project = await request(`/api/projects/${id}`);
       heading.textContent = project.name;
+      await renderTasks(id);
       return;
     } catch {
       history.replaceState({}, '', '/');
@@ -49,6 +54,38 @@ async function render() {
       render();
     });
     row.append(name, open);
+    return row;
+  }));
+}
+
+async function renderTasks(projectId) {
+  const items = await request(`/api/projects/${projectId}/tasks`);
+  const filter = taskFilter.value;
+  const shown = items.filter((task) => filter === 'All' || (filter === 'Completed') === Boolean(task.completed));
+  tasks.replaceChildren(...shown.map((task) => {
+    const row = document.createElement('div');
+    row.dataset.testid = 'task-row';
+    const title = document.createElement('span');
+    title.textContent = task.title;
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = Boolean(task.completed);
+    checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    checkbox.addEventListener('change', async () => {
+      try {
+        await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        await renderTasks(projectId);
+      } catch (error) {
+        alert.textContent = error.message;
+        checkbox.checked = Boolean(task.completed);
+      }
+    });
+    label.append(checkbox);
+    row.append(title, label);
     return row;
   }));
 }
@@ -76,6 +113,29 @@ form.addEventListener('submit', async (event) => {
 document.querySelector('#back-button').addEventListener('click', () => {
   history.pushState({}, '', '/');
   render();
+});
+taskForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const title = taskTitleInput.value.trim();
+  if (!title) {
+    alert.textContent = 'Task title is required';
+    return;
+  }
+  const id = projectPath();
+  try {
+    await request(`/api/projects/${id}/tasks`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    taskTitleInput.value = '';
+    await renderTasks(id);
+  } catch (error) {
+    alert.textContent = error.message;
+  }
+});
+taskFilter.addEventListener('change', () => {
+  const id = projectPath();
+  if (id) renderTasks(id).catch((error) => { alert.textContent = error.message; });
 });
 window.addEventListener('popstate', render);
 render().catch((error) => { alert.textContent = error.message; });
