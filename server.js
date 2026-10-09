@@ -343,9 +343,8 @@ function shutdown() {
     database.close();
     process.exitCode = 0;
   });
-  // A browser may keep an idle HTTP connection open after its last request.
-  // Close it so the shutdown callback can flush and close SQLite promptly.
-  server.closeAllConnections();
+  // Close idle keep-alive sockets while allowing active requests to finish.
+  server.closeIdleConnections();
 }
 
 process.once('SIGINT', shutdown);
