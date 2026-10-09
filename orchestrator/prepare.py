@@ -47,7 +47,7 @@ def prepare():
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007", "v009", "v010", "v011", "v012"): raise ValueError("Unsupported project revision")
+    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007", "v009", "v010", "v011", "v012", "v013", "v014"): raise ValueError("Unsupported project revision")
     project = ROOT / "projects/workboard/revisions" / args.project_revision
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
