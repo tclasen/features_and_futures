@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Workboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .alert { color: red; margin-top: 10px; }
+    .project-row { margin: 5px 0; }
+    button { margin-left: 5px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const apiBase = '/api';
+    async function loadProjects() {
+      const resp = await fetch(`${apiBase}/projects`);
+      return resp.ok ? resp.json() : [];
+    }
+    async function createProject(name) {
+      const resp = await fetch(`${apiBase}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Error');
+      }
+      return resp.json();
+    }
+    async function getProject(id) {
+      const resp = await fetch(`${apiBase}/projects/${id}`);
+      if (!resp.ok) throw new Error('Not found');
+      return resp.json();
+    }
+    function renderRoot() {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <h1>Workboard</h1>
+        <label>Project name <input type="text" id="project-name"></label>
+        <button id="create-btn">Create project</button>
+        <div id="alert" class="alert" style="display:none"></div>
+        <div id="list"></div>
+      `;
+      document.getElementById('create-btn').onclick = async () => {
+        const input = document.getElementById('project-name');
+        const name = input.value.trim();
+        const alertDiv = document.getElementById('alert');
+        alertDiv.style.display = 'none';
+        if (!name) {
+          alertDiv.textContent = 'Project name is required';
+          alertDiv.style.display = 'block';
+          return;
+        }
+        try {
+          await createProject(name);
+          input.value = '';
+          await renderList();
+        } catch (e) {
+          alertDiv.textContent = e.message;
+          alertDiv.style.display = 'block';
+        }
+      };
+      renderList();
+    }
+    async function renderList() {
+      const listDiv = document.getElementById('list');
+      const projects = await loadProjects();
+      listDiv.innerHTML = projects.map(p => `
+        <div class="project-row" data-testid="project-row">
+          ${p.name}
+          <button class="open-btn" data-id="${p.id}">Open project</button>
+        </div>
+      `).join('');
+      document.querySelectorAll('.open-btn').forEach(btn => {
+        btn.onclick = () => { window.location.href = `/projects/${btn.dataset.id}`; };
+      });
+    }
+    async function renderProject(id) {
+      const app = document.getElementById('app');
+      const proj = await getProject(id);
+      app.innerHTML = `
+        <h1>${proj.name}</h1>
+        <button id="back">Projects</button>
+        <div>Project ID: ${proj.id}</div>
+      `;
+      document.getElementById('back').onclick = () => { window.location.href = '/'; };
+    }
+    const path = window.location.pathname;
+    if (path === '/' ) {
+      renderRoot();
+    } else if (path.startsWith('/projects/')) {
+      const id = path.split('/')[2];
+      renderProject(id);
+    } else {
+      renderRoot();
+    }
+  </script>
+</body>
+</html>
