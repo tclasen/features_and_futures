@@ -127,9 +127,16 @@ const page = `<!doctype html>
       const list = element('section', undefined, { 'aria-label': 'Projects' });
       app.append(filterRow, form, alert, list);
 
+      let refreshVersion = 0;
       async function refresh() {
-        list.replaceChildren();
-        for (const project of await loadProjects(filter.value === 'Archived')) {
+        const version = ++refreshVersion;
+        const projects = await loadProjects(filter.value === 'Archived');
+        // Build each response off-screen. Concurrent filter/action refreshes
+        // must not append rows into a list that another refresh has already
+        // populated.
+        if (version !== refreshVersion) return;
+        const rows = document.createDocumentFragment();
+        for (const project of projects) {
           const row = element('div', undefined, { 'data-testid': 'project-row', class: 'project-row' });
           const info = element('div', undefined, { class: 'project-info' });
           info.append(element('span', project.name));
@@ -145,8 +152,9 @@ const page = `<!doctype html>
           const actions = element('div', undefined, { class: 'project-actions' });
           actions.append(open, action);
           row.append(actions);
-          list.append(row);
+          rows.append(row);
         }
+        list.replaceChildren(rows);
       }
       filter.addEventListener('change', refresh);
 
