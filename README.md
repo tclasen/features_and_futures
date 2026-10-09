@@ -19,6 +19,11 @@ Use each task's checkbox to save completion, and the Task filter to view All,
 Open, or Completed tasks in creation order. Projects and tasks persist in the
 configured SQLite file across server restarts.
 
+Use the Project filter to switch between Active and Archived projects. Archive
+or restore projects from their rows; summaries show completed tasks out of all
+tasks. Archived project pages allow viewing and filtering tasks, with task
+creation and completion disabled. Existing databases are migrated on startup.
+
 Run the automated HTTP and persistence checks with:
 
 ```sh

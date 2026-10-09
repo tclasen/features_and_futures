@@ -108,3 +108,85 @@ test('project UI validates, creates, filters, and toggles tasks with accessible 
   assert.equal(rows()[0].children[0].checked, false);
   assert.equal(writes, 2);
 });
+
+async function mount(pathname, fetch) {
+  const app = new Element('main');
+  runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
+    document: { querySelector: () => app, createElement: tag => new Element(tag) },
+    window: { location: { pathname } }, fetch,
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  return app;
+}
+
+test('project list filters, summarizes, archives, and restores without changing creation order', async () => {
+  const projects = [
+    { id: 1, name: 'First', archived: 0, completed: 1, total: 3 },
+    { id: 2, name: 'Second', archived: 0, completed: 0, total: 0 },
+  ];
+  const app = await mount('/', async (path, options = {}) => {
+    let body = projects;
+    if (options.method === 'PATCH') {
+      body = projects.find(project => path === `/api/projects/${project.id}`);
+      body.archived = Number(JSON.parse(options.body).archived);
+    } else if (options.method === 'POST') {
+      body = { id: 3, name: JSON.parse(options.body).name, archived: 0, completed: 0, total: 0 };
+      projects.push(body);
+    }
+    return { ok: true, json: async () => structuredClone(body) };
+  });
+  const nodes = () => descendants(app);
+  const rows = () => nodes().filter(node => node.attributes['data-testid'] === 'project-row');
+  const names = () => rows().map(row => row.children[0].textContent);
+  const filter = nodes().find(node => node.attributes.id === 'project-filter');
+  const button = (row, text) => row.children.find(node => node.tag === 'button' && node.textContent === text);
+  assert.ok(nodes().some(node => node.attributes.for === 'project-filter' && node.textContent === 'Project filter'));
+  assert.deepEqual(filter.children.map(node => node.textContent), ['Active', 'Archived']);
+  assert.equal(filter.value, 'Active');
+  assert.deepEqual(names(), ['First', 'Second']);
+  assert.deepEqual(rows().map(row => row.children.find(node => node.attributes['data-testid'] === 'project-summary').textContent), ['1/3 completed', '0/0 completed']);
+  await button(rows()[0], 'Archive project').emit('click');
+  assert.deepEqual(names(), ['Second']);
+  filter.value = 'Archived';
+  await filter.emit('change');
+  assert.deepEqual(names(), ['First']);
+  assert.ok(button(rows()[0], 'Open project'));
+  const input = nodes().find(node => node.attributes.id === 'project-name');
+  input.value = ' Third ';
+  await nodes().find(node => node.tag === 'form').emit('submit');
+  assert.deepEqual(names(), ['First']);
+  await button(rows()[0], 'Restore project').emit('click');
+  assert.deepEqual(names(), []);
+  filter.value = 'Active';
+  await filter.emit('change');
+  assert.deepEqual(names(), ['First', 'Second', 'Third']);
+  assert.equal(rows()[0].children.find(node => node.attributes['data-testid'] === 'project-summary').textContent, '1/3 completed');
+});
+
+test('archived project keeps tasks and filtering visible but disables editing', async () => {
+  let writes = 0;
+  const app = await mount('/projects/1', async (path, options = {}) => {
+    if (options.method) writes++;
+    const body = path === '/api/projects/1'
+      ? { id: 1, name: 'Archived', archived: 1, total: 2, completed: 1 }
+      : [{ id: 1, title: 'Done', completed: true }, { id: 2, title: 'Pending', completed: false }];
+    return { ok: true, json: async () => structuredClone(body) };
+  });
+  const nodes = () => descendants(app);
+  const rows = () => nodes().filter(node => node.attributes['data-testid'] === 'task-row');
+  assert.ok(nodes().some(node => node.textContent === 'Archived project'));
+  assert.equal(nodes().find(node => node.textContent === 'Create task').disabled, true);
+  assert.equal(rows().length, 2);
+  assert.ok(rows().every(row => row.children[0].disabled));
+  const filter = nodes().find(node => node.attributes.id === 'task-filter');
+  filter.value = 'Completed';
+  await filter.emit('change');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[1].textContent, 'Done');
+  assert.equal(rows()[0].children[0].disabled, true);
+  filter.value = 'Open';
+  await filter.emit('change');
+  assert.equal(rows()[0].children[1].textContent, 'Pending');
+  assert.equal(rows()[0].children[0].disabled, true);
+  assert.equal(writes, 0);
+});

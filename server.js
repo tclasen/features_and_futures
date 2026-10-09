@@ -12,8 +12,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -23,6 +24,12 @@ db.exec(`PRAGMA foreign_keys = ON;
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
   CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id)`);
+const projectColumns = `SELECT projects.id, projects.name, projects.archived,
+  COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
+const listProjects = db.prepare(`${projectColumns} GROUP BY projects.id ORDER BY projects.id ASC`);
+const getProject = db.prepare(`${projectColumns} WHERE projects.id = ? GROUP BY projects.id`);
+const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const getTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -74,7 +81,11 @@ const server = http.createServer(async (req, res) => {
     if (tasksMatch) {
       const projectId = Number(tasksMatch[1]);
       const taskId = tasksMatch[2] ? Number(tasksMatch[2]) : undefined;
-      if (!getProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
+      const project = getProject.get(projectId);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (project.archived && ['POST', 'PATCH'].includes(req.method)) {
+        return json(res, 409, { error: 'Archived project cannot be changed' });
+      }
       if (req.method === 'GET' && taskId === undefined) {
         return json(res, 200, listTasks.all(projectId).map(taskResponse));
       }
@@ -96,6 +107,16 @@ const server = http.createServer(async (req, res) => {
       }
     }
     const match = pathname.match(/^\/api\/projects\/(\d+)$/);
+    if (req.method === 'PATCH' && match) {
+      const projectId = Number(match[1]);
+      if (!getProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
+      const input = await readJson(req);
+      if (typeof input?.archived !== 'boolean') {
+        return json(res, 400, { error: 'Archive state must be a boolean' });
+      }
+      updateProject.run(Number(input.archived), projectId);
+      return json(res, 200, getProject.get(projectId));
+    }
     if (req.method === 'GET' && match) {
       const project = getProject.get(Number(match[1]));
       return project ? json(res, 200, project) : json(res, 404, { error: 'Project not found' });

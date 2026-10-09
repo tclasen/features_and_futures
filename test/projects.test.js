@@ -1,13 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 test('projects and tasks are validated, isolated, ordered, and retained after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
+  // Start from the prior schema to exercise migration of durable databases.
+  await mkdir(join(directory, 'nested'));
+  const legacy = new DatabaseSync(join(directory, 'nested', 'projects.sqlite'));
+  legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  legacy.exec("INSERT INTO projects (name) VALUES ('Existing project')");
+  legacy.close();
   let child;
   let base;
   async function start() {
@@ -56,20 +63,20 @@ test('projects and tasks are validated, isolated, ordered, and retained after re
     const health = await fetch(`${base}/health`);
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [{ id: 1, name: 'Existing project', archived: 0, total: 0, completed: 0 }]);
     for (const name of ['', '   ', '\t\n']) {
       const response = await create(name);
       assert.equal(response.status, 400);
       assert.deepEqual(await response.json(), { error: 'Project name is required' });
     }
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [{ id: 1, name: 'Existing project', archived: 0, total: 0, completed: 0 }]);
     const firstResponse = await create('  First project  ');
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
     const second = await (await create('Second project')).json();
     assert.notEqual(first.id, second.id);
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
+    assert.deepEqual((await (await fetch(`${base}/api/projects`)).json()).slice(1), [first, second]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     for (const path of ['/', `/projects/${first.id}`, '/app.js', '/styles.css']) {
       assert.equal((await fetch(`${base}${path}`)).status, 200);
@@ -100,13 +107,37 @@ test('projects and tasks are validated, isolated, ordered, and retained after re
       assert.deepEqual(await response.json(), { ...firstTask, completed });
     }
     firstTask.completed = true;
+    Object.assign(first, { total: 2, completed: 1 });
+    Object.assign(second, { total: 1, completed: 0 });
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    async function archive(archived) {
+      return fetch(`${base}/api/projects/${first.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived }),
+      });
+    }
+    assert.equal((await archive('yes')).status, 400);
+    const archived = await archive(true);
+    assert.equal(archived.status, 200);
+    first.archived = 1;
+    assert.deepEqual(await archived.json(), first);
+    assert.equal((await taskRequest(first.id, 'POST', { title: 'Blocked task' })).status, 409);
+    assert.equal((await taskRequest(first.id, 'PATCH', { completed: false }, firstTask.id)).status, 409);
+    assert.deepEqual(await (await taskRequest(first.id)).json(), [firstTask, secondTask]);
     await stop();
     await start();
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
+    assert.deepEqual((await (await fetch(`${base}/api/projects`)).json()).slice(1), [first, second]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     assert.deepEqual(await (await taskRequest(first.id)).json(), [firstTask, secondTask]);
     assert.deepEqual(await (await taskRequest(second.id)).json(), [otherTask]);
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    const restored = await archive(false);
+    first.archived = 0;
+    assert.deepEqual(await restored.json(), first);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.deepEqual(await (await taskRequest(first.id)).json(), [firstTask, secondTask]);
     const thirdTask = await (await taskRequest(first.id, 'POST', { title: 'Third task' })).json();
     assert.ok(thirdTask.id > otherTask.id);
     assert.equal(thirdTask.completed, false);
