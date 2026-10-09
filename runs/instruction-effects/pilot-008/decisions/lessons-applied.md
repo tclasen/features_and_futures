@@ -25,3 +25,7 @@ Twelve native builder workers run concurrently within a round. Each owns a separ
 ## First two live rounds
 
 All12 configurations accepted task001 on attempt001 and task002 after two objectively rejected first submissions and measured builder corrections. Independent live audits verified209 native receipts and peak12 native attempt overlap, with no premature requirement release. These are scoped live snapshots; terminal accounting and the final round remain pending. L019 records both toggle-direction failures without attributing an instruction effect or inventing a source-level common cause.
+
+## Terminal pilot verification
+
+Pilot008 completed all36 checkpoints, with336 successful frozen-suite phase checks and467 completely reconciled native requests. The original report reproduces exactly, all53 rejected/accepted source-history archives restore, and all36 immutable accepted submissions pass the independent v005 suite. Both targeted factual recoveries succeeded on the next native attempt; all prior rejects and pause exposure remain retained. The independent scheduling audit verifies all three round barriers and peak12 concurrent attempts. This completes the three-task engineering pilot, not the remaining long-horizon main-readiness gates. See `preflight/terminal-verification/summary.json`.

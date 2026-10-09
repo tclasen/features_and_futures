@@ -13,7 +13,7 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L007 | Tool timeout units and foreground servers | adopted |
 | L008 | Missing terminal provider usage | prepared |
 | L009 | Factual feedback without source duplication | prepared |
-| L010 | Cumulative acceptance coverage | prepared |
+| L010 | Cumulative acceptance coverage | verified |
 | L011 | Interpretable delivery evidence | verified |
 | L012 | Public histories need enforced isolation | verified |
 | L013 | Request coverage must start from dispatches | adopted |
@@ -22,6 +22,6 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L016 | Verify preserved repairs before rollback | adopted |
 
 | L017 | Hosted-only scope preserves the instruction experiment | adopted |
-| L018 | Independent parallel accounting and lock-step barrier | adopted |
+| L018 | Independent parallel accounting and lock-step barrier | verified |
 | L019 | Persist both completion-toggle directions | observed |
-| L020 | Visible-state recovery evidence and idempotent barriers | adopted |
+| L020 | Visible-state recovery evidence and idempotent barriers | verified |
