@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172334; background: #f4f6fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    header { background: #fff; border-bottom: 1px solid #dfe5ed; padding: 1.1rem max(1.5rem, calc((100% - 900px) / 2)); }
+    main { max-width: 900px; margin: 3rem auto; padding: 0 1.5rem; }
+    h1 { margin: 0; font-size: 2rem; letter-spacing: -.03em; }
+    .intro { margin: .5rem 0 2rem; color: #58667a; }
+    form { display: flex; gap: .75rem; max-width: 600px; margin-bottom: 1.5rem; }
+    input { flex: 1; min-width: 0; padding: .75rem .9rem; border: 1px solid #b9c4d3; border-radius: 6px; font: inherit; background: #fff; }
+    button { border: 0; border-radius: 6px; background: #2859c5; color: #fff; padding: .7rem 1rem; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1f48a2; }
+    .project-list { display: grid; gap: .65rem; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem; background: #fff; border: 1px solid #dfe5ed; border-radius: 8px; }
+    .project-name { font-weight: 600; }
+    .back { margin-bottom: 1rem; }
+    .error { color: #a32828; margin: -.5rem 0 1rem; }
+    @media (max-width: 480px) { form { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header><h1>Workboard</h1></header>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      if (match) {
+        const response = await fetch('/api/projects/' + match[1]);
+        if (!response.ok) { history.replaceState(null, '', '/'); return render(); }
+        const project = await response.json();
+        app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+        app.querySelector('.back').addEventListener('click', () => { history.pushState(null, '', '/'); render(); });
+        return;
+      }
+      app.innerHTML = `<p class="intro">Create and organize your projects.</p>
+        <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" required><button type="submit">Create project</button></form>
+        <p class="error" role="alert" hidden></p><section class="project-list" aria-label="Projects"></section>`;
+      const list = app.querySelector('.project-list');
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      for (const project of projects) {
+        const row = document.createElement('div');
+        row.className = 'project-row';
+        row.dataset.testid = 'project-row';
+        row.innerHTML = `<span class="project-name">${escapeHtml(project.name)}</span><button type="button">Open project</button>`;
+        row.querySelector('button').addEventListener('click', () => { history.pushState(null, '', '/projects/' + project.id); render(); });
+        list.append(row);
+      }
+      app.querySelector('#create-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = app.querySelector('#project-name');
+        const error = app.querySelector('.error');
+        const name = input.value.trim();
+        if (!name) { error.textContent = 'Project name is required'; error.hidden = false; return; }
+        const created = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!created.ok) { error.textContent = 'Project name is required'; error.hidden = false; return; }
+        history.replaceState(null, '', '/');
+        render();
+      });
+    }
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
