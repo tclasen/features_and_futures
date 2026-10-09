@@ -334,3 +334,16 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, '0.0.0.0');
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => {
+    database.close();
+    process.exitCode = 0;
+  });
+}
+
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
