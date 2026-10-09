@@ -113,9 +113,27 @@ if p.exists():
             (self.output/"server.log").write_bytes(result.stdout)
 
     def stop(self):
-        self.stop_process()
-        self.capture()
-        invoke(["sbx","stop",self.name])
+        # Rejected apps may have absent/corrupt/non-SQLite data. Preserve raw
+        # evidence when a consistent backup is impossible, then stop the VM.
+        try:
+            self.stop_process()
+            try:
+                self.capture()
+            except RuntimeError as error:
+                preserved=[]
+                for name in ("app.sqlite", "app.sqlite-wal", "app.sqlite-shm", "server.log"):
+                    result=subprocess.run(["sbx","exec",self.name,"cat",
+                        self.private_root+"/.runtime/"+name],capture_output=True)
+                    if result.returncode==0:
+                        (self.output/("rejected-raw-"+name)).write_bytes(result.stdout)
+                        preserved.append(name)
+                write_json(self.output/"cleanup.json",{
+                    "consistent_database_backup":False,"observed_error":str(error),
+                    "raw_files_preserved":preserved,"acceptance_unchanged":True})
+        finally:
+            result=invoke(["sbx","stop",self.name])
+            if result.returncode:
+                raise RuntimeError("PM sandbox stop failed: "+result.stderr)
 
 def run_suite(master, run, deployment, output, stage, phase, prefix):
     target = output / phase
