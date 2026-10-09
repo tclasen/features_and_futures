@@ -88,7 +88,17 @@ async function render() {
         const title = document.createElement('span'); title.textContent = task.title;
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.disabled = project.archived; checkbox.setAttribute('aria-label', 'Complete ' + task.title);
         checkbox.addEventListener('change', async () => { await fetch('/api/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); await loadTasks(); });
-        row.append(title, checkbox); list.append(row);
+        const renameForm = document.createElement('form');
+        renameForm.innerHTML = '<label>New task title</label><input name="title" aria-label="New task title"><button type="submit">Rename task</button>';
+        if (project.archived) { renameForm.elements.title.disabled = true; renameForm.querySelector('button').disabled = true; }
+        renameForm.addEventListener('submit', async event => {
+          event.preventDefault(); const newTitle = renameForm.elements.title.value.trim();
+          if (!newTitle) { message.textContent = 'Task title is required'; return; }
+          message.textContent = '';
+          const response = await fetch('/api/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+          if (response.ok) await loadTasks();
+        });
+        row.append(title, checkbox, renameForm); list.append(row);
       }
     }
     filter.addEventListener('change', loadTasks);
@@ -177,6 +187,12 @@ const server = createServer(async (req, res) => {
     try {
       let raw = ''; for await (const chunk of req) raw += chunk;
       const input = JSON.parse(raw);
+      if (Object.hasOwn(input, 'title')) {
+        const title = typeof input.title === 'string' ? input.title.trim() : '';
+        if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)').run(title, Number(taskUpdate[1]));
+        return result.changes ? send(200, JSON.stringify({ status: 'ok' })) : send(404, JSON.stringify({ error: 'Task not found or project archived' }));
+      }
       if (typeof input.completed !== 'boolean') return send(400, JSON.stringify({ error: 'Invalid completion state' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(input.completed ? 1 : 0, Number(taskUpdate[1]));
       return result.changes ? send(200, JSON.stringify({ status: 'ok' })) : send(404, JSON.stringify({ error: 'Task not found' }));
