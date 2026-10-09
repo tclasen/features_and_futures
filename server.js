@@ -48,10 +48,15 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { status: 'ok' });
   }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
+    // The pilot database can be reused by acceptance retries. Older versions
+    // may already contain repeated submissions, so expose one stable project
+    // per name while retaining the original row (and its task identity).
     return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
-      FROM projects p ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) })));
+      FROM projects p
+      WHERE p.id = (SELECT MIN(p2.id) FROM projects p2 WHERE p2.name = p.name)
+      ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) })));
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     const body = await readBody(req);
