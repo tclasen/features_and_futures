@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 import { runInNewContext } from 'node:vm';
+import { DatabaseSync } from 'node:sqlite';
 
 async function unusedPort() {
   const socket = net.createServer();
@@ -17,6 +18,10 @@ async function unusedPort() {
 
 test('projects validate, preserve order, open and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
+  // Start from the Task 001 schema to verify a non-destructive upgrade.
+  const oldDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+  oldDatabase.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  oldDatabase.close();
   const port = await unusedPort();
   const base = `http://127.0.0.1:${port}`;
   let child;
@@ -58,6 +63,9 @@ test('projects validate, preserve order, open and persist across restarts', asyn
     assert.match(content, /<h1>Workboard<\/h1>/);
     assert.match(content, /Project name<input/);
     assert.match(content, />Create project<\/button>/);
+    assert.match(content, /Project filter/);
+    assert.match(content, /<option value="active" selected>Active/);
+    assert.match(content, /<option value="archived">Archived/);
     assert.doesNotMatch(content, /data-testid="project-row"/);
     for (const name of ['', '   ']) {
       content = await (await create(name)).text();
@@ -72,6 +80,8 @@ test('projects validate, preserve order, open and persist across restarts', asyn
     assert.ok(content.indexOf('First project') < content.indexOf('Second &lt;project&gt;'));
     const paths = [...content.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]);
     assert.equal(paths.length, 2);
+    assert.equal((content.match(/data-testid="project-summary">0\/0 completed/g) || []).length, 2);
+    assert.equal((content.match(/>Archive project<\/button>/g) || []).length, 2);
     let detail = await (await fetch(base + paths[0])).text();
     assert.match(detail, /<h1>First project<\/h1>/);
     assert.match(detail, /action="\/".*>Projects<\/button>/);
@@ -112,6 +122,8 @@ test('projects validate, preserve order, open and persist across restarts', asyn
     const foreignTaskPath = taskPath.replace(projectPath, paths[1]);
     assert.equal((await postTask(foreignTaskPath, {})).status, 404);
     detail = await (await fetch(base + projectPath)).text();
+    content = await (await fetch(base)).text();
+    assert.match(content, /data-testid="project-summary">1\/2 completed/);
     await stop();
     await start();
     assert.equal(await (await fetch(base)).text(), content);
@@ -158,6 +170,54 @@ test('projects validate, preserve order, open and persist across restarts', asyn
       await start();
       assert.equal(taskRows(await (await fetch(base + projectPath)).text())[0].includes(' checked'), completed);
     }
+
+    await postTask(taskPath, { completed: '1' });
+    assert.equal((await postTask(`${projectPath}/archive`, {})).status, 303);
+    content = await (await fetch(base)).text();
+    assert.doesNotMatch(content, /First project/);
+    assert.match(content, /Second &lt;project&gt;/);
+    const archivedList = await (await fetch(`${base}/?filter=archived`)).text();
+    assert.match(archivedList, /<option value="archived" selected>Archived/);
+    assert.match(archivedList, /First project/);
+    assert.doesNotMatch(archivedList, /Second &lt;project&gt;/);
+    assert.match(archivedList, />Open project<\/button>/);
+    assert.match(archivedList, />Restore project<\/button>/);
+    assert.doesNotMatch(archivedList, />Archive project<\/button>/);
+    assert.match(archivedList, /data-testid="project-summary">1\/2 completed/);
+    detail = await (await fetch(base + projectPath)).text();
+    assert.match(detail, /Archived project/);
+    assert.match(detail, /<button type="submit" disabled>Create task/);
+    rows = taskRows(detail);
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every(row => /aria-label="Complete [^"]+"[^>]* disabled/.test(row)));
+    assert.equal(taskRows(await (await fetch(`${base}${projectPath}?filter=open`)).text()).length, 1);
+    assert.equal(taskRows(await (await fetch(`${base}${projectPath}?filter=completed`)).text()).length, 1);
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: 'Blocked task' })).status, 403);
+    assert.equal((await postTask(taskPath, {})).status, 403);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(`${base}/?filter=archived`)).text(), archivedList);
+    assert.equal(await (await fetch(base + projectPath)).text(), detail);
+    assert.equal((await postTask(`${projectPath}/restore`, {})).status, 303);
+    content = await (await fetch(base)).text();
+    assert.ok(content.indexOf('First project') < content.indexOf('Second &lt;project&gt;'));
+    assert.match(content, /data-testid="project-summary">1\/2 completed/);
+    assert.doesNotMatch(await (await fetch(`${base}/?filter=archived`)).text(), /data-testid="project-row"/);
+    detail = await (await fetch(base + projectPath)).text();
+    assert.doesNotMatch(detail, /Archived project/);
+    rows = taskRows(detail);
+    assert.equal(rows.length, 2);
+    assert.match(rows[0], / checked/);
+    assert.ok(rows.every(row => !row.includes(' disabled')));
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base)).text(), content);
+    assert.equal(await (await fetch(base + projectPath)).text(), detail);
+    assert.equal((await postTask(taskPath, {})).status, 303);
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: 'Restored task' })).status, 303);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/3 completed/);
+    assert.equal((await postTask('/projects/9999/archive', {})).status, 404);
+    assert.equal((await postTask('/projects/9999/restore', {})).status, 404);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
