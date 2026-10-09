@@ -28,8 +28,9 @@
       .project-filter, .task-filter { margin-top: 24px; }
       select { padding: 10px; font: inherit; border: 1px solid #8192a3; border-radius: 5px; background: white; }
       #tasks { display: grid; gap: 12px; margin-top: 16px; }
-      [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; padding: 20px; border: 1px solid #d5dde5; border-radius: 10px; background: white; }
+      [data-testid="task-row"] { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 20px; border: 1px solid #d5dde5; border-radius: 10px; background: white; }
       [data-testid="task-row"] span { overflow-wrap: anywhere; min-width: 0; }
+      [data-testid="task-row"] form { width: 100%; padding: 0; border: 0; }
       input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
     </style>
   </head>
@@ -254,7 +255,47 @@
                   checkbox.disabled = project.archived;
                 }
               });
-              row.append(checkbox, title);
+              const taskRenameForm = document.createElement('form');
+              const taskRenameLabel = document.createElement('label');
+              taskRenameLabel.htmlFor = `new-task-title-${task.id}`;
+              taskRenameLabel.textContent = 'New task title';
+              const taskRenameInput = document.createElement('input');
+              taskRenameInput.id = taskRenameLabel.htmlFor;
+              taskRenameInput.type = 'text';
+              taskRenameInput.autocomplete = 'off';
+              taskRenameInput.disabled = project.archived;
+              const taskRenameSubmit = document.createElement('button');
+              taskRenameSubmit.type = 'submit';
+              taskRenameSubmit.textContent = 'Rename task';
+              taskRenameSubmit.disabled = project.archived;
+              const taskRenameFields = document.createElement('div');
+              taskRenameFields.className = 'fields';
+              taskRenameFields.append(taskRenameInput, taskRenameSubmit);
+              taskRenameForm.append(taskRenameLabel, taskRenameFields);
+              taskRenameForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                if (project.archived) return;
+                const newTitle = taskRenameInput.value.trim();
+                if (!newTitle) return showError('Task title is required');
+                showError('');
+                taskRenameSubmit.disabled = true;
+                try {
+                  const saved = await request(`/api/projects/${id}/tasks/${task.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle }),
+                  });
+                  task.title = saved.title;
+                  title.textContent = saved.title;
+                  checkbox.setAttribute('aria-label', `Complete ${saved.title}`);
+                  taskRenameInput.value = '';
+                } catch (error) {
+                  showError(error.message);
+                } finally {
+                  taskRenameSubmit.disabled = project.archived;
+                }
+              });
+              row.append(checkbox, title, taskRenameForm);
               list.append(row);
             }
           }

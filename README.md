@@ -17,3 +17,5 @@ Open `/` to create and open projects. Within a project, create tasks, change the
 Active project pages also allow renaming with New project name and Rename project. Names are trimmed and required. Renaming preserves the project URL, list order, tasks, and completion summary. Archived projects cannot be renamed until restored. Renamed names persist across restarts.
 
 Run verification with `npm test`.
+
+Each task row offers New task title and Rename task. Titles are trimmed and required; renaming preserves task ownership, order, completion, filters, and summaries, and updates the completion checkbox label. Archived projects disable task renaming until restored. Renamed titles persist across restarts.
