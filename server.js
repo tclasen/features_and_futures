@@ -49,6 +49,8 @@ const page = `<!doctype html>
     .task-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: white; border: 1px solid #dce2ec; border-radius: 8px; }
     .task-row label { display: flex; align-items: center; gap: 10px; font-weight: 400; }
     .task-row input { width: auto; }
+    .task-row .rename-task-form { display: flex; align-items: end; gap: 8px; margin-left: auto; padding: 0; background: transparent; border: 0; }
+    .task-row .rename-task-form label { min-width: 150px; }
     select { padding: 10px 12px; border: 1px solid #aeb8c8; border-radius: 6px; font: inherit; background: white; }
     .project-actions { display: flex; align-items: center; gap: 10px; }
     .project-summary { color: #536078; white-space: nowrap; }
@@ -186,7 +188,25 @@ const page = `<!doctype html>
             await refreshTasks();
           });
           label.append(checkbox, element('span', {}, task.title));
-          row.append(label);
+          const renameForm = element('form', { class: 'rename-task-form' });
+          const renameLabel = element('label');
+          renameLabel.textContent = 'New task title';
+          const renameInput = element('input', { type: 'text', name: 'title', autocomplete: 'off', 'aria-label': 'New task title' });
+          const renameButton = element('button', { type: 'submit' }, 'Rename task');
+          renameInput.disabled = project.archived;
+          renameButton.disabled = project.archived;
+          renameLabel.append(renameInput);
+          renameForm.append(renameLabel, renameButton);
+          renameForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const title = renameInput.value.trim();
+            if (!title) { alert.textContent = 'Task title is required'; renameInput.focus(); return; }
+            const renamed = await fetch('/api/projects/' + id + '/tasks/' + task.id, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+            });
+            if (renamed.ok) { alert.textContent = ''; await refreshTasks(); }
+          });
+          row.append(label, renameForm);
           return row;
         }));
       }
@@ -305,6 +325,14 @@ const server = http.createServer(async (request, response) => {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
     const body = await readJson(request);
+    if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      const result = database.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
+        AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`).run(title, taskId, projectId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, title });
+    }
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
     const result = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`).run(body.completed ? 1 : 0, taskId, projectId, projectId);
