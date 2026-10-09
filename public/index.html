@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 3rem 1.25rem; }
+    main { max-width: 680px; margin: auto; }
+    h1 { margin: 0 0 1.5rem; font-size: 2rem; }
+    form { display: flex; gap: .75rem; margin-bottom: 1.5rem; }
+    input { flex: 1; min-width: 0; padding: .75rem; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
+    button { padding: .7rem 1rem; border: 0; border-radius: 6px; background: #2156a5; color: white; font: inherit; cursor: pointer; }
+    button:hover { background: #163f7d; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #83b6ff; outline-offset: 2px; }
+    .project-list { display: grid; gap: .65rem; }
+    [data-testid="project-row"] { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #dce2e9; border-radius: 8px; background: white; }
+    [role="alert"] { color: #a12622; margin: .5rem 0 1rem; }
+    @media (max-width: 480px) { form { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const api = async (url, options) => {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
+    const element = (tag, text) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      if (match) {
+        const project = await api(`/api/projects/${match[1]}`);
+        const back = element('button', 'Projects');
+        back.type = 'button';
+        back.addEventListener('click', () => { location.href = '/'; });
+        app.replaceChildren(back, element('h1', project.name));
+        return;
+      }
+
+      const heading = element('h1', 'Workboard');
+      const form = element('form');
+      const input = element('input');
+      input.type = 'text';
+      input.name = 'name';
+      input.setAttribute('aria-label', 'Project name');
+      input.autocomplete = 'off';
+      const create = element('button', 'Create project');
+      create.type = 'submit';
+      form.append(input, create);
+      const alert = element('p');
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      const list = element('section');
+      list.className = 'project-list';
+      list.setAttribute('aria-label', 'Projects');
+
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+          alert.textContent = 'Project name is required';
+          alert.hidden = false;
+          input.focus();
+          return;
+        }
+        create.disabled = true;
+        try {
+          await api('/api/projects', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          input.value = '';
+          alert.hidden = true;
+          await renderProjects(list);
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        } finally { create.disabled = false; }
+      });
+      app.replaceChildren(heading, form, alert, list);
+      await renderProjects(list);
+    }
+
+    async function renderProjects(list) {
+      const projects = await api('/api/projects');
+      const rows = projects.map(project => {
+        const row = element('div');
+        row.dataset.testid = 'project-row';
+        row.append(element('span', project.name));
+        const open = element('button', 'Open project');
+        open.type = 'button';
+        open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
+        row.append(open);
+        return row;
+      });
+      list.replaceChildren(...rows);
+    }
+
+    render().catch(() => {
+      app.replaceChildren(element('h1', 'Workboard'), element('p', 'Unable to load Workboard.'));
+    });
+  </script>
+</body>
+</html>
