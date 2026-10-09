@@ -14,6 +14,7 @@ function layout(title, content) {
   <style>
     :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b36; background: #f3f6f7; }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body { margin: 0; }
     main { max-width: 760px; margin: 64px auto; padding: 0 24px; }
     .eyebrow { color: #466774; font-size: .8rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
@@ -95,7 +96,7 @@ export function projectPage(project, tasks, filter = 'All', error = '') {
     </form>
     <div class="task-list">
       ${tasks.map((task) => `
-        <div class="task-row" data-testid="task-row">
+        <div class="task-row" data-testid="task-row"${filter === 'Open' && task.completed || filter === 'Completed' && !task.completed ? ' hidden' : ''}>
           <form action="/projects/${project.id}/tasks/${task.id}" method="post">
             <input type="hidden" name="filter" value="${filter}">
             <label>
@@ -105,7 +106,7 @@ export function projectPage(project, tasks, filter = 'All', error = '') {
           </form>
         </div>`).join('')}
     </div>
-    ${tasks.length ? '' : '<p class="empty">No tasks match this filter.</p>'}
+    <p class="empty" id="tasks-empty"${tasks.some((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) ? ' hidden' : ''}>No tasks match this filter.</p>
     <script src="/project.js" defer></script>`);
 }
 

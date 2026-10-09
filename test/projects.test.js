@@ -134,7 +134,9 @@ test('tasks validate, remain project-owned, filter, and persist completion acros
     const post = (path, fields) => fetch(`${server.address}${path}`, {
       method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
     });
-    const rowCount = (html) => (html.match(/data-testid="task-row"/g) || []).length;
+    const visibleRows = (html) => [...html.matchAll(/<div class="task-row" data-testid="task-row"( hidden)?>([\s\S]*?)<\/div>/g)]
+      .filter((match) => !match[1]).map((match) => match[2]).join('');
+    const rowCount = (html) => (html.match(/data-testid="task-row">/g) || []).length;
     const initial = await getHtml('/projects/1');
     assert.match(initial, /<label for="task-title">Task title<\/label>/);
     assert.match(initial, /<button type="submit">Create task<\/button>/);
@@ -177,7 +179,7 @@ test('tasks validate, remain project-owned, filter, and persist completion acros
     assert.match(completed, /<option selected>Completed<\/option>/);
     const open = await getHtml('/projects/1?filter=Open');
     assert.equal(rowCount(open), 1);
-    assert.doesNotMatch(open, /First task/);
+    assert.doesNotMatch(visibleRows(open), /First task/);
     assert.equal(rowCount(await getHtml('/projects/1?filter=unknown')), 2);
     assert.equal((await post(taskPaths[0].replace('/projects/1/', '/projects/2/'), {})).status, 404);
     assert.equal((await post(taskPaths[0], { completed: 'invalid' })).status, 400);
@@ -193,7 +195,11 @@ test('tasks validate, remain project-owned, filter, and persist completion acros
     assert.equal(await getHtml('/projects/1?filter=Completed'), completed);
     assert.equal(await getHtml('/projects/1?filter=Open'), open);
     assert.equal(await getHtml('/projects/2'), otherProject);
-    assert.equal((await post(taskPaths[0], {})).status, 303);
+    const uncompletedResponse = await fetch(`${server.address}${taskPaths[0]}`, {
+      method: 'POST', body: new URLSearchParams(), headers: { Accept: 'application/json' },
+    });
+    assert.equal(uncompletedResponse.status, 204);
+    assert.equal(await uncompletedResponse.text(), '');
     assert.equal(rowCount(await getHtml('/projects/1?filter=Completed')), 0);
     assert.equal(await getHtml('/projects/1'), created);
 

@@ -1,22 +1,33 @@
-const pendingSaves = new Set();
+const filter = document.querySelector('#task-filter');
+const checkboxes = [...document.querySelectorAll('input[data-submit-on-change]')];
 
-document.querySelectorAll('input[data-submit-on-change]').forEach((checkbox) => {
+function applyFilter() {
+  let visibleCount = 0;
+  for (const checkbox of checkboxes) {
+    const matches = filter.value === 'All'
+      || checkbox.checked === (filter.value === 'Completed');
+    checkbox.closest('[data-testid="task-row"]').hidden = !matches;
+    if (matches) visibleCount += 1;
+  }
+  document.querySelector('#tasks-empty').hidden = visibleCount > 0;
+}
+
+checkboxes.forEach((checkbox) => {
   checkbox.addEventListener('change', async () => {
     const completed = checkbox.checked;
     const form = checkbox.form;
     const body = new URLSearchParams(new FormData(form));
     checkbox.disabled = true;
-    const save = fetch(form.action, { method: 'POST', body, keepalive: true });
-    pendingSaves.add(save);
+    applyFilter();
     try {
-      const response = await save;
+      const response = await fetch(form.action, {
+        method: 'POST', body, keepalive: true,
+        headers: { Accept: 'application/json' },
+      });
       if (!response.ok) throw new Error('Completion could not be saved');
-      const filter = document.querySelector('#task-filter').value;
-      if ((filter === 'Open' && completed) || (filter === 'Completed' && !completed)) {
-        checkbox.closest('[data-testid="task-row"]').remove();
-      }
     } catch {
       checkbox.checked = !completed;
+      applyFilter();
       let alert = document.querySelector('#completion-error');
       if (!alert) {
         alert = document.createElement('p');
@@ -27,13 +38,17 @@ document.querySelectorAll('input[data-submit-on-change]').forEach((checkbox) => 
       alert.textContent = 'Task completion could not be saved. Please try again.';
     } finally {
       checkbox.disabled = false;
-      pendingSaves.delete(save);
     }
   });
 });
 
-const filter = document.querySelector('#task-filter');
-filter.addEventListener('change', async () => {
-  await Promise.allSettled([...pendingSaves]);
-  filter.form.requestSubmit();
+filter.addEventListener('change', () => {
+  applyFilter();
+  document.querySelectorAll('input[name="filter"]').forEach((input) => {
+    input.value = filter.value;
+  });
+  const url = new URL(window.location.href);
+  if (filter.value === 'All') url.searchParams.delete('filter');
+  else url.searchParams.set('filter', filter.value);
+  window.history.replaceState(null, '', url);
 });

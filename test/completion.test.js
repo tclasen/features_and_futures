@@ -5,40 +5,42 @@ import { runInNewContext } from 'node:vm';
 
 const script = await readFile(new URL('../project.js', import.meta.url), 'utf8');
 
-function browser({ completed = false, selectedFilter = 'All' } = {}) {
+function browser({ states = [false], selectedFilter = 'All' } = {}) {
   const requests = [];
-  const checkboxListeners = {};
-  const filterListeners = {};
-  let removed = false;
-  let submitted = false;
   let alert;
-  const checkbox = {
+  const empty = { hidden: states.length > 0 };
+  const hiddenFilter = { value: selectedFilter };
+  const location = { href: 'http://localhost/projects/1' };
+  const rows = states.map(() => ({ hidden: false }));
+  const checkboxes = states.map((completed, index) => ({
     checked: completed,
     disabled: false,
-    form: { action: 'http://localhost/projects/1/tasks/1' },
-    addEventListener: (event, handler) => { checkboxListeners[event] = handler; },
-    closest: () => ({ remove: () => { removed = true; } }),
-  };
+    form: { action: `http://localhost/projects/1/tasks/${index + 1}` },
+    addEventListener(event, handler) { this[event] = handler; },
+    closest: () => rows[index],
+  }));
   const filter = {
     value: selectedFilter,
-    form: { requestSubmit: () => { submitted = true; } },
-    addEventListener: (event, handler) => { filterListeners[event] = handler; },
+    addEventListener(event, handler) { this[event] = handler; },
   };
   runInNewContext(script, {
-    URLSearchParams,
+    URL, URLSearchParams,
     FormData: class {
+      constructor(form) { this.checkbox = checkboxes.find((item) => item.form === form); }
       *[Symbol.iterator]() {
-        yield ['filter', filter.value];
-        if (checkbox.checked && !checkbox.disabled) yield ['completed', '1'];
+        yield ['filter', hiddenFilter.value];
+        if (this.checkbox.checked && !this.checkbox.disabled) yield ['completed', '1'];
       }
     },
     fetch: (url, options) => new Promise((resolve, reject) => {
       requests.push({ url, options, resolve, reject });
     }),
+    window: { location, history: { replaceState: (_state, _title, url) => { location.href = String(url); } } },
     document: {
-      querySelectorAll: () => [checkbox],
+      querySelectorAll: (selector) => selector === 'input[name="filter"]' ? [hiddenFilter] : checkboxes,
       querySelector: (selector) => {
         if (selector === '#task-filter') return filter;
+        if (selector === '#tasks-empty') return empty;
         if (selector === '#completion-error') return alert;
         if (selector === '.task-list') return { before: (element) => { alert = element; } };
         throw new Error(`Unexpected selector: ${selector}`);
@@ -47,31 +49,27 @@ function browser({ completed = false, selectedFilter = 'All' } = {}) {
     },
   });
   return {
-    checkbox, filter, requests,
-    changeCompletion: (value) => {
-      checkbox.checked = value;
-      return checkboxListeners.change();
+    checkboxes, rows, filter, requests, location, hiddenFilter, empty,
+    changeCompletion: (value, index = 0) => {
+      checkboxes[index].checked = value;
+      return checkboxes[index].change();
     },
-    changeFilter: (value) => {
-      filter.value = value;
-      return filterListeners.change();
-    },
-    get removed() { return removed; },
-    get submitted() { return submitted; },
+    changeFilter: (value) => { filter.value = value; filter.change(); },
     get alert() { return alert; },
   };
 }
 
-test('checking then unchecking saves both states without navigating or replacing the checkbox', async () => {
+test('checking then unchecking saves both states in place', async () => {
   const page = browser();
   const checking = page.changeCompletion(true);
-  assert.equal(page.checkbox.disabled, true);
+  assert.equal(page.checkboxes[0].disabled, true);
   assert.equal(page.requests[0].options.body.get('completed'), '1');
   assert.equal(page.requests[0].options.keepalive, true);
+  assert.equal(page.requests[0].options.headers.Accept, 'application/json');
   page.requests[0].resolve({ ok: true });
   await checking;
-  assert.equal(page.checkbox.checked, true);
-  assert.equal(page.checkbox.disabled, false);
+  assert.equal(page.checkboxes[0].checked, true);
+  assert.equal(page.checkboxes[0].disabled, false);
 
   const unchecking = page.changeCompletion(false);
   assert.equal(page.requests[1].options.body.has('completed'), false);
@@ -79,44 +77,55 @@ test('checking then unchecking saves both states without navigating or replacing
   assert.equal(page.requests[1].url, 'http://localhost/projects/1/tasks/1');
   page.requests[1].resolve({ ok: true });
   await unchecking;
-  assert.equal(page.checkbox.checked, false);
-  assert.equal(page.checkbox.disabled, false);
-  assert.equal(page.submitted, false);
-  assert.equal(page.removed, false);
+  assert.equal(page.checkboxes[0].checked, false);
+  assert.equal(page.checkboxes[0].disabled, false);
+  assert.equal(page.rows[0].hidden, false);
 });
 
-test('filter navigation waits until a pending completion save finishes', async () => {
-  const page = browser();
+test('filters update immediately during a pending save and retain rows for All', async () => {
+  const page = browser({ states: [false, false] });
   const saving = page.changeCompletion(true);
-  const filtering = page.changeFilter('Completed');
-  await Promise.resolve();
-  assert.equal(page.submitted, false);
+  page.changeFilter('Open');
+  assert.deepEqual(page.rows.map((row) => row.hidden), [true, false]);
+  assert.equal(page.location.href, 'http://localhost/projects/1?filter=Open');
+  assert.equal(page.hiddenFilter.value, 'Open');
+  page.changeFilter('Completed');
+  assert.deepEqual(page.rows.map((row) => row.hidden), [false, true]);
   page.requests[0].resolve({ ok: true });
-  await Promise.all([saving, filtering]);
-  assert.equal(page.submitted, true);
+  await saving;
+  page.changeFilter('All');
+  assert.deepEqual(page.rows.map((row) => row.hidden), [false, false]);
+  assert.equal(page.location.href, 'http://localhost/projects/1');
 });
 
-test('completed and open filters remove rows only after successful saves', async () => {
+test('completion changes immediately hide nonmatching rows and update the empty message', async () => {
   for (const [filter, completed] of [['Open', false], ['Completed', true]]) {
-    const page = browser({ completed, selectedFilter: filter });
+    const page = browser({ states: [completed], selectedFilter: filter });
     const saving = page.changeCompletion(!completed);
-    assert.equal(page.removed, false);
+    assert.equal(page.rows[0].hidden, true);
+    assert.equal(page.empty.hidden, false);
     page.requests[0].resolve({ ok: true });
     await saving;
-    assert.equal(page.removed, true);
+    assert.equal(page.rows[0].hidden, true);
+    page.changeFilter('All');
+    assert.equal(page.rows[0].hidden, false);
+    assert.equal(page.empty.hidden, true);
   }
 });
 
-test('failed saves restore the prior checkbox state and display an alert', async () => {
+test('failed saves restore state and visibility under the current filter and display an alert', async () => {
   for (const failure of ['http', 'network']) {
-    const page = browser({ completed: true });
+    const page = browser({ states: [true] });
     const saving = page.changeCompletion(false);
+    page.changeFilter('Completed');
+    assert.equal(page.rows[0].hidden, true);
     if (failure === 'http') page.requests[0].resolve({ ok: false });
     else page.requests[0].reject(new Error('Connection failed'));
     await saving;
-    assert.equal(page.checkbox.checked, true);
-    assert.equal(page.checkbox.disabled, false);
-    assert.equal(page.removed, false);
+    assert.equal(page.checkboxes[0].checked, true);
+    assert.equal(page.checkboxes[0].disabled, false);
+    assert.equal(page.rows[0].hidden, false);
+    assert.equal(page.empty.hidden, true);
     assert.equal(page.alert.role, 'alert');
     assert.match(page.alert.textContent, /could not be saved/);
   }

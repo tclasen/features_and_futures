@@ -27,7 +27,7 @@ const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare(`
   SELECT id, title, completed FROM tasks
-  WHERE project_id = ? AND (? IS NULL OR completed = ?)
+  WHERE project_id = ?
   ORDER BY id
 `);
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -38,8 +38,7 @@ function taskFilter(value) {
 }
 
 function renderProject(project, filter, error = '') {
-  const completed = filter === 'All' ? null : Number(filter === 'Completed');
-  return projectPage(project, listTasks.all(project.id, completed, completed), filter, error);
+  return projectPage(project, listTasks.all(project.id), filter, error);
 }
 
 function redirect(response, location) {
@@ -120,6 +119,11 @@ const server = createServer(async (request, response) => {
           }
           if (!Number.isSafeInteger(taskId) || !updateTask.run(Number(completed === '1'), id, taskId).changes) {
             sendHtml(response, 404, errorPage('Task not found'));
+            return;
+          }
+          if (request.headers.accept === 'application/json') {
+            response.writeHead(204);
+            response.end();
             return;
           }
         } else {
