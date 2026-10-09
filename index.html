@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    body { margin: 0; }
+    main { width: min(680px, calc(100% - 40px)); margin: 64px auto; }
+    h1 { font-size: 2rem; margin: 0 0 24px; }
+    form, .project-row { background: white; border: 1px solid #dce2ec; border-radius: 10px; padding: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 7px; }
+    input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #aab5c7; border-radius: 6px; font: inherit; }
+    button { margin-top: 12px; border: 0; border-radius: 6px; background: #315bd6; color: white; padding: 10px 16px; font: inherit; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #88a4ff; outline-offset: 2px; }
+    [role="alert"] { color: #a52323; margin: 10px 0 0; }
+    #projects { display: grid; gap: 10px; margin-top: 18px; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .project-row button { margin: 0; }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const path = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+    const button = (text, action) => { const b = document.createElement('button'); b.textContent = text; b.addEventListener('click', action); return b; };
+
+    async function showProjects() {
+      app.replaceChildren();
+      const heading = document.createElement('h1'); heading.textContent = 'Workboard'; app.append(heading);
+      const form = document.createElement('form');
+      const label = document.createElement('label'); label.htmlFor = 'project-name'; label.textContent = 'Project name';
+      const input = document.createElement('input'); input.id = 'project-name'; input.name = 'name'; input.type = 'text'; input.setAttribute('aria-label', 'Project name');
+      const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.hidden = true;
+      const submit = document.createElement('button'); submit.textContent = 'Create project';
+      form.append(label, input, submit, alert); app.append(form);
+      const list = document.createElement('section'); list.id = 'projects'; list.setAttribute('aria-label', 'Projects'); app.append(list);
+      async function load() {
+        const projects = await (await fetch('/api/projects')).json(); list.replaceChildren();
+        for (const project of projects) {
+          const row = document.createElement('div'); row.className = 'project-row'; row.dataset.testid = 'project-row';
+          const name = document.createElement('span'); name.textContent = project.name;
+          row.append(name, button('Open project', () => { location.href = `/projects/${project.id}`; })); list.append(row);
+        }
+      }
+      form.addEventListener('submit', async event => {
+        event.preventDefault(); alert.hidden = true;
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+        if (!response.ok) { const result = await response.json(); alert.textContent = result.error || 'Unable to create project'; alert.hidden = false; return; }
+        input.value = ''; await load();
+      });
+      await load();
+    }
+
+    async function showProject(id) {
+      const response = await fetch(`/api/projects/${id}`);
+      if (!response.ok) { app.textContent = 'Project not found'; return; }
+      const project = await response.json();
+      const heading = document.createElement('h1'); heading.textContent = project.name;
+      app.append(heading, button('Projects', () => { location.href = '/'; }));
+    }
+    path ? showProject(path[1]) : showProjects();
+  </script>
+</body>
+</html>
