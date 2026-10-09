@@ -113,6 +113,20 @@ test('launch contract, validation, creation order and process-restart persistenc
     assert.deepEqual(await update.json(), firstTask);
     assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
     const otherTask = await (await send(otherTaskRoute, 'POST', { title: 'Other project task' })).json();
+    const beforeTaskRename = await (await get(`/api/projects/${first.id}`)).json();
+    for (const title of ['', ' \t\n ', null, 123]) {
+      const invalid = await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { title });
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Task title is required' });
+      assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
+    }
+    assert.equal((await send(`${otherTaskRoute}/${firstTask.id}`, 'PATCH', { title: 'Wrong project' })).status, 404);
+    const taskRename = await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { title: '  Renamed task \n' });
+    assert.equal(taskRename.status, 200);
+    firstTask.title = 'Renamed task';
+    assert.deepEqual(await taskRename.json(), firstTask);
+    assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
+    assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), beforeTaskRename);
 
     await server.stop();
     server = undefined;
@@ -161,6 +175,7 @@ test('launch contract, validation, creation order and process-restart persistenc
     assert.equal((await send(projectRoute, 'PATCH', { name: 'Blocked rename' })).status, 409);
     assert.deepEqual(await (await get(projectRoute)).json(), summary);
     assert.equal((await send(taskRoute, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { title: 'Blocked rename' })).status, 409);
     assert.equal((await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { completed: false })).status, 409);
     assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
     await server.stop();
@@ -171,6 +186,11 @@ test('launch contract, validation, creation order and process-restart persistenc
     summary = await (await send(projectRoute, 'PATCH', { archived: false })).json();
     assert.equal(summary.archived, false);
     assert.equal(summary.completed, 1);
+    const restoredTaskRename = await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { title: '  Restored task  ' });
+    assert.equal(restoredTaskRename.status, 200);
+    firstTask.title = 'Restored task';
+    assert.deepEqual(await restoredTaskRename.json(), firstTask);
+    assert.deepEqual(await (await get(projectRoute)).json(), summary);
     assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
     await server.stop();
     server = undefined;

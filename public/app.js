@@ -134,7 +134,40 @@ function renderTasks() {
         checkbox.disabled = archived;
       }
     });
-    row.append(title, checkbox);
+    const renameTaskForm = document.createElement('form');
+    const newTitleLabel = document.createElement('label');
+    newTitleLabel.textContent = 'New task title';
+    const newTitleInput = document.createElement('input');
+    newTitleInput.type = 'text';
+    newTitleInput.disabled = archived;
+    newTitleLabel.append(newTitleInput);
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = archived;
+    renameTaskForm.append(newTitleLabel, renameButton);
+    renameTaskForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (archived) return;
+      showError('');
+      const title = newTitleInput.value.trim();
+      if (!title) return showError('Task title is required');
+      renameButton.disabled = true;
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        task.title = saved.title;
+        renderTasks();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        renameButton.disabled = archived;
+      }
+    });
+    row.append(title, checkbox, renameTaskForm);
     taskList.append(row);
   }
 }

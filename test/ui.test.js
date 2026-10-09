@@ -183,7 +183,14 @@ test('archived project is visibly read-only and task filtering remains usable', 
   element('#new-project-name').value = 'Blocked rename';
   await element('#rename-project').trigger('submit');
   assert.equal(element('#tasks').children.length, 2);
-  for (const row of element('#tasks').children) assert.equal(row.children[1].disabled, true);
+  for (const row of element('#tasks').children) {
+    assert.equal(row.children[1].disabled, true);
+    const rename = row.children[2];
+    assert.equal(rename.children[0].children[0].disabled, true);
+    assert.equal(rename.children[1].disabled, true);
+    rename.children[0].children[0].value = 'Blocked rename';
+    await rename.trigger('submit');
+  }
   element('#task-title').value = 'Blocked';
   await element('#create-task').trigger('submit');
   await element('#tasks').children[0].children[1].trigger('change');
@@ -193,6 +200,61 @@ test('archived project is visibly read-only and task filtering remains usable', 
   assert.equal(element('#tasks').children.length, 1);
   assert.equal(element('#tasks').children[0].children[0].textContent, 'Done');
   assert.equal(element('#tasks').children[0].children[1].disabled, true);
+});
+
+test('task rename validates, preserves order and filtering, updates labels, and handles save errors', async () => {
+  const tasks = [
+    { id: 1, title: 'Open task', completed: false },
+    { id: 2, title: 'Done task', completed: true },
+  ];
+  let writes = 0;
+  let fail = false;
+  const { element } = await loadUI('/projects/7', async (path, options) => {
+    let data = path.endsWith('/tasks') ? tasks : { id: 7, name: 'Project', archived: false };
+    if (options) {
+      writes++;
+      assert.equal(path, '/api/projects/7/tasks/2');
+      assert.equal(options.method, 'PATCH');
+      if (fail) return { ok: false, json: async () => ({ error: 'Save failed' }) };
+      tasks[1].title = JSON.parse(options.body).title;
+      data = tasks[1];
+    }
+    return { ok: true, json: async () => structuredClone(data) };
+  });
+  const rows = () => element('#tasks').children;
+  const rename = () => rows().at(-1).children[2];
+  const input = () => rename().children[0].children[0];
+  assert.equal(rename().children[0].textContent, 'New task title');
+  assert.equal(rename().children[1].textContent, 'Rename task');
+  assert.equal(input().disabled, false);
+  assert.equal(rename().children[1].disabled, false);
+  input().value = ' \t ';
+  await rename().trigger('submit');
+  assert.equal(writes, 0);
+  assert.equal(element('#error').textContent, 'Task title is required');
+  assert.equal(rows()[1].children[0].textContent, 'Done task');
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').trigger('change');
+  input().value = '  Renamed <task>  ';
+  await rename().trigger('submit');
+  assert.equal(writes, 1);
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[0].textContent, 'Renamed <task>');
+  assert.equal(rows()[0].children[1].attributes['aria-label'], 'Complete Renamed <task>');
+  assert.equal(rows()[0].children[1].checked, true);
+  fail = true;
+  input().value = 'Failed rename';
+  await rename().trigger('submit');
+  assert.equal(element('#error').textContent, 'Save failed');
+  assert.equal(rows()[0].children[0].textContent, 'Renamed <task>');
+  assert.equal(rename().children[1].disabled, false);
+  element('#task-filter').value = 'open';
+  await element('#task-filter').trigger('change');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[0].textContent, 'Open task');
+  element('#task-filter').value = 'all';
+  await element('#task-filter').trigger('change');
+  assert.deepEqual(rows().map((row) => row.children[0].textContent), ['Open task', 'Renamed <task>']);
 });
 
 test('rename UI validates, updates heading without navigation, and preserves tasks on errors', async () => {

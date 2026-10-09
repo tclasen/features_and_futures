@@ -69,6 +69,7 @@ export function createApplication(dbPath = process.env.DB_PATH || './data/workbo
   const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+  const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const taskData = (task) => ({ ...task, completed: Boolean(task.completed) });
 
   const server = createServer(async (request, response) => {
@@ -107,6 +108,13 @@ export function createApplication(dbPath = process.env.DB_PATH || './data/workbo
         if (taskId && request.method === 'PATCH') {
           if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
           const input = await readJson(request);
+          if (input && Object.hasOwn(input, 'title')) {
+            const title = typeof input.title === 'string' ? input.title.trim() : '';
+            if (!title) return json(response, 400, { error: 'Task title is required' });
+            if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
+            renameTask.run(title, projectId, taskId);
+            return json(response, 200, taskData(getTask.get(projectId, taskId)));
+          }
           if (typeof input?.completed !== 'boolean') {
             return json(response, 400, { error: 'Completion must be a boolean' });
           }
