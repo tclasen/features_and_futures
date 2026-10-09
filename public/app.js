@@ -3,7 +3,7 @@ const app = document.querySelector('#app');
 async function request(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(data.error || 'Unable to complete request');
   return data;
 }
 
@@ -29,11 +29,87 @@ function projectRow(project) {
 async function render() {
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   if (match) {
-    app.innerHTML = '<button type="button" id="back" class="secondary">Projects</button><h1></h1><p id="error" role="alert" hidden></p>';
+    app.innerHTML = `
+      <button type="button" id="back" class="secondary">Projects</button>
+      <h1></h1>
+      <form id="create-task" novalidate>
+        <label for="task-title">Task title</label>
+        <div class="form-controls">
+          <input id="task-title" name="title" type="text" autocomplete="off">
+          <button type="submit">Create task</button>
+        </div>
+      </form>
+      <p id="error" role="alert" hidden></p>
+      <h2>Tasks</h2>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter">
+        <option value="all">All</option>
+        <option value="open">Open</option>
+        <option value="completed">Completed</option>
+      </select>
+      <p id="empty" hidden>No tasks match this filter.</p>
+      <ul id="tasks" aria-label="Tasks"></ul>`;
     document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
     const project = await request(`/api/projects/${match[1]}`);
     document.querySelector('h1').textContent = project.name;
     document.title = `${project.name} · Workboard`;
+    const endpoint = `/api/projects/${project.id}/tasks`;
+    const tasks = await request(endpoint);
+    const filter = document.querySelector('#task-filter');
+    const list = document.querySelector('#tasks');
+    function renderTasks() {
+      const visible = tasks.filter(task => filter.value === 'all' ||
+        (filter.value === 'completed' ? task.completed : !task.completed));
+      list.replaceChildren(...visible.map(task => {
+        const row = document.createElement('li');
+        row.dataset.testid = 'task-row';
+        const title = document.createElement('span');
+        title.textContent = task.title;
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = task.completed;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        checkbox.addEventListener('change', async () => {
+          checkbox.disabled = true;
+          document.querySelector('#error').hidden = true;
+          try {
+            const updated = await request(`${endpoint}/${task.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked }),
+            });
+            Object.assign(task, updated);
+            renderTasks();
+          } catch (error) {
+            checkbox.checked = task.completed;
+            showError(error.message);
+          } finally { checkbox.disabled = false; }
+        });
+        row.append(title, checkbox);
+        return row;
+      }));
+      document.querySelector('#empty').hidden = visible.length !== 0;
+    }
+    filter.addEventListener('change', renderTasks);
+    renderTasks();
+    document.querySelector('#create-task').addEventListener('submit', async event => {
+      event.preventDefault();
+      const input = document.querySelector('#task-title');
+      const title = input.value.trim();
+      document.querySelector('#error').hidden = true;
+      if (!title) { showError('Task title is required'); input.focus(); return; }
+      const button = event.currentTarget.querySelector('button');
+      button.disabled = true;
+      try {
+        tasks.push(await request(endpoint, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        }));
+        renderTasks();
+        input.value = '';
+        input.focus();
+      } catch (error) { showError(error.message); }
+      finally { button.disabled = false; }
+    });
   } else {
     app.innerHTML = `
       <h1>Workboard</h1>
