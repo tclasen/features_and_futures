@@ -33,6 +33,7 @@ const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const app = `<!doctype html>
 <html lang="en">
@@ -95,9 +96,22 @@ async function render() {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'task-row';
           const title = document.createElement('span'); title.textContent = task.title;
+          const renameForm = document.createElement('form');
+          renameForm.innerHTML = '<label>New task title<input type="text"></label><button type="submit">Rename task</button>';
+          const renameInput = renameForm.querySelector('input');
+          const renameButton = renameForm.querySelector('button');
+          renameInput.disabled = !!project.archived; renameButton.disabled = !!project.archived;
+          renameForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+            alert.hidden = true;
+            const response = await fetch('/api/projects/' + match[1] + '/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+            if (response.ok) await loadTasks();
+          });
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'task-check'; checkbox.checked = !!task.completed; checkbox.setAttribute('aria-label', 'Complete ' + task.title); checkbox.disabled = !!project.archived;
           checkbox.addEventListener('change', async () => { await fetch('/api/projects/' + match[1] + '/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); await loadTasks(); });
-          row.append(title, checkbox); list.append(row);
+          row.append(title, renameForm, checkbox); list.append(row);
         }
       }
       filter.addEventListener('change', loadTasks);
@@ -190,12 +204,19 @@ const server = http.createServer(async (req, res) => {
   if (taskMatch && req.method === 'PATCH') {
     try {
       const body = await readJson(req);
-      if (typeof body.completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
       const projectId = Number(taskMatch[1]), taskId = Number(taskMatch[2]);
-      if (!getTask.get(taskId, projectId)) return send(res, 404, { error: 'Task not found' });
+      const task = getTask.get(taskId, projectId);
+      if (!task) return send(res, 404, { error: 'Task not found' });
       if (getProject.get(projectId).archived) return send(res, 409, { error: 'Project is archived' });
-      updateTask.run(body.completed ? 1 : 0, taskId, projectId);
-      return send(res, 200, { ...getTask.get(taskId, projectId), completed: body.completed });
+      if (Object.hasOwn(body, 'title')) {
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!title) return send(res, 400, { error: 'Task title is required' });
+        renameTask.run(title, taskId, projectId);
+      } else if (typeof body.completed === 'boolean') {
+        updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+      } else return send(res, 400, { error: 'Invalid task update' });
+      const updated = getTask.get(taskId, projectId);
+      return send(res, 200, { ...updated, completed: !!updated.completed });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
