@@ -74,15 +74,16 @@ async function render() {
       heading.textContent = project.name;
       const form = document.createElement('form');
       form.innerHTML = '<label for="task-title">Task title</label><input id="task-title" type="text"><button type="submit">Create task</button>';
+      if (project.archived) { form.querySelector('input').disabled = true; form.querySelector('button').disabled = true; }
       const alert = document.createElement('p');
       alert.className = 'alert'; alert.setAttribute('role', 'alert'); alert.hidden = true;
-      if (project.archived) { const archived = document.createElement('p'); archived.textContent = 'Archived project'; app.append(back, heading, archived); }
+      app.append(back, heading);
+      if (project.archived) { const archived = document.createElement('p'); archived.textContent = 'Archived project'; app.append(archived); }
       const filterLabel = document.createElement('label'); filterLabel.htmlFor = 'task-filter'; filterLabel.textContent = 'Task filter';
       const filter = document.createElement('select'); filter.id = 'task-filter';
       for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
       const list = document.createElement('section'); list.setAttribute('aria-label', 'Tasks');
-      if (!project.archived) app.append(back, heading, form, alert);
-      app.append(filterLabel, filter, list);
+      app.append(form, alert, filterLabel, filter, list);
       async function loadTasks() {
         const tasks = await (await fetch('/api/projects/' + match[1] + '/tasks')).json();
         list.replaceChildren();
