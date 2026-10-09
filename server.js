@@ -157,6 +157,15 @@ const page = `<!doctype html>
       const list = element('section', { id: 'tasks', 'aria-label': 'Tasks' });
       const children = [element('h1', {}, project.name), back];
       if (project.archived) children.push(element('p', { class: 'archived-notice' }, 'Archived project'));
+      const renameForm = element('form', { class: 'task-controls' });
+      const renameLabel = element('label', { for: 'project-new-name' }, 'New project name');
+      const renameInput = element('input', { id: 'project-new-name', name: 'name', type: 'text', autocomplete: 'off' });
+      const renameButton = element('button', { type: 'submit' }, 'Rename project');
+      renameInput.disabled = project.archived;
+      renameButton.disabled = project.archived;
+      renameLabel.append(renameInput);
+      renameForm.append(renameLabel, renameButton);
+      children.push(renameForm);
       children.push(form, alert, filterLabel, list);
       app.replaceChildren(...children);
 
@@ -182,6 +191,22 @@ const page = `<!doctype html>
         }));
       }
       filter.addEventListener('change', refreshTasks);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = renameInput.value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; renameInput.focus(); return; }
+        const renamed = await fetch('/api/projects/' + id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (renamed.ok) {
+          const result = await renamed.json();
+          project.name = result.name;
+          document.title = project.name + ' | Workboard';
+          app.querySelector('h1').textContent = project.name;
+          renameInput.value = '';
+          alert.textContent = '';
+        }
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const title = titleInput.value.trim();
@@ -236,6 +261,17 @@ const server = http.createServer(async (request, response) => {
     const result = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     const project = result && { ...result, id: Number(result.id), archived: Boolean(result.archived) };
     return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
+  }
+  if (request.method === 'PATCH' && projectMatch) {
+    const body = await readJson(request);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+    const result = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(projectMatch[1]));
+    if (!result.changes) {
+      const exists = database.prepare('SELECT id FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+      return exists ? sendJson(response, 409, { error: 'Archived projects cannot be renamed' }) : sendJson(response, 404, { error: 'Project not found' });
+    }
+    return sendJson(response, 200, { id: Number(projectMatch[1]), name });
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (request.method === 'PATCH' && archiveMatch) {
