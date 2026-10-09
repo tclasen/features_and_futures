@@ -15,3 +15,5 @@ The browser-feedback renderer under `proposals/` is tested but inactive. Adoptio
 `python3 -m orchestrator.watch_pilot --run pilot-005 --idle-seconds 300 --interval-seconds 15` writes a separate observation journal for prolonged inference/commit inactivity and missing runner handles. It neither terminates processes nor changes budgets, feedback or outcomes. Investigate alerts against native evidence before attributing a failure.
 
 `python3 -m orchestrator.audit_request_coverage --run pilot-005` reconciles every dispatched request with usage/terminal events, attribution and monotonic timing. It independently checks frozen definition/packet hashes. A completed run requires exact coverage; a live run explicitly retains pending request IDs. Run this together with the native-receipt audit and the original pilot readiness report after completion.
+
+`python3 -B -m orchestrator.audit_scheduling --run pilot-008` independently verifies per-builder attempt exclusivity and the full-cohort barrier before each next requirement. It reports observed overlap from original attempt intervals; a live snapshot cannot establish terminal completion.

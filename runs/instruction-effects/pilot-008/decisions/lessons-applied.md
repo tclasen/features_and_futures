@@ -21,3 +21,7 @@ L008 missing-receipt bounds remain proposed; strict missing evidence cannot pass
 ## Scheduling
 
 Twelve native builder workers run concurrently within a round. Each owns a separate gateway and lease; no mutable active lease is shared. Ledger append locking and atomic, locked PM state replacement preserve independent measurements. A complete future barrier precedes the next requirement. Infrastructure failures signal workers to stop new attempts; active attempts are drained and archived. Parallel host contention and provider limits are retained as confounds. Do not pool this scheduling change with earlier sequential runs as an exact repeat.
+
+## First two live rounds
+
+All12 configurations accepted task001 on attempt001 and task002 after two objectively rejected first submissions and measured builder corrections. Independent live audits verified209 native receipts and peak12 native attempt overlap, with no premature requirement release. These are scoped live snapshots; terminal accounting and the final round remain pending. L019 records both toggle-direction failures without attributing an instruction effect or inventing a source-level common cause.

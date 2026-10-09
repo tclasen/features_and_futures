@@ -22,4 +22,6 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L016 | Verify preserved repairs before rollback | adopted |
 
 | L017 | Hosted-only scope preserves the instruction experiment | adopted |
-| L018 | Independent parallel accounting and lock-step barrier | prepared |
+| L018 | Independent parallel accounting and lock-step barrier | adopted |
+| L019 | Persist both completion-toggle directions | observed |
+| L020 | Visible-state recovery evidence and idempotent barriers | adopted |

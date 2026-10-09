@@ -61,6 +61,16 @@ def archive(run, repo, builder, checkpoint, output):
         "scope":"all working files excluding .git"})
     return json.loads((run/"builders"/builder/"checkpoints"/checkpoint/"index.json").read_text())
 
+def record_round_completion(ledger,state,builders,task):
+    if any(state["accepted"].get(b["builder_id"],{}).get("stage",0)<task["stage"] for b in builders):
+        raise InfrastructureError("Cannot release next requirements before every accepted checkpoint")
+    existing=[e for e in read_jsonl(ledger.root/"events.jsonl") if e["kind"]=="round_completed" and e["task_id"]==task["task_id"]]
+    if len(existing)>1:
+        raise InfrastructureError("Duplicate original round completion evidence")
+    if not existing:
+        ledger.event("round_completed",task_id=task["task_id"],stage=task["stage"])
+
+
 def execute_round(builders,max_workers,work,stop_event):
     """Wait for every builder before allowing the caller to release the next task."""
     with ThreadPoolExecutor(max_workers=max_workers,thread_name_prefix="builder") as pool:
@@ -349,7 +359,7 @@ def main():
             execute_round(order,manifest["execution"].get("max_parallel_builders",1),
                 lambda builder: run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,provider_args),
                 stop_event)
-            ledger.event("round_completed",task_id=task_id,stage=stage)
+            record_round_completion(ledger,state,builders,task)
         state["status"]="completed"; state["completed_at"]=timestamp()
         write_json(run/"state.json",state)
         ledger.event("pilot_completed",accepted_tasks=len(builders)*len(manifest["tasks"]))

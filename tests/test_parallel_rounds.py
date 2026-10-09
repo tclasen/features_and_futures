@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 import urllib.request
 from unittest.mock import patch
-from orchestrator.pilot import execute_round
+from orchestrator.pilot import execute_round,record_round_completion
 from orchestrator.evidence import Ledger,read_jsonl
 from orchestrator.gateway import InferenceGateway
 from orchestrator.audit_request_coverage import reconcile
@@ -18,6 +18,18 @@ class Upstream(io.BytesIO):
     headers={"Content-Type":"text/event-stream"}
 
 class ParallelRoundTests(unittest.TestCase):
+    def test_resume_preserves_one_original_round_barrier_and_rejects_missing_builder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger=Ledger(Path(directory),{"run_id":"fixture"})
+            builders=[{"builder_id":"a"},{"builder_id":"b"}]
+            task={"task_id":"one","stage":1}
+            state={"accepted":{"a":{"stage":1}}}
+            with self.assertRaises(RuntimeError):record_round_completion(ledger,state,builders,task)
+            state["accepted"]["b"]={"stage":1}
+            record_round_completion(ledger,state,builders,task)
+            record_round_completion(ledger,state,builders,task)
+            self.assertEqual(len(read_jsonl(ledger.root/"events.jsonl")),1)
+
     def test_workers_overlap_but_next_requirement_waits_for_slowest(self):
         first_round=threading.Barrier(2)
         release=threading.Event();fast_finished=threading.Event();next_round=threading.Event()

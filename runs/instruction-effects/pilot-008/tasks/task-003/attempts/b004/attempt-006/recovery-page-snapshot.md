@@ -1,0 +1,125 @@
+```yaml
+- main [ref=e2]:
+  - heading "Workboard" [level=1] [ref=e3]
+  - generic [ref=e4]:
+    - generic [ref=e5]: Project filter
+    - combobox "Project filter" [ref=e6]:
+      - option "Active" [selected]
+      - option "Archived"
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: Project name
+      - textbox "Project name" [ref=e10]
+    - button "Create project" [ref=e11] [cursor=pointer]
+  - region "Projects" [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]: task-001 Alpha create
+      - generic [ref=e15]: 0/0 completed
+      - button "Open project" [ref=e16] [cursor=pointer]
+      - button "Archive project" [ref=e17] [cursor=pointer]
+    - generic [ref=e18]:
+      - generic [ref=e19]: task-001 Order first
+      - generic [ref=e20]: 0/0 completed
+      - button "Open project" [ref=e21] [cursor=pointer]
+      - button "Archive project" [ref=e22] [cursor=pointer]
+    - generic [ref=e23]:
+      - generic [ref=e24]: task-001 Order second
+      - generic [ref=e25]: 0/0 completed
+      - button "Open project" [ref=e26] [cursor=pointer]
+      - button "Archive project" [ref=e27] [cursor=pointer]
+    - generic [ref=e28]:
+      - generic [ref=e29]: task-001 Persistence sentinel
+      - generic [ref=e30]: 0/0 completed
+      - button "Open project" [ref=e31] [cursor=pointer]
+      - button "Archive project" [ref=e32] [cursor=pointer]
+    - generic [ref=e33]:
+      - generic [ref=e34]: task-002 Alpha create
+      - generic [ref=e35]: 0/0 completed
+      - button "Open project" [ref=e36] [cursor=pointer]
+      - button "Archive project" [ref=e37] [cursor=pointer]
+    - generic [ref=e38]:
+      - generic [ref=e39]: task-002 Order first
+      - generic [ref=e40]: 0/0 completed
+      - button "Open project" [ref=e41] [cursor=pointer]
+      - button "Archive project" [ref=e42] [cursor=pointer]
+    - generic [ref=e43]:
+      - generic [ref=e44]: task-002 Order second
+      - generic [ref=e45]: 0/0 completed
+      - button "Open project" [ref=e46] [cursor=pointer]
+      - button "Archive project" [ref=e47] [cursor=pointer]
+    - generic [ref=e48]:
+      - generic [ref=e49]: task-002 Task reload
+      - generic [ref=e50]: 0/1 completed
+      - button "Open project" [ref=e51] [cursor=pointer]
+      - button "Archive project" [ref=e52] [cursor=pointer]
+    - generic [ref=e53]:
+      - generic [ref=e54]: task-002 Task invalid
+      - generic [ref=e55]: 0/0 completed
+      - button "Open project" [ref=e56] [cursor=pointer]
+      - button "Archive project" [ref=e57] [cursor=pointer]
+    - generic [ref=e58]:
+      - generic [ref=e59]: task-002 Task owner
+      - generic [ref=e60]: 0/1 completed
+      - button "Open project" [ref=e61] [cursor=pointer]
+      - button "Archive project" [ref=e62] [cursor=pointer]
+    - generic [ref=e63]:
+      - generic [ref=e64]: task-002 Other project
+      - generic [ref=e65]: 0/0 completed
+      - button "Open project" [ref=e66] [cursor=pointer]
+      - button "Archive project" [ref=e67] [cursor=pointer]
+    - generic [ref=e68]:
+      - generic [ref=e69]: task-002 Task filters
+      - generic [ref=e70]: 0/2 completed
+      - button "Open project" [ref=e71] [cursor=pointer]
+      - button "Archive project" [ref=e72] [cursor=pointer]
+    - generic [ref=e73]:
+      - generic [ref=e74]: task-002 Persistence sentinel
+      - generic [ref=e75]: 1/1 completed
+      - button "Open project" [ref=e76] [cursor=pointer]
+      - button "Archive project" [ref=e77] [cursor=pointer]
+    - generic [ref=e78]:
+      - generic [ref=e79]: task-003 Alpha create
+      - generic [ref=e80]: 0/0 completed
+      - button "Open project" [ref=e81] [cursor=pointer]
+      - button "Archive project" [ref=e82] [cursor=pointer]
+    - generic [ref=e83]:
+      - generic [ref=e84]: task-003 Order first
+      - generic [ref=e85]: 0/0 completed
+      - button "Open project" [ref=e86] [cursor=pointer]
+      - button "Archive project" [ref=e87] [cursor=pointer]
+    - generic [ref=e88]:
+      - generic [ref=e89]: task-003 Order second
+      - generic [ref=e90]: 0/0 completed
+      - button "Open project" [ref=e91] [cursor=pointer]
+      - button "Archive project" [ref=e92] [cursor=pointer]
+    - generic [ref=e93]:
+      - generic [ref=e94]: task-003 Task reload
+      - generic [ref=e95]: 0/1 completed
+      - button "Open project" [ref=e96] [cursor=pointer]
+      - button "Archive project" [ref=e97] [cursor=pointer]
+    - generic [ref=e98]:
+      - generic [ref=e99]: task-003 Task invalid
+      - generic [ref=e100]: 0/0 completed
+      - button "Open project" [ref=e101] [cursor=pointer]
+      - button "Archive project" [ref=e102] [cursor=pointer]
+    - generic [ref=e103]:
+      - generic [ref=e104]: task-003 Task owner
+      - generic [ref=e105]: 0/1 completed
+      - button "Open project" [ref=e106] [cursor=pointer]
+      - button "Archive project" [ref=e107] [cursor=pointer]
+    - generic [ref=e108]:
+      - generic [ref=e109]: task-003 Other project
+      - generic [ref=e110]: 0/0 completed
+      - button "Open project" [ref=e111] [cursor=pointer]
+      - button "Archive project" [ref=e112] [cursor=pointer]
+    - generic [ref=e113]:
+      - generic [ref=e114]: task-003 Task filters
+      - generic [ref=e115]: 0/2 completed
+      - button "Open project" [ref=e116] [cursor=pointer]
+      - button "Archive project" [ref=e117] [cursor=pointer]
+    - generic [ref=e118]:
+      - generic [ref=e119]: task-003 Archive lifecycle
+      - generic [ref=e120]: 0/0 completed
+      - button "Open project" [ref=e121] [cursor=pointer]
+      - button "Archive project" [ref=e122] [cursor=pointer]
+```
