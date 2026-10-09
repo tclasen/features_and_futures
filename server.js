@@ -20,8 +20,17 @@ db.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
 `);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Migrate databases created before archive support without changing project identity.
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const projectQuery = `SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total_count,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed_count
+  FROM projects p`;
+const listProjects = db.prepare(`${projectQuery} ORDER BY p.id ASC`);
+const findProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
+const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const findTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
@@ -65,7 +74,11 @@ const server = http.createServer(async (req, res) => {
     const taskMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (taskMatch) {
       const [, projectId, taskId] = taskMatch;
-      if (!findProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
+      const project = findProject.get(projectId);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (project.archived && (req.method === 'POST' || req.method === 'PATCH')) {
+        return json(res, 409, { error: 'Archived project' });
+      }
       if (req.method === 'GET' && !taskId) {
         return json(res, 200, listTasks.all(projectId).map(taskData));
       }
@@ -89,9 +102,16 @@ const server = http.createServer(async (req, res) => {
       }
     }
     const projectMatch = path.match(/^\/api\/projects\/(\d+)$/);
-    if (req.method === 'GET' && projectMatch) {
+    if (projectMatch && (req.method === 'GET' || req.method === 'PATCH')) {
       const project = findProject.get(projectMatch[1]);
-      return project ? json(res, 200, project) : json(res, 404, { error: 'Project not found' });
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (req.method === 'GET') return json(res, 200, project);
+      let input;
+      try { input = await body(req); }
+      catch { return json(res, 400, { error: 'Invalid JSON request' }); }
+      if (typeof input?.archived !== 'boolean') return json(res, 400, { error: 'Archive state must be a boolean' });
+      archiveProject.run(Number(input.archived), project.id);
+      return json(res, 200, findProject.get(project.id));
     }
     if (req.method === 'GET') {
       const asset = assets.get(/^\/projects\/\d+$/.test(path) ? '/' : path);

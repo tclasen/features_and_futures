@@ -9,8 +9,17 @@ const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const taskList = document.querySelector('#tasks');
+const projectFilter = document.querySelector('#project-filter');
 let projectId;
+let archived = false;
+let projectData = [];
 let tasks = [];
+
+function renderProjects() {
+  projects.replaceChildren();
+  projectData.filter(project => Boolean(project.archived) === (projectFilter.value === 'archived')).forEach(addProject);
+}
+projectFilter.addEventListener('change', renderProjects);
 
 function renderTasks() {
   taskList.replaceChildren();
@@ -25,6 +34,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = archived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       checkbox.disabled = true;
@@ -41,7 +51,7 @@ function renderTasks() {
         checkbox.checked = task.completed;
         showError(error.message);
       } finally {
-        checkbox.disabled = false;
+        checkbox.disabled = archived;
       }
     });
     row.append(title, checkbox);
@@ -53,6 +63,7 @@ taskFilter.addEventListener('change', renderTasks);
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   showError('');
+  if (archived) return;
   const title = titleInput.value.trim();
   if (!title) return showError('Task title is required');
   const button = taskForm.querySelector('button');
@@ -70,7 +81,7 @@ taskForm.addEventListener('submit', async (event) => {
   } catch (error) {
     showError(error.message);
   } finally {
-    button.disabled = false;
+    button.disabled = archived;
   }
 });
 
@@ -96,7 +107,29 @@ function addProject(project) {
   open.type = 'button';
   open.textContent = 'Open project';
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(name, open);
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    showError('');
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, saved);
+      renderProjects();
+    } catch (error) {
+      showError(error.message);
+      archive.disabled = false;
+    }
+  });
+  row.append(name, summary, open, archive);
   projects.append(row);
 }
 
@@ -113,7 +146,8 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    addProject(project);
+    projectData.push(project);
+    renderProjects();
     nameInput.value = '';
     nameInput.focus();
   } catch (error) {
@@ -130,6 +164,9 @@ async function load() {
     if (match) {
       projectId = match[1];
       const project = await request(`/api/projects/${projectId}`);
+      archived = Boolean(project.archived);
+      document.querySelector('#archived-notice').hidden = !archived;
+      taskForm.querySelector('button').disabled = archived;
       heading.textContent = project.name;
       document.title = `${project.name} — Workboard`;
       tasks = await request(`/api/projects/${projectId}/tasks`);
@@ -137,8 +174,8 @@ async function load() {
       detail.hidden = false;
     } else {
       list.hidden = false;
-      const data = await request('/api/projects');
-      data.forEach(addProject);
+      projectData = await request('/api/projects');
+      renderProjects();
     }
   } catch (error) {
     showError(error.message);
