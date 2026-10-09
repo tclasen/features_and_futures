@@ -9,8 +9,11 @@ const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const taskList = document.querySelector('#tasks');
+const projectFilter = document.querySelector('#project-filter');
 const projectId = window.location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
 let tasks = [];
+let allProjects = [];
+let archived = false;
 
 function showError(message) {
   alert.textContent = message;
@@ -30,13 +33,41 @@ function projectRow(project) {
   row.dataset.testid = 'project-row';
   const name = document.createElement('span');
   name.textContent = project.name;
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completed_count}/${project.total_count} completed`;
   const open = document.createElement('button');
   open.type = 'button';
   open.textContent = 'Open project';
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(name, open);
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    showError('');
+    archive.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      allProjects = allProjects.map(existing => existing.id === saved.id ? saved : existing);
+      renderProjects();
+    } catch (error) { showError(error.message); }
+    finally { archive.disabled = false; }
+  });
+  row.append(name, summary, open, archive);
   return row;
 }
+
+function renderProjects() {
+  const matching = allProjects.filter(project => project.archived === (projectFilter.value === 'archived'));
+  projects.replaceChildren(...matching.map(projectRow));
+  document.querySelector('#empty').hidden = matching.length > 0;
+}
+
+projectFilter.addEventListener('change', renderProjects);
 
 function taskRow(task) {
   const row = document.createElement('div');
@@ -46,6 +77,7 @@ function taskRow(task) {
   checkbox.type = 'checkbox';
   checkbox.id = `task-${task.id}`;
   checkbox.checked = task.completed;
+  checkbox.disabled = archived;
   checkbox.setAttribute('aria-label', `Complete ${task.title}`);
   const title = document.createElement('label');
   title.htmlFor = checkbox.id;
@@ -64,7 +96,7 @@ function taskRow(task) {
     } catch (error) {
       checkbox.checked = task.completed;
       showError(error.message);
-    } finally { checkbox.disabled = false; }
+    } finally { checkbox.disabled = archived; }
   });
   row.append(checkbox, title);
   return row;
@@ -80,6 +112,7 @@ function renderTasks() {
 taskFilter.addEventListener('change', renderTasks);
 taskForm.addEventListener('submit', async event => {
   event.preventDefault();
+  if (archived) return;
   showError('');
   if (!titleInput.value.trim()) {
     showError('Task title is required');
@@ -99,7 +132,7 @@ taskForm.addEventListener('submit', async event => {
     taskForm.reset();
     titleInput.focus();
   } catch (error) { showError(error.message); }
-  finally { submit.disabled = false; }
+  finally { submit.disabled = archived; }
 });
 
 form.addEventListener('submit', async (event) => {
@@ -118,8 +151,8 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: nameInput.value }),
     });
-    projects.append(projectRow(project));
-    document.querySelector('#empty').hidden = true;
+    allProjects.push(project);
+    renderProjects();
     form.reset();
     nameInput.focus();
   } catch (error) { showError(error.message); }
@@ -137,12 +170,15 @@ async function load() {
       const project = await request(`/api/projects/${match[1]}`);
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      archived = project.archived;
+      document.querySelector('#archived-notice').hidden = !archived;
+      taskForm.querySelector('button').disabled = archived;
+      titleInput.disabled = archived;
       tasks = await request(`/api/projects/${project.id}/tasks`);
       renderTasks();
     } else {
-      const allProjects = await request('/api/projects');
-      projects.replaceChildren(...allProjects.map(projectRow));
-      document.querySelector('#empty').hidden = allProjects.length > 0;
+      allProjects = await request('/api/projects');
+      renderProjects();
     }
   } catch (error) { showError(error.message); }
 }
