@@ -56,11 +56,11 @@ Continue correction or restart attempts until the builder passes; there is no fi
 
 ## Pilot and evidence-based stopping
 
-Prepare a three-task pilot covering all 12 current hosted configurations: setup, a feature addition, and a change to earlier behavior. It validates isolation, subscription access, request accounting, acceptance testing, and recovery. Whether to proceed automatically into the main run after the pilot is unresolved.
+The original three-task pilot covers setup, a feature addition, and a change to earlier behavior across all12 hosted configurations. The longitudinal readiness pilot adds project renaming and an incrementally frozen task-renaming fifth round. It validates isolation, subscription access, request accounting, acceptance testing, and recovery. Whether to proceed automatically into the main run after the pilot is unresolved.
 
 The main workload continues feature additions and revisions without a source-line threshold. Look for sustained later task differences or practical equivalence among the three instruction treatments within each of the four hosted model/harness combinations. Initial practical margins are 20% for task time or reference cost and 10 percentage points for first-submission failure rate. Confirm candidate findings with independent repeats of the frozen workload.
 
-Before the main run, freeze an evidence method that addresses uncertainty, repeated looks, multiple comparisons, and confirmation. The practical margins alone are not a statistical stopping test; no such test is implemented yet. Do not declare a breakpoint merely because one task exceeds a margin.
+Before the main run, freeze an evidence method that addresses uncertainty, repeated looks, multiple comparisons, and confirmation. The practical margins alone are not a statistical stopping test; the exact median intervals and append-only confirmation ledger are implemented and frozen in research-v001. Do not declare a breakpoint merely because one task exceeds a margin.
 
 Continue recording source size as context using a pinned counting tool and file classifications. Exclude dependencies, generated and vendored code, build output, fixtures, tests, documentation, lockfiles, and blank/comment-only lines from production source counts. Record file counts and test size separately; never encourage padding.
 

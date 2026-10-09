@@ -351,14 +351,15 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
             print(f"NOTICE {bid} {task_id}: {consecutive} unchanged failures; continuing measured retries",flush=True)
         print(f"{task_id} {bid} REJECTED {attempt_id}: {json.dumps(diagnostics)[:900]}",flush=True)
 
-def main():
+def main(allowed_purposes=None, completion_check=None):
     parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     manifest=json.loads((run/"manifest.json").read_text())
     manifest_hash=digest_json(manifest)
     assert manifest_hash==(run/"manifest.sha256").read_text().strip()
     assert file_hashes(run/"definitions")==manifest["provenance"]["definition_hashes"]
-    if manifest["purpose"] not in ("engineering-pilot","engineering-longitudinal-pilot"):
+    allowed_purposes = allowed_purposes or ("engineering-pilot","engineering-longitudinal-pilot")
+    if manifest["purpose"] not in allowed_purposes:
         raise InfrastructureError("This command only dispatches authorized engineering pilots")
     streaming=manifest["execution"].get("task_stream_revision")=="append-only-rounds-v1"
     if streaming:
@@ -400,7 +401,8 @@ def main():
                 lambda builder: run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,provider_args),
                 stop_event)
             record_round_completion(ledger,state,builders,task)
-        if streaming and not stream_sealed(run):
+        ready = completion_check(run) if completion_check else (not streaming or stream_sealed(run))
+        if not ready:
             state["status"]="awaiting_frozen_round"
             write_json(run/"state.json",state)
             ledger.event("task_stream_waiting",completed_rounds=len(manifest["tasks"]))
