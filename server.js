@@ -13,7 +13,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 
 const html = await readFile(new URL('./index.html', import.meta.url));
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
@@ -38,7 +40,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, JSON.stringify({ status: 'ok' }));
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all();
     return send(res, 200, JSON.stringify(projects));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
@@ -57,24 +59,31 @@ const server = http.createServer(async (req, res) => {
   }
   if (tasksMatch && req.method === 'POST') {
     const projectId = Number(tasksMatch[1]);
-    if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    const owner = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    if (!owner) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (owner.archived) return send(res, 400, JSON.stringify({ error: 'Archived project' }));
     const body = await readJson(req);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
     const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
     return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
   }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (archiveMatch && req.method === 'POST') {
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
+    return Number(result.changes) ? send(res, 200, JSON.stringify({ ok: true })) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
+  }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && req.method === 'PATCH') {
     const body = await readJson(req);
     if (typeof body?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
-    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, Number(taskMatch[1]));
+    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(body.completed ? 1 : 0, Number(taskMatch[1]));
     if (!Number(result.changes)) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
     return send(res, 200, JSON.stringify({ ok: true }));
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     return project ? send(res, 200, JSON.stringify(project)) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
   }
   if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return send(res, 200, html, 'text/html; charset=utf-8');
