@@ -8,7 +8,8 @@ const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'workboard.sqlite
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,8 +17,16 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Upgrade databases created by earlier task checkpoints.
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -33,7 +42,18 @@ function sendJson(res, status, value) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
-  if (req.method === 'GET' && url.pathname === '/api/projects') return sendJson(res, 200, listProjects.all());
+  if (req.method === 'GET' && url.pathname === '/api/projects') return sendJson(res, 200, listProjects.all(url.searchParams.get('archived') === 'true' ? 1 : 0));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    let input;
+    try { let body = ''; for await (const chunk of req) body += chunk; input = JSON.parse(body); }
+    catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    if (typeof input.archived !== 'boolean') return sendJson(res, 400, { error: 'Invalid archive state' });
+    const id = Number(archiveMatch[1]);
+    if (!getProject.get(id)) return sendJson(res, 404, { error: 'Project not found' });
+    updateArchive.run(input.archived ? 1 : 0, id);
+    return sendJson(res, 200, { ok: true });
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -56,7 +76,9 @@ const server = http.createServer(async (req, res) => {
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     if (!title) return sendJson(res, 400, { error: 'Task title is required' });
     const projectId = Number(tasksMatch[1]);
-    if (!getProject.get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot accept tasks' });
     const result = insertTask.run(projectId, title);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: 0 });
   }
@@ -69,6 +91,7 @@ const server = http.createServer(async (req, res) => {
     const taskId = Number(taskMatch[2]);
     if (typeof input.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
     if (!getTask.get(taskId, projectId)) return sendJson(res, 404, { error: 'Task not found' });
+    if (getProject.get(projectId).archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
     updateTask.run(input.completed ? 1 : 0, taskId, projectId);
     return sendJson(res, 200, { ok: true });
   }
