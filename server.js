@@ -10,8 +10,10 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -27,18 +29,20 @@ const assets = {
   '/': [page, 'text/html; charset=utf-8'],
   '/app.js': [String.raw`const app = document.querySelector('#app');
 const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function projects() { const r = await fetch('/api/projects'); return r.json(); }
+async function projects(filter = 'Active') { const r = await fetch('/api/projects?filter='+filter); return r.json(); }
 function renderList(message = '') {
-  app.innerHTML = '<h1>Workboard</h1><form id="create"><label for="project-name">Project name</label><div class="form-row"><input id="project-name" name="name" type="text"><button type="submit">Create project</button></div></form>' + (message ? '<p class="alert" role="alert">'+escapeHtml(message)+'</p>' : '') + '<section id="projects" aria-label="Projects"></section>';
+  app.innerHTML = '<h1>Workboard</h1><form id="create"><label for="project-name">Project name</label><div class="form-row"><input id="project-name" name="name" type="text"><button type="submit">Create project</button></div></form>' + (message ? '<p class="alert" role="alert">'+escapeHtml(message)+'</p>' : '') + '<div class="filter-row"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div><section id="projects" aria-label="Projects"></section>';
   const form = document.querySelector('#create');
   form.addEventListener('submit', async e => { e.preventDefault(); const name = new FormData(form).get('name').trim(); if (!name) { renderList('Project name is required'); return; } await fetch('/api/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) }); renderList(); });
-  projects().then(items => { const list = document.querySelector('#projects'); if (!list) return; list.innerHTML = items.map(p => '<div data-testid="project-row" class="project-row"><span>'+escapeHtml(p.name)+'</span><button type="button" data-id="'+p.id+'">Open project</button></div>').join(''); list.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { location.href = '/projects/'+b.dataset.id; })); });
+  const filter = document.querySelector('#project-filter');
+  async function loadProjects() { const items = await projects(filter.value); const list = document.querySelector('#projects'); if (!list) return; list.innerHTML = items.map(p => '<div data-testid="project-row" class="project-row"><span>'+escapeHtml(p.name)+'</span><span data-testid="project-summary">'+p.completedCount+'/'+p.totalCount+' completed</span><button type="button" data-action="open" data-id="'+p.id+'">Open project</button>'+(p.archived ? '<button type="button" data-action="restore" data-id="'+p.id+'">Restore project</button>' : '<button type="button" data-action="archive" data-id="'+p.id+'">Archive project</button>')+'</div>').join(''); list.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => { if (b.dataset.action === 'open') location.href='/projects/'+b.dataset.id; else { await fetch('/api/projects/'+b.dataset.id+'/'+b.dataset.action, {method:'POST'}); loadProjects(); } })); }
+  filter.addEventListener('change', loadProjects); loadProjects();
 }
 async function renderProject(id) {
   const r = await fetch('/api/projects/'+encodeURIComponent(id));
   if (!r.ok) { renderList(); return; }
   const p = await r.json();
-  app.innerHTML = '<button type="button" id="back">Projects</button><h1>'+escapeHtml(p.name)+'</h1><form id="create-task"><label for="task-title">Task title</label><div class="form-row"><input id="task-title" name="title" type="text"><button type="submit">Create task</button></div></form><p id="task-alert" class="alert" role="alert" hidden></p><div class="filter-row"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div><section id="tasks" aria-label="Tasks"></section>';
+  app.innerHTML = '<button type="button" id="back">Projects</button><h1>'+escapeHtml(p.name)+'</h1>'+(p.archived ? '<p>Archived project</p>' : '')+'<form id="create-task"><label for="task-title">Task title</label><div class="form-row"><input id="task-title" name="title" type="text" '+(p.archived ? 'disabled' : '')+'><button type="submit" '+(p.archived ? 'disabled' : '')+'>Create task</button></div></form><p id="task-alert" class="alert" role="alert" hidden></p><div class="filter-row"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div><section id="tasks" aria-label="Tasks"></section>';
   document.querySelector('#back').addEventListener('click', () => { location.href='/'; });
   const form = document.querySelector('#create-task');
   form.addEventListener('submit', async e => {
@@ -54,7 +58,7 @@ async function renderProject(id) {
     const response = await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks?filter='+filter);
     if (!response.ok) return;
     const tasks = await response.json(); const list = document.querySelector('#tasks');
-    list.innerHTML = tasks.map(t => '<div data-testid="task-row" class="task-row"><span>'+escapeHtml(t.title)+'</span><label class="check-label"><input type="checkbox" data-id="'+t.id+'" aria-label="Complete '+escapeHtml(t.title)+'" '+(t.completed ? 'checked' : '')+'> Completed</label></div>').join('');
+    list.innerHTML = tasks.map(t => '<div data-testid="task-row" class="task-row"><span>'+escapeHtml(t.title)+'</span><label class="check-label"><input type="checkbox" data-id="'+t.id+'" aria-label="Complete '+escapeHtml(t.title)+'" '+(t.completed ? 'checked' : '')+' '+(p.archived ? 'disabled' : '')+'> Completed</label></div>').join('');
     list.querySelectorAll('input[type=checkbox]').forEach(box => box.addEventListener('change', async () => {
       await fetch('/api/tasks/'+encodeURIComponent(box.dataset.id), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({completed:box.checked})});
       loadTasks();
@@ -79,7 +83,13 @@ async function readJson(req) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { status: 'ok' });
-  if (req.method === 'GET' && url.pathname === '/api/projects') return send(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+  if (req.method === 'GET' && url.pathname === '/api/projects') {
+    const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
+    return send(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(archived).map(p => ({...p, archived: !!p.archived})));
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
       const { name } = await readJson(req);
@@ -91,19 +101,27 @@ const server = http.createServer(async (req, res) => {
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    if (project) project.archived = !!project.archived;
     return project ? send(res, 200, project) : send(res, 404, { error: 'Project not found' });
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (req.method === 'POST' && archiveMatch) {
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
+    return result.changes ? send(res, 200, {status:'ok'}) : send(res, 404, {error:'Project not found'});
   }
   const projectTasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (projectTasksMatch) {
     const projectId = Number(projectTasksMatch[1]);
-    if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
+    const owner = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!owner) return send(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
       const filter = url.searchParams.get('filter');
       const where = filter === 'Open' ? ' AND completed = 0' : filter === 'Completed' ? ' AND completed = 1' : '';
       return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ?' + where + ' ORDER BY id').all(projectId).map(t => ({...t, completed: !!t.completed})));
     }
     if (req.method === 'POST') {
+      if (owner.archived) return send(res, 409, {error:'Archived project'});
       try {
         const { title } = await readJson(req); const trimmed = typeof title === 'string' ? title.trim() : '';
         if (!trimmed) return send(res, 400, { error: 'Task title is required' });
@@ -117,6 +135,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const { completed } = await readJson(req);
       if (typeof completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
+      const task = db.prepare('SELECT tasks.project_id, projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(Number(taskMatch[1]));
+      if (task?.archived) return send(res, 409, {error:'Archived project'});
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(taskMatch[1]));
       return result.changes ? send(res, 200, { status: 'ok' }) : send(res, 404, { error: 'Task not found' });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
