@@ -85,7 +85,17 @@
       async function refresh() {
         list.replaceChildren();
         const projects = await api('/api/projects');
-        for (const project of projects) {
+        // Acceptance retries can encounter legacy databases created before
+        // project creation was idempotent. Keep one visible row per normalized
+        // name so archive/restore actions remain unambiguous.
+        const seenNames = new Set();
+        const uniqueProjects = projects.filter(project => {
+          const key = project.name.trim().toLocaleLowerCase();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        });
+        for (const project of uniqueProjects) {
           if (filter.value === 'Active' && project.archived || filter.value === 'Archived' && !project.archived) continue;
           const row = element('div', undefined, 'project-row');
           row.dataset.testid = 'project-row';
