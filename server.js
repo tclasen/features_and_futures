@@ -3,8 +3,8 @@ import url from 'node:url';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { open } from 'node:sqlite';
-// No external sqlite3 dependency; use the built‑in experimental sqlite module.
+import { DatabaseSync } from 'node:sqlite';
+// Use the built‑in experimental synchronous SQLite API.
 
 // Resolve __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -15,7 +15,13 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 
 let db;
 async function initDb() {
-  db = await open({ filename: DB_PATH });
+  // Synchronous database; operations are fast for this small app.
+  db = new DatabaseSync(DB_PATH);
+  // Ensure the table exists.
+  db.exec(`CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+  );`);
   await db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
@@ -50,7 +56,7 @@ async function handleApi(req, res) {
 
   // GET /api/projects – list
   if (req.method === 'GET' && parts.length === 2) {
-    const rows = await db.all('SELECT id, name FROM projects ORDER BY id');
+    const rows = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(rows));
     return;
@@ -66,8 +72,9 @@ async function handleApi(req, res) {
         res.end(JSON.stringify({ error: 'Project name is required' }));
         return;
       }
-      const result = await db.run('INSERT INTO projects (name) VALUES (?)', trimmed);
-      const newId = result.lastID;
+    const stmt = db.prepare('INSERT INTO projects (name) VALUES (?)');
+    const result = stmt.run(trimmed);
+    const newId = result.lastInsertRowid;
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ id: newId, name: trimmed }));
     } catch (e) {
@@ -80,7 +87,7 @@ async function handleApi(req, res) {
   // GET /api/projects/:id – single
   if (req.method === 'GET' && parts.length === 3) {
     const id = Number(parts[2]);
-    const row = await db.get('SELECT id, name FROM projects WHERE id = ?', id);
+      const row = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
     if (!row) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
