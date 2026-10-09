@@ -6,6 +6,8 @@ const projects = document.querySelector('#projects');
 const projectFilter = document.querySelector('#project-filter');
 let projectItems = [];
 let archived = false;
+const renameForm = document.querySelector('#rename-project');
+const newNameInput = document.querySelector('#new-project-name');
 const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
@@ -164,6 +166,37 @@ taskForm.addEventListener('submit', async (event) => {
   }
 });
 
+function setProjectName(name) {
+  heading.textContent = name;
+  document.title = `${name} · Workboard`;
+}
+
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  alert.hidden = true;
+  if (archived) return;
+  if (!newNameInput.value.trim()) {
+    showError('Project name is required');
+    return;
+  }
+  const submit = renameForm.querySelector('button');
+  submit.disabled = true;
+  try {
+    const project = await api(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newNameInput.value }),
+    });
+    setProjectName(project.name);
+    newNameInput.value = '';
+    newNameInput.focus();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    submit.disabled = archived;
+  }
+});
+
 document.querySelector('#back').addEventListener('click', () => {
   window.location.href = '/';
 });
@@ -177,8 +210,9 @@ async function loadPage() {
     document.querySelector('#archived-notice').hidden = !archived;
     taskForm.querySelector('button').disabled = archived;
     titleInput.disabled = archived;
-    heading.textContent = project.name;
-    document.title = `${project.name} · Workboard`;
+    renameForm.querySelector('button').disabled = archived;
+    newNameInput.disabled = archived;
+    setProjectName(project.name);
     tasks = await api(`/api/projects/${project.id}/tasks`);
     renderTasks();
   } else {
