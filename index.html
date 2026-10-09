@@ -18,6 +18,9 @@
     #projects { display: grid; gap: 10px; margin-top: 18px; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .project-row button { margin: 0; }
+    .task-form, .task-row { background: white; border: 1px solid #dce2ec; border-radius: 10px; padding: 16px; margin-top: 14px; }
+    .task-row { display: flex; align-items: center; gap: 10px; }
+    .task-row input { width: auto; }
   </style>
 </head>
 <body>
@@ -60,6 +63,35 @@
       const project = await response.json();
       const heading = document.createElement('h1'); heading.textContent = project.name;
       app.append(heading, button('Projects', () => { location.href = '/'; }));
+      const form = document.createElement('form'); form.className = 'task-form';
+      const label = document.createElement('label'); label.htmlFor = 'task-title'; label.textContent = 'Task title';
+      const input = document.createElement('input'); input.id = 'task-title'; input.type = 'text';
+      const submit = document.createElement('button'); submit.textContent = 'Create task';
+      const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.hidden = true;
+      form.append(label, input, submit, alert); app.append(form);
+      const filterLabel = document.createElement('label'); filterLabel.htmlFor = 'task-filter'; filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select'); filter.id = 'task-filter';
+      for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
+      app.append(filterLabel, filter);
+      const list = document.createElement('section'); list.setAttribute('aria-label', 'Tasks'); app.append(list);
+      async function loadTasks() {
+        const tasks = await (await fetch(`/api/projects/${id}/tasks`)).json(); list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          const row = document.createElement('div'); row.className = 'task-row'; row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => { await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); await loadTasks(); });
+          const title = document.createElement('span'); title.textContent = task.title; row.append(checkbox, title); list.append(row);
+        }
+      }
+      filter.addEventListener('change', loadTasks);
+      form.addEventListener('submit', async event => {
+        event.preventDefault(); alert.hidden = true;
+        const response = await fetch(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: input.value }) });
+        if (!response.ok) { alert.textContent = (await response.json()).error; alert.hidden = false; return; }
+        input.value = ''; await loadTasks();
+      });
+      await loadTasks();
     }
     path ? showProject(path[1]) : showProjects();
   </script>
