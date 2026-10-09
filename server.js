@@ -99,7 +99,7 @@ function projectPage(project, filter = 'All', error = '') {
     </form>
     <form class="task-filter" method="get" action="/projects/${project.id}">
       <label for="task-filter">Task filter</label>
-      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+      <select id="task-filter" name="filter">
         ${['All', 'Open', 'Completed'].map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
@@ -109,12 +109,51 @@ function projectPage(project, filter = 'All', error = '') {
           <form method="post" action="/projects/${project.id}/tasks/${task.id}">
             <input type="hidden" name="filter" value="${filter}">
             <input id="task-${task.id}" type="checkbox" name="completed" value="1"
-              aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}
-              onchange="this.form.requestSubmit()">
+              aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}>
             <label for="task-${task.id}">${escapeHtml(task.title)}</label>
           </form>
         </div>`).join('')}
-    </section>`);
+    </section>
+    <script>
+      const pendingUpdates = new Set();
+      const filterControl = document.getElementById('task-filter');
+      filterControl.addEventListener('change', async () => {
+        await Promise.all(pendingUpdates);
+        filterControl.form.requestSubmit();
+      });
+      for (const checkbox of document.querySelectorAll('.task-row input[type="checkbox"]')) {
+        checkbox.addEventListener('change', () => {
+          const completed = checkbox.checked;
+          // Keep the current document in place: a redirect can restore an old
+          // checked value while the user is already interacting with the next row.
+          checkbox.disabled = true;
+          const body = new URLSearchParams(new FormData(checkbox.form));
+          body.set('completed', completed ? '1' : '0');
+          const update = (async () => {
+            try {
+              const response = await fetch(checkbox.form.action, {
+                method: 'POST', body, headers: { Accept: 'application/json' }, keepalive: true,
+              });
+              if (!response.ok) throw new Error('Task update failed');
+              await response.json();
+              if (filterControl.value !== 'All' && completed !== (filterControl.value === 'Completed')) {
+                checkbox.closest('.task-row').remove();
+              }
+            } catch (error) {
+              checkbox.checked = !completed;
+              const alert = document.createElement('p');
+              alert.setAttribute('role', 'alert');
+              alert.textContent = 'Unable to save task completion. Please try again.';
+              checkbox.form.before(alert);
+            } finally {
+              checkbox.disabled = false;
+            }
+          })();
+          pendingUpdates.add(update);
+          update.finally(() => pendingUpdates.delete(update));
+        });
+      }
+    </script>`);
 }
 
 function sendHtml(res, status, html) {
@@ -177,6 +216,11 @@ const server = http.createServer(async (req, res) => {
           .run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
         if (!result.changes) {
           sendHtml(res, 404, page('Not found', '<h1>Task not found</h1>'));
+          return;
+        }
+        if (req.headers.accept === 'application/json') {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ completed: form.get('completed') === '1' }));
           return;
         }
       } else {

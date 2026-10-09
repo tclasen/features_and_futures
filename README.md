@@ -14,7 +14,7 @@ Health check: `GET /health` returns `{"status":"ok"}`.
 
 Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. Tasks belong to their project and persist with completion state in SQLite.
 
-Verify project and task creation, blank-input validation, HTML escaping, navigation, ordering, filtering, project isolation, and persistence across server restarts:
+Verify project and task creation, blank-input validation, HTML escaping, navigation, ordering, filtering, project isolation, and persistence across server restarts. A completion-client regression also exercises repeated check/uncheck updates, pending-write filtering, and failed-save recovery without page navigation:
 
 ```sh
 npm test

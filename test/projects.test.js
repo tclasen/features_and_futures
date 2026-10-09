@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { runInNewContext } from 'node:vm';
 
 async function start(dbPath) {
   const process = spawn(globalThis.process.execPath, ['server.js'], {
@@ -67,7 +68,7 @@ test('tasks: validation, ordering, completion, filtering, isolation and persiste
     html = await detail();
     assert.equal(rows(html).length, 2);
     assert.match(rows(html)[0], /aria-label="Complete First task"/);
-    assert.doesNotMatch(html, / checked/);
+    assert.doesNotMatch(rows(html).join(''), / checked/);
     assert.match(rows(html)[1], /Second &lt;task&gt; &amp; &quot;test&quot;/);
     assert.doesNotMatch(html, /Other project task/);
     assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
@@ -94,6 +95,100 @@ test('tasks: validation, ordering, completion, filtering, isolation and persiste
     assert.equal(rows(await detail('/projects/1?filter=Completed')).length, 0);
     assert.equal(rows(await detail('/projects/1?filter=Open')).length, 2);
     assert.equal((await post('/projects/999/tasks', { title: 'Missing' })).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('completion client saves check/uncheck without stale-document navigation', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-completion-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'workboard.sqlite');
+    server = await start(dbPath);
+    const post = (path, values) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values),
+    });
+    await post('/projects', { name: 'Completion regression' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    const html = await (await fetch(`${server.base}/projects/1`)).text();
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+    let navigations = 0;
+    let removed = false;
+    let alert;
+    let fail = false;
+    let gate = Promise.resolve();
+    const filter = {
+      value: 'All',
+      form: { requestSubmit() { navigations++; } },
+      addEventListener(type, handler) { this[type] = handler; },
+    };
+    const checkbox = {
+      checked: false, disabled: false,
+      form: {
+        action: `${server.base}/projects/1/tasks/1`,
+        before(element) { alert = element; },
+      },
+      closest() { return { remove() { removed = true; } }; },
+      addEventListener(type, handler) { this[type] = handler; },
+    };
+    const flush = runInNewContext(script + '\n(() => Promise.all(pendingUpdates))', {
+      document: {
+        getElementById: () => filter,
+        querySelectorAll: () => [checkbox],
+        createElement: () => ({ setAttribute(name, value) { this[name] = value; } }),
+      },
+      URLSearchParams,
+      FormData: class {
+        *[Symbol.iterator]() { yield ['filter', filter.value]; }
+      },
+      fetch: async (...args) => {
+        await gate;
+        return fail ? { ok: false } : fetch(...args);
+      },
+    });
+    for (const completed of [true, false, true, false]) {
+      checkbox.checked = completed;
+      checkbox.change();
+      assert.equal(checkbox.disabled, true);
+      await flush();
+      assert.equal(checkbox.checked, completed);
+      assert.equal(checkbox.disabled, false);
+      assert.equal(navigations, 0);
+      const saved = await (await fetch(`${server.base}/projects/1`)).text();
+      assert.equal(/aria-label="Complete Done task" checked/.test(saved), completed);
+    }
+    // Filtering must not navigate away before a pending write finishes.
+    let release;
+    gate = new Promise((resolve) => { release = resolve; });
+    checkbox.checked = true;
+    checkbox.change();
+    filter.value = 'Open';
+    const filtering = filter.change();
+    assert.equal(navigations, 0);
+    release();
+    await filtering;
+    assert.equal(navigations, 1);
+    assert.equal(removed, true);
+    filter.value = 'All';
+    fail = true;
+    checkbox.checked = false;
+    checkbox.change();
+    await flush();
+    assert.equal(checkbox.checked, true);
+    assert.equal(checkbox.disabled, false);
+    assert.equal(alert.role, 'alert');
+    assert.match(alert.textContent, /Unable to save/);
+    fail = false;
+    checkbox.checked = false;
+    checkbox.change();
+    await flush();
+    await server.stop();
+    server = await start(dbPath);
+    const saved = await (await fetch(`${server.base}/projects/1`)).text();
+    assert.doesNotMatch(saved, /aria-label="Complete Done task" checked/);
+    assert.doesNotMatch(saved, /onchange="this.form.requestSubmit\(\)"/);
   } finally {
     if (server) await server.stop();
     await rm(dir, { recursive: true, force: true });
