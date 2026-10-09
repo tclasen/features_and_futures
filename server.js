@@ -79,7 +79,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'Not found' });
 
-  const filename = url.pathname === '/' ? 'index.html' : url.pathname === '/app.js' ? 'app.js' : url.pathname === '/styles.css' ? 'styles.css' : null;
+  const filename = url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname) ? 'index.html' : url.pathname === '/app.js' ? 'app.js' : url.pathname === '/styles.css' ? 'styles.css' : null;
   if (filename) {
     try {
       const content = await readFile(path.join(webRoot, filename));
