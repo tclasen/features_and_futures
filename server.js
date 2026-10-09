@@ -191,6 +191,41 @@ const page = `<!doctype html>
       app.append(back, element('h1', project.name));
       if (project.archived) app.append(element('p', 'Archived project'));
 
+      const renameForm = element('form');
+      const renameLabel = element('label', 'New project name', { for: 'new-project-name' });
+      const renameInput = element('input', undefined, { id: 'new-project-name', name: 'name', type: 'text' });
+      const renameButton = element('button', 'Rename project', { type: 'submit' });
+      renameForm.append(renameLabel, renameInput, renameButton);
+      const renameAlert = element('p', undefined, { class: 'alert', role: 'alert', hidden: '' });
+      if (project.archived) {
+        renameInput.disabled = true;
+        renameButton.disabled = true;
+      }
+      app.append(renameForm, renameAlert);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = renameInput.value.trim();
+        if (!name) {
+          renameAlert.textContent = 'Project name is required';
+          renameAlert.hidden = false;
+          renameInput.focus();
+          return;
+        }
+        renameAlert.hidden = true;
+        const update = await fetch('/api/projects/' + encodeURIComponent(id), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (update.ok) {
+          project.name = name;
+          app.querySelector('h1').textContent = name;
+          renameInput.value = '';
+        } else {
+          const result = await update.json();
+          renameAlert.textContent = result.error || 'Could not rename project';
+          renameAlert.hidden = false;
+        }
+      });
+
       const form = element('form');
       const label = element('label', 'Task title', { for: 'task-title' });
       const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
@@ -312,6 +347,23 @@ const server = createServer(async (request, response) => {
     } catch {
       sendJson(response, 400, { error: 'Invalid request body' });
     }
+    return;
+  }
+
+  const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (request.method === 'PATCH' && renameMatch) {
+    try {
+      const body = await readJson(request);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) { sendJson(response, 400, { error: 'Project name is required' }); return; }
+      const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(renameMatch[1]);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot be renamed' }); return; }
+      const duplicate = database.prepare('SELECT id FROM projects WHERE name = ? AND id != ?').get(name, project.id);
+      if (duplicate) { sendJson(response, 409, { error: 'A project with that name already exists' }); return; }
+      database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, project.id);
+      sendJson(response, 200, { id: project.id, name });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
 
