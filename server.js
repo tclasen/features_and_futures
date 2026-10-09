@@ -1,0 +1,193 @@
+import { createServer } from 'node:http';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+
+const port = Number.parseInt(process.env.PORT ?? '8080', 10);
+const databasePath = resolve(process.env.DB_PATH ?? './workboard.sqlite');
+mkdirSync(dirname(databasePath), { recursive: true });
+
+const database = new DatabaseSync(databasePath);
+database.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+
+const page = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 0 auto; padding: 3rem 1.25rem; }
+    h1 { margin: 0 0 1.5rem; font-size: 2rem; }
+    form, .project-row { display: flex; gap: .75rem; align-items: center; }
+    form { margin-bottom: 1.5rem; }
+    input { flex: 1; min-width: 0; padding: .65rem .75rem; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
+    button { padding: .65rem .9rem; border: 0; border-radius: 6px; background: #2459a6; color: white; font: inherit; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #8ab4f8; outline-offset: 2px; }
+    .project-row { justify-content: space-between; padding: .9rem 1rem; margin: .5rem 0; background: white; border: 1px solid #d9e0e8; border-radius: 8px; }
+    .alert { color: #a32626; margin: .25rem 0 1rem; }
+    .back { margin-bottom: 1rem; }
+    @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const projectPath = window.location.pathname.match(/^\\/projects\\/([^/]+)\\/?$/);
+
+    function element(tag, text, attributes = {}) {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+      return node;
+    }
+
+    async function loadProjects() {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error('Could not load projects');
+      return response.json();
+    }
+
+    async function showList() {
+      app.replaceChildren(element('h1', 'Workboard'));
+      const form = element('form');
+      const label = element('label', 'Project name', { for: 'project-name' });
+      const input = element('input', undefined, { id: 'project-name', name: 'name', type: 'text' });
+      const submit = element('button', 'Create project', { type: 'submit' });
+      form.append(label, input, submit);
+      const alert = element('p', undefined, { class: 'alert', role: 'alert', hidden: '' });
+      const list = element('section', undefined, { 'aria-label': 'Projects' });
+      app.append(form, alert, list);
+
+      async function refresh() {
+        list.replaceChildren();
+        for (const project of await loadProjects()) {
+          const row = element('div', undefined, { 'data-testid': 'project-row', class: 'project-row' });
+          row.append(element('span', project.name));
+          const open = element('button', 'Open project', { type: 'button' });
+          open.addEventListener('click', () => { window.location.href = '/projects/' + encodeURIComponent(project.id); });
+          row.append(open);
+          list.append(row);
+        }
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+          alert.textContent = 'Project name is required';
+          alert.hidden = false;
+          input.focus();
+          return;
+        }
+        alert.hidden = true;
+        const response = await fetch('/api/projects', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (response.ok) {
+          input.value = '';
+          await refresh();
+        }
+      });
+      await refresh();
+    }
+
+    async function showProject(id) {
+      const response = await fetch('/api/projects/' + encodeURIComponent(id));
+      if (!response.ok) {
+        app.replaceChildren(element('h1', 'Project not found'));
+        return;
+      }
+      const project = await response.json();
+      const back = element('button', 'Projects', { type: 'button', class: 'back' });
+      back.addEventListener('click', () => { window.location.href = '/'; });
+      app.append(back, element('h1', project.name));
+    }
+
+    (projectPath ? showProject(decodeURIComponent(projectPath[1])) : showList())
+      .catch(() => { app.replaceChildren(element('p', 'Unable to load Workboard. Please refresh the page.')); });
+  </script>
+</body>
+</html>`;
+
+function sendJson(response, statusCode, value) {
+  response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+  response.end(JSON.stringify(value));
+}
+
+async function readJson(request) {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > 1_000_000) throw new Error('Request body too large');
+  }
+  return JSON.parse(body || '{}');
+}
+
+const server = createServer(async (request, response) => {
+  const url = new URL(request.url ?? '/', 'http://localhost');
+
+  if (request.method === 'GET' && url.pathname === '/health') {
+    sendJson(response, 200, { status: 'ok' });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/projects') {
+    const projects = database.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid').all();
+    sendJson(response, 200, projects);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/projects') {
+    try {
+      const body = await readJson(request);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) {
+        sendJson(response, 400, { error: 'Project name is required' });
+        return;
+      }
+      const project = { id: randomUUID(), name };
+      database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(project.id, name, Date.now());
+      sendJson(response, 201, project);
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    return;
+  }
+
+  const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (request.method === 'GET' && projectMatch) {
+    let id;
+    try { id = decodeURIComponent(projectMatch[1]); } catch {
+      sendJson(response, 400, { error: 'Invalid project ID' });
+      return;
+    }
+    const project = database.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    sendJson(response, 200, project);
+    return;
+  }
+
+  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/[^/]+\/?$/.test(url.pathname))) {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(page);
+    return;
+  }
+
+  sendJson(response, 404, { error: 'Not found' });
+});
+
+server.listen(port, '0.0.0.0');
