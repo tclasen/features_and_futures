@@ -106,11 +106,7 @@ export function projectPage(project, tasks, filter = 'All', error = '') {
         </div>`).join('')}
     </div>
     ${tasks.length ? '' : '<p class="empty">No tasks match this filter.</p>'}
-    <script>
-      document.querySelectorAll('[data-submit-on-change]').forEach((control) => {
-        control.addEventListener('change', () => control.form.requestSubmit());
-      });
-    </script>`);
+    <script src="/project.js" defer></script>`);
 }
 
 export function errorPage(message) {

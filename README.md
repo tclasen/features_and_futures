@@ -21,7 +21,9 @@ npm test
 Project creation uses a standard HTML form and server-side validation. Names are
 trimmed before storage and escaped when rendered. Projects appear in increasing
 creation ID order. Each project owns its tasks, whose titles are also trimmed and
-escaped. Task checkboxes save completion when changed. The Task filter selects
+escaped. Task checkboxes save completion in place when changed and remain disabled
+until the save finishes. Failed saves restore the previous state and show an alert.
+Filter navigation waits for pending completion saves. The Task filter selects
 All, Open, or Completed tasks in creation order; its selection is carried through
 task changes on the current page. Project pages initially show All tasks.
 Tests use isolated temporary databases and remove them afterward.

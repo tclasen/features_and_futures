@@ -139,6 +139,11 @@ test('tasks validate, remain project-owned, filter, and persist completion acros
     assert.match(initial, /<label for="task-title">Task title<\/label>/);
     assert.match(initial, /<button type="submit">Create task<\/button>/);
     assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<script src="\/project.js" defer><\/script>/);
+    const scriptResponse = await fetch(`${server.address}/project.js`);
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get('content-type'), /text\/javascript/);
+    assert.match(await scriptResponse.text(), /keepalive: true/);
     assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
     assert.equal(rowCount(initial), 0);
 
