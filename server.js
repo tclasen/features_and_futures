@@ -29,6 +29,29 @@ db.exec('PRAGMA foreign_keys = ON');
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(column => column.name);
 if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 
+// Earlier pilot runs could create the same project repeatedly in a reused
+// database. Keep the earliest identity and move its tasks before removing the
+// redundant rows, so retries cannot make project actions ambiguous.
+const duplicateGroups = db.prepare(`SELECT MIN(id) AS keep_id, GROUP_CONCAT(id) AS ids,
+  MAX(archived) AS archived
+  FROM projects GROUP BY lower(trim(name)) HAVING COUNT(*) > 1`).all();
+db.exec('BEGIN');
+try {
+  for (const group of duplicateGroups) {
+    const ids = group.ids.split(',').map(Number);
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`UPDATE tasks SET project_id = ? WHERE project_id IN (${placeholders})`)
+      .run(group.keep_id, ...ids);
+    db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(group.archived, group.keep_id);
+    db.prepare(`DELETE FROM projects WHERE id IN (${placeholders}) AND id <> ?`)
+      .run(...ids, group.keep_id);
+  }
+  db.exec('COMMIT');
+} catch (error) {
+  db.exec('ROLLBACK');
+  throw error;
+}
+
 const app = await readFile(join(here, 'public', 'index.html'));
 
 function json(res, status, value) {
