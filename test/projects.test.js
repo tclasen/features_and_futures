@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
+import { runInNewContext } from 'node:vm';
 import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -172,6 +173,88 @@ test('tasks validate titles, stay within their project, filter, and persist comp
     await server.stop();
     server = await startServer(databasePath);
     assert.doesNotMatch(rows(await get('/projects/1')).join(''), / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('checkbox changes finish saving before an immediate reload', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-completion-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values) => fetch(server.baseUrl + path, {
+      method: 'POST', body: new URLSearchParams(values),
+    });
+    const getProject = async () => (await fetch(server.baseUrl + '/projects/1')).text();
+    await post('/projects', { name: 'Completion regression' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    const html = await getProject();
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+    assert.match(html, /onchange="saveTaskCompletion\(this\)"/);
+    const error = { hidden: true, textContent: '' };
+    let reloads = 0;
+    const context = {
+      document: { getElementById: () => error },
+      window: { location: { reload: () => { reloads++; } } },
+      URLSearchParams,
+      FormData: class {
+        constructor(form) {
+          return new URLSearchParams({
+            filter: form.elements.filter.value,
+            ...(checkbox.checked ? { completed: '1' } : {}),
+          });
+        }
+      },
+      XMLHttpRequest: class {
+        headers = {};
+        open(method, url, asynchronous) {
+          assert.equal(asynchronous, false);
+          this.method = method;
+          this.url = url;
+        }
+        setRequestHeader(name, value) { this.headers[name] = value; }
+        send(body) {
+          // A separate process sends HTTP while the browser handler waits.
+          this.status = Number(execFileSync(process.execPath, ['--input-type=module', '-e', `
+            const response = await fetch(process.argv[1], {
+              method: process.argv[2], headers: JSON.parse(process.argv[3]), body: process.argv[4],
+            });
+            console.log(response.status);
+          `, this.url, this.method, JSON.stringify(this.headers), body], { encoding: 'utf8' }));
+        }
+      },
+    };
+    const checkbox = {
+      checked: true,
+      form: { action: server.baseUrl + '/projects/1/tasks/1', elements: { filter: { value: 'All' } } },
+    };
+    runInNewContext(script, context);
+    context.saveTaskCompletion(checkbox);
+    assert.match(await getProject(), /aria-label="Complete Done task" checked/);
+    checkbox.checked = false;
+    context.saveTaskCompletion(checkbox);
+    assert.doesNotMatch(await getProject(), /aria-label="Complete Done task" checked/);
+    assert.equal(error.hidden, true);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.doesNotMatch(await getProject(), /aria-label="Complete Done task" checked/);
+
+    checkbox.form.action = server.baseUrl + '/projects/1/tasks/1';
+    checkbox.form.elements.filter.value = 'Open';
+    checkbox.checked = true;
+    context.saveTaskCompletion(checkbox);
+    assert.equal(reloads, 1);
+    assert.match(await getProject(), /aria-label="Complete Done task" checked/);
+
+    checkbox.form.action = server.baseUrl + '/projects/2/tasks/1';
+    checkbox.checked = false;
+    context.saveTaskCompletion(checkbox);
+    assert.equal(checkbox.checked, true);
+    assert.equal(error.hidden, false);
+    assert.match(error.textContent, /Could not save task completion/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

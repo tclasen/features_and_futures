@@ -119,11 +119,33 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '') {
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <label>
-            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="saveTaskCompletion(this)">
             <span>${escapeHtml(task.title)}</span>
           </label>
         </form>
       </div>`).join('') : '<p>No matching tasks.</p>'}
+    <p id="completion-error" role="alert" hidden></p>
+    <script>
+      function saveTaskCompletion(checkbox) {
+        const error = document.getElementById('completion-error');
+        error.hidden = true;
+        try {
+          const request = new XMLHttpRequest();
+          // Finish this small save before returning from the change event so an
+          // immediate reload cannot cancel it or read the previous saved state.
+          request.open('POST', checkbox.form.action, false);
+          request.setRequestHeader('Accept', 'application/json');
+          request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+          request.send(new URLSearchParams(new FormData(checkbox.form)).toString());
+          if (request.status !== 200) throw new Error('Completion save failed');
+          if (checkbox.form.elements.filter.value !== 'All') window.location.reload();
+        } catch {
+          checkbox.checked = !checkbox.checked;
+          error.textContent = 'Could not save task completion. Please try again.';
+          error.hidden = false;
+        }
+      }
+    </script>
   `);
 }
 
@@ -184,6 +206,11 @@ const server = createServer(async (request, response) => {
         const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, Number(taskId), project.id);
         if (!result.changes) {
           sendHtml(response, 404, page('Task not found', '<h1>Task not found</h1>'));
+          return;
+        }
+        if (request.headers.accept === 'application/json') {
+          response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          response.end(JSON.stringify({ completed: form.get('completed') === '1' }));
           return;
         }
       } else {
