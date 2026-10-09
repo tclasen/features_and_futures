@@ -1,4 +1,5 @@
 """Freeze the actual pilot inputs before dispatch."""
+import argparse
 import itertools
 import json
 import platform
@@ -31,12 +32,14 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    run = ROOT / "runs/instruction-effects/pilot-001"
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-002");args=parser.parse_args()
+    if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
+    run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
     project = ROOT / "projects/workboard/revisions/v001"
     frozen = run / "definitions"
-    shutil.copytree(project, frozen / "project")
+    shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
     profiles_text = (ROOT / "docs/builder-instructions.md").read_text()
     def quotes(section):
         text = profiles_text.split("## " + section + "\n", 1)[1].split("\n## ", 1)[0]
@@ -51,7 +54,7 @@ def prepare():
     random.Random(43).shuffle(configs)
     builders = [{"builder_id": f"b{i+1:03d}", "model": m, "harness": h, "profile": p,
                  "reasoning": "medium"} for i, (m,h,p) in enumerate(configs)]
-    sibling = Path("/Users/Shared/projects/features-and-futures-builders/pilot-001")
+    sibling = Path("/Users/Shared/projects/features-and-futures-builders") / args.run
     seed = sibling / "starter"
     seed.mkdir(parents=True)
     shutil.copytree(frozen / "project/starter", seed, dirs_exist_ok=True)
@@ -87,7 +90,7 @@ def prepare():
     write_json(frozen / "ollama-tags.json", ollama)
     manifest = {
         "schema_version":1, "status":"running", "experiment_id":"instruction-effects",
-        "experiment_revision":"pilot-v001", "run_id":"pilot-001", "purpose":"engineering-pilot",
+        "experiment_revision":"pilot-v002", "run_id":args.run, "purpose":"engineering-pilot",
         "project_id":"workboard","project_revision":"v001", "frozen_at":timestamp(),
         "runtime":{"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
                    "image":IMAGE,"image_digest":IMAGE_DIGEST, "sbx_version":"0.47.0",
@@ -96,7 +99,7 @@ def prepare():
                    "host":{"platform":platform.platform(), "machine":platform.machine(),
                            "memory_bytes":int(checked(["sysctl","-n","hw.memsize"])),
                            "cpu":checked(["sysctl","-n","machdep.cpu.brand_string"])},
-                   "context_policy":"fresh home/session for every instruction; repository persists",
+                   "context_policy":"fresh home/session for every instruction; private sandbox repository persists",
                    "egress":"deny by default; only the PM leased inference gateway allowed",
                    "model_mappings":{"gpt-oss:120b":selected,
                        "gpt-6-luna":{"provider":"OpenAI subscription", "reasoning":"medium"},
@@ -117,7 +120,7 @@ def prepare():
                            "main_run":"not started by this pilot command",
                            "pm_conversation_tokens":"unavailable; not included in builder cost"},
         "paths":{"builders":str(sibling),
-                 "deployments":"/Users/Shared/projects/features-and-futures-deployments/pilot-001"},
+                 "deployments":"/Users/Shared/projects/features-and-futures-deployments/"+args.run},
     }
     write_json(run / "manifest.json", manifest)
     (run / "manifest.sha256").write_text(digest_json(manifest)+"\n")

@@ -12,7 +12,7 @@ This repository is a portfolio of evaluation workloads and evidence, rather than
 | Shared infrastructure | `orchestrator/` | Reusable runner code, independent of any one project or run |
 | Cross-run analysis | `reports/` | Explicitly scoped comparisons with provenance |
 
-Use lowercase hyphenated catalog IDs, explicit revisions such as `v001`, and unique run IDs such as `pilot-001` or `repeat-001`. These examples are naming conventions, not created experiments.
+Use lowercase hyphenated catalog IDs, explicit revisions such as `v001`, and unique run IDs such as `pilot-001` or `repeat-001`. These are naming conventions. Actual Workboard pilot executions are tracked under `runs/instruction-effects/`.
 
 A project can support several experimental designs. An experiment revision can have many independent runs. A builder's identity is the tuple of experiment ID, run ID, and builder ID; task and attempt IDs are scoped to that run.
 
@@ -46,7 +46,7 @@ Run reports go inside their run. Cross-run reports enumerate input runs and chan
 
 Do not mount catalogs, other runs, or master archives into builder sandboxes. Copy only the assigned starter source, treatment, and task contract. Keep live credentials and session state outside tracked files; preserve source snapshots and Git bundles in the run archive.
 
-No repository schema validator or runner is implemented yet. JSON templates are preparation checklists, not claims that configurations are executable.
+The Workboard engineering pilot runner is implemented and uses run-owned frozen definitions. JSON templates remain preparation checklists for other projects and designs. The current pilot-specific entry points accept a unique `--run` ID; shared components support later workload runners.
 
 ## Native builder histories
 

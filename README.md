@@ -14,7 +14,7 @@ Each evaluation has one project manager (PM) agent and 18 independent builders: 
 | Harness | Codex CLI; Pi coding agent |
 | Instructions | No added SWE guidance; minimal SWE guidance; maximum emphasis on SWE best practices, maintainability, and clean code |
 
-These are requested model labels, not verified provider identifiers. Exact model mappings and supported reasoning settings must be recorded before execution.
+The engineering pilot resolves these to `gpt-oss:120b`, `gpt-6-luna` and `gpt-6.1-sol`, all with medium reasoning. Exact provider, image and pricing provenance is frozen in each run manifest.
 
 Within each run, all builders implement the same application, use the same PM-selected technology stack, receive the same ordered development tasks, and face the same PM-maintained Playwright acceptance criteria. Each has an independent repository and Git history inside its own Docker sandbox. Builders receive one development task at a time and cannot inspect other builders or PM-only materials.
 
@@ -39,4 +39,4 @@ Read [AGENTS.md](AGENTS.md) for PM behavior, [the experiment protocol](docs/expe
 
 ## Current state
 
-This repository provides protocol documentation, multi-project/run scaffolding, JSON preparation templates, and a builder-history archival helper. It does not yet implement evaluation orchestration, sandboxes, request measurement, acceptance tests, or analysis reports. No project or evaluation run has been created. Docker sbx is selected for builder isolation while this master repository remains public. Exact model access, sandbox runtime/network verification, and the statistical evidence method remain preparation work.
+The authorized engineering pilot now has a measured runner, isolated inference gateway, native token accounting, a three-task Workboard acceptance suite and recoverable builder histories. `pilot-001` retains an aborted run caused by a PM shared-filesystem SQLite defect. `pilot-002` uses private sandbox workspaces and databases, with fresh builder repositories. See [the pilot runtime](docs/pilot-runtime.md) and run reports for actual status. The indefinite main experiment remains separate and requires its statistical evidence method to be frozen.

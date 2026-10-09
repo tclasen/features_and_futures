@@ -8,7 +8,7 @@ Preparation copies exact project, instruction and price definitions into the run
 
 The local sbx CLI is standalone v0.47.0. Use the socket-free shell template. The frozen pilot image contains Codex 0.162.0 and Pi 1.1.0 (@earendil-works/pi-coding-agent). Image manifest, config and exported archive checksums are recorded in the run manifest. The large image archive stays in ignored .local/images; source and recoverable Git bundles belong in the run archive.
 
-Each builder receives only its own sibling directory, 4 CPUs and 4 GiB memory. Disable shared skills. No Docker socket or passwordless sudo is available. Egress denies all destinations except the leased PM inference gateway. Probe master/sibling/home visibility, GitHub/API/raw/mirror access and direct Ollama access before dispatch. Models receive no master-repository URL. Published Git branches provide recoverable history, not access isolation.
+Each builder receives a private in-sandbox Git repository, 4 CPUs and 4 GiB memory. No host directories are mounted into builder sandboxes. The PM transfers the identical trusted starter once, then exports data-only Git bundles and working-tree archives after each attempt. Trusted sibling repositories are PM shadows restored from bundles, preserving original commits without importing builder-controlled Git configuration or hooks. Disable shared skills. No Docker socket or passwordless sudo is available. Egress denies all destinations except the leased PM inference gateway. Probe master/sibling/home visibility, GitHub/API/raw/mirror access and direct Ollama access before dispatch. Models receive no master-repository URL. Published Git branches provide recoverable history, not access isolation.
 
 Real subscription credentials remain on the host. The inference gateway permits only the exact assigned model and native inference routes, rejects hosted tools and file/image retrieval, and records every request/response with native usage. Short-lived credentials inside the sandbox authorize that one attempt only. Strip them from harness logs. Pi's host OAuth credential is the subscription access source; never archive credentials, account IDs or authorization headers.
 
@@ -18,16 +18,16 @@ Run sequentially in reproducibly randomized order, rotating six positions each t
 
 Before validation, stop the builder, archive original history/committed source and a separate complete working tree. Reject dirty submissions, unchanged checkpoints, disallowed application dependencies and failed public behavior. Give factual test diagnostics using the same format. Preserve bounded changes for correction. Broad destructive failures may be reverted only after the verified rejected archive, under the repository's existing recovery authority.
 
-Run untrusted app code in its own network-denied 512 MiB sbx, exposing only a loopback HTTP port. Host Playwright contains PM tests and restricts browser requests to that app origin. Existing database files are copied from the stopped previous deployment into a fresh immutable-submission environment. Test the previous persistence sentinel, the cumulative current requirements, then the current sentinel after a real process-group restart. Prefix fixtures by task so retained earlier data does not collide. Capture reports, traces, logs, commit/tree IDs, timing and raw usage.
+Run untrusted app code in its own network-denied 512 MiB sbx, exposing only a loopback HTTP port. Mount the submission read-only, copy it into private sandbox storage and keep the database there; synchronized writable mounts can replace SQLite inodes and cause SQLITE_READONLY_DBMOVED. Host Playwright contains PM tests and restricts browser requests to that app origin. Existing database files are copied from the stopped previous deployment into a fresh immutable-submission environment. Test the previous persistence sentinel, the cumulative current requirements, then the current sentinel after a real process-group restart. Prefix fixtures by task so retained earlier data does not collide. Capture reports, traces, logs, commit/tree IDs, timing and raw usage.
 
 Promote only accepted revisions. Equal five-second health observation follows each promotion; retain the persistent surrogate for the next upgrade. Pre-acceptance failures are not DORA deployment failures. Poll Git commit appearance each second and declare that observation uncertainty. Record promotion/incident/recovery events separately; no incidents means no recovery-duration sample. Pilot stability checks are deliberately narrow and cannot establish production reliability.
 
 Commands, run from the PM repository:
 - python3 -B -m unittest discover -s tests -v
-- python3 -B -m orchestrator.prepare (once, after the preflight checks)
+- python3 -B -m orchestrator.prepare --run pilot-002 (once, after the preflight checks)
 - Commit prepared definitions, manifest and task packets before dispatch.
-- python3 -u -B -m orchestrator.pilot (resumable)
-- python3 -B -m orchestrator.report (rederive and verify readiness)
+- python3 -u -B -m orchestrator.pilot --run pilot-002 (resumable)
+- python3 -B -m orchestrator.report --run pilot-002 (rederive and verify readiness)
 
 The pilot passes only when all 54 builder tasks are accepted, every actual pilot inference has complete native usage and reproducible pricing, all source/history checksums restore correctly, required test phases pass, and the reports reconcile with raw events. Retain every infrastructure preflight failure. Any changed comparison rule requires a new run; PM runner bugs receive explicit correction events and preserved interrupted attempts.
 

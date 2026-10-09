@@ -18,7 +18,7 @@ def reserve_port():
 
 class Deployment:
     def __init__(self, manifest, builder, task_id, attempt_id, repo, commit, output, prior):
-        self.name = f"ff-pilot-app-{builder}-{task_id[-3:]}-{attempt_id[-3:]}"
+        self.name = f"ff-{manifest['run_id']}-app-{builder}-{task_id[-3:]}-{attempt_id[-3:]}"
         self.source = Path(manifest["paths"]["deployments"]) / builder / task_id / attempt_id
         self.output = output
         self.port = reserve_port()
@@ -31,6 +31,7 @@ class Deployment:
         runtime = self.source / ".runtime"
         runtime.mkdir()
         self.database = runtime / "app.sqlite"
+        self.private_root="/home/agent/app"
         if prior:
             # The accepted deployment is stopped before its database is copied.
             for suffix in ("","-wal","-shm"):
@@ -39,13 +40,15 @@ class Deployment:
                     shutil.copy2(old, Path(str(self.database)+suffix))
         checked(["sbx","create","--name",self.name,"--cpus","4","--memory","512m",
                  "--skills","off","--pull","never","-t",manifest["runtime"]["image"],
-                 "--publish",f"127.0.0.1:{self.port}:8080/tcp4","shell",str(self.source)])
+                 "--publish",f"127.0.0.1:{self.port}:8080/tcp4","shell",str(self.source)+":ro"])
+        checked(["sbx","exec",self.name,"cp","-a",str(self.source),self.private_root])
+        checked(["sbx","exec",self.name,"chmod","-R","u+w",self.private_root])
         policy = json.loads(checked(["sbx","policy","ls",self.name,"--json"]))
         write_json(output / "deployment-policy.json",policy)
         self.start()
 
     def start(self):
-        root = str(self.source)
+        root = self.private_root
         # Use an independent process group so a real process restart kills all children.
         script = """import pathlib,subprocess,os,sys
 p=pathlib.Path(sys.argv[1]); runtime=p/'.runtime'
@@ -79,18 +82,23 @@ if p.exists():
     except ProcessLookupError: pass
     time.sleep(.5)
 """
-        checked(["sbx","exec",self.name,"python3","-c",script,str(self.source)])
+        checked(["sbx","exec",self.name,"python3","-c",script,self.private_root])
 
     def restart(self):
         self.stop_process()
         self.start()
 
+    def capture(self):
+        for name in ("server.log","app.sqlite","app.sqlite-wal","app.sqlite-shm"):
+            result=subprocess.run(["sbx","exec",self.name,"cat",self.private_root+"/.runtime/"+name],capture_output=True)
+            if result.returncode==0:
+                (self.source/".runtime"/name).write_bytes(result.stdout)
+                if name=="server.log": (self.output/"server.log").write_bytes(result.stdout)
+
     def stop(self):
-        # Do not discard runtime/log evidence.
+        self.stop_process()
+        self.capture()
         invoke(["sbx","stop",self.name])
-        log = self.source / ".runtime/server.log"
-        if log.exists():
-            shutil.copy2(log, self.output / "server.log")
 
 def run_suite(master, run, deployment, output, stage, phase, prefix):
     target = output / phase

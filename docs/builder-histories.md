@@ -27,7 +27,7 @@ python3 scripts/archive-builder-history.py \
 These IDs are illustrative; they do not identify created runs. The helper:
 
 - Validates run identity, independent repository placement, and unique checkpoint IDs.
-- Creates and verifies a Git bundle containing all source refs plus HEAD.
+- Creates and verifies a Git bundle containing all source refs plus HEAD. The pilot first exports a native bundle inside sbx and restores a trusted PM shadow; never copy builder-controlled Git configuration or hooks to the host.
 - Archives committed HEAD source and records its commit, tree, checksums, and source refs.
 - Imports HEAD and every source branch into new namespaced branches without changing source commits.
 - Prints explicit refs for a normal push. It does not push, reset, clean, or modify the builder.
@@ -46,7 +46,7 @@ A private repository with access limited to the PM and trusted evaluators is the
 
 Use PM-only publication credentials scoped to this repository. Builders manage their independent local Git histories without master-remote access. Rules should prohibit modification or deletion of published checkpoint branches while allowing the PM to create new ones. Protect `main` under an agreed publication workflow and verify that the PM credential can actually use it. Git bundles are binary archives; do not rely on remote secret scanning to inspect their contents.
 
-The user selected public publication with Docker sbx enforcing builder isolation. Verify network restrictions before a run, including direct GitHub, API, and raw-source retrieval. The installed legacy `docker sandbox` command reports that it has been removed; the actual sbx runtime and networking configuration still need preparation and testing. Do not treat Docker filesystem isolation alone as proof that public source is inaccessible.
+The user selected public publication with Docker sbx enforcing builder isolation. Verify network restrictions before a run, including direct GitHub, API, and raw-source retrieval. The standalone `sbx` v0.47.0 runtime has passed the engineering pilot's filesystem and scoped-network preflight probes. Use the socket-free frozen shell image, private builder workspaces and leased inference gateway described in [the pilot runtime](pilot-runtime.md). Do not treat Docker filesystem isolation alone as proof that public source is inaccessible.
 
 Inspection after accepting the explicitly authorized collaborator invitation found:
 

@@ -1,4 +1,5 @@
 """Recompute pilot accounting and readiness directly from immutable observations."""
+import argparse
 import json
 import tarfile
 from collections import Counter
@@ -8,7 +9,8 @@ from .evidence import digest_bytes,digest_json,price_counts,read_jsonl
 from .prepare import ROOT,checked,write_json,git
 
 def main():
-    run=ROOT/"runs/instruction-effects/pilot-001"
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-002");args=parser.parse_args()
+    run=ROOT/"runs/instruction-effects"/args.run
     m=json.loads((run/"manifest.json").read_text())
     state=json.loads((run/"state.json").read_text())
     events=read_jsonl(run/"events.jsonl"); usage=read_jsonl(run/"usage.jsonl")

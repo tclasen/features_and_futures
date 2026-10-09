@@ -87,10 +87,13 @@ def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
 
 
 def execute_attempt(sandbox, harness, model, key, gateway_port, prompt, output,
-                    treatment="", *, timeout=None, smoke=False, on_start=None):
+                    treatment="", *, timeout=None, smoke=False, on_start=None, workdir=None):
     output.mkdir(parents=True, exist_ok=True)
     command = configure_attempt(sandbox, harness, model, key, gateway_port,
                                 uuid.uuid4().hex, treatment)
+    if workdir:
+        pos=command.index(sandbox)
+        command[pos:pos]=["-w",workdir]
     if harness == "pi":
         if smoke:
             command += ["--no-tools"]

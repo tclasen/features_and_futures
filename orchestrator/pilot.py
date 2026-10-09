@@ -1,4 +1,5 @@
 """Resume the synchronized, measured three-round pilot; never start a main run."""
+import argparse
 import json
 import os
 import shutil
@@ -12,16 +13,17 @@ from .evidence import Ledger, digest_bytes, digest_json, read_jsonl, timestamp
 from .gateway import InferenceGateway
 from .prepare import ROOT, checked, file_hashes, git, write_json
 from .validation import Deployment, run_suite
+from .private import WORK, sandbox_git, initialize, export
 
 class CommitObserver:
-    def __init__(self, repo, ledger, identity):
-        self.repo,self.ledger,self.identity=repo,ledger,identity
-        self.seen=set(git(repo,"rev-list","--all").splitlines())
+    def __init__(self, sandbox, ledger, identity):
+        self.repo,self.ledger,self.identity=sandbox,ledger,identity
+        self.seen=set(sandbox_git(sandbox,"rev-list","--all").splitlines())
         self.stop_event=threading.Event()
         self.thread=threading.Thread(target=self.watch,daemon=True)
     def observe(self):
         try:
-            current=set(git(self.repo,"rev-list","--all").splitlines())
+            current=set(sandbox_git(self.repo,"rev-list","--all").splitlines())
             for commit in sorted(current-self.seen):
                 self.ledger.event("commit_first_observed",commit=commit,
                                   observation_interval_seconds=1,**self.identity)
@@ -44,7 +46,7 @@ def verify_isolation(probe):
 
 def archive(run, repo, builder, checkpoint, output):
     checked(["python3","-B",str(ROOT/"scripts/archive-builder-history.py"),
-             "--experiment","instruction-effects","--run","pilot-001",
+             "--experiment",run.parent.name,"--run",run.name,
              "--builder",builder,"--checkpoint",checkpoint,"--repository",str(repo)])
     # Includes relevant untracked/dirty files before any recovery, excludes only Git internals.
     with tarfile.open(output/"working-tree.tar.gz","w:gz") as tar:
@@ -57,7 +59,8 @@ def archive(run, repo, builder, checkpoint, output):
     return json.loads((run/"builders"/builder/"checkpoints"/checkpoint/"index.json").read_text())
 
 def main():
-    run=ROOT/"runs/instruction-effects/pilot-001"
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-002");args=parser.parse_args()
+    run=ROOT/"runs/instruction-effects"/args.run
     manifest=json.loads((run/"manifest.json").read_text())
     manifest_hash=digest_json(manifest)
     assert manifest_hash==(run/"manifest.sha256").read_text().strip()
@@ -84,15 +87,16 @@ def main():
                 if accepted and accepted["stage"]>=stage:
                     continue
                 repo=Path(manifest["paths"]["builders"])/bid
-                sandbox="ff-pilot-"+bid
+                sandbox="ff-"+run.name+"-"+bid
                 known=invoke(["sbx","inspect",sandbox,"--json"])
                 if known.returncode:
                     checked(["sbx","create","--name",sandbox,"--cpus","4","--memory","4g",
                              "--skills","off","--pull","never","-t",manifest["runtime"]["image"],
-                             "shell",str(repo)])
+                             "shell"])
+                    initialize(sandbox,repo)
                 # sbx exec starts a stopped sandbox; policy applies before any harness call.
                 policy=sandbox_policy(sandbox,gateway.port)
-                probe=isolation_probe(sandbox,repo,
+                probe=isolation_probe(sandbox,WORK,
                     Path(manifest["paths"]["builders"])/("b002" if bid!="b002" else "b001"),
                     gateway.port)
                 prep=run/"builders"/bid
@@ -127,7 +131,7 @@ def main():
                     attempt_id=f"attempt-{number:03d}"
                     output=attempt_root/attempt_id; output.mkdir(parents=True)
                     attrs={**task_identity,"attempt_id":attempt_id}
-                    pre_head=git(repo,"rev-parse","HEAD")
+                    pre_head=sandbox_git(sandbox,"rev-parse","HEAD")
                     # Contention is a covariate, not an exclusion.
                     write_json(output/"host-contention.json",{"load_average":os.getloadavg(),
                         "vm_stat":checked(["vm_stat"]),"observed_at":timestamp()})
@@ -136,22 +140,23 @@ def main():
                     started=[]
                     def on_start():
                         started.append(ledger.event("attempt_started",pre_commit=pre_head,**attrs))
-                    observer=CommitObserver(repo,ledger,attrs); observer.start()
+                    observer=CommitObserver(sandbox,ledger,attrs); observer.start()
                     print(f"{task_id} {bid} {builder['model']} {builder['harness']} {builder['profile']} {attempt_id} START",flush=True)
                     result=None
                     try:
                         result=execute_attempt(sandbox,builder["harness"],builder["model"],key,
                             gateway.port,packet+feedback,output,instructions["profiles"][builder["profile"]],
-                            on_start=on_start)
+                            on_start=on_start,workdir=WORK)
                     finally:
                         observer.stop()
                         gateway.revoke()
                         ended=ledger.event("attempt_finished",
                             exit_code=result.returncode if result else None,**attrs)
-                        checked(["sbx","stop",sandbox])
-                    head=git(repo,"rev-parse","HEAD")
-                    tree=git(repo,"rev-parse","HEAD^{tree}")
-                    dirty=git(repo,"status","--porcelain","--untracked-files=normal")
+                    native=export(sandbox,repo,output)
+                    checked(["sbx","stop",sandbox])
+                    head=native["head"]
+                    tree=native["tree"]
+                    dirty=native["dirty"]
                     checkpoint=f"{task_id}-{attempt_id}"
                     index=archive(run,repo,bid,checkpoint,output)
                     ledger.event("submission_observed",commit=head,tree=tree,
@@ -235,6 +240,7 @@ def main():
                         write_json(run/"state.json",state)
                         # Persist a clean database snapshot by stopping all app processes.
                         deployment.stop_process()
+                        deployment.capture()
                         for suffix in ("","-wal","-shm"):
                             file=Path(str(deployment.database)+suffix)
                             if file.exists(): shutil.copy2(file,output/("accepted.sqlite"+suffix))
@@ -271,7 +277,7 @@ def main():
         write_json(run/"state.json",state)
         ledger.event("pilot_completed",accepted_tasks=len(state["accepted"])*3)
         print("PILOT COMPLETED: 18 builders, three rounds.",flush=True)
-    except Exception as error:
+    except BaseException as error:
         state["status"]="infrastructure_attention";state["last_error"]=str(error)
         write_json(run/"state.json",state)
         ledger.event("runner_interrupted",error=type(error).__name__,detail=str(error))
