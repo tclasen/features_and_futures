@@ -45,6 +45,9 @@
           back.className = 'secondary'; back.textContent = 'Projects';
           back.addEventListener('click', () => { location.href = '/'; });
           const heading = document.createElement('h1'); heading.textContent = project.name;
+          const archivedNotice = document.createElement('p');
+          archivedNotice.textContent = 'Archived project';
+          archivedNotice.hidden = !project.archived;
           const form = document.createElement('form');
           form.innerHTML = '<div class="field"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"></div><button type="submit">Create task</button>';
           const error = document.createElement('p'); error.className = 'error'; error.setAttribute('role', 'alert'); error.hidden = true;
@@ -52,7 +55,8 @@
           const filter = document.createElement('select'); filter.id = 'task-filter';
           for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
           const list = document.createElement('section'); list.setAttribute('aria-label', 'Tasks');
-          app.append(back, heading, form, error, filterLabel, filter, list);
+          app.append(back, heading, archivedNotice, form, error, filterLabel, filter, list);
+          form.querySelector('button').disabled = project.archived;
           async function refresh() {
             const response = await fetch(`/api/projects/${id}/tasks`);
             if (!response.ok) throw new Error('Could not load tasks');
@@ -60,7 +64,7 @@
             for (const task of tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed)) {
               const row = document.createElement('div'); row.className = 'row'; row.dataset.testid = 'task-row';
               const title = document.createElement('span'); title.textContent = task.title;
-              const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+              const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', `Complete ${task.title}`); checkbox.disabled = project.archived;
               checkbox.addEventListener('change', async () => {
                 const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
                 if (!result.ok) { checkbox.checked = !checkbox.checked; return; }
@@ -82,20 +86,28 @@
         app.querySelector('#back')?.addEventListener('click', () => { location.href = '/'; });
         return;
       }
-      app.innerHTML = '<h1>Workboard</h1><form id="create-form"><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"></div><button type="submit">Create project</button></form><p class="error" role="alert" hidden></p><section id="project-list" aria-label="Projects"></section>';
+      app.innerHTML = '<h1>Workboard</h1><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select><form id="create-form"><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"></div><button type="submit">Create project</button></form><p class="error" role="alert" hidden></p><section id="project-list" aria-label="Projects"></section>';
       const form = app.querySelector('#create-form');
       const error = app.querySelector('.error');
       const list = app.querySelector('#project-list');
       async function refresh() {
         list.replaceChildren();
-        for (const project of await loadProjects()) {
+        const archivedFilter = app.querySelector('#project-filter').value === 'Archived';
+        for (const project of (await loadProjects()).filter(project => project.archived === archivedFilter)) {
           const row = document.createElement('div'); row.className = 'row'; row.dataset.testid = 'project-row';
           const name = document.createElement('span'); name.textContent = project.name;
           const open = document.createElement('button'); open.textContent = 'Open project';
           open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-          row.append(name, open); list.append(row);
+          const summary = document.createElement('span'); summary.dataset.testid = 'project-summary'; summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+          const action = document.createElement('button'); action.textContent = project.archived ? 'Restore project' : 'Archive project';
+          action.addEventListener('click', async () => {
+            const response = await fetch(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+            if (response.ok) await refresh();
+          });
+          row.append(name, summary, open, action); list.append(row);
         }
       }
+      app.querySelector('#project-filter').addEventListener('change', refresh);
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const input = form.elements.name;
