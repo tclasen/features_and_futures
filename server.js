@@ -15,6 +15,15 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+database.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`);
 
 const html = await readFile(new URL('./public/index.html', import.meta.url));
 const javascript = await readFile(new URL('./public/app.js', import.meta.url));
@@ -49,6 +58,34 @@ const server = createServer(async (request, response) => {
     if (!name) return send(response, 400, JSON.stringify({ error: 'Project name is required' }));
     const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return send(response, 201, JSON.stringify({ id: Number(result.lastInsertRowid), name }));
+  }
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (taskRoute && request.method === 'GET') {
+    const projectId = Number(taskRoute[1]);
+    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+    return send(response, 200, JSON.stringify(tasks.map((task) => ({ ...task, completed: Boolean(task.completed) }))));
+  }
+  if (taskRoute && request.method === 'POST') {
+    const projectId = Number(taskRoute[1]);
+    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+    const payload = await readJson(request);
+    const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+    if (!title) return send(response, 400, JSON.stringify({ error: 'Task title is required' }));
+    const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+    return send(response, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
+  }
+  const completionRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  if (completionRoute && request.method === 'PATCH') {
+    const projectId = Number(completionRoute[1]);
+    const taskId = Number(completionRoute[2]);
+    const payload = await readJson(request);
+    if (typeof payload?.completed !== 'boolean') return send(response, 400, JSON.stringify({ error: 'Completion state is required' }));
+    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(payload.completed ? 1 : 0, taskId, projectId);
+    if (!result.changes) return send(response, 404, JSON.stringify({ error: 'Task not found' }));
+    return send(response, 200, JSON.stringify({ id: taskId, projectId, completed: payload.completed }));
   }
   if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
     return send(response, 200, html, 'text/html; charset=utf-8');
