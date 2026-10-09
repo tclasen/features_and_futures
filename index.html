@@ -54,9 +54,15 @@
       submit.type = 'submit';
       submit.textContent = 'Create project';
       form.append(label, submit);
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Project filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Project filter');
+      for (const value of ['Active', 'Archived']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
+      filterLabel.append(filter);
       const list = document.createElement('section');
       list.setAttribute('aria-label', 'Projects');
-      app.append(heading, form, list);
+      app.append(heading, form, filterLabel, list);
 
       async function refresh() {
         const response = await fetch('/api/projects');
@@ -64,6 +70,7 @@
         const projects = await response.json();
         list.replaceChildren();
         for (const project of projects) {
+          if (project.archived !== (filter.value === 'Archived')) continue;
           const row = document.createElement('div');
           row.className = 'project-row';
           row.dataset.testid = 'project-row';
@@ -73,7 +80,17 @@
           open.type = 'button';
           open.textContent = 'Open project';
           open.addEventListener('click', () => navigate(escapePath(project.id)));
-          row.append(name, open);
+          const summary = document.createElement('span');
+          summary.dataset.testid = 'project-summary';
+          summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+          const archive = document.createElement('button');
+          archive.type = 'button';
+          archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+          archive.addEventListener('click', async () => {
+            await fetch(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+            await refresh();
+          });
+          row.append(name, summary, open, archive);
           list.append(row);
         }
       }
@@ -98,6 +115,7 @@
         input.value = '';
         await refresh();
       });
+      filter.addEventListener('change', refresh);
       await refresh();
     }
 
@@ -118,6 +136,7 @@
       }
       const heading = document.createElement('h1');
       heading.textContent = project.name;
+      if (project.archived) { const notice = document.createElement('p'); notice.textContent = 'Archived project'; app.append(notice); }
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.textContent = 'Task title';
@@ -128,6 +147,7 @@
       const submit = document.createElement('button');
       submit.type = 'submit';
       submit.textContent = 'Create task';
+      submit.disabled = Boolean(project.archived);
       form.append(label, submit);
       const filterLabel = document.createElement('label');
       filterLabel.textContent = 'Task filter';
@@ -157,6 +177,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = Boolean(project.archived);
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             const update = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
