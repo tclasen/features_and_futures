@@ -117,13 +117,38 @@ function projectPage(response, project, filter = 'all', error = '') {
           <label class="task-label">
             <input type="checkbox" name="completed" value="1"
               aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}
-              onchange="this.form.requestSubmit()">
+              onchange="saveCompletion(this)">
             <span>${escapeHtml(task.title)}</span>
           </label>
           <noscript><button type="submit">Save completion</button></noscript>
         </form>
       </li>`).join('')}</ul>
-    ${tasks.length ? '' : '<p>No matching tasks.</p>'}`);
+    ${tasks.length ? '' : '<p>No matching tasks.</p>'}
+    <p id="completion-error" role="alert" hidden>Unable to save completion. Please try again.</p>
+    <script>
+      function saveCompletion(checkbox) {
+        const form = checkbox.form;
+        const error = document.getElementById('completion-error');
+        error.hidden = true;
+        try {
+          // Finish the small local save before a reload can cancel it.
+          const request = new XMLHttpRequest();
+          request.open('POST', form.action, false);
+          request.setRequestHeader('Accept', 'application/json');
+          request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+          request.send(new URLSearchParams(new FormData(form)).toString());
+          if (request.status !== 204) throw new Error('Save failed');
+          const filter = form.elements.filter.value;
+          if ((filter === 'open' && checkbox.checked) ||
+              (filter === 'completed' && !checkbox.checked)) {
+            checkbox.closest('[data-testid="task-row"]').remove();
+          }
+        } catch {
+          checkbox.checked = !checkbox.checked;
+          error.hidden = false;
+        }
+      }
+    </script>`);
 }
 
 async function readForm(request) {
@@ -186,6 +211,11 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         createTask.run(project.id, title);
+      }
+      if (taskId && request.headers.accept === 'application/json') {
+        response.writeHead(204);
+        response.end();
+        return;
       }
       response.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       response.end();

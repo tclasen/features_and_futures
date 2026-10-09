@@ -25,4 +25,6 @@ npm test
 
 Tests use an isolated temporary SQLite database and verify validation, project
 ordering, HTML escaping, detail navigation, health, task validation, completion,
-filtering, project isolation, and restart persistence.
+filtering, project isolation, and restart persistence. Completion regression checks
+exercise the browser change handler's synchronous save contract and verify both
+checking and unchecking through immediate reloads and process restarts.

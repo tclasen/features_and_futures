@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
+import { runInNewContext } from 'node:vm';
 
 async function unusedPort() {
   const socket = net.createServer();
@@ -119,6 +120,44 @@ test('projects validate, preserve order, open and persist across restarts', asyn
     rows = taskRows(await (await fetch(base + projectPath)).text());
     assert.ok(rows.every(row => !row.includes(' checked')));
     assert.equal(taskRows(await (await fetch(`${base}${projectPath}?filter=completed`)).text()).length, 0);
+
+    // Exercise the browser change handler, including the immediate-reload case.
+    const script = detail.match(/<script>([\s\S]*?)<\/script>/)[1];
+    for (const completed of [true, false]) {
+      let savedRequest;
+      const error = { hidden: true };
+      const checkbox = {
+        checked: completed,
+        form: { action: base + taskPath, elements: { filter: { value: 'all' } } },
+      };
+      const context = {
+        document: { getElementById: () => error },
+        URLSearchParams,
+        FormData: class {
+          constructor() {
+            return completed ? [['filter', 'all'], ['completed', '1']] : [['filter', 'all']];
+          }
+        },
+        XMLHttpRequest: class {
+          open(method, url, asynchronous) {
+            assert.equal(asynchronous, false, 'save must finish before change returns');
+            savedRequest = { method, url, headers: {} };
+          }
+          setRequestHeader(name, value) { savedRequest.headers[name] = value; }
+          send(body) { savedRequest.body = body; this.status = 204; }
+        },
+      };
+      runInNewContext(script, context);
+      context.saveCompletion(checkbox);
+      assert.equal(error.hidden, true);
+      const { url, ...options } = savedRequest;
+      assert.equal((await fetch(url, options)).status, 204);
+      const reloaded = taskRows(await (await fetch(base + projectPath)).text());
+      assert.equal(reloaded[0].includes(' checked'), completed);
+      await stop();
+      await start();
+      assert.equal(taskRows(await (await fetch(base + projectPath)).text())[0].includes(' checked'), completed);
+    }
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
