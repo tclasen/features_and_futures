@@ -73,6 +73,9 @@ const server = http.createServer(async (req, res) => {
       const data = await readJson(req);
       const title = typeof data?.title === 'string' ? data.title.trim() : '';
       if (!title) return send(res, 400, { error: 'Task title is required' });
+      // Return an existing matching task on retried submissions.
+      const existing = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND title = ? ORDER BY id LIMIT 1').get(projectId, title);
+      if (existing) return send(res, 200, existing);
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
       return send(res, 201, { id: Number(result.lastInsertRowid), project_id: projectId, title, completed: 0 });
     }
@@ -89,6 +92,9 @@ const server = http.createServer(async (req, res) => {
     const data = await readJson(req);
     const name = typeof data?.name === 'string' ? data.name.trim() : '';
     if (!name) return send(res, 400, { error: 'Project name is required' });
+    // Avoid duplicate rows when a creation request is retried after a timeout.
+    const existing = db.prepare('SELECT id, name FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
+    if (existing) return send(res, 200, existing);
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return send(res, 201, { id: Number(result.lastInsertRowid), name });
   }
