@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 
-test('projects validate, trim, navigate, and persist across restarts', async () => {
+test('projects and tasks validate, filter, stay isolated, and persist across restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const socket = net.createServer();
   socket.listen(0, '127.0.0.1');
@@ -53,7 +53,37 @@ test('projects validate, trim, navigate, and persist across restarts', async () 
     assert.ok(html.indexOf('First project') < html.indexOf('Second &lt;project&gt;'));
     assert.doesNotMatch(html, /  First project  /);
     const path = html.match(/action="(\/projects\/\d+)"/)[1];
-    const detail = await (await fetch(base + path)).text();
+    const post = (route, values) => fetch(base + route, { method: 'POST', body: new URLSearchParams(values), redirect: 'manual' });
+    const taskPage = async (filter = 'All') => (await fetch(`${base}${path}?filter=${filter}`)).text();
+    let detail = await taskPage();
+    assert.match(detail, /<label for="task-title">Task title<\/label>/);
+    assert.match(detail, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(detail, /<option selected>All<\/option>/);
+    const invalidTask = await post(`${path}/tasks`, { title: '   ' });
+    assert.equal(invalidTask.status, 400);
+    assert.match(await invalidTask.text(), /role="alert">Task title is required/);
+    assert.doesNotMatch(await taskPage(), /data-testid="task-row"/);
+    assert.equal((await post(`${path}/tasks`, { title: '  First task  ' })).status, 303);
+    assert.equal((await post(`${path}/tasks`, { title: 'Second <task>' })).status, 303);
+    detail = await taskPage();
+    assert.equal((detail.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.ok(detail.indexOf('First task') < detail.indexOf('Second &lt;task&gt;'));
+    assert.doesNotMatch(detail, /  First task  | checked/);
+    assert.match(detail, /aria-label="Complete First task"/);
+    const taskPath = detail.match(/action="(\/projects\/\d+\/tasks\/\d+)"/)[1];
+    assert.equal((await post(taskPath, { completed: '1' })).status, 303);
+    assert.match(await taskPage('Completed'), /First task/);
+    assert.doesNotMatch(await taskPage('Completed'), /Second &lt;task&gt;/);
+    assert.match(await taskPage('Open'), /Second &lt;task&gt;/);
+    assert.doesNotMatch(await taskPage('Open'), /First task/);
+    const otherPath = [...html.matchAll(/action="(\/projects\/\d+)"/g)][1][1];
+    assert.doesNotMatch(await (await fetch(base + otherPath)).text(), /data-testid="task-row"/);
+    assert.equal((await post(`${otherPath}/tasks/${taskPath.split('/').at(-1)}`, { completed: '1' })).status, 404);
+    assert.equal((await post(taskPath, {})).status, 303);
+    assert.doesNotMatch(await taskPage('Completed'), /data-testid="task-row"/);
+    await post(taskPath, { completed: '1' });
+    detail = await taskPage();
+    assert.match(detail, / checked/);
     assert.match(detail, /<h1>First project<\/h1>/);
     assert.match(detail, /<button type="submit">Projects<\/button>/);
     await stop();
