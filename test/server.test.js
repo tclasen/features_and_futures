@@ -60,8 +60,46 @@ test('projects validate, trim, escape, retain order and persist after restart', 
     body = await (await fetch(server.url + paths[0])).text();
     assert.match(body, /<h1>Alpha<\/h1>/);
     assert.match(body, /<button type="submit">Projects<\/button>/);
+    const taskUrl = server.url + paths[0];
+    const postTask = (path, values) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual'
+    });
+    for (const title of ['', '  \t ']) {
+      response = await postTask(paths[0] + '/tasks', { title });
+      assert.equal(response.status, 422);
+      body = await response.text();
+      assert.match(body, /role="alert">Task title is required/);
+      assert.doesNotMatch(body, /data-testid="task-row"/);
+    }
+    assert.equal((await postTask(paths[0] + '/tasks', { title: '  First task  ' })).status, 303);
+    assert.equal((await postTask(paths[0] + '/tasks', { title: 'Second <task>' })).status, 303);
+    body = await (await fetch(taskUrl)).text();
+    assert.match(body, /<label for="task-title">Task title<\/label>/);
+    assert.match(body, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    assert.equal((body.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.ok(body.indexOf('<span>First task</span>') < body.indexOf('<span>Second &lt;task&gt;</span>'));
+    assert.match(body, /aria-label="Complete First task"/);
+    assert.doesNotMatch(body, / checked/);
+    const taskPaths = [...body.matchAll(/action="(\/projects\/\d+\/tasks\/\d+)"/g)].map(match => match[1]);
+    assert.equal((await postTask(taskPaths[0], { completed: '1' })).status, 303);
+    body = await (await fetch(taskUrl + '?filter=Completed')).text();
+    assert.match(body, /<span>First task<\/span>/);
+    assert.match(body, / checked/);
+    assert.doesNotMatch(body, /<span>Second/);
+    body = await (await fetch(taskUrl + '?filter=Open')).text();
+    assert.doesNotMatch(body, /<span>First task/);
+    assert.match(body, /<span>Second &lt;task&gt;<\/span>/);
+    assert.doesNotMatch(await (await fetch(server.url + paths[1])).text(), /data-testid="task-row"/);
+    const wrongProjectTask = taskPaths[0].replace(paths[0], paths[1]);
+    assert.equal((await postTask(wrongProjectTask, {})).status, 404);
     await server.stop();
     server = await start(dbPath);
+    body = await (await fetch(server.url + paths[0])).text();
+    assert.equal((body.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(body, /aria-label="Complete First task" checked/);
+    assert.equal((await postTask(taskPaths[0], {})).status, 303);
+    body = await (await fetch(server.url + paths[0] + '?filter=Completed')).text();
+    assert.doesNotMatch(body, /data-testid="task-row"/);
     body = await (await fetch(server.url)).text();
     for (const path of paths) assert.ok(body.includes(`action="${path}"`));
     assert.match(await (await fetch(server.url + paths[1])).text(), /<h1>Beta &lt;script&gt;<\/h1>/);
