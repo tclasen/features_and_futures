@@ -342,6 +342,13 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         from .diagnostics import notification_fingerprint
         fingerprint=(notification_fingerprint(diagnostics) if manifest["execution"].get("feedback_rendering")=="native-and-visible-state-v3" else digest_json(diagnostics))
         consecutive=consecutive+1 if previous_fingerprint==fingerprint else 1
+        if manifest["execution"].get("repair_policy")=="checkpoint-after-five-identical-v1":
+            from .checkpoint_recovery import trailing_identical_failures, restore
+            consecutive=trailing_identical_failures(read_jsonl(run/"events.jsonl"),bid,task_id,fingerprint)
+            if consecutive and consecutive%5==0:
+                checkpoint_commit=accepted["commit"] if accepted else manifest["provenance"]["starter_commit"]
+                restore(run,manifest,sandbox,repo,bid,task_id,attempt_id,output,checkpoint_commit,ledger,archive)
+                feedback=append_recovery_instruction(feedback,output,bid,task_id)
         previous_fingerprint=fingerprint
         with state_lock:
             state.setdefault("last_failure_fingerprints",{})[bid]=fingerprint

@@ -42,12 +42,12 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--storage-policy",choices=("legacy-retain-v1","archive-before-remove-v1"),default="legacy-retain-v1");parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2","native-and-visible-state-v3"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="hosted");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="parallel-rounds");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--repair-policy",choices=("preserve-working-tree-v1","checkpoint-after-five-identical-v1"),default="preserve-working-tree-v1");parser.add_argument("--storage-policy",choices=("legacy-retain-v1","archive-before-remove-v1"),default="legacy-retain-v1");parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2","native-and-visible-state-v3"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="hosted");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="parallel-rounds");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007"): raise ValueError("Unsupported project revision")
+    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007", "v009", "v010"): raise ValueError("Unsupported project revision")
     project = ROOT / "projects/workboard/revisions" / args.project_revision
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
@@ -136,7 +136,7 @@ def prepare():
                       "definition_hashes":file_hashes(frozen)},
         "tasks":tasks,"pricing":prices,
         "execution":{"scheduling_seed":43,"order":scheduling_order,"scheduling":args.scheduling,"max_parallel_builders":len(builders) if args.scheduling=="parallel-rounds" else 1, "rotation_positions":rotation,
-                     "retry_limit":None,"feedback_rendering":args.feedback_rendering,"unchanged_failure_notify_after":10,
+                     "retry_limit":None,"repair_policy":args.repair_policy,"feedback_rendering":args.feedback_rendering,"unchanged_failure_notify_after":10,
                      **({"timing_revision":"harness-return-v2","recovery_policy":"uniform public assertions and visible snapshot on every rejection; preserve working tree"} if args.feedback_rendering=="native-and-visible-state-v3" else {})},
         "evidence_policy":{"purpose":"infrastructure readiness; no claim of instruction effect",
                            "stop":f"all {len(builders)} builders accepted all {len(tasks)} tasks with complete native usage",
