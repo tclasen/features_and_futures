@@ -15,6 +15,7 @@ from .prepare import ROOT, checked, file_hashes, git, write_json, Infrastructure
 from .validation import Deployment, run_suite
 from .private import WORK, sandbox_git, initialize, export
 from .diagnostics import tool_diagnostics
+from .recovery import append_recovery_instruction
 
 class CommitObserver:
     def __init__(self, sandbox, ledger, identity):
@@ -157,6 +158,8 @@ def main():
                     else:
                         ledger.event("interrupted_attempt_retained",attempt_id=previous[-1].name,**task_identity)
                         feedback="\n\nThe PM runner was interrupted. Continue the same task from your own current repository and submit a committed implementation."
+                if previous:
+                    feedback=append_recovery_instruction(feedback,previous[-1],bid,task_id)
                 consecutive=0
                 while True:
                     number=len(list(attempt_root.glob("attempt-*")))+1 if attempt_root.exists() else 1
