@@ -41,7 +41,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, JSON.stringify({ status: 'ok' }));
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
-    const projects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id=p.id WHERE p.archived=? GROUP BY p.id ORDER BY p.id`).all(archived).map(p => ({ ...p, archived: Boolean(p.archived) }));
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id=p.id WHERE p.archived=? GROUP BY p.id HAVING p.id = (SELECT MIN(p2.id) FROM projects p2 WHERE p2.name=p.name AND p2.archived=p.archived) ORDER BY p.id`).all(archived).map(p => ({ ...p, archived: Boolean(p.archived) }));
     return send(res, 200, JSON.stringify(projects));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
