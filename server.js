@@ -9,14 +9,31 @@ const root = dirname(fileURLToPath(import.meta.url));
 const publicDirectory = join(root, 'public');
 const databasePath = resolve(process.env.DB_PATH || join(root, 'workboard.sqlite'));
 mkdirSync(dirname(databasePath), { recursive: true });
-const database = new DatabaseSync(databasePath);
-database.exec(`
+function openDatabase() {
+  const connection = new DatabaseSync(databasePath);
+  connection.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )
 `);
+  return connection;
+}
+let database = openDatabase();
+
+function insertProject(project) {
+  try {
+    database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(project.id, project.name, Date.now());
+  } catch (error) {
+    // SQLite reports SQLITE_READONLY_DBMOVED if the configured file is replaced
+    // while this process is running. Reopen the configured path and retry once.
+    if (error.code !== 'ERR_SQLITE_ERROR' || error.errcode !== 1032) throw error;
+    database.close();
+    database = openDatabase();
+    database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(project.id, project.name, Date.now());
+  }
+}
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -63,7 +80,12 @@ const server = createServer(async (request, response) => {
       return;
     }
     const project = { id: randomUUID(), name };
-    database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(project.id, project.name, Date.now());
+    try {
+      insertProject(project);
+    } catch {
+      sendJson(response, 500, { error: 'Unable to save project' });
+      return;
+    }
     sendJson(response, 201, project);
     return;
   }
