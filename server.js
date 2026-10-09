@@ -101,6 +101,11 @@ function projectPage(project, filter = 'All', error = '') {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form class="task-controls" action="/projects/${project.id}/rename" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="create"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+    </form>
     <form class="task-controls" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -164,6 +169,29 @@ const server = createServer(async (request, response) => {
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;
       if (project) {
         sendHtml(response, 200, projectPage(project, normalizeFilter(searchParams.get('filter'))));
+        return;
+      }
+    }
+    const renameMatch = /^\/projects\/([1-9]\d*)\/rename$/.exec(pathname);
+    if (request.method === 'POST' && renameMatch) {
+      const id = Number(renameMatch[1]);
+      const project = Number.isSafeInteger(id) ? projects.find(id) : null;
+      if (project) {
+        const body = await readForm(request);
+        if (!body) {
+          sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = normalizeFilter(body.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project is read-only'));
+          return;
+        }
+        if (!projects.rename(id, body.get('name'))) {
+          sendHtml(response, 422, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        redirect(response, `/projects/${id}?filter=${filter}`);
         return;
       }
     }

@@ -31,6 +31,7 @@ export function openProjects(databasePath) {
   const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const archiveUpdate = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const renameUpdate = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const taskList = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const taskInsert = database.prepare('INSERT INTO tasks (project_id, title) SELECT id, ? FROM projects WHERE id = ? AND archived = 0');
   const taskUpdate = database.prepare(`UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?
@@ -45,6 +46,11 @@ export function openProjects(databasePath) {
       if (!trimmedName) return null;
       const result = insert.run(trimmedName);
       return find.get(result.lastInsertRowid);
+    },
+    rename(id, name) {
+      const trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) return false;
+      return renameUpdate.run(trimmedName, id).changes === 1;
     },
     listTasks: (projectId) => taskList.all(projectId),
     createTask(projectId, title) {
