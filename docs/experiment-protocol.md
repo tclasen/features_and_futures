@@ -19,7 +19,7 @@ Create a versioned run manifest before issuing task 1. It must contain:
 - Context/session continuity, compaction, restart, dependency-install, and permitted-tool policies. Keep these consistent across instruction profiles and disclose unavoidable harness differences.
 - Token-accounting method, tokenizer versions, OpenRouter pricing snapshot and provider mappings, and treatment of caches, reasoning, retries, and missing usage.
 - Feedback format, incident policy, observation windows, and recovery rules. The initial experiment has no spending cap or fixed retry limit; use subscription access and record hypothetical reference cost.
-- Source-size counting rules as contextual measurements, checkpoint schedule, sequential rotated scheduling, synchronized rounds, and the evidence-based stopping and confirmation policy.
+- Source-size counting rules as contextual measurements, checkpoint schedule, parallel hosted builders within a round, synchronized release barriers, and the evidence-based stopping and confirmation policy.
 - Acceptance-suite environment, deterministic data/reset rules, deployment promotion rules, and metric definitions.
 
 Use the latest stable harness available when preparing a new experiment revision, then pin it throughout execution and exact repeats. Upgrading a harness for a later iteration creates an explicit variation. Model labels alone are insufficient identifiers. If a model is unavailable or a combination unsupported, record it and resolve it before execution; never silently substitute or describe an incomplete matrix as complete.

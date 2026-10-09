@@ -108,4 +108,5 @@ def price_counts(counts, pricing):
 def read_jsonl(path):
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    with _LOCK:
+        return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]

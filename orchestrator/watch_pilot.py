@@ -4,7 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
-from .evidence import Ledger, digest_json, read_jsonl
+from .evidence import Ledger, digest_json, digest_bytes, read_jsonl
 from .prepare import ROOT
 
 
@@ -32,6 +32,17 @@ def inactivity(events, now_ns, threshold_seconds):
             'attribution': 'liveness observation only; cause and failure attribution unproven'}
 
 
+def active_inactivities(events,now_ns,threshold_seconds):
+    observations=[]
+    starts=[e for e in events if e['kind']=='attempt_started']
+    for attempt in starts:
+        identity={key:attempt[key] for key in ('builder_id','task_id','attempt_id')}
+        related=[e for e in events if all(e.get(k)==v for k,v in identity.items())]
+        observation=inactivity(related,now_ns,threshold_seconds)
+        if observation:observations.append(observation)
+    return observations
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', default='pilot-005')
@@ -48,25 +59,33 @@ def main():
     # Separate observation journal: no change to frozen attempt/acceptance events.
     ledger = Ledger(run/'preflight/liveness', identity)
     seen = {e.get('last_progress_event_id') for e in read_jsonl(ledger.root/'events.jsonl') if e['kind'] == 'pm_inactivity_observed'}
-    ledger.event('pm_liveness_monitor_started', process_id=os.getpid(), idle_seconds=args.idle_seconds, interval_seconds=args.interval_seconds)
+    ledger.event('pm_liveness_monitor_started', process_id=os.getpid(), idle_seconds=args.idle_seconds, interval_seconds=args.interval_seconds,execution_module_sha256=digest_bytes(Path(__file__).read_bytes()))
     while True:
-        events = read_jsonl(run/'events.jsonl')
-        state = json.loads((run/'state.json').read_text())
+        try:
+            events = read_jsonl(run/'events.jsonl')
+            state = json.loads((run/'state.json').read_text())
+        except json.JSONDecodeError:
+            ledger.event('pm_liveness_poll_deferred',reason='Concurrent append or state update; no terminal inference')
+            time.sleep(args.interval_seconds)
+            continue
         if state['status'] != 'running':
             ledger.event('pm_liveness_monitor_finished', run_state=state['status'])
             print('Pilot state: '+state['status'], flush=True)
             return
-        runner = next(e for e in reversed(events) if e['kind'] == 'runner_started')
+        runner = next((e for e in reversed(events) if e['kind'] == 'runner_started'),None)
+        if runner is None:
+            time.sleep(args.interval_seconds)
+            continue
         try:
             os.kill(runner['process_id'], 0)
         except ProcessLookupError:
             ledger.event('pm_runner_missing', runner_process_id=runner['process_id'])
             raise SystemExit('Pilot runner is missing; preserve evidence and diagnose before resuming')
-        observation = inactivity(events, time.monotonic_ns(), args.idle_seconds)
-        if observation and observation['last_progress_event_id'] not in seen:
-            ledger.event('pm_inactivity_observed', **observation)
-            seen.add(observation['last_progress_event_id'])
-            print(json.dumps(observation), flush=True)
+        for observation in active_inactivities(events,time.monotonic_ns(),args.idle_seconds):
+            if observation['last_progress_event_id'] not in seen:
+                ledger.event('pm_inactivity_observed', **observation)
+                seen.add(observation['last_progress_event_id'])
+                print(json.dumps(observation), flush=True)
         time.sleep(args.interval_seconds)
 
 

@@ -1,5 +1,6 @@
 """Resume the synchronized, measured three-round pilot; never start a main run."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import shutil
@@ -60,6 +61,252 @@ def archive(run, repo, builder, checkpoint, output):
         "scope":"all working files excluding .git"})
     return json.loads((run/"builders"/builder/"checkpoints"/checkpoint/"index.json").read_text())
 
+def execute_round(builders,max_workers,work,stop_event):
+    """Wait for every builder before allowing the caller to release the next task."""
+    with ThreadPoolExecutor(max_workers=max_workers,thread_name_prefix="builder") as pool:
+        futures=[pool.submit(work,builder) for builder in builders]
+        try:
+            for future in as_completed(futures):
+                future.result()
+        except BaseException:
+            stop_event.set()
+            raise
+
+
+def run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,provider_args):
+    if stop_event.is_set():
+        raise InfrastructureError("Round interrupted before dispatch")
+    gateway=InferenceGateway(ledger,manifest["pricing"],**provider_args)
+    try:
+        return _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,gateway)
+    finally:
+        gateway.close()
+
+
+def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,gateway):
+    task_id=task["task_id"];stage=task["stage"]
+    bid=builder["builder_id"]; accepted=state["accepted"].get(bid)
+    if accepted and accepted["stage"]>=stage:
+        return
+    repo=Path(manifest["paths"]["builders"])/bid
+    sandbox="ff-"+run.name+"-"+bid
+    known=invoke(["sbx","inspect",sandbox,"--json"])
+    if known.returncode:
+        checked(["sbx","create","--name",sandbox,"--cpus","4","--memory","4g",
+                 "--skills","off","--pull","never","-t",manifest["runtime"]["image"],
+                 "shell"])
+        initialize(sandbox,repo)
+    # sbx exec starts a stopped sandbox; policy applies before any harness call.
+    policy=sandbox_policy(sandbox,gateway.port)
+    probe=isolation_probe(sandbox,WORK,
+        Path(manifest["paths"]["builders"])/("b002" if bid!="b002" else "b001"),
+        gateway.port)
+    prep=run/"builders"/bid
+    prep.mkdir(parents=True,exist_ok=True)
+    write_json(prep/f"isolation-{task_id}.json",{"probe":probe,"policy":policy})
+    if not verify_isolation(probe):
+        raise RuntimeError(f"{bid} isolation failed: {probe}")
+    packet=(run/"tasks"/task_id/"packet.md").read_text()
+    assert digest_bytes(packet.encode())==task["packet_sha256"]
+    task_identity={"builder_id":bid,"task_id":task_id,
+                   "packet_sha256":task["packet_sha256"],"suite_hash":task["suite_hash"]}
+    events=read_jsonl(run/"events.jsonl")
+    if not any(e["kind"]=="task_dispatched" and e.get("builder_id")==bid
+               and e.get("task_id")==task_id for e in events):
+        ledger.event("task_dispatched",**task_identity)
+    attempt_root=run/"tasks"/task_id/"attempts"/bid
+    previous=[]
+    if attempt_root.exists():
+        previous=sorted(attempt_root.glob("attempt-*"))
+    # Never overwrite interrupted attempts; preserve and resume with explicit fresh attempt.
+    feedback=""
+    if previous:
+        last=previous[-1]/"feedback.json"
+        if last.exists():
+            prior_feedback=json.loads(last.read_text())
+            prior_usage=[u for u in read_jsonl(run/"usage.jsonl")
+                if u.get("builder_id")==bid and u.get("task_id")==task_id
+                and u.get("attempt_id")==previous[-1].name]
+            concise=(tool_diagnostics(prior_usage,previous[-1])
+                if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else [])
+            if concise:
+                revised=dict(prior_feedback)
+                revised["observations"]=concise+[o for o in prior_feedback["observations"]
+                    if o.get("contract")!="Generated tool arguments must be valid for the assigned harness"]
+                revised["feedback_rendering_revision"]="native-parser-and-supplied-schemas-v2"
+                supplement=previous[-1]/"feedback-rendering-v2.json"
+                if not supplement.exists():
+                    write_json(supplement,revised)
+                    ledger.event("feedback_rendering_superseded",
+                        attempt_id=previous[-1].name,
+                        original_feedback_sha256=digest_bytes(last.read_bytes()),
+                        revised_feedback_sha256=digest_bytes(supplement.read_bytes()),
+                        change="Return exact parser error and supplied schemas; original evidence retained",
+                        **task_identity)
+                feedback="\n\nFeedback on your previous submission:\n"+supplement.read_text()
+            else:
+                feedback="\n\nFeedback on your previous submission:\n"+last.read_text()
+        else:
+            ledger.event("interrupted_attempt_retained",attempt_id=previous[-1].name,**task_identity)
+            feedback="\n\nThe PM runner was interrupted. Continue the same task from your own current repository and submit a committed implementation."
+    if previous:
+        feedback=append_recovery_instruction(feedback,previous[-1],bid,task_id)
+    consecutive=0
+    previous_fingerprint=state.get("last_failure_fingerprints",{}).get(bid)
+    while True:
+        if stop_event.is_set():
+            raise InfrastructureError("Round interrupted; prior attempt evidence retained")
+        number=len(list(attempt_root.glob("attempt-*")))+1 if attempt_root.exists() else 1
+        attempt_id=f"attempt-{number:03d}"
+        output=attempt_root/attempt_id; output.mkdir(parents=True)
+        attrs={**task_identity,"attempt_id":attempt_id}
+        pre_head=sandbox_git(sandbox,"rev-parse","HEAD")
+        # Contention is a covariate, not an exclusion.
+        write_json(output/"host-contention.json",{"load_average":os.getloadavg(),
+            "vm_stat":checked(["vm_stat"]),"observed_at":timestamp()})
+        provider="ollama" if builder["model"]=="gpt-oss:120b" else "subscription"
+        key=gateway.lease(builder["model"],bid,task_id,attempt_id,provider)
+        started=[]
+        def on_start():
+            started.append(ledger.event("attempt_started",pre_commit=pre_head,**attrs))
+        observer=CommitObserver(sandbox,ledger,attrs); observer.start()
+        print(f"{task_id} {bid} {builder['model']} {builder['harness']} {builder['profile']} {attempt_id} START",flush=True)
+        result=None
+        try:
+            result=execute_attempt(sandbox,builder["harness"],builder["model"],key,
+                gateway.port,packet+feedback,output,instructions["profiles"][builder["profile"]],
+                on_start=on_start,workdir=WORK)
+        finally:
+            observer.stop()
+            gateway.revoke()
+            ended=ledger.event("attempt_finished",
+                exit_code=result.returncode if result else None,**attrs)
+        native=export(sandbox,repo,output)
+        checked(["sbx","stop",sandbox])
+        head=native["head"]
+        tree=native["tree"]
+        dirty=native["dirty"]
+        checkpoint=f"{task_id}-{attempt_id}"
+        index=archive(run,repo,bid,checkpoint,output)
+        ledger.event("submission_observed",commit=head,tree=tree,
+            working_tree_clean=not bool(dirty),archive=index["checksums"],**attrs)
+        usage=[u for u in read_jsonl(run/"usage.jsonl") if
+               all(u.get(k)==attrs[k] for k in ("builder_id","task_id","attempt_id"))]
+        if not usage or any(u["counts"] is None for u in usage):
+            raise RuntimeError(f"{bid} {attempt_id}: incomplete native accounting; preserve and diagnose before retrying")
+        if any(u["status"]!=200 and u.get("outcome")!="builder-invalid-tool-call" for u in usage):
+            raise RuntimeError(f"{bid} {attempt_id}: provider failure; preserve and diagnose")
+        diagnostics=(tool_diagnostics(usage,output)
+            if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else
+            [{"contract":"Generated tool arguments must be valid for the assigned harness",
+              "observed":u["tool_parser_error"]} for u in usage
+             if u.get("outcome")=="builder-invalid-tool-call"])
+        if result.returncode:
+            diagnostics.append({"contract":"Harness exited unsuccessfully",
+                                "exit_code":result.returncode})
+        if dirty:
+            diagnostics.append({"contract":"Relevant source must be committed",
+                                "observed_git_status":dirty})
+        if head==(accepted["commit"] if accepted else manifest["provenance"]["starter_commit"]):
+            diagnostics.append({"contract":"Submit the implemented task in a new exact commit",
+                                "observed_commit":head})
+        package=json.loads((repo/"package.json").read_text()) if (repo/"package.json").exists() else {}
+        if package.get("dependencies"):
+            diagnostics.append({"contract":"No external application dependencies permitted",
+                                "observed_dependencies":list(package["dependencies"])})
+        deployment=None; stats=[]
+        ledger.event("validation_started",commit=head,**attrs)
+        if not diagnostics:
+            try:
+                deployment=Deployment(manifest,bid,task_id,attempt_id,repo,head,output,accepted)
+                if accepted:
+                    ok,errors,counts=run_suite(ROOT,run,deployment,output,
+                        accepted["stage"],"upgrade",accepted["fixture_prefix"])
+                    diagnostics.extend(errors); stats.append({"phase":"upgrade",**counts})
+                    if not ok and not errors:
+                        diagnostics.append({"contract":"Upgrade acceptance run failed"})
+                if not diagnostics:
+                    ok,errors,counts=run_suite(ROOT,run,deployment,output,stage,"acceptance",task_id)
+                    diagnostics.extend(errors); stats.append({"phase":"acceptance",**counts})
+                    if not ok and not errors:
+                        diagnostics.append({"contract":"Acceptance run failed"})
+                if not diagnostics:
+                    deployment.restart()
+                    ok,errors,counts=run_suite(ROOT,run,deployment,output,stage,"postrestart",task_id)
+                    diagnostics.extend(errors); stats.append({"phase":"postrestart",**counts})
+                    if not ok and not errors:
+                        diagnostics.append({"contract":"Restart acceptance run failed"})
+                if not diagnostics:
+                    deployment.capture()
+            except RuntimeError as error:
+                # Launch errors attributable to submitted app; missing PM reports are infrastructure.
+                if isinstance(error, InfrastructureError) or "PM acceptance runner" in str(error):
+                    raise
+                diagnostics.append({"contract":"Application launch/health or restart failed",
+                                    "observed":str(error)})
+        passed=not diagnostics
+        ledger.event("validation_finished",success=passed,statistics=stats,**attrs)
+        write_json(output/"result.json",{
+            "accepted":passed,"commit":head,"tree":tree,
+            "attempt_wall_seconds":(ended["monotonic_ns"]-started[0]["monotonic_ns"])/1e9,
+            "requests":len(usage),"native_usage_complete":True,
+            "acceptance_statistics":stats,"diagnostics":diagnostics})
+        if passed:
+            ledger.event("task_accepted",commit=head,tree=tree,**attrs)
+            prior_commit=accepted["commit"] if accepted else manifest["provenance"]["starter_commit"]
+            included=git(repo,"rev-list",f"{prior_commit}..{head}").splitlines()
+            if accepted:
+                checked(["sbx","stop",accepted["sandbox"]])
+            ledger.event("deployment_promoted",commit=head,tree=tree,
+                         prior_commit=prior_commit,included_commits=included,**attrs)
+            promoted=time.monotonic()
+            try:
+                while time.monotonic()-promoted<manifest["evidence_policy"]["post_deployment_window_seconds"]:
+                    deployment.health()
+                    time.sleep(.5)
+                ledger.event("post_deployment_checks_passed",commit=head,**attrs)
+            except RuntimeError as error:
+                ledger.event("incident_detected",observed=str(error),commit=head,**attrs)
+                raise
+            accepted={"stage":stage,"commit":head,"tree":tree,
+                      "sandbox":deployment.name,"database":str(deployment.database),
+                      "fixture_prefix":task_id}
+            with state_lock:
+                state["accepted"][bid]=accepted
+                write_json(run/"state.json",state)
+            # Persist a clean database snapshot by stopping all app processes.
+            deployment.capture()
+            for suffix in ("","-wal","-shm"):
+                file=Path(str(deployment.database)+suffix)
+                if file.exists(): shutil.copy2(file,output/("accepted.sqlite"+suffix))
+            log=deployment.source/".runtime/server.log"
+            if log.exists(): shutil.copy2(log,output/"server.log")
+            print(f"{task_id} {bid} ACCEPTED {attempt_id} requests={len(usage)}",flush=True)
+            break
+        if deployment: deployment.stop()
+        if accepted:
+            ledger.event("prior_deployment_preserved",commit=accepted["commit"],**attrs)
+        recovery={"decision":"correction_in_place","actor":"pm",
+                  "pre_commit":head,"post_commit":head,"pre_tree":tree,"post_tree":tree,
+                  "reason":"Return objective launch/behavior/submission evidence; preserve useful implementation",
+                  "archive_checksums":index["checksums"],"diagnostics":diagnostics}
+        write_json(output/"feedback.json",{"task_id":task_id,"submission":head,
+            "status":"rejected","required":"Meet the unchanged cumulative requirements and submit committed source",
+            "observations":diagnostics})
+        ledger.event("attempt_rejected",**recovery,**attrs)
+        ledger.event("feedback_issued",**attrs)
+        feedback="\n\nFeedback on your previous submission:\n"+(output/"feedback.json").read_text()
+        fingerprint=digest_json(diagnostics)
+        consecutive=consecutive+1 if previous_fingerprint==fingerprint else 1
+        previous_fingerprint=fingerprint
+        with state_lock:
+            state.setdefault("last_failure_fingerprints",{})[bid]=fingerprint
+            write_json(run/"state.json",state)
+        if consecutive%10==0:
+            ledger.event("unchanged_failure_notification",consecutive=consecutive,**attrs)
+            print(f"NOTICE {bid} {task_id}: {consecutive} unchanged failures; continuing measured retries",flush=True)
+        print(f"{task_id} {bid} REJECTED {attempt_id}: {json.dumps(diagnostics)[:900]}",flush=True)
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
@@ -86,7 +333,8 @@ def main():
             if provider[key]!=frozen_provider[key]:
                 raise InfrastructureError(f"Local provider provenance changed: {key}")
         provider_args = {"local_endpoint": provider["endpoint"], "native_usage_path": provider["native_usage_file"]}
-    gateway=InferenceGateway(ledger,manifest["pricing"],**provider_args)
+    state_lock=threading.RLock()
+    stop_event=threading.Event()
     state["status"]="running"; state["last_error"]=None
     write_json(run/"state.json",state)
     ledger.event("runner_started",process_id=os.getpid(),
@@ -98,222 +346,9 @@ def main():
             task_id=task["task_id"]; stage=task["stage"]
             offset=((stage-1)*manifest["execution"].get("rotation_positions",6)) % len(builders)
             order=builders[offset:]+builders[:offset]
-            for builder in order:
-                bid=builder["builder_id"]; accepted=state["accepted"].get(bid)
-                if accepted and accepted["stage"]>=stage:
-                    continue
-                repo=Path(manifest["paths"]["builders"])/bid
-                sandbox="ff-"+run.name+"-"+bid
-                known=invoke(["sbx","inspect",sandbox,"--json"])
-                if known.returncode:
-                    checked(["sbx","create","--name",sandbox,"--cpus","4","--memory","4g",
-                             "--skills","off","--pull","never","-t",manifest["runtime"]["image"],
-                             "shell"])
-                    initialize(sandbox,repo)
-                # sbx exec starts a stopped sandbox; policy applies before any harness call.
-                policy=sandbox_policy(sandbox,gateway.port)
-                probe=isolation_probe(sandbox,WORK,
-                    Path(manifest["paths"]["builders"])/("b002" if bid!="b002" else "b001"),
-                    gateway.port)
-                prep=run/"builders"/bid
-                prep.mkdir(parents=True,exist_ok=True)
-                write_json(prep/f"isolation-{task_id}.json",{"probe":probe,"policy":policy})
-                if not verify_isolation(probe):
-                    raise RuntimeError(f"{bid} isolation failed: {probe}")
-                packet=(run/"tasks"/task_id/"packet.md").read_text()
-                assert digest_bytes(packet.encode())==task["packet_sha256"]
-                task_identity={"builder_id":bid,"task_id":task_id,
-                               "packet_sha256":task["packet_sha256"],"suite_hash":task["suite_hash"]}
-                events=read_jsonl(run/"events.jsonl")
-                if not any(e["kind"]=="task_dispatched" and e.get("builder_id")==bid
-                           and e.get("task_id")==task_id for e in events):
-                    ledger.event("task_dispatched",**task_identity)
-                attempt_root=run/"tasks"/task_id/"attempts"/bid
-                previous=[]
-                if attempt_root.exists():
-                    previous=sorted(attempt_root.glob("attempt-*"))
-                # Never overwrite interrupted attempts; preserve and resume with explicit fresh attempt.
-                feedback=""
-                if previous:
-                    last=previous[-1]/"feedback.json"
-                    if last.exists():
-                        prior_feedback=json.loads(last.read_text())
-                        prior_usage=[u for u in read_jsonl(run/"usage.jsonl")
-                            if u.get("builder_id")==bid and u.get("task_id")==task_id
-                            and u.get("attempt_id")==previous[-1].name]
-                        concise=(tool_diagnostics(prior_usage,previous[-1])
-                            if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else [])
-                        if concise:
-                            revised=dict(prior_feedback)
-                            revised["observations"]=concise+[o for o in prior_feedback["observations"]
-                                if o.get("contract")!="Generated tool arguments must be valid for the assigned harness"]
-                            revised["feedback_rendering_revision"]="native-parser-and-supplied-schemas-v2"
-                            supplement=previous[-1]/"feedback-rendering-v2.json"
-                            if not supplement.exists():
-                                write_json(supplement,revised)
-                                ledger.event("feedback_rendering_superseded",
-                                    attempt_id=previous[-1].name,
-                                    original_feedback_sha256=digest_bytes(last.read_bytes()),
-                                    revised_feedback_sha256=digest_bytes(supplement.read_bytes()),
-                                    change="Return exact parser error and supplied schemas; original evidence retained",
-                                    **task_identity)
-                            feedback="\n\nFeedback on your previous submission:\n"+supplement.read_text()
-                        else:
-                            feedback="\n\nFeedback on your previous submission:\n"+last.read_text()
-                    else:
-                        ledger.event("interrupted_attempt_retained",attempt_id=previous[-1].name,**task_identity)
-                        feedback="\n\nThe PM runner was interrupted. Continue the same task from your own current repository and submit a committed implementation."
-                if previous:
-                    feedback=append_recovery_instruction(feedback,previous[-1],bid,task_id)
-                consecutive=0
-                while True:
-                    number=len(list(attempt_root.glob("attempt-*")))+1 if attempt_root.exists() else 1
-                    attempt_id=f"attempt-{number:03d}"
-                    output=attempt_root/attempt_id; output.mkdir(parents=True)
-                    attrs={**task_identity,"attempt_id":attempt_id}
-                    pre_head=sandbox_git(sandbox,"rev-parse","HEAD")
-                    # Contention is a covariate, not an exclusion.
-                    write_json(output/"host-contention.json",{"load_average":os.getloadavg(),
-                        "vm_stat":checked(["vm_stat"]),"observed_at":timestamp()})
-                    provider="ollama" if builder["model"]=="gpt-oss:120b" else "subscription"
-                    key=gateway.lease(builder["model"],bid,task_id,attempt_id,provider)
-                    started=[]
-                    def on_start():
-                        started.append(ledger.event("attempt_started",pre_commit=pre_head,**attrs))
-                    observer=CommitObserver(sandbox,ledger,attrs); observer.start()
-                    print(f"{task_id} {bid} {builder['model']} {builder['harness']} {builder['profile']} {attempt_id} START",flush=True)
-                    result=None
-                    try:
-                        result=execute_attempt(sandbox,builder["harness"],builder["model"],key,
-                            gateway.port,packet+feedback,output,instructions["profiles"][builder["profile"]],
-                            on_start=on_start,workdir=WORK)
-                    finally:
-                        observer.stop()
-                        gateway.revoke()
-                        ended=ledger.event("attempt_finished",
-                            exit_code=result.returncode if result else None,**attrs)
-                    native=export(sandbox,repo,output)
-                    checked(["sbx","stop",sandbox])
-                    head=native["head"]
-                    tree=native["tree"]
-                    dirty=native["dirty"]
-                    checkpoint=f"{task_id}-{attempt_id}"
-                    index=archive(run,repo,bid,checkpoint,output)
-                    ledger.event("submission_observed",commit=head,tree=tree,
-                        working_tree_clean=not bool(dirty),archive=index["checksums"],**attrs)
-                    usage=[u for u in read_jsonl(run/"usage.jsonl") if
-                           all(u.get(k)==attrs[k] for k in ("builder_id","task_id","attempt_id"))]
-                    if not usage or any(u["counts"] is None for u in usage):
-                        raise RuntimeError(f"{bid} {attempt_id}: incomplete native accounting; preserve and diagnose before retrying")
-                    if any(u["status"]!=200 and u.get("outcome")!="builder-invalid-tool-call" for u in usage):
-                        raise RuntimeError(f"{bid} {attempt_id}: provider failure; preserve and diagnose")
-                    diagnostics=(tool_diagnostics(usage,output)
-                        if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else
-                        [{"contract":"Generated tool arguments must be valid for the assigned harness",
-                          "observed":u["tool_parser_error"]} for u in usage
-                         if u.get("outcome")=="builder-invalid-tool-call"])
-                    if result.returncode:
-                        diagnostics.append({"contract":"Harness exited unsuccessfully",
-                                            "exit_code":result.returncode})
-                    if dirty:
-                        diagnostics.append({"contract":"Relevant source must be committed",
-                                            "observed_git_status":dirty})
-                    if head==(accepted["commit"] if accepted else manifest["provenance"]["starter_commit"]):
-                        diagnostics.append({"contract":"Submit the implemented task in a new exact commit",
-                                            "observed_commit":head})
-                    package=json.loads((repo/"package.json").read_text()) if (repo/"package.json").exists() else {}
-                    if package.get("dependencies"):
-                        diagnostics.append({"contract":"No external application dependencies permitted",
-                                            "observed_dependencies":list(package["dependencies"])})
-                    deployment=None; stats=[]
-                    ledger.event("validation_started",commit=head,**attrs)
-                    if not diagnostics:
-                        try:
-                            deployment=Deployment(manifest,bid,task_id,attempt_id,repo,head,output,accepted)
-                            if accepted:
-                                ok,errors,counts=run_suite(ROOT,run,deployment,output,
-                                    accepted["stage"],"upgrade",accepted["fixture_prefix"])
-                                diagnostics.extend(errors); stats.append({"phase":"upgrade",**counts})
-                                if not ok and not errors:
-                                    diagnostics.append({"contract":"Upgrade acceptance run failed"})
-                            if not diagnostics:
-                                ok,errors,counts=run_suite(ROOT,run,deployment,output,stage,"acceptance",task_id)
-                                diagnostics.extend(errors); stats.append({"phase":"acceptance",**counts})
-                                if not ok and not errors:
-                                    diagnostics.append({"contract":"Acceptance run failed"})
-                            if not diagnostics:
-                                deployment.restart()
-                                ok,errors,counts=run_suite(ROOT,run,deployment,output,stage,"postrestart",task_id)
-                                diagnostics.extend(errors); stats.append({"phase":"postrestart",**counts})
-                                if not ok and not errors:
-                                    diagnostics.append({"contract":"Restart acceptance run failed"})
-                            if not diagnostics:
-                                deployment.capture()
-                        except RuntimeError as error:
-                            # Launch errors attributable to submitted app; missing PM reports are infrastructure.
-                            if isinstance(error, InfrastructureError) or "PM acceptance runner" in str(error):
-                                raise
-                            diagnostics.append({"contract":"Application launch/health or restart failed",
-                                                "observed":str(error)})
-                    passed=not diagnostics
-                    ledger.event("validation_finished",success=passed,statistics=stats,**attrs)
-                    write_json(output/"result.json",{
-                        "accepted":passed,"commit":head,"tree":tree,
-                        "attempt_wall_seconds":(ended["monotonic_ns"]-started[0]["monotonic_ns"])/1e9,
-                        "requests":len(usage),"native_usage_complete":True,
-                        "acceptance_statistics":stats,"diagnostics":diagnostics})
-                    if passed:
-                        ledger.event("task_accepted",commit=head,tree=tree,**attrs)
-                        prior_commit=accepted["commit"] if accepted else manifest["provenance"]["starter_commit"]
-                        included=git(repo,"rev-list",f"{prior_commit}..{head}").splitlines()
-                        if accepted:
-                            checked(["sbx","stop",accepted["sandbox"]])
-                        ledger.event("deployment_promoted",commit=head,tree=tree,
-                                     prior_commit=prior_commit,included_commits=included,**attrs)
-                        promoted=time.monotonic()
-                        try:
-                            while time.monotonic()-promoted<manifest["evidence_policy"]["post_deployment_window_seconds"]:
-                                deployment.health()
-                                time.sleep(.5)
-                            ledger.event("post_deployment_checks_passed",commit=head,**attrs)
-                        except RuntimeError as error:
-                            ledger.event("incident_detected",observed=str(error),commit=head,**attrs)
-                            raise
-                        accepted={"stage":stage,"commit":head,"tree":tree,
-                                  "sandbox":deployment.name,"database":str(deployment.database),
-                                  "fixture_prefix":task_id}
-                        state["accepted"][bid]=accepted
-                        write_json(run/"state.json",state)
-                        # Persist a clean database snapshot by stopping all app processes.
-                        deployment.capture()
-                        for suffix in ("","-wal","-shm"):
-                            file=Path(str(deployment.database)+suffix)
-                            if file.exists(): shutil.copy2(file,output/("accepted.sqlite"+suffix))
-                        log=deployment.source/".runtime/server.log"
-                        if log.exists(): shutil.copy2(log,output/"server.log")
-                        print(f"{task_id} {bid} ACCEPTED {attempt_id} requests={len(usage)}",flush=True)
-                        break
-                    if deployment: deployment.stop()
-                    if accepted:
-                        ledger.event("prior_deployment_preserved",commit=accepted["commit"],**attrs)
-                    recovery={"decision":"correction_in_place","actor":"pm",
-                              "pre_commit":head,"post_commit":head,"pre_tree":tree,"post_tree":tree,
-                              "reason":"Return objective launch/behavior/submission evidence; preserve useful implementation",
-                              "archive_checksums":index["checksums"],"diagnostics":diagnostics}
-                    write_json(output/"feedback.json",{"task_id":task_id,"submission":head,
-                        "status":"rejected","required":"Meet the unchanged cumulative requirements and submit committed source",
-                        "observations":diagnostics})
-                    ledger.event("attempt_rejected",**recovery,**attrs)
-                    ledger.event("feedback_issued",**attrs)
-                    feedback="\n\nFeedback on your previous submission:\n"+(output/"feedback.json").read_text()
-                    fingerprint=digest_json(diagnostics)
-                    consecutive=consecutive+1 if state.get("last_failure_fingerprint")==fingerprint else 1
-                    state["last_failure_fingerprint"]=fingerprint
-                    write_json(run/"state.json",state)
-                    if consecutive%10==0:
-                        ledger.event("unchanged_failure_notification",consecutive=consecutive,**attrs)
-                        print(f"NOTICE {bid} {task_id}: {consecutive} unchanged failures; continuing measured retries",flush=True)
-                    print(f"{task_id} {bid} REJECTED {attempt_id}: {json.dumps(diagnostics)[:900]}",flush=True)
+            execute_round(order,manifest["execution"].get("max_parallel_builders",1),
+                lambda builder: run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_lock,stop_event,provider_args),
+                stop_event)
             ledger.event("round_completed",task_id=task_id,stage=stage)
         state["status"]="completed"; state["completed_at"]=timestamp()
         write_json(run/"state.json",state)
@@ -324,8 +359,6 @@ def main():
         write_json(run/"state.json",state)
         ledger.event("runner_interrupted",error=type(error).__name__,detail=str(error))
         raise
-    finally:
-        gateway.close()
 
 if __name__=="__main__":
     main()

@@ -2,6 +2,8 @@
 import argparse
 import json
 import platform
+import os
+import tempfile
 import shutil
 import subprocess
 from pathlib import Path
@@ -15,7 +17,12 @@ IMAGE_DIGEST = "sha256:04ff7064a2620ad9a41a9941fe80527c69dd450a16f277d6fdd721e9b
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2) + "\n")
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=".pm-json-", delete=False) as stream:
+        temporary=Path(stream.name)
+        stream.write(json.dumps(value, indent=2) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary,path)
 
 class InfrastructureError(RuntimeError):
     pass
@@ -35,7 +42,7 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="full");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="full");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="sequential");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
@@ -91,6 +98,7 @@ def prepare():
         local_runtime["local_provider"]=local_provider
         write_json(frozen / "local-provider.json",local_provider)
     rotation = len(builders) // 3
+    scheduling_order=(f"sequential; rotate by {rotation} builder positions per round" if args.scheduling=="sequential" else "parallel builders within each round; complete checkpoint barrier before next round")
     manifest = {
         "schema_version":1, "status":"running", "experiment_id":"instruction-effects",
         "experiment_revision":args.experiment_revision, "run_id":args.run, "purpose":"engineering-pilot",
@@ -116,7 +124,7 @@ def prepare():
                       "image_config_sha256":"0ce50460d98e8b9215f523c38ad4123aaf6cbfd44a81a61bb13141d0c9219275",
                       "definition_hashes":file_hashes(frozen)},
         "tasks":tasks,"pricing":prices,
-        "execution":{"scheduling_seed":43,"order":f"sequential; rotate by {rotation} builder positions per round", "rotation_positions":rotation,
+        "execution":{"scheduling_seed":43,"order":scheduling_order,"scheduling":args.scheduling,"max_parallel_builders":len(builders) if args.scheduling=="parallel-rounds" else 1, "rotation_positions":rotation,
                      "retry_limit":None,"feedback_rendering":args.feedback_rendering,"unchanged_failure_notify_after":10},
         "evidence_policy":{"purpose":"infrastructure readiness; no claim of instruction effect",
                            "stop":f"all {len(builders)} builders accepted all three tasks with complete native usage",

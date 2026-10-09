@@ -1,5 +1,5 @@
 import unittest
-from orchestrator.watch_pilot import inactivity
+from orchestrator.watch_pilot import inactivity, active_inactivities
 
 
 class LivenessTests(unittest.TestCase):
@@ -19,6 +19,12 @@ class LivenessTests(unittest.TestCase):
         self.assertEqual(inactivity(events, 400*10**9, 300)['observation'], 'open inference request')
         events.append(self.event('commit_first_observed', 399))
         self.assertIsNone(inactivity(events, 400*10**9, 300))
+
+    def test_parallel_monitor_keeps_stalled_builder_visible_after_another_finishes(self):
+        events=[self.event('attempt_started',0),self.event('attempt_started',350,builder_id='b002'),
+                self.event('attempt_finished',399,builder_id='b002')]
+        alerts=active_inactivities(events,400*10**9,300)
+        self.assertEqual([a['builder_id'] for a in alerts],['b001'])
 
     def test_terminal_attempt_not_alerted_and_other_builder_events_do_not_reset(self):
         events = [self.event('attempt_started', 0), self.event('inference_request_finished', 350, builder_id='b002', request_id='other')]
