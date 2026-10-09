@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -30,6 +31,54 @@ async function start(dbPath) {
     },
   };
 }
+
+test('archive, restore, summaries, and migration persist across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const dbPath = join(directory, 'archive.sqlite');
+  // Simulate the existing projects schema before archive support.
+  const old = new DatabaseSync(dbPath);
+  old.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (name) VALUES ('Existing')`);
+  old.close();
+  let server;
+  try {
+    server = await start(dbPath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(server.url + path, {
+        method, headers: { 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      return { status: response.status, data: await response.json() };
+    };
+    const project = (await api('/api/projects/1')).data;
+    assert.deepEqual(project, { id: 1, name: 'Existing', archived: false, total_count: 0, completed_count: 0 });
+    const path = '/api/projects/1/tasks';
+    const task = (await api(path, 'POST', { title: 'Done' })).data;
+    await api(path, 'POST', { title: 'Open' });
+    await api(`${path}/${task.id}`, 'PATCH', { completed: true });
+    const before = (await api(path)).data;
+    const archived = (await api('/api/projects/1', 'PATCH', { archived: true })).data;
+    assert.deepEqual(archived, { ...project, archived: true, total_count: 2, completed_count: 1 });
+    assert.equal((await api(path, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await api(`${path}/${task.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual((await api(path)).data, before);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual((await api('/api/projects')).data, [archived]);
+    assert.deepEqual((await api(path)).data, before);
+    const restored = (await api('/api/projects/1', 'PATCH', { archived: false })).data;
+    assert.deepEqual(restored, { ...archived, archived: false });
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual((await api('/api/projects')).data, [restored]);
+    assert.deepEqual((await api(path)).data, before);
+    assert.equal((await api(`${path}/${task.id}`, 'PATCH', { completed: false })).status, 200);
+    assert.equal((await api('/api/projects/1')).data.completed_count, 0);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('tasks: validation, ownership, completion, and persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
