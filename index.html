@@ -64,6 +64,8 @@
       app.innerHTML = `<h1>Workboard</h1><div class="field"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div><div id="alert"></div><form id="create-form"><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"></div><button type="submit">Create project</button></form><section id="projects" aria-label="Projects"></section>`;
       const response = await fetch('/api/projects');
       const projects = await response.json();
+      const filter = document.querySelector('#project-filter');
+      filter.value = sessionStorage.getItem('project-filter') || 'Active';
       const drawProjects = () => {
         const archived = document.querySelector('#project-filter').value === 'Archived';
         const shown = projects.filter(p => p.archived === archived);
@@ -71,10 +73,13 @@
         document.querySelectorAll('#projects button').forEach(button => button.addEventListener('click', async () => {
           if (button.dataset.action === 'open') { history.pushState({}, '', `/projects/${button.dataset.id}`); render(); return; }
           const result = await fetch(`/api/projects/${button.dataset.id}/${button.dataset.action}`, {method:'POST'});
-          if (result.ok) render();
+          if (result.ok) {
+            sessionStorage.setItem('project-filter', filter.value);
+            await render();
+          }
         }));
       };
-      document.querySelector('#project-filter').addEventListener('change', drawProjects);
+      filter.addEventListener('change', () => { sessionStorage.setItem('project-filter', filter.value); drawProjects(); });
       drawProjects();
       document.querySelector('#create-form').addEventListener('submit', async event => {
         event.preventDefault();
@@ -85,6 +90,7 @@
         // A newly created project is active; show it immediately regardless of
         // which list the user was browsing before creation.
         document.querySelector('#project-filter').value = 'Active';
+        sessionStorage.setItem('project-filter', 'Active');
         document.querySelector('#project-name').value = '';
         document.querySelector('#alert').innerHTML = '';
         history.replaceState({}, '', '/');
