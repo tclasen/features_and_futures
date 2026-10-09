@@ -12,6 +12,8 @@ Projects are created using the labelled form, listed in creation order, and open
 
 Each project has a `Task title` form for creating trimmed task titles. Blank titles show a validation alert. Tasks appear in creation order, with completion checkboxes that save automatically. Use `Task filter` to show All (the default), Open, or Completed tasks. Tasks stay within their own project, and direct project URLs work after reloads.
 
+Use `Project filter` to switch between Active (the default) and Archived projects. Each row shows completed/total task counts and an `Archive project` or `Restore project` button. Archived project pages keep tasks and filters available but disable task creation and completion changes. Restoration preserves project identity and task state. Existing SQLite databases are upgraded automatically; archive state persists across restarts.
+
 Run the automated HTTP and restart-persistence checks:
 
 ```sh

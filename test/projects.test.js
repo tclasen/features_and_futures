@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { createContext, runInContext } from 'node:vm';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -28,6 +29,69 @@ async function start(dbPath) {
     async stop() { const exited = once(child, 'exit'); child.kill('SIGTERM'); await exited; }
   };
 }
+
+test('archives migrate existing data, summarize all tasks, stay read-only, and restore across restarts', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-archives-'));
+  let app;
+  try {
+    const dbPath = join(dir, 'test.sqlite');
+    const oldDb = new DatabaseSync(dbPath);
+    oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      INSERT INTO projects (name) VALUES ('Existing project');`);
+    oldDb.close();
+    app = await start(dbPath);
+    const get = async path => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual'
+    });
+    assert.match(await get('/'), /<option selected>Active<\/option>/);
+    assert.match(await get('/'), /data-testid="project-summary">0\/0 completed/);
+    await post('/projects', { name: 'Second project' });
+    await post('/projects/1/tasks', { title: 'Finished' });
+    await post('/projects/1/tasks', { title: 'Pending' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await get('/projects/1?filter=Open');
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    assert.equal((await post('/projects/1/archive')).status, 303);
+    assert.doesNotMatch(await get('/'), /Existing project/);
+    let archived = await get('/?filter=Archived');
+    assert.match(archived, /Existing project/);
+    assert.doesNotMatch(archived, /Second project/);
+    assert.match(archived, />Open project<\/button>/);
+    assert.match(archived, />Restore project<\/button>/);
+    assert.match(archived, /data-testid="project-summary">1\/2 completed/);
+    let text = await get('/projects/1');
+    assert.match(text, /<p>Archived project<\/p>/);
+    assert.match(text, /<button type="submit" disabled>Create task/);
+    assert.match(text, /Complete Finished" checked disabled/);
+    assert.match(text, /Complete Pending" disabled/);
+    assert.equal((await post('/projects/1/tasks', { title: 'Forbidden' })).status, 409);
+    assert.equal((await post('/projects/1/tasks/1', { completed: '0' })).status, 409);
+    assert.equal(await get('/projects/1'), text);
+    assert.doesNotMatch(await get('/projects/1?filter=Open'), /Complete Finished/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /Complete Pending/);
+    await app.stop();
+    app = await start(dbPath);
+    assert.equal(await get('/?filter=Archived'), archived);
+    assert.equal(await get('/projects/1'), text);
+    assert.equal((await post('/projects/1/restore')).status, 303);
+    text = await get('/projects/1');
+    assert.doesNotMatch(text, / disabled|<p>Archived project/);
+    assert.match(text, /Complete Finished" checked/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    assert.doesNotMatch(await get('/?filter=Archived'), /data-testid="project-row"/);
+    await app.stop();
+    app = await start(dbPath);
+    assert.equal(await get('/projects/1'), text);
+    await post('/projects/1/tasks/1', { completed: '0' });
+    assert.match(await get('/'), /data-testid="project-summary">0\/2 completed/);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('tasks validate, filter, remain project-owned, and persist completion across restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
