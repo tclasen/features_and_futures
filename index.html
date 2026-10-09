@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(720px, calc(100% - 32px)); margin: 56px auto; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    form { display: flex; gap: 10px; margin-bottom: 20px; }
+    label { display: block; margin-bottom: 7px; font-weight: 600; }
+    .field { flex: 1; }
+    input { width: 100%; padding: 11px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; }
+    button { padding: 10px 15px; border: 0; border-radius: 6px; background: #2457c5; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button.secondary { background: #e5ebf5; color: #182230; }
+    .project-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px; border: 1px solid #d5dce6; border-radius: 7px; background: white; margin: 10px 0; }
+    .project-name { font-weight: 600; overflow-wrap: anywhere; }
+    [role="alert"] { color: #a52222; margin: 0 0 14px; }
+    @media (max-width: 480px) { form { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      if (match) {
+        app.innerHTML = '<p>Loading project…</p>';
+        try {
+          const response = await fetch(`/api/projects/${match[1]}`);
+          if (!response.ok) throw new Error('Project not found');
+          const project = await response.json();
+          app.innerHTML = `<button class="secondary" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+          document.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        } catch { app.innerHTML = '<h1>Project not found</h1><button class="secondary" id="back">Projects</button>'; document.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); }); }
+        return;
+      }
+      app.innerHTML = `<h1>Workboard</h1><div id="alert"></div><form id="create-form"><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"></div><button type="submit">Create project</button></form><section id="projects" aria-label="Projects"></section>`;
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      document.querySelector('#projects').innerHTML = projects.map(p => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(p.name)}</span><button type="button" data-id="${p.id}">Open project</button></div>`).join('');
+      document.querySelectorAll('#projects button').forEach(button => button.addEventListener('click', () => { history.pushState({}, '', `/projects/${button.dataset.id}`); render(); }));
+      document.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = document.querySelector('#project-name').value.trim();
+        if (!name) { document.querySelector('#alert').innerHTML = '<p role="alert">Project name is required</p>'; return; }
+        const created = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!created.ok) { document.querySelector('#alert').innerHTML = '<p role="alert">Project name is required</p>'; return; }
+        render();
+      });
+    }
+    addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
