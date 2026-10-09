@@ -1,4 +1,4 @@
-# Long-horizon coding agent evaluation
+# Features and Futures
 
 This repository is the control plane and evidence archive for evaluating how AI coding agents affect a codebase's ability to support continued development. The application is an experimental workload; its commercial value and the elegance of individual submissions are secondary to measured delivery performance over time.
 
@@ -27,7 +27,7 @@ Continue adding features and revising earlier behavior without a source-line sto
 - PM-owned requirements, decisions, task history, and the cumulative acceptance suite.
 - Frozen run configuration, instruction profiles, pricing references, and measurement definitions.
 - Raw events, model usage, failures, verification artifacts, and reproducible reports.
-- Full source snapshots and recoverable Git history for each builder, accessible only to the PM.
+- Full source snapshots and recoverable Git history for each builder, kept outside builder sandboxes.
 
 ## Multiple projects and iterations
 
@@ -39,8 +39,10 @@ Read [AGENTS.md](AGENTS.md) for PM behavior, [the experiment protocol](docs/expe
 
 ## Current state
 
-The authorized engineering pilot now has a measured runner, isolated inference gateway, native token accounting, a three-task Workboard acceptance suite and recoverable builder histories. Pilots 001 through 003 retain aborted PM infrastructure attempts. Pilot 004 verified private workspaces, databases and native pre-parser accounting but was superseded after a PM test defect and a provider accounting gap. Pilot 005 closed incomplete at 19 of 54 checkpoints, with all 1,797 requests reconciled. Pilots 006 and 007 were prepared but never dispatched. Pilot 008 passed all 36 hosted-only checkpoints with parallel builders and verified lock-step requirement barriers. Its 467 native requests reconcile, all 53 submitted histories restore, the original report reproduces exactly, and all 36 accepted source trees pass the stronger independent suite. Earlier failures and measured recovery remain archived. Pilots009through011retain later infrastructure and preparation evidence. Deployment lifetime, asynchronous test baselines and host disk accumulation have verified controls.011also retains one hosted503request with unknown cost and a corrected alert-locator assumption.012uses fresh hosted roots, precise required-message assertions, archive-before-removal with64GiB reserve and a uniform archive-first own-checkpoint restart rule. It is superseded after a PM archive/filter sequencing defect and one hosted503usage gap; all12terminal histories and app data were preserved before sandbox removal. Fresh013preparation uses stronger sequencing assertions. The five-task longitudinal gate and complete accounting remain pending. Long-horizon readiness gates remain pending before the main eval. See [the pilot runtime](docs/pilot-runtime.md), [evidence decisions](docs/evidence-analysis.md) and run reports for actual status. The indefinite main experiment remains separate and requires its statistical evidence method to be frozen.
+Pilot 015 completed five shared Workboard task rounds: all 12 configurations accepted all 60 checkpoints. Independent audits verify all 637 native request receipts, exact request coverage, peak overlap of 12 builders and five lock-step release barriers. The readiness report passes. Every request used its assigned hosted model with medium reasoning. Costs are hypothetical OpenRouter reference estimates, not subscription charges.
 
-The PM must maintain [evidence-linked lessons](docs/lessons-learned.md) and [their append-only journal](lessons/records.jsonl) during the pilot and every follow-on evaluation, and verify the controls adopted from them.
+Earlier pilots and their failures remain archived. Pilot 008 verified the original three-task parallel workload. Later runs exposed PM deployment, storage and asynchronous acceptance-test defects; verified corrections use new revisions. Pilot 014 completed all five rounds but retains two requests with unknown usage and therefore fails complete-accounting readiness. Pilot 015 repeats its frozen inputs with fresh independent repositories.
 
-Pilot013completed one12-builder barrier and23checkpoints with294fully verified native receipts before the PM canceled it after confirming that immediate reload could cancel a native form mutation. Unchanged-source and form/fetch fixtures verify an independent public-UI persistence observer for fresh014. All terminal histories and app data are archived and its sandboxes removed; no main research builders have started.
+The main study has a [preregistered evidence method](docs/evidence-analysis.md) and an [explicit preparation and execution procedure](docs/research-execution.md). Native research builders have not started. Five pilot tasks verify experiment operation; they do not establish maintainability or instruction effects. Deployment reliability observations are limited to the declared 30-second windows, and incident recovery time is unavailable when no incident occurs.
+
+The PM must maintain [evidence-linked lessons](docs/lessons-learned.md) and [their append-only journal](lessons/records.jsonl), then verify the controls adopted from them. See [the pilot runtime](docs/pilot-runtime.md) and each run's immutable reports for supporting evidence and limitations.

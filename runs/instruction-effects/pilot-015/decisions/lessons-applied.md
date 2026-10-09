@@ -13,3 +13,7 @@ Task005task renaming from v014was selected before013outcomes. Freeze and commit 
 Adopt L031public-UI completion durability before every checkbox-following navigation. Exact unchanged rejected013source passes all8checks with this observer. Delayed form and fetch fixtures pass; unchanged stored state fails. Original013test/rejection/timing/cost remains archived; all294native counts verify. Native cohort adoption and the fifth round remain pending. No instruction profiles or builder implementations were changed.
 
 This is an independent exact replay of all five frozen014tasks from fresh starter repositories, with no implementations, histories, transcripts or outcomes copied. Retain014native accounting gaps separately; no missing costs are reset or imputed. All12builders run in parallel with the same full barriers. Preparation does not dispatch model calls.
+
+L033 applies to PM fixture cleanup and retirement of historical stopped resources. The native cleanup fixture verifies source preservation before exact removal with zero model calls. Legacy capture handles a stale retired application port without touching its live owner. These operations do not change frozen pilot inputs.
+
+L015 is reverified on the pinned current image through four native model/harness stress fixtures and30fully audited receipts. These PM-only calls remain outside builder comparison outcomes. L025, L028 and L033 adoption and archival/removal checks are linked in the completion decision and append-only lesson journal.

@@ -5,6 +5,7 @@ import hashlib
 import json
 import subprocess
 import time
+import tarfile
 import uuid
 from pathlib import Path
 from .adapters import configure_attempt, invoke, sandbox_policy
@@ -21,6 +22,7 @@ def probe(parent, manifest, model, harness):
     ledger = Ledger(root, {'run_id': parent.name, 'experiment_id': 'pm-context-preflight'})
     gateway = InferenceGateway(ledger, manifest['pricing'], local_endpoint=None)
     marker = 'retain-' + hashlib.sha256(name.encode()).hexdigest()[:16]
+    created_sandbox = False
     fixture = {}
     for i in range(1, 5):
         lines = [f'chunk={i};row={j};data=' + hashlib.sha256(f'{i}:{j}'.encode()).hexdigest()
@@ -43,6 +45,7 @@ def probe(parent, manifest, model, harness):
         (root/'sandbox-create.log').write_text(created.stdout + created.stderr)
         if created.returncode:
             raise RuntimeError('Sandbox creation failed')
+        created_sandbox = True
         write_json(root/'network-policy.json', sandbox_policy(sandbox, gateway.port))
         setup = "import json,pathlib,sys; p=pathlib.Path('/home/agent/work'); p.mkdir(exist_ok=True); d=json.load(sys.stdin); [(p/k).write_text(v) for k,v in d.items()]"
         installed = invoke(['sbx','exec','-i',sandbox,'python3','-c',setup], stdin=json.dumps(fixture))
@@ -107,8 +110,46 @@ def probe(parent, manifest, model, harness):
         return {'model':model,'harness':harness,'failed':True,'error_type':type(error).__name__}
     finally:
         gateway.close()
-        stopped = invoke(['sbx','stop',sandbox])
-        (root/'sandbox-stop.log').write_text(stopped.stdout+stopped.stderr)
+        if created_sandbox:
+            try:
+                retire_fixture(sandbox, root)
+            except Exception as error:
+                write_json(root/'cleanup-failure.json', {
+                    'sandbox':sandbox, 'resource_retained':True,
+                    'type':type(error).__name__, 'message':str(error)})
+                invoke(['sbx','stop',sandbox])
+
+
+def retire_fixture(sandbox, root):
+    """Retain PM fixture source before removing only its exact sandbox."""
+    if not sandbox.startswith('ff-context-'):
+        raise ValueError('Refusing cleanup outside context fixture namespace')
+    stopped = invoke(['sbx', 'stop', sandbox])
+    (root/'sandbox-stop.log').write_text(stopped.stdout+stopped.stderr)
+    if stopped.returncode:
+        raise RuntimeError('Could not stop context fixture')
+    archive = root/'original-fixture.tar.gz'
+    script = "import tarfile,sys;t=tarfile.open(fileobj=sys.stdout.buffer,mode='w|gz');t.add('/home/agent/work',arcname='work');t.close()"
+    with archive.open('wb') as stream:
+        result = subprocess.run(['sbx','exec',sandbox,'python3','-c',script],
+                                stdout=stream,stderr=subprocess.PIPE,timeout=180)
+    (root/'fixture-capture.stderr.log').write_bytes(result.stderr)
+    if result.returncode:
+        raise RuntimeError('Fixture archival failed; sandbox retained')
+    with tarfile.open(archive) as source:
+        members = source.getmembers()
+        for member in members:
+            if member.isfile():
+                with source.extractfile(member) as stream:
+                    while stream.read(1048576): pass
+    write_json(root/'fixture-preservation.json', {
+        'sandbox':sandbox,'sha256':digest_bytes(archive.read_bytes()),
+        'verified_members':len(members),'status':'verified_before_removal'})
+    for command in (['sbx','stop',sandbox], ['sbx','rm','--force',sandbox]):
+        result = invoke(command)
+        if result.returncode:
+            raise RuntimeError('Context fixture retirement failed')
+    write_json(root/'fixture-retirement.json', {'sandbox':sandbox,'status':'removed'})
 
 
 def main():

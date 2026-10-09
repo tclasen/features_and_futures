@@ -2,10 +2,10 @@
 
 The [research-v001 analysis plan](../experiments/instruction-effects/revisions/research-v001/analysis-plan.json) freezes36 primary decisions, practical margins, exact median intervals, global repeated-look allocation and two independent confirmation batches. A pilot stream seal cannot stop research. The pilot must complete with verified evidence first; these commands prepare and execute separate runs.
 
-After pilot011readiness passes, prepare a fresh main discovery run without model calls:
+After pilot 015 readiness passes, prepare a fresh main discovery run without model calls:
 
 ```sh
-python3 -B -m orchestrator.prepare_evaluation --run eval-001 --source-run pilot-011
+python3 -B -m orchestrator.prepare_evaluation --run eval-001 --source-run pilot-015
 ```
 
 Review and commit its manifest/definitions before dispatch. The main command is explicit:
@@ -23,3 +23,5 @@ Hold its frozen prefix while preparing independent confirmation runs with `--con
 Use `orchestrator.study --run eval-001 --batch first --repeat eval-001-repeat-001 ...` with every independent complete repeat in that batch. All attempted analyses consume a global confirmation look, including inconclusive or failed analyses. Add repetitions as needed; small samples remain unresolved. Use fresh, disjoint runs for a second batch. Both batches must agree on all36interval classifications for the same candidate. Missing data cannot establish equivalence. Preserve original records and environmental/provider changes; exact intervals require independent identically distributed run contrasts.
 
 The pilot authorization does not dispatch this main study. PM conversation usage remains unavailable; reference USD uses native builder counters and frozen OpenRouter prices, not subscription billing. Report all sandbox DORA adaptations with actual denominators, bounded observation windows and unavailable recovery time when no incident occurred.
+
+Accounting gaps remain a real hosted-provider risk. Preserve and classify the original call, then resume the same frozen task checkpoint when appropriate. Under research-v001, an incomplete native-cost trajectory cannot support a candidate or confirmation claim; do not silently drop it or substitute a reconstructed token estimate. Any different missing-evidence analysis requires a prospective versioned plan before use. The proposed cost-bound helpers are not an adopted analysis method.

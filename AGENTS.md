@@ -12,7 +12,8 @@ child agents without changing frozen builder instruction treatments. Retain
 sandboxes needed for active tasks or deployments, and never prune another
 thread's resources. Remove task-specific images that are no longer needed only
 after verifying that no remaining container references them. Stopping a sandbox
-alone does not reclaim its disk.
+alone does not reclaim its disk. This applies to PM preflight and stress fixtures too;
+for noninteractive retirement, use `sbx rm --force NAME` after verified archival.
 
 ## Role and objective
 
