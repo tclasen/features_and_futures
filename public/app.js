@@ -110,7 +110,8 @@ async function showProject(id) {
   app.replaceChildren(back);
   const project = await api(`/api/projects/${id}`);
   document.title = `${project.name} · Workboard`;
-  app.append(element('h1', project.name));
+  const heading = element('h1', project.name);
+  app.append(heading);
   if (project.archived) app.append(element('p', 'Archived project'));
   const taskPath = `/api/projects/${id}/tasks`;
   const tasks = await api(taskPath);
@@ -125,6 +126,39 @@ async function showProject(id) {
     alert.textContent = message;
     alert.hidden = false;
   };
+  const renameForm = element('form');
+  const renameInput = element('input', '', { id: 'new-project-name', name: 'name', type: 'text' });
+  const renameButton = element('button', 'Rename project', { type: 'submit' });
+  renameInput.disabled = project.archived;
+  renameButton.disabled = project.archived;
+  renameForm.append(element('label', 'New project name', { for: 'new-project-name' }), renameInput, renameButton);
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    alert.hidden = true;
+    if (!renameInput.value.trim()) {
+      showError('Project name is required');
+      renameInput.focus();
+      return;
+    }
+    renameButton.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameInput.value }),
+      });
+      Object.assign(project, saved);
+      heading.textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      renameInput.value = '';
+      renameInput.focus();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      renameButton.disabled = project.archived;
+    }
+  });
   const filter = element('select', '', { id: 'task-filter' });
   for (const value of ['All', 'Open', 'Completed']) {
     filter.append(element('option', value, { value }));
@@ -195,7 +229,7 @@ async function showProject(id) {
     }
   });
   renderTasks();
-  app.append(form, alert, element('h2', 'Tasks'), filterControls, empty, list);
+  app.append(renameForm, form, alert, element('h2', 'Tasks'), filterControls, empty, list);
 }
 
 try {

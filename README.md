@@ -28,3 +28,8 @@ are upgraded automatically without changing project or task IDs.
 and verifies validation, project ownership, completion updates, ordering,
 HTTP routes, archive/restore protection, completion summaries, migration from the
 previous schema, and persistence across server restarts.
+
+Active project pages also support renaming via New project name and Rename
+project. Names are trimmed and must be nonblank. Renaming preserves the URL,
+creation order, tasks, and completion summary. Archived projects cannot be
+renamed until restored. The integration tests verify these rules and persistence.

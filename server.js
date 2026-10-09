@@ -88,6 +88,18 @@ const server = createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const body = await readJson(request);
+        if (Object.hasOwn(body ?? {}, 'name')) {
+          if (Object.hasOwn(body, 'archived')) {
+            return json(response, 400, { error: 'Change project name and archive state separately' });
+          }
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project cannot be changed' });
+          }
+          const renamed = projects.rename(id, body.name);
+          return renamed
+            ? json(response, 200, renamed)
+            : json(response, 400, { error: 'Project name is required' });
+        }
         if (typeof body?.archived !== 'boolean') {
           return json(response, 400, { error: 'Archive state must be a boolean' });
         }
