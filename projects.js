@@ -19,32 +19,48 @@ export function openProjects(databasePath) {
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id);
   `);
-  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const find = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+  }
+  const projectQuery = `SELECT projects.id, projects.name, projects.archived,
+    COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
+  const list = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
+  const find = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const taskValue = (task) => task ? { ...task, completed: Boolean(task.completed) } : null;
+  const projectValue = (project) => project ? { ...project, archived: Boolean(project.archived) } : null;
 
   return {
-    list: () => list.all(),
-    find: (id) => find.get(id),
+    list: () => list.all().map(projectValue),
+    find: (id) => projectValue(find.get(id)),
     create(name) {
       const trimmedName = typeof name === 'string' ? name.trim() : '';
       if (!trimmedName) return null;
       const result = insert.run(trimmedName);
-      return find.get(result.lastInsertRowid);
+      return projectValue(find.get(result.lastInsertRowid));
+    },
+    setArchived(id, archived) {
+      updateArchive.run(Number(archived), id);
+      return projectValue(find.get(id));
     },
     listTasks: (projectId) => listTasks.all(projectId).map(taskValue),
     createTask(projectId, title) {
+      const project = find.get(projectId);
+      if (!project || project.archived) return null;
       const trimmedTitle = typeof title === 'string' ? title.trim() : '';
       if (!trimmedTitle) return null;
       const result = insertTask.run(projectId, trimmedTitle);
       return taskValue(findTask.get(projectId, result.lastInsertRowid));
     },
     setTaskCompleted(projectId, taskId, completed) {
+      const project = find.get(projectId);
+      if (!project || project.archived) return null;
       updateTask.run(Number(completed), projectId, taskId);
       return taskValue(findTask.get(projectId, taskId));
     },

@@ -52,8 +52,12 @@ const server = createServer(async (request, response) => {
     const taskRoute = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
     if (taskRoute) {
       const projectId = Number(taskRoute[1]);
-      if (!Number.isSafeInteger(projectId) || !projects.find(projectId)) {
+      const project = Number.isSafeInteger(projectId) ? projects.find(projectId) : null;
+      if (!project) {
         return json(response, 404, { error: 'Project not found' });
+      }
+      if (project.archived && ['POST', 'PATCH'].includes(request.method)) {
+        return json(response, 409, { error: 'Archived project cannot be changed' });
       }
       if (!taskRoute[2]) {
         if (request.method === 'GET') return json(response, 200, projects.listTasks(projectId));
@@ -78,12 +82,18 @@ const server = createServer(async (request, response) => {
       }
     }
     const projectRoute = pathname.match(/^\/api\/projects\/([1-9]\d*)$/);
-    if (request.method === 'GET' && projectRoute) {
+    if (projectRoute && ['GET', 'PATCH'].includes(request.method)) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;
-      return project
-        ? json(response, 200, project)
-        : json(response, 404, { error: 'Project not found' });
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      if (request.method === 'PATCH') {
+        const body = await readJson(request);
+        if (typeof body?.archived !== 'boolean') {
+          return json(response, 400, { error: 'Archive state must be a boolean' });
+        }
+        return json(response, 200, projects.setArchived(id, body.archived));
+      }
+      return json(response, 200, project);
     }
     if (request.method === 'GET') {
       const asset = assets.get(/^\/projects\/[1-9]\d*$/.test(pathname) ? '/' : pathname);

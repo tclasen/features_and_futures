@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -86,6 +87,79 @@ test('projects validate names, retain creation order, and persist across server 
     assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), first);
     const third = await (await create('Third')).json();
     assert.ok(third.id > second.id);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('existing projects migrate safely; archives, task protection, and summaries persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archives-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  // Seed the schema used before archive support to exercise the real upgrade path.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO projects (id, name) VALUES (7, 'Existing project');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES (11, 7, 'Saved task', 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }),
+    });
+    const projectPath = '/api/projects/7';
+    const taskPath = `${projectPath}/tasks`;
+    const project = { id: 7, name: 'Existing project', archived: false, totalCount: 1, completedCount: 1 };
+    assert.deepEqual(await (await request(projectPath)).json(), project);
+    const empty = await (await request('/api/projects', 'POST', { name: 'Empty' })).json();
+    assert.ok(empty.id > project.id);
+    assert.equal(empty.totalCount, 0);
+    assert.equal(empty.completedCount, 0);
+    assert.equal(empty.archived, false);
+    const openTask = await (await request(taskPath, 'POST', { title: 'Open task' })).json();
+    assert.ok(openTask.id > 11);
+    const tasks = await (await request(taskPath)).json();
+    const summary = { ...project, totalCount: 2 };
+    assert.deepEqual(await (await request('/api/projects')).json(), [summary, empty]);
+    for (const archived of [null, 1, 'true']) {
+      assert.equal((await request(projectPath, 'PATCH', { archived })).status, 400);
+    }
+    assert.equal((await request('/api/projects/999999', 'PATCH', { archived: true })).status, 404);
+    const archived = await request(projectPath, 'PATCH', { archived: true });
+    assert.equal(archived.status, 200);
+    assert.deepEqual(await archived.json(), { ...summary, archived: true });
+    assert.equal((await request(taskPath, 'POST', { title: 'Blocked task' })).status, 409);
+    assert.equal((await request(`${taskPath}/11`, 'PATCH', { completed: false })).status, 409);
+    assert.equal((await request(`${taskPath}/${openTask.id}`, 'PATCH', { completed: true })).status, 409);
+    assert.deepEqual(await (await request(taskPath)).json(), tasks);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await (await request('/api/projects')).json(), [{ ...summary, archived: true }, empty]);
+    assert.deepEqual(await (await request(taskPath)).json(), tasks);
+    assert.equal((await request('/projects/7')).status, 200);
+    const restored = await request(projectPath, 'PATCH', { archived: false });
+    assert.equal(restored.status, 200);
+    assert.deepEqual(await restored.json(), summary);
+    assert.deepEqual(await (await request(taskPath)).json(), tasks);
+    assert.equal((await request(`${taskPath}/11`, 'PATCH', { completed: false })).status, 200);
+    const added = await request(taskPath, 'POST', { title: 'After restoration' });
+    assert.equal(added.status, 201);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await (await request(projectPath)).json(), { ...summary, totalCount: 3, completedCount: 0 });
+    assert.equal((await (await request(taskPath)).json()).length, 3);
   } finally {
     await server?.stop();
     await rm(directory, { recursive: true, force: true });

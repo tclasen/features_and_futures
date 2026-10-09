@@ -18,8 +18,13 @@ npm test
 Open `/` to create and open projects. Each project page supports creating
 tasks, saving their completion state, and filtering by All, Open, or Completed.
 Projects and tasks retain creation order and persist in the configured database.
+The project list initially shows Active projects; choose Archived to open or
+restore archived projects. Archiving preserves tasks and completion state while
+disabling task creation and completion changes. Each project row shows its
+completed/total task counts, independent of task filtering. Existing databases
+are upgraded automatically without changing project or task IDs.
 `GET /health` returns
 `{"status":"ok"}`. The integration test uses an isolated temporary database
 and verifies validation, project ownership, completion updates, ordering,
-HTTP routes, and persistence across a
-server restart.
+HTTP routes, archive/restore protection, completion summaries, migration from the
+previous schema, and persistence across server restarts.
