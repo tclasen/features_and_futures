@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -86,6 +87,71 @@ test('launch contract, project validation, ordering, and restart persistence', a
     server = await start(databasePath);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), first);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('tasks upgrade existing databases, validate, isolate projects, and persist completion', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  // Simulate the Task 001 schema to verify a non-destructive upgrade.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (name) VALUES ('Existing project'), ('Other project');`);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const getTasks = (id = 1) => fetch(`${server.url}/api/projects/${id}/tasks`);
+    const createTask = (title, id = 1) => fetch(`${server.url}/api/projects/${id}/tasks`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    });
+    const complete = (id, completed, projectId = 1) => fetch(`${server.url}/api/projects/${projectId}/tasks/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
+    });
+    assert.equal((await getTasks(999)).status, 404);
+    assert.equal((await createTask('Missing project', 999)).status, 404);
+    for (const title of ['', ' \t\n ', null, 42]) {
+      const response = await createTask(title);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    assert.deepEqual(await (await getTasks()).json(), []);
+    const response = await createTask('  First task  ');
+    assert.equal(response.status, 201);
+    const first = await response.json();
+    assert.equal(first.title, 'First task');
+    assert.equal(first.completed, false);
+    assert.equal(first.project_id, 1);
+    const second = await (await createTask('<img src=x onerror=alert(1)>')).json();
+    assert.deepEqual(await (await getTasks()).json(), [first, second]);
+    assert.deepEqual(await (await getTasks(2)).json(), []);
+    assert.equal((await complete(first.id, true, 2)).status, 404);
+    for (const completed of [1, 'true', null]) {
+      assert.equal((await complete(first.id, completed)).status, 400);
+    }
+    assert.equal((await complete(999, true)).status, 404);
+    const saved = await (await complete(first.id, true)).json();
+    assert.deepEqual(saved, { ...first, completed: true });
+    assert.deepEqual(await (await getTasks()).json(), [saved, second]);
+    assert.deepEqual(await (await complete(first.id, false)).json(), first);
+    await complete(first.id, true);
+    const other = await (await createTask('Other task', 2)).json();
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await getTasks()).json(), [saved, second]);
+    assert.deepEqual(await (await getTasks(2)).json(), [other]);
+    assert.deepEqual(await (await fetch(`${server.url}/api/projects/1`)).json(), { id: 1, name: 'Existing project' });
+    const html = await (await fetch(`${server.url}/projects/1`)).text();
+    assert.match(html, /<label for="task-title">Task title<\/label>/);
+    assert.match(html, /Create task/);
+    assert.match(html, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(html, /<option value="all" selected>All<\/option>/);
+    assert.match(html, />Open<\/option>/);
+    assert.match(html, />Completed<\/option>/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
