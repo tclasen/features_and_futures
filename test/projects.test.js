@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { createContext, runInContext } from 'node:vm';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -58,6 +59,34 @@ test('tasks validate, filter, remain project-owned, and persist completion acros
     assert.match(text, /aria-label="Complete First task"/);
     assert.doesNotMatch(text, / checked/);
     assert.doesNotMatch(await get('/projects/2'), /data-testid="task-row"/);
+    // Exercise the actual page script: completion must save without replacing
+    // the checkbox/page, so a later uncheck cannot be lost to a stale navigation.
+    const listeners = {};
+    const checkbox = {
+      checked: false, disabled: false,
+      form: { action: app.url + '/projects/1/tasks/1' },
+      addEventListener(type, handler) { listeners[type] = handler; }
+    };
+    const context = createContext({
+      document: {
+        querySelectorAll: () => [checkbox],
+        addEventListener() {},
+        createElement() { throw new Error('Unexpected save failure'); }
+      },
+      URLSearchParams,
+      FormData: class { constructor() { return [['filter', 'All']]; } },
+      fetch
+    });
+    runInContext(text.match(/<script>([\s\S]*?)<\/script>/)[1], context);
+    for (const completed of [true, false]) {
+      checkbox.checked = completed;
+      listeners.change();
+      assert.equal(checkbox.disabled, true);
+      await runInContext('saving', context);
+      assert.equal(checkbox.disabled, false);
+      assert.equal(checkbox.checked, completed);
+      assert.equal(/Complete First task" checked/.test(await get('/projects/1')), completed);
+    }
     assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
     assert.equal((await post('/projects/1/tasks/1', { completed: '1' })).status, 303);
     text = await get('/projects/1?filter=Completed');

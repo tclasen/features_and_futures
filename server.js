@@ -105,10 +105,49 @@ function projectPage(project, filter = 'All', error = '') {
       <span>${escapeHtml(task.title)}</span>
       <form method="post" action="/projects/${project.id}/tasks/${task.id}">
         <input type="hidden" name="filter" value="${filter}">
-        <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+        <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}>
         <noscript><button type="submit">Save completion</button></noscript>
       </form>
-    </li>`).join('')}</ul>`);
+    </li>`).join('')}</ul>
+    <script>
+      let saving = null;
+      document.querySelectorAll('input[name="completed"]').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+          const form = checkbox.form;
+          const completed = checkbox.checked;
+          checkbox.disabled = true;
+          const fields = new URLSearchParams(new FormData(form));
+          fields.set('completed', completed ? '1' : '0');
+          const previous = saving || Promise.resolve();
+          const request = previous.then(async () => {
+            try {
+              const response = await fetch(form.action, {
+                method: 'POST', body: fields, keepalive: true, headers: { Accept: 'application/json' }
+              });
+              if (!response.ok) throw new Error('Save failed');
+              if (${JSON.stringify(filter)} !== 'All') checkbox.closest('li').remove();
+            } catch {
+              checkbox.checked = !completed;
+              const alert = document.createElement('p');
+              alert.setAttribute('role', 'alert');
+              alert.textContent = 'Could not save completion. Please try again.';
+              form.append(alert);
+            } finally {
+              checkbox.disabled = false;
+            }
+          });
+          saving = request;
+          request.finally(() => { if (saving === request) saving = null; });
+        });
+      });
+      document.addEventListener('submit', async event => {
+        if (!saving) return;
+        event.preventDefault();
+        const form = event.target;
+        await saving;
+        form.submit();
+      });
+    </script>`);
 }
 
 async function readForm(req) {
@@ -179,6 +218,11 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         createTask.run(project.id, title);
+      }
+      if (taskMatch[2] && req.headers.accept === 'application/json') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+        return;
       }
       res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       res.end();
