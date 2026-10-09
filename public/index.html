@@ -18,6 +18,7 @@
     button:hover { background: #17439f; }
     .project-list { display: grid; gap: 10px; }
     [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    [data-testid="project-summary"] { color: #526071; }
     [role="alert"] { margin: 0 0 16px; color: #a12b21; }
     .back { margin-bottom: 24px; }
     .task-controls { display: flex; align-items: end; gap: 16px; margin-bottom: 20px; }
@@ -47,7 +48,7 @@
       return element.innerHTML;
     }
 
-    async function showProjects() {
+    async function showProjects(selectedFilter = 'Active') {
       const projects = await request('/api/projects');
       app.innerHTML = `
         <h1>Workboard</h1>
@@ -56,9 +57,32 @@
           <button type="submit">Create project</button>
         </form>
         <p id="error" role="alert" hidden></p>
+        <div class="task-controls"><div><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div></div>
         <section class="project-list" aria-label="Projects">
-          ${projects.map(project => `<div data-testid="project-row"><span>${escapeText(project.name)}</span><button type="button" data-project-id="${project.id}">Open project</button></div>`).join('')}
         </section>`;
+      const list = app.querySelector('.project-list');
+      const filter = app.querySelector('#project-filter');
+      filter.value = selectedFilter;
+      function renderProjects() {
+        const archived = filter.value === 'Archived';
+        list.innerHTML = projects.filter(project => project.archived === archived).map(project => `<div data-testid="project-row"><span>${escapeText(project.name)}</span><span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span><button type="button" data-project-id="${project.id}">Open project</button><button type="button" data-archive-id="${project.id}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
+        list.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
+          location.href = `/projects/${button.dataset.projectId}`;
+        }));
+        list.querySelectorAll('[data-archive-id]').forEach(button => button.addEventListener('click', async () => {
+          const action = archived ? 'restore' : 'archive';
+          try {
+            await request(`/api/projects/${button.dataset.archiveId}/${action}`, { method: 'POST' });
+            await showProjects(archived ? 'Archived' : 'Active');
+          } catch (problem) {
+            const error = app.querySelector('#error');
+            error.textContent = problem.message;
+            error.hidden = false;
+          }
+        }));
+      }
+      filter.addEventListener('change', renderProjects);
+      renderProjects();
 
       app.querySelector('#create-project').addEventListener('submit', async event => {
         event.preventDefault();
@@ -72,18 +96,17 @@
           error.hidden = false;
         }
       });
-      app.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
-        location.href = `/projects/${button.dataset.projectId}`;
-      }));
     }
 
     async function showProject(id) {
       try {
         const project = await request(`/api/projects/${id}`);
         const tasks = await request(`/api/projects/${id}/tasks`);
+        const archived = project.archived;
         app.innerHTML = `
           <button class="back" type="button">Projects</button>
           <h1>${escapeText(project.name)}</h1>
+          ${archived ? '<p>Archived project</p>' : ''}
           <form id="create-task">
             <div class="field"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"></div>
             <button type="submit">Create task</button>
@@ -92,11 +115,12 @@
           <div class="task-controls"><div><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div></div>
           <section id="task-list" class="task-list" aria-label="Tasks"></section>`;
         app.querySelector('button').addEventListener('click', () => { location.href = '/'; });
+        if (archived) app.querySelector('#create-task').querySelectorAll('input, button').forEach(control => { control.disabled = true; });
         const list = app.querySelector('#task-list');
         const filter = app.querySelector('#task-filter');
         function renderTasks() {
           const visibleTasks = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
-          list.innerHTML = visibleTasks.map(task => `<div data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeText(task.title)}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
+          list.innerHTML = visibleTasks.map(task => `<div data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeText(task.title)}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${archived ? 'disabled' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
           list.querySelectorAll('[data-task-id]').forEach(checkbox => checkbox.addEventListener('change', async () => {
             const task = tasks.find(item => item.id === Number(checkbox.dataset.taskId));
             try {

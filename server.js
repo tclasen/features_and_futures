@@ -21,6 +21,10 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
@@ -30,7 +34,13 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    return sendJson(response, 200, database.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return sendJson(response, 200, database.prepare(`
+      SELECT p.id, p.name, p.archived,
+        COUNT(t.id) AS total_count,
+        COALESCE(SUM(t.completed), 0) AS completed_count
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id
+    `).all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
 
   if (url.pathname === '/api/projects' && request.method === 'POST') {
@@ -46,11 +56,19 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname.startsWith('/api/projects/')) {
+    const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+    if (archiveRoute && request.method === 'POST') {
+      const id = Number(archiveRoute[1]);
+      const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?')
+        .run(archiveRoute[2] === 'archive' ? 1 : 0, id);
+      if (result.changes === 0) return sendJson(response, 404, { error: 'Project not found' });
+      return sendJson(response, 200, { id, archived: archiveRoute[2] === 'archive' });
+    }
     const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
     if (taskRoute) {
       const id = Number(taskRoute[1]);
       const exists = Number.isSafeInteger(id) && id > 0
-        ? database.prepare('SELECT id FROM projects WHERE id = ?').get(id)
+        ? database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(id)
         : undefined;
       if (!exists) return sendJson(response, 404, { error: 'Project not found' });
       if (request.method === 'GET') {
@@ -58,6 +76,7 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
       }
       if (request.method === 'POST') {
+        if (exists.archived) return sendJson(response, 409, { error: 'Archived projects cannot have tasks' });
         try {
           const body = await readJson(request);
           const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -76,6 +95,8 @@ const server = createServer(async (request, response) => {
       const projectId = Number(taskMatch[1]);
       const taskId = Number(taskMatch[2]);
       try {
+        const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+        if (project?.archived) return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
         const body = await readJson(request);
         if (typeof body.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
         const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
@@ -90,10 +111,10 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET') {
       const id = Number(url.pathname.slice('/api/projects/'.length));
       const project = Number.isSafeInteger(id) && id > 0
-        ? database.prepare('SELECT id, name FROM projects WHERE id = ?').get(id)
+        ? database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id)
         : undefined;
       if (!project) return sendJson(response, 404, { error: 'Project not found' });
-      return sendJson(response, 200, project);
+      return sendJson(response, 200, { ...project, archived: Boolean(project.archived) });
     }
   }
 
