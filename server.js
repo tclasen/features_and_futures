@@ -13,7 +13,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +23,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 
 const html = await readFile(new URL('./index.html', import.meta.url));
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
@@ -38,7 +41,11 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, JSON.stringify({ status: 'ok' }));
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p WHERE p.archived = ? ORDER BY p.id`).all(archived).map(p => ({ ...p, archived: Boolean(p.archived) }));
     return send(res, 200, JSON.stringify(projects));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
@@ -72,9 +79,18 @@ const server = http.createServer(async (req, res) => {
     if (!Number(result.changes)) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
     return send(res, 200, JSON.stringify({ ok: true }));
   }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (req.method === 'PATCH' && archiveMatch) {
+    const body = await readJson(req);
+    if (typeof body?.archived !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid archive state' }));
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, Number(archiveMatch[1]));
+    if (!Number(result.changes)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    return send(res, 200, JSON.stringify({ ok: true }));
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    if (project) project.archived = Boolean(project.archived);
     return project ? send(res, 200, JSON.stringify(project)) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
   }
   if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return send(res, 200, html, 'text/html; charset=utf-8');
