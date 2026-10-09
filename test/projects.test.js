@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { runInNewContext } from 'node:vm';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -130,6 +131,56 @@ test('tasks validate, filter, remain scoped, and persist completion', { timeout:
     assert.doesNotMatch(rows(await detail(1))[0], / checked/);
     assert.equal(rows(await detail(1, 'Completed')).length, 0);
     assert.equal(rows(await detail(1, 'Open')).length, 2);
+
+    // Exercise the actual page script: checkbox saves must not navigate, and
+    // filter navigation must wait until the database update has finished.
+    const script = (await detail(1)).match(/<script>([\s\S]*?)<\/script>/)[1];
+    const alert = { hidden: true };
+    let release;
+    let gate;
+    const requests = [];
+    const context = {
+      URLSearchParams,
+      FormData: class {
+        constructor() {
+          return [['filter', 'All'], ...(input.checked ? [['completed', '1']] : [])];
+        }
+      },
+      document: { getElementById: () => alert },
+      fetch: async (url, options) => {
+        requests.push(options);
+        await gate;
+        return fetch(url, options);
+      },
+    };
+    const input = {
+      checked: false, disabled: false,
+      form: { action: `${server.url}/projects/1/tasks/1` },
+    };
+    runInNewContext(script, context);
+    for (const completed of [true, false]) {
+      input.checked = completed;
+      gate = new Promise(resolve => { release = resolve; });
+      const save = context.saveCompletion(input);
+      assert.equal(input.disabled, true);
+      let navigated = false;
+      const navigation = context.submitTaskFilter({ requestSubmit() { navigated = true; } });
+      await Promise.resolve();
+      assert.equal(navigated, false);
+      release();
+      await save;
+      await navigation;
+      assert.equal(navigated, true);
+      assert.equal(input.disabled, false);
+      assert.equal(input.checked, completed);
+      assert.equal(rows(await detail(1))[0].includes(' checked'), completed);
+    }
+    assert.equal(requests[0].body.get('completed'), '1');
+    assert.equal(requests[1].body.has('completed'), false);
+    assert.equal(alert.hidden, true);
+    await server.stop();
+    server = await start(dbPath);
+    assert.doesNotMatch(rows(await detail(1))[0], / checked/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

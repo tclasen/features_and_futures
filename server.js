@@ -111,7 +111,7 @@ function projectPage(project, filter = 'All', error = '') {
     </form>
     <form class="task-controls" method="get" action="/projects/${project.id}">
       <label for="task-filter">Task filter</label>
-      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+      <select id="task-filter" name="filter" onchange="submitTaskFilter(this.form)">
         ${['All', 'Open', 'Completed'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
@@ -120,11 +120,48 @@ function projectPage(project, filter = 'All', error = '') {
         <div data-testid="task-row">
           <form class="task" method="post" action="/projects/${project.id}/tasks/${task.id}">
             <input type="hidden" name="filter" value="${filter}">
-            <input id="task-${task.id}" type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+            <input id="task-${task.id}" type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="saveCompletion(this)">
             <label for="task-${task.id}">${escapeHtml(task.title)}</label>
           </form>
         </div>`).join('') : '<p>No matching tasks.</p>'}
-    </section>`);
+    </section>
+    <p id="save-error" role="alert" hidden>Unable to save task completion. Please try again.</p>
+    <script>
+      const pendingTaskSaves = new Set();
+
+      function saveCompletion(input) {
+        const completed = input.checked;
+        const form = input.form;
+        const body = new URLSearchParams(new FormData(form));
+        input.disabled = true;
+        document.getElementById('save-error').hidden = true;
+        const save = (async () => {
+          try {
+            const response = await fetch(form.action, {
+              method: 'POST', body, headers: { Accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error('Save failed');
+            const filter = body.get('filter');
+            if ((filter === 'Open' && completed) || (filter === 'Completed' && !completed)) {
+              form.closest('[data-testid="task-row"]').remove();
+            }
+          } catch {
+            input.checked = !completed;
+            document.getElementById('save-error').hidden = false;
+          } finally {
+            input.disabled = false;
+          }
+        })();
+        pendingTaskSaves.add(save);
+        save.finally(() => pendingTaskSaves.delete(save));
+        return save;
+      }
+
+      async function submitTaskFilter(form) {
+        await Promise.all([...pendingTaskSaves]);
+        form.requestSubmit();
+      }
+    </script>`);
 }
 
 function redirectToProject(response, projectId, filter) {
@@ -198,7 +235,12 @@ const server = http.createServer(async (request, response) => {
         }
         createTask.run(project.id, title);
       }
-      redirectToProject(response, project.id, filter);
+      if (taskId && request.headers.accept === 'application/json') {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ status: 'ok' }));
+      } else {
+        redirectToProject(response, project.id, filter);
+      }
     } else {
       sendHtml(response, 404, page('Not found', '<h1>Page not found</h1>'));
     }
