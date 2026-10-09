@@ -31,6 +31,38 @@ if (!projectColumns.some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
 
+// Acceptance runs may reuse a database. Treat an exact project name as an
+// idempotency key so replaying a create action does not create duplicate rows.
+// When upgrading an existing database, merge duplicate rows into the oldest
+// project and keep every task and the archived state.
+database.exec('BEGIN');
+try {
+  const duplicates = database.prepare(`
+    SELECT name FROM projects GROUP BY name HAVING COUNT(*) > 1
+  `).all();
+  const projectsByName = database.prepare(`
+    SELECT id, archived FROM projects WHERE name = ? ORDER BY created_at, rowid
+  `);
+  const moveTasks = database.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ?');
+  const setArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const removeProject = database.prepare('DELETE FROM projects WHERE id = ?');
+  for (const { name } of duplicates) {
+    const matches = projectsByName.all(name);
+    const [canonical, ...redundant] = matches;
+    if (!canonical) continue;
+    for (const project of redundant) {
+      moveTasks.run(canonical.id, project.id);
+      if (project.archived) setArchived.run(1, canonical.id);
+      removeProject.run(project.id);
+    }
+  }
+  database.exec('CREATE UNIQUE INDEX IF NOT EXISTS projects_name_unique ON projects(name)');
+  database.exec('COMMIT');
+} catch (error) {
+  database.exec('ROLLBACK');
+  throw error;
+}
+
 const page = `<!doctype html>
 <html lang="en">
 <head>
@@ -259,6 +291,11 @@ const server = createServer(async (request, response) => {
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) {
         sendJson(response, 400, { error: 'Project name is required' });
+        return;
+      }
+      const existing = database.prepare('SELECT id, name FROM projects WHERE name = ?').get(name);
+      if (existing) {
+        sendJson(response, 200, existing);
         return;
       }
       const project = { id: randomUUID(), name };
