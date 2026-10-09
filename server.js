@@ -19,8 +19,18 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   )
 `);
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Existing Task 002 databases keep their projects and tasks during this migration.
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const projectSelection = `
+  SELECT projects.id, projects.name, projects.archived,
+    COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+`;
+const listProjects = database.prepare(`${projectSelection} GROUP BY projects.id ORDER BY projects.id`);
+const findProject = database.prepare(`${projectSelection} WHERE projects.id = ? GROUP BY projects.id`);
+const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -29,6 +39,10 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 
 function taskData(task) {
   return { ...task, completed: Boolean(task.completed) };
+}
+
+function projectData(project) {
+  return { ...project, archived: Boolean(project.archived) };
 }
 
 async function readJson(request) {
@@ -63,24 +77,37 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, { status: 'ok' });
     }
     if (request.method === 'GET' && pathname === '/api/projects') {
-      return json(response, 200, listProjects.all());
+      return json(response, 200, listProjects.all().map(projectData));
     }
     const projectRoute = pathname.match(/^\/api\/projects\/(\d+)$/);
     if (request.method === 'GET' && projectRoute) {
       const project = findProject.get(projectRoute[1]);
-      return json(response, project ? 200 : 404, project || { error: 'Project not found' });
+      return json(response, project ? 200 : 404, project ? projectData(project) : { error: 'Project not found' });
+    }
+    if (request.method === 'PATCH' && projectRoute) {
+      if (!findProject.get(projectRoute[1])) return json(response, 404, { error: 'Project not found' });
+      const input = await readJson(request);
+      if (typeof input?.archived !== 'boolean') {
+        return json(response, 400, { error: 'Archive state must be a boolean' });
+      }
+      updateProject.run(Number(input.archived), projectRoute[1]);
+      return json(response, 200, projectData(findProject.get(projectRoute[1])));
     }
     if (request.method === 'POST' && pathname === '/api/projects') {
       const input = await readJson(request);
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return json(response, 400, { error: 'Project name is required' });
       const result = createProject.run(name);
-      return json(response, 201, { id: Number(result.lastInsertRowid), name });
+      return json(response, 201, projectData(findProject.get(Number(result.lastInsertRowid))));
     }
     const tasksRoute = pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (tasksRoute) {
       const [, projectId, taskId] = tasksRoute;
-      if (!findProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
+      const project = findProject.get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      if (project.archived && ['POST', 'PATCH'].includes(request.method)) {
+        return json(response, 409, { error: 'Archived project' });
+      }
       if (!taskId && request.method === 'GET') {
         return json(response, 200, listTasks.all(projectId).map(taskData));
       }
