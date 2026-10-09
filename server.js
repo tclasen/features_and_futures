@@ -27,6 +27,7 @@ function page(title, content) {
     input { min-width: 0; flex: 1; border: 1px solid #8192a5; border-radius: 6px; padding: 12px; font: inherit; }
     button { border: 0; border-radius: 6px; padding: 12px 18px; background: #205bc4; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #17489e; }
+    button:disabled { background: #8192a5; cursor: default; }
     :focus-visible { outline: 3px solid #dc8b00; outline-offset: 3px; }
     [role="alert"] { color: #a02020; margin: 16px 0; }
     .projects { margin-top: 28px; }
@@ -39,18 +40,28 @@ function page(title, content) {
     .task-controls { margin-top: 28px; }
     select { padding: 10px; font: inherit; border: 1px solid #8192a5; border-radius: 6px; }
     .empty { color: #536578; }
-    @media (max-width: 600px) { main { margin: 16px; padding: 24px; } .create { flex-direction: column; } }
+    @media (max-width: 600px) { main { margin: 16px; padding: 24px; } .create { flex-direction: column; } .project { flex-wrap: wrap; } .project > div { width: 100%; } }
   </style>
 </head>
 <body><main>${content}</main></body>
 </html>`;
 }
 
-function projectList(error = '') {
-  const rows = projects.list().map((project) => `
+const projectFilters = ['Active', 'Archived'];
+
+function normalizeProjectFilter(value) {
+  return projectFilters.includes(value) ? value : 'Active';
+}
+
+function projectList(error = '', filter = 'Active') {
+  const rows = projects.list(filter === 'Archived').map((project) => `
     <div class="project" data-testid="project-row">
-      <span>${escapeHtml(project.name)}</span>
+      <div><span>${escapeHtml(project.name)}</span>
+        <p data-testid="project-summary">${project.completed_count}/${project.total_count} completed</p></div>
       <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
+      <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+        <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
+      </form>
     </div>`).join('');
   return page('Projects', `
     <h1>Workboard</h1>
@@ -59,6 +70,12 @@ function projectList(error = '') {
       <div class="create"><input id="project-name" name="name" type="text"><button type="submit">Create project</button></div>
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="task-controls" action="/" method="get">
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${projectFilters.map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+    </form>
     <div class="projects">${rows || '<p class="empty">No projects yet.</p>'}</div>`);
 }
 
@@ -78,15 +95,16 @@ function projectPage(project, filter = 'All', error = '') {
     .filter((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
     .map((task) => `<form class="task" data-testid="task-row" action="/projects/${project.id}/tasks/${task.id}" method="post">
       <input type="hidden" name="filter" value="${filter}">
-      <input id="task-${task.id}" type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} onchange="this.form.requestSubmit()">
+      <input id="task-${task.id}" type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} onchange="this.form.requestSubmit()">
       <label for="task-${task.id}">${escapeHtml(task.title)}</label>
     </form>`).join('');
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <form class="task-controls" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
-      <div class="create"><input id="task-title" name="title" type="text"><button type="submit">Create task</button></div>
+      <div class="create"><input id="task-title" name="title" type="text"><button type="submit"${project.archived ? ' disabled' : ''}>Create task</button></div>
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="task-controls" action="/projects/${project.id}" method="get">
@@ -123,7 +141,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && pathname === '/') {
-      sendHtml(response, 200, projectList());
+      sendHtml(response, 200, projectList('', normalizeProjectFilter(searchParams.get('filter'))));
       return;
     }
     if (request.method === 'POST' && pathname === '/projects') {
@@ -149,12 +167,24 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
+    const archiveMatch = /^\/projects\/([1-9]\d*)\/(archive|restore)$/.exec(pathname);
+    if (request.method === 'POST' && archiveMatch) {
+      const id = Number(archiveMatch[1]);
+      if (Number.isSafeInteger(id) && projects.setArchived(id, archiveMatch[2] === 'archive')) {
+        redirect(response, archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived');
+        return;
+      }
+    }
     const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/.exec(pathname);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const taskId = taskMatch[2] ? Number(taskMatch[2]) : null;
       const project = Number.isSafeInteger(projectId) ? projects.find(projectId) : null;
       if (project && (taskId === null || Number.isSafeInteger(taskId))) {
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, normalizeFilter(searchParams.get('filter')), 'Archived project is read-only'));
+          return;
+        }
         const body = await readForm(request);
         if (!body) {
           sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));

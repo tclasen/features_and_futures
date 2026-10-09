@@ -19,16 +19,27 @@ export function openProjects(databasePath) {
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
   `);
-  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const find = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+  }
+  const list = database.prepare(`
+    SELECT projects.id, projects.name, projects.archived,
+      COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+    WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id
+  `);
+  const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const archiveUpdate = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const taskList = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-  const taskInsert = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-  const taskUpdate = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+  const taskInsert = database.prepare('INSERT INTO tasks (project_id, title) SELECT id, ? FROM projects WHERE id = ? AND archived = 0');
+  const taskUpdate = database.prepare(`UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)`);
 
   return {
-    list: () => list.all(),
+    list: (archived = false) => list.all(archived ? 1 : 0),
     find: (id) => find.get(id),
+    setArchived: (id, archived) => archiveUpdate.run(archived ? 1 : 0, id).changes === 1,
     create(name) {
       const trimmedName = typeof name === 'string' ? name.trim() : '';
       if (!trimmedName) return null;
@@ -39,8 +50,8 @@ export function openProjects(databasePath) {
     createTask(projectId, title) {
       const trimmedTitle = typeof title === 'string' ? title.trim() : '';
       if (!trimmedTitle) return null;
-      const result = taskInsert.run(projectId, trimmedTitle);
-      return Number(result.lastInsertRowid);
+      const result = taskInsert.run(trimmedTitle, projectId);
+      return result.changes === 1 ? Number(result.lastInsertRowid) : null;
     },
     setTaskCompleted(projectId, taskId, completed) {
       return taskUpdate.run(completed ? 1 : 0, projectId, taskId).changes === 1;
