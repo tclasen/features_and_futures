@@ -13,6 +13,11 @@
     label { display: block; font-weight: 600; margin-bottom: 8px; }
     .fields { display: flex; gap: 12px; }
     input { flex: 1; min-width: 0; border: 1px solid #8896a4; border-radius: 6px; padding: 12px; font: inherit; }
+    select { border: 1px solid #8896a4; border-radius: 6px; padding: 10px; font: inherit; margin-bottom: 16px; }
+    input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+    #task-list { list-style: none; margin: 0; padding: 0; }
+    [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; border-top: 1px solid #dce2e8; padding: 16px 0; overflow-wrap: anywhere; }
+    [data-testid="task-row"] span { min-width: 0; }
     button { border: 1px solid #2458aa; background: #2458aa; color: white; border-radius: 6px; padding: 12px 16px; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #194485; }
     button:disabled { opacity: .6; cursor: wait; }
@@ -35,7 +40,7 @@
     async function api(path, options) {
       const response = await fetch(path, options);
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+      if (!response.ok) throw new Error(data.error || 'Unable to save or load data');
       return data;
     }
     function showError(message) {
@@ -106,6 +111,79 @@
           if (version !== renderVersion) return;
           app.querySelector('h1').textContent = project.name;
           document.title = project.name + ' · Workboard';
+          const section = document.createElement('section');
+          section.innerHTML = `<form><label for="task-title">Task title</label>
+            <div class="fields"><input id="task-title" name="title" autocomplete="off"><button type="submit" disabled>Create task</button></div></form>
+            <h2>Tasks</h2><label for="task-filter">Task filter</label>
+            <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+            <p id="task-empty" class="muted" hidden>No matching tasks.</p><ul id="task-list"></ul>`;
+          app.append(section);
+          const form = section.querySelector('form');
+          const filter = section.querySelector('select');
+          const list = section.querySelector('ul');
+          const endpoint = '/api/projects/' + project.id + '/tasks';
+          let tasks = [];
+          function drawTasks() {
+            list.replaceChildren();
+            const matching = tasks.filter(task => filter.value === 'All' ||
+              (filter.value === 'Completed' ? task.completed : !task.completed));
+            section.querySelector('#task-empty').hidden = matching.length > 0;
+            for (const task of matching) {
+              const row = document.createElement('li');
+              row.dataset.testid = 'task-row';
+              const checkbox = document.createElement('input');
+              checkbox.type = 'checkbox';
+              checkbox.checked = task.completed;
+              checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+              const title = document.createElement('span');
+              title.textContent = task.title;
+              checkbox.addEventListener('change', async () => {
+                checkbox.disabled = true;
+                document.getElementById('error').hidden = true;
+                try {
+                  const saved = await api(endpoint + '/' + task.id, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ completed: checkbox.checked })
+                  });
+                  if (version !== renderVersion) return;
+                  Object.assign(task, saved);
+                  drawTasks();
+                } catch (error) {
+                  if (version === renderVersion) {
+                    checkbox.checked = task.completed;
+                    showError(error.message);
+                  }
+                } finally { checkbox.disabled = false; }
+              });
+              row.append(checkbox, title);
+              list.append(row);
+            }
+          }
+          filter.addEventListener('change', drawTasks);
+          form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const input = section.querySelector('#task-title');
+            const title = input.value.trim();
+            if (!title) { showError('Task title is required'); return; }
+            const button = form.querySelector('button');
+            button.disabled = true;
+            document.getElementById('error').hidden = true;
+            try {
+              const task = await api(endpoint, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+              });
+              if (version !== renderVersion) return;
+              tasks.push(task);
+              drawTasks();
+              input.value = '';
+              input.focus();
+            } catch (error) { if (version === renderVersion) showError(error.message); }
+            finally { button.disabled = false; }
+          });
+          tasks = await api(endpoint);
+          if (version !== renderVersion) return;
+          drawTasks();
+          form.querySelector('button').disabled = false;
         } catch (error) {
           if (version !== renderVersion) return;
           app.querySelector('h1').textContent = 'Project unavailable';
