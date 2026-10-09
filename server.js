@@ -3,8 +3,8 @@ import url from 'url';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import { open } from 'node:sqlite';
+import { Database } from 'node:sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +18,7 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 let db;
 
 async function initDb() {
-  db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+  db = await open({ filename: DB_PATH, driver: Database });
   await db.exec(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
