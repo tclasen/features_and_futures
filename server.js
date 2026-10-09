@@ -10,6 +10,26 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+)`);
+const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const findTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+function taskData(task) { return { ...task, completed: Boolean(task.completed) }; }
+async function readBody(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 65536) throw Object.assign(new Error('Request too large'), { status: 413 });
+  }
+  try { return JSON.parse(body); }
+  catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
+}
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -32,14 +52,28 @@ const server = http.createServer(async (req, res) => {
       const project = findProject.get(match[1]);
       return json(res, project ? 200 : 404, project || { error: 'Project not found' });
     }
-    if (req.method === 'POST' && path === '/api/projects') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk;
-        if (Buffer.byteLength(body) > 65536) return json(res, 413, { error: 'Request too large' });
+    const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+    if (tasksMatch) {
+      const [, projectId, taskId] = tasksMatch;
+      if (!findProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
+      if (req.method === 'GET' && !taskId) return json(res, 200, listTasks.all(projectId).map(taskData));
+      if (req.method === 'POST' && !taskId) {
+        const input = await readBody(req);
+        const title = typeof input?.title === 'string' ? input.title.trim() : '';
+        if (!title) return json(res, 400, { error: 'Task title is required' });
+        const result = createTask.run(projectId, title);
+        return json(res, 201, taskData(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
-      let input;
-      try { input = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
+      if (req.method === 'PATCH' && taskId) {
+        if (!findTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
+        const input = await readBody(req);
+        if (typeof input?.completed !== 'boolean') return json(res, 400, { error: 'Completion must be a boolean' });
+        updateTask.run(Number(input.completed), projectId, taskId);
+        return json(res, 200, taskData(findTask.get(projectId, taskId)));
+      }
+    }
+    if (req.method === 'POST' && path === '/api/projects') {
+      const input = await readBody(req);
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return json(res, 400, { error: 'Project name is required' });
       const result = createProject.run(name);
@@ -52,6 +86,7 @@ const server = http.createServer(async (req, res) => {
     }
     json(res, 404, { error: 'Not found' });
   } catch (error) {
+    if (error.status) return json(res, error.status, { error: error.message });
     console.error(error);
     if (!res.headersSent) json(res, 500, { error: 'Server error' });
     else res.end();
