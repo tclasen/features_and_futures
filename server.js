@@ -30,6 +30,10 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function projectFilter(value) {
+  return value === 'Archived' ? 'Archived' : 'Active';
+}
+
 function redirectToProject(response, projectId, filter) {
   response.writeHead(303, { Location: `/projects/${projectId}?filter=${filter}` });
   response.end();
@@ -45,18 +49,20 @@ const server = createServer(async (request, response) => {
       response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
       response.end(projectScript);
     } else if (request.method === 'GET' && pathname === '/') {
-      html(response, 200, projectListPage(store.list()));
+      const filter = projectFilter(searchParams.get('filter'));
+      html(response, 200, projectListPage(store.list(filter === 'Archived'), '', '', filter));
     } else if (request.method === 'POST' && pathname === '/projects') {
       const form = await readForm(request);
       const name = form.get('name') || '';
       if (!name.trim()) {
-        html(response, 422, projectListPage(store.list(), 'Project name is required', name));
+        const filter = projectFilter(form.get('filter'));
+        html(response, 422, projectListPage(store.list(filter === 'Archived'), 'Project name is required', name, filter));
         return;
       }
       store.create(name);
       response.writeHead(303, { Location: '/' });
       response.end();
-    } else if (/^\/projects\/[1-9]\d*(?:\/tasks(?:\/[1-9]\d*\/completion)?)?$/.test(pathname)) {
+    } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|tasks(?:\/[1-9]\d*\/completion)?))?$/.test(pathname)) {
       const id = Number(pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
       if (!project) {
@@ -65,6 +71,13 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'GET' && pathname === `/projects/${id}`) {
         html(response, 200, projectPage(project, store.listTasks(id), taskFilter(searchParams.get('filter'))));
+      } else if (request.method === 'POST' && (pathname === `/projects/${id}/archive` || pathname === `/projects/${id}/restore`)) {
+        const archived = pathname.endsWith('/archive');
+        store.setArchived(id, archived);
+        response.writeHead(303, { Location: archived ? '/' : '/?filter=Archived' });
+        response.end();
+      } else if (request.method === 'POST' && project.archived) {
+        html(response, 409, projectPage(project, store.listTasks(id), taskFilter(searchParams.get('filter')), 'Archived projects cannot be changed'));
       } else if (request.method === 'POST' && pathname === `/projects/${id}/tasks`) {
         const form = await readForm(request);
         const title = form.get('title') || '';

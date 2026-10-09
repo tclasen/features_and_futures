@@ -16,3 +16,11 @@ their order and completion state persist in SQLite. Filters are stored in the pa
 URL and applied after task changes. Completion changes save in place; native form
 navigation waits for pending saves so filter changes cannot cancel them. Failed
 saves restore the checkbox and show an alert.
+
+The project list defaults to Active; its Project filter also shows Archived
+projects. Archive and restore preserve each project's ID and tasks. Archived
+project pages allow viewing and filtering tasks but disable creation and completion
+changes; the server also rejects these changes. Project summaries count completed
+tasks out of all tasks, independently of task filters. Archive state persists in
+SQLite, and startup migrates databases from earlier versions without replacing
+existing projects or tasks.

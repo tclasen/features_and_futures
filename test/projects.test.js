@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 async function startServer(databasePath) {
@@ -219,4 +220,139 @@ test('tasks validate, filter, stay in their project, and persist completion acro
   await server.stop();
   server = await startServer(databasePath);
   assert.equal(await (await get('/projects/1')).text(), all);
+});
+
+test('legacy projects migrate safely, archive read-only tasks, and restore persistent summaries', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  t.after(async () => {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  // Start with the previous schema and data to exercise the deployed migration.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL CHECK (length(trim(name)) > 0)
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    INSERT INTO projects (name) VALUES ('Existing project');
+    INSERT INTO tasks (project_id, title, completed) VALUES
+      (1, 'Done task', 1), (1, 'Open task', 0);
+  `);
+  legacy.close();
+  server = await startServer(databasePath);
+  const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+  const post = (path, values = {}, headers = {}) => fetch(`${server.url}${path}`, {
+    method: 'POST', body: new URLSearchParams(values), redirect: 'manual', headers,
+  });
+  const rows = (html, kind) => [...html.matchAll(new RegExp(`<li class="${kind}" data-testid="${kind}-row">[\\s\\S]*?</li>`, 'g'))].map((match) => match[0]);
+  const active = await get('/');
+  assert.match(active, /<label for="project-filter">Project filter<\/label>/);
+  assert.match(active, /<option selected>Active<\/option>\s*<option>Archived<\/option>/);
+  assert.match(active, /data-testid="project-summary">1\/2 completed/);
+  assert.match(active, />Archive project<\/button>/);
+  assert.doesNotMatch(active, />Restore project<\/button>/);
+  assert.equal(rows(await get('/?filter=Archived'), 'project').length, 0);
+  assert.equal(await get('/?filter=invalid'), active);
+  const created = await post('/projects', { name: 'New project' });
+  assert.equal(created.status, 303);
+  await created.text();
+  const twoProjects = rows(await get('/'), 'project');
+  assert.equal(twoProjects.length, 2);
+  assert.match(twoProjects[0], /Existing project/);
+  assert.match(twoProjects[1], /data-testid="project-summary">0\/0 completed/);
+
+  const archive = await post('/projects/1/archive');
+  assert.equal(archive.status, 303);
+  assert.equal(archive.headers.get('location'), '/');
+  await archive.text();
+  assert.equal(rows(await get('/'), 'project').length, 1);
+  assert.doesNotMatch(await get('/'), /Existing project/);
+  const archivedList = await get('/?filter=Archived');
+  assert.match(archivedList, /<option selected>Archived<\/option>/);
+  assert.equal(rows(archivedList, 'project').length, 1);
+  assert.match(archivedList, /data-testid="project-summary">1\/2 completed/);
+  assert.match(archivedList, /action="\/projects\/1".*>Open project<\/button>/);
+  assert.match(archivedList, />Restore project<\/button>/);
+  assert.doesNotMatch(archivedList, />Archive project<\/button>/);
+  const invalid = await post('/projects', { name: ' ', filter: 'Archived' });
+  assert.equal(invalid.status, 422);
+  const invalidPage = await invalid.text();
+  assert.match(invalidPage, /Project name is required/);
+  assert.match(invalidPage, /<option selected>Archived<\/option>/);
+  assert.equal(rows(invalidPage, 'project').length, 1);
+
+  const archivedPage = await get('/projects/1');
+  assert.match(archivedPage, /<h1>Existing project<\/h1>/);
+  assert.match(archivedPage, /<p>Archived project<\/p>/);
+  assert.match(archivedPage, /<button type="submit" disabled>Create task<\/button>/);
+  const tasks = rows(archivedPage, 'task');
+  assert.equal(tasks.length, 2);
+  assert.ok(tasks.every((row) => /type="checkbox"[^>]* disabled/.test(row)));
+  assert.match(tasks[0], /aria-label="Complete Done task" checked disabled/);
+  assert.match(tasks[1], /aria-label="Complete Open task" disabled/);
+  assert.equal(rows(await get('/projects/1?filter=Open'), 'task').length, 1);
+  assert.match(rows(await get('/projects/1?filter=Completed'), 'task')[0], /Done task/);
+
+  // Stale browser pages and direct requests cannot modify archived data.
+  for (const [path, values] of [
+    ['/projects/1/tasks', { title: 'Forbidden task' }],
+    ['/projects/1/tasks/1/completion', {}],
+    ['/projects/1/tasks/2/completion', { completed: '1' }],
+  ]) {
+    const blocked = await post(path, values, { Accept: 'application/json' });
+    assert.equal(blocked.status, 409);
+    await blocked.text();
+  }
+  assert.equal(await get('/projects/1'), archivedPage);
+  assert.equal(await get('/?filter=Archived'), archivedList);
+  await server.stop();
+  server = await startServer(databasePath);
+  assert.equal(await get('/projects/1'), archivedPage);
+  assert.equal(await get('/?filter=Archived'), archivedList);
+
+  const restore = await post('/projects/1/restore');
+  assert.equal(restore.status, 303);
+  assert.equal(restore.headers.get('location'), '/?filter=Archived');
+  await restore.text();
+  assert.equal(rows(await get('/?filter=Archived'), 'project').length, 0);
+  const restoredRows = rows(await get('/'), 'project');
+  assert.equal(restoredRows.length, 2);
+  assert.match(restoredRows[0], /Existing project/);
+  assert.match(restoredRows[0], /data-testid="project-summary">1\/2 completed/);
+  const restoredPage = await get('/projects/1');
+  assert.doesNotMatch(restoredPage, /Archived project| disabled/);
+  assert.equal(rows(restoredPage, 'task').length, 2);
+  assert.match(rows(restoredPage, 'task')[0], / checked/);
+  const completed = await post('/projects/1/tasks/2/completion', { completed: '1' });
+  assert.equal(completed.status, 303);
+  await completed.text();
+  assert.match(await get('/'), /data-testid="project-summary">2\/2 completed/);
+  const task = await post('/projects/1/tasks', { title: 'Restored task' });
+  assert.equal(task.status, 303);
+  await task.text();
+  assert.match(await get('/'), /data-testid="project-summary">2\/3 completed/);
+  // The list summary always counts all tasks, even after a task-filter visit.
+  assert.equal(rows(await get('/projects/1?filter=Open'), 'task').length, 1);
+  const finalList = await get('/');
+  assert.match(finalList, /data-testid="project-summary">2\/3 completed/);
+  const finalPage = await get('/projects/1');
+  await server.stop();
+  server = await startServer(databasePath);
+  assert.equal(await get('/'), finalList);
+  assert.equal(await get('/projects/1'), finalPage);
+  for (const path of ['/projects/999/archive', '/projects/9007199254740993/restore']) {
+    const missing = await post(path);
+    assert.equal(missing.status, 404);
+    await missing.text();
+  }
 });
