@@ -122,9 +122,34 @@ test('launch contract, validation, ordered projects, and process-restart persist
     }
     await server.stop();
     server = await launch(dbPath);
-    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
-    assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), first);
+    const firstWithCounts = { ...first, completedCount: 1, totalCount: 2 };
+    assert.deepEqual(await (await get('/api/projects')).json(), [firstWithCounts, second]);
+    assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), firstWithCounts);
     assert.deepEqual(await (await get(taskPath)).json(), [completed, nextTask]);
+
+    for (const archived of [null, 1, 'true']) {
+      assert.equal((await sendTask(`/api/projects/${first.id}`, 'PATCH', { archived })).status, 400);
+    }
+    assert.equal((await sendTask('/api/projects/999999', 'PATCH', { archived: true })).status, 404);
+    const archivedProject = await (await sendTask(`/api/projects/${first.id}`, 'PATCH', { archived: true })).json();
+    assert.deepEqual(archivedProject, { ...firstWithCounts, archived: true });
+    assert.equal((await sendTask(taskPath, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await sendTask(`${taskPath}/${task.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await (await get(taskPath)).json(), [completed, nextTask]);
+    await server.stop();
+    server = await launch(dbPath);
+    assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), archivedProject);
+    assert.deepEqual(await (await get('/api/projects')).json(), [archivedProject, second]);
+    assert.deepEqual(await (await get(taskPath)).json(), [completed, nextTask]);
+    const restored = await (await sendTask(`/api/projects/${first.id}`, 'PATCH', { archived: false })).json();
+    assert.deepEqual(restored, firstWithCounts);
+    await server.stop();
+    server = await launch(dbPath);
+    assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), restored);
+    assert.deepEqual(await (await get(taskPath)).json(), [completed, nextTask]);
+    assert.equal((await sendTask(`${taskPath}/${task.id}`, 'PATCH', { completed: false })).status, 200);
+    assert.equal((await sendTask(taskPath, 'POST', { title: 'After restoration' })).status, 201);
+    assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), { ...first, totalCount: 3, completedCount: 0 });
     assert.deepEqual(await (await get(otherTaskPath)).json(), []);
     assert.equal((await get(`/projects/${first.id}`)).status, 200);
   } finally {

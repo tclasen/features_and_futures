@@ -20,10 +20,14 @@ Project pages support task creation, completion checkboxes, and an All/Open/Comp
 
 Task JSON endpoints: `GET/POST /api/projects/:id/tasks` (creation accepts `{ "title": "Task title" }`) and `PATCH /api/projects/:id/tasks/:taskId` (accepts `{ "completed": true }` or `false`). Missing projects or tasks return 404; invalid input returns 400. Task lists are returned in creation order with boolean completion values.
 
+The project list starts with Active projects; select Archived to open or restore archived projects. Each row includes a completion summary counting all of its tasks. Archiving preserves tasks and completion state. Archived pages allow viewing and filtering tasks, but disable creation and completion changes.
+
+`PATCH /api/projects/:id` accepts `{ "archived": true }` to archive or `false` to restore. Project JSON includes `archived`, `completedCount`, and `totalCount`. Task mutations on archived projects return 409. Existing databases are upgraded automatically, retaining project IDs and tasks.
+
 ## Verify
 
 ```sh
 npm test
 ```
 
-Tests launch real server processes with isolated temporary SQLite files and verify project/task validation, creation order, project ownership, completion and reopening, HTTP routes, and persistence after restart.
+Tests launch real server processes with isolated temporary SQLite files and verify project/task validation, creation order, project ownership, completion and reopening, archive/restore, summaries, HTTP routes, and persistence after restart. Additional tests cover upgrading existing databases and browser-script behavior using a lightweight DOM double.

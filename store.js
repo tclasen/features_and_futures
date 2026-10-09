@@ -19,8 +19,17 @@ export function openStore(path) {
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id);
   `);
-  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const find = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  // Upgrade existing project databases without changing IDs or task ownership.
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
+  }
+  const projectQuery = `SELECT projects.id, projects.name, projects.archived,
+    COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
+  const list = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
+  const find = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
+  const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const projectData = (row) => row && { ...row, archived: Boolean(row.archived) };
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
   const listTasks = database.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
@@ -45,14 +54,21 @@ export function openStore(path) {
       updateTask.run(Number(completed), projectId, taskId);
       return taskData(findTask.get(projectId, taskId));
     },
-    listProjects: () => list.all(),
-    getProject: (id) => find.get(id),
+    listProjects: () => list.all().map(projectData),
+    getProject: (id) => projectData(find.get(id)),
+    setProjectArchived(id, archived) {
+      if (typeof archived !== 'boolean') {
+        throw new TypeError('Archived must be a boolean');
+      }
+      updateProject.run(Number(archived), id);
+      return projectData(find.get(id));
+    },
     createProject(name) {
       if (typeof name !== 'string' || !name.trim()) {
         throw new TypeError('Project name is required');
       }
       const result = insert.run(name.trim());
-      return find.get(result.lastInsertRowid);
+      return projectData(find.get(result.lastInsertRowid));
     },
     close: () => database.close(),
   };

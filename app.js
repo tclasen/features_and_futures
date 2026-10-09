@@ -51,11 +51,15 @@ export function createApp(store) {
       const tasks = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
       if (tasks) {
         const projectId = Number(tasks[1]);
-        if (!store.getProject(projectId)) {
+        const project = store.getProject(projectId);
+        if (!project) {
           return json(response, 404, { error: 'Project not found' });
         }
         if (!tasks[2] && request.method === 'GET') {
           return json(response, 200, store.listTasks(projectId));
+        }
+        if (project.archived && ['POST', 'PATCH'].includes(request.method)) {
+          return json(response, 409, { error: 'Archived project is read-only' });
         }
         if (!tasks[2] && request.method === 'POST') {
           const input = await readJson(request);
@@ -76,6 +80,17 @@ export function createApp(store) {
         }
       }
       const detail = path.match(/^\/api\/projects\/([1-9]\d*)$/);
+      if (request.method === 'PATCH' && detail) {
+        const id = Number(detail[1]);
+        if (!store.getProject(id)) {
+          return json(response, 404, { error: 'Project not found' });
+        }
+        const input = await readJson(request);
+        if (typeof input?.archived !== 'boolean') {
+          return json(response, 400, { error: 'Archived must be a boolean' });
+        }
+        return json(response, 200, store.setProjectArchived(id, input.archived));
+      }
       if (request.method === 'GET' && detail) {
         const project = store.getProject(Number(detail[1]));
         return project

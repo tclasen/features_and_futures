@@ -9,7 +9,10 @@ const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const taskRows = document.querySelector('#tasks');
+const projectFilter = document.querySelector('#project-filter');
 let projectId;
+let archived = false;
+let allProjects = [];
 let tasks = [];
 
 function showError(message) {
@@ -36,9 +39,39 @@ function appendProject(project) {
   open.addEventListener('click', () => {
     window.location.assign(`/projects/${project.id}`);
   });
-  row.append(name, open);
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    showError('');
+    try {
+      const updated = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      allProjects = allProjects.map((item) => item.id === updated.id ? updated : item);
+      renderProjects();
+    } catch (error) {
+      showError(error.message);
+      archive.disabled = false;
+    }
+  });
+  row.append(name, summary, open, archive);
   projects.append(row);
 }
+
+function renderProjects() {
+  projects.replaceChildren();
+  const showArchived = projectFilter.value === 'archived';
+  allProjects.filter((project) => Boolean(project.archived) === showArchived).forEach(appendProject);
+}
+
+projectFilter.addEventListener('change', renderProjects);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -57,7 +90,8 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    appendProject(project);
+    allProjects.push(project);
+    renderProjects();
     nameInput.value = '';
     nameInput.focus();
   } catch (error) {
@@ -82,6 +116,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = archived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       checkbox.disabled = true;
@@ -98,7 +133,7 @@ function renderTasks() {
         checkbox.checked = task.completed;
         showError(error.message);
       } finally {
-        checkbox.disabled = false;
+        checkbox.disabled = archived;
       }
     });
     row.append(title, checkbox);
@@ -110,6 +145,7 @@ taskFilter.addEventListener('change', renderTasks);
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   showError('');
+  if (archived) return;
   const title = titleInput.value.trim();
   if (!title) {
     showError('Task title is required');
@@ -144,6 +180,9 @@ async function loadPage() {
       heading.textContent = project.name;
       document.title = `${project.name} — Workboard`;
       projectId = project.id;
+      archived = project.archived;
+      document.querySelector('#archived-notice').hidden = !archived;
+      taskForm.querySelector('button').disabled = archived;
       tasks = await api(`/api/projects/${projectId}/tasks`);
       renderTasks();
       document.querySelector('#task-board').hidden = false;
@@ -153,8 +192,8 @@ async function loadPage() {
     }
   } else {
     try {
-      const all = await api('/api/projects');
-      all.forEach(appendProject);
+      allProjects = await api('/api/projects');
+      renderProjects();
     } catch (error) {
       showError(error.message);
     }
