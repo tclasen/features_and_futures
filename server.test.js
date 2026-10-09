@@ -102,3 +102,71 @@ test('projects validate, navigate, retain creation order, and persist across res
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, complete, stay in their project, and persist across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const detail = (project = 1, filter = '') => fetch(`${server.baseUrl}/projects/${project}${filter ? `?filter=${filter}` : ''}`).then(response => response.text());
+    const rows = html => [...html.matchAll(/data-testid="task-row">([\s\S]*?)<\/div>/g)].map(match => match[1]);
+    const titles = html => rows(html).map(row => row.match(/<span>(.*?)<\/span>/)[1]);
+
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const initial = await detail();
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, /<button type="submit">Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await post('/projects/1/tasks', { title });
+      assert.equal(invalid.status, 422);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(rows(html).length, 0);
+    }
+    for (const title of ['  Plan work  ', 'Review <draft> & "notes"', 'Ship']) {
+      assert.equal((await post('/projects/1/tasks', { title })).status, 303);
+    }
+    assert.deepEqual(titles(await detail()), ['Plan work', 'Review &lt;draft&gt; &amp; &quot;notes&quot;', 'Ship']);
+    assert.equal(rows(await detail()).filter(row => / checked/.test(row)).length, 0);
+    assert.match(await detail(), /aria-label="Complete Plan work"/);
+    assert.match(await detail(), /aria-label="Complete Review &lt;draft&gt; &amp; &quot;notes&quot;"/);
+    assert.equal(rows(await detail(2)).length, 0);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Orphan' })).status, 404);
+
+    const completed = await post('/projects/1/tasks/2', { completed: '1', filter: 'Open' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    assert.deepEqual(titles(await detail(1, 'Open')), ['Plan work', 'Ship']);
+    assert.deepEqual(titles(await detail(1, 'Completed')), ['Review &lt;draft&gt; &amp; &quot;notes&quot;']);
+    assert.match(rows(await detail(1, 'Completed'))[0], / checked/);
+    assert.equal(rows(await detail(1, 'All')).length, 3);
+    const invalidWithTasks = await post('/projects/1/tasks', { title: '   ' });
+    assert.equal(rows(await invalidWithTasks.text()).length, 3);
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    assert.deepEqual(titles(await detail(2)), ['Other project task']);
+
+    const saved = await detail();
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await detail(), saved);
+    assert.deepEqual(titles(await detail(1, 'Open')), ['Plan work', 'Ship']);
+    assert.deepEqual(titles(await detail(2)), ['Other project task']);
+    assert.equal((await post('/projects/1/tasks/2', {})).status, 303);
+    assert.equal(rows(await detail(1, 'Completed')).length, 0);
+    assert.equal(rows(await detail(1, 'Open')).length, 3);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(rows(await detail()).filter(row => / checked/.test(row)).length, 0);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

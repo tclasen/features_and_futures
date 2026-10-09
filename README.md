@@ -12,7 +12,9 @@ The server binds to `0.0.0.0:8080` by default. To configure the port and persist
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Visit `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
+Visit `/` to create and open projects. Within each project, create tasks, toggle
+completion, and filter by All, Open, or Completed. Projects and tasks persist in
+the configured SQLite file. `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks, including persistence across server restarts:
 
