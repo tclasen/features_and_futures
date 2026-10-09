@@ -7,14 +7,28 @@ const dbPath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
 `);
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -35,7 +49,9 @@ function page(title, content) {
     h1 { font-size: 32px; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
     .controls { display: flex; gap: 12px; flex-wrap: wrap; }
-    input, button { font: inherit; border-radius: 6px; padding: 10px 14px; }
+    input, button, select { font: inherit; border-radius: 6px; padding: 10px 14px; }
+    input[type="checkbox"] { flex: none; min-width: 0; width: 20px; height: 20px; }
+    .filter { margin-top: 24px; }
     input { border: 1px solid #8894a7; flex: 1; min-width: 160px; }
     button { background: #244fbe; color: white; border: 1px solid #244fbe; cursor: pointer; }
     button:hover { background: #193a91; }
@@ -70,6 +86,37 @@ function projectsPage(error = '', input = '') {
       </li>`).join('')}</ul>` : '<p>No projects yet.</p>'}`);
 }
 
+function projectPage(project, filter = 'All', error = '') {
+  const tasks = listTasks.all(project.id).filter(task =>
+    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+  return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
+    <form method="get" action="/"><button type="submit">Projects</button></form>
+    <h2>Tasks</h2>
+    <form method="post" action="/projects/${project.id}/tasks">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <div class="controls">
+        <input id="task-title" name="title" autocomplete="off">
+        <button type="submit">Create task</button>
+      </div>
+    </form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="filter" method="get" action="/projects/${project.id}">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.submit()">
+        ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+    </form>
+    ${tasks.length ? `<ul class="projects">${tasks.map(task => `
+      <li class="project" data-testid="task-row">
+        <span class="name">${escapeHtml(task.title)}</span>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.submit()">
+        </form>
+      </li>`).join('')}</ul>` : '<p>No matching tasks.</p>'}`);
+}
+
 function sendHtml(response, status, html) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
   response.end(html);
@@ -90,7 +137,8 @@ async function readForm(request) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    const path = new URL(request.url, 'http://localhost').pathname;
+    const url = new URL(request.url, 'http://localhost');
+    const path = url.pathname;
     if (request.method === 'GET' && path === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -112,7 +160,32 @@ const server = http.createServer(async (request, response) => {
         sendHtml(response, 404, page('Not found', '<h1>Project not found</h1><form action="/"><button>Projects</button></form>'));
         return;
       }
-      sendHtml(response, 200, page(project.name, `<h1>${escapeHtml(project.name)}</h1><form method="get" action="/"><button type="submit">Projects</button></form>`));
+      sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+)?$/.test(path)) {
+      const [, , projectId, , taskId] = path.split('/');
+      const project = findProject.get(projectId);
+      if (!project) {
+        sendHtml(response, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (taskId) {
+        const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
+        if (!result.changes) {
+          sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
+          return;
+        }
+      } else {
+        const title = (form.get('title') || '').trim();
+        if (!title) {
+          sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+          return;
+        }
+        createTask.run(project.id, title);
+      }
+      response.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+      response.end();
     } else {
       sendHtml(response, 404, page('Not found', '<h1>Page not found</h1>'));
     }
