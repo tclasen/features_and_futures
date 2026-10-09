@@ -10,7 +10,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)`);
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`);
 
 const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workboard</title>
@@ -25,8 +32,14 @@ async function render(){
    const response=await fetch('/api/projects/'+match[1]);
    if(!response.ok){history.replaceState({},'', '/');return render()}
    const project=await response.json();
-   app.innerHTML='<button class="back" id="back">Projects</button><h1>'+esc(project.name)+'</h1>';
-   document.querySelector('#back').onclick=()=>{history.pushState({},'', '/');render()}; return;
+   const taskResponse=await fetch('/api/projects/'+match[1]+'/tasks');
+   const tasks=await taskResponse.json();
+   app.innerHTML='<button class="back" id="back">Projects</button><h1>'+esc(project.name)+'</h1><form id="create-task"><div><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off"></div><button type="submit">Create task</button></form><div id="task-alert" role="alert" aria-live="polite"></div><div><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div><section id="tasks"></section>';
+   document.querySelector('#back').onclick=()=>{history.pushState({},'', '/');render()};
+   const list=document.querySelector('#tasks');
+   function showTasks(){list.replaceChildren();const filter=document.querySelector('#task-filter').value;for(const task of tasks){if(filter==='Open'&&task.completed||filter==='Completed'&&!task.completed)continue;const row=document.createElement('div');row.className='project-row';row.dataset.testid='task-row';row.innerHTML='<span>'+esc(task.title)+'</span><input type="checkbox" aria-label="'+esc('Complete '+task.title)+'" '+(task.completed?'checked':'')+'>';row.querySelector('input').onchange=async e=>{await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({completed:e.target.checked})});task.completed=e.target.checked?1:0;showTasks()};list.append(row)}}
+   document.querySelector('#task-filter').onchange=showTasks;showTasks();
+   document.querySelector('#create-task').onsubmit=async event=>{event.preventDefault();const input=document.querySelector('#task-title');const title=input.value.trim();if(!title){document.querySelector('#task-alert').innerHTML='<p class="alert">Task title is required</p>';return}const result=await fetch('/api/projects/'+match[1]+'/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})});if(result.ok)render()}; return;
  }
  const response=await fetch('/api/projects'); const projects=await response.json();
  app.innerHTML='<h1>Workboard</h1><form id="create"><div><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"></div><button type="submit">Create project</button></form><div id="alert" role="alert" aria-live="polite"></div><section id="projects"></section>';
@@ -59,6 +72,27 @@ const server = http.createServer(async (req, res) => {
       if (!name) return send(res, 400, { error: 'Project name is required' });
       const result = db.prepare('INSERT INTO projects(name) VALUES (?)').run(name);
       return send(res, 201, { id: Number(result.lastInsertRowid), name });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && req.method === 'GET') {
+    return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksMatch[1])));
+  }
+  if (tasksMatch && req.method === 'POST') {
+    try {
+      const title = String((await readBody(req)).title ?? '').trim();
+      if (!title) return send(res, 400, { error: 'Task title is required' });
+      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(Number(tasksMatch[1]))) return send(res, 404, { error: 'Not found' });
+      const result = db.prepare('INSERT INTO tasks(project_id, title) VALUES (?, ?)').run(Number(tasksMatch[1]), title);
+      return send(res, 201, { id: Number(result.lastInsertRowid), projectId: Number(tasksMatch[1]), title, completed: 0 });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskMatch && req.method === 'PATCH') {
+    try {
+      const completed = (await readBody(req)).completed ? 1 : 0;
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed, Number(taskMatch[1]));
+      return result.changes ? send(res, 200, { completed }) : send(res, 404, { error: 'Not found' });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
