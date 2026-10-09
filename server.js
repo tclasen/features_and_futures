@@ -14,6 +14,13 @@ database.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
   )
 `);
 
@@ -36,6 +43,10 @@ const page = `<!doctype html>
     .project-row { justify-content: space-between; padding: .9rem 1rem; margin: .5rem 0; background: white; border: 1px solid #d9e0e8; border-radius: 8px; }
     .alert { color: #a32626; margin: .25rem 0 1rem; }
     .back { margin-bottom: 1rem; }
+    .task-row { display: flex; align-items: center; gap: .65rem; padding: .65rem .9rem; margin: .5rem 0; background: white; border: 1px solid #d9e0e8; border-radius: 8px; }
+    .task-row input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; }
+    .task-row label { flex: 1; }
+    .filter { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -112,6 +123,61 @@ const page = `<!doctype html>
       const back = element('button', 'Projects', { type: 'button', class: 'back' });
       back.addEventListener('click', () => { window.location.href = '/'; });
       app.append(back, element('h1', project.name));
+
+      const form = element('form');
+      const label = element('label', 'Task title', { for: 'task-title' });
+      const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
+      form.append(label, input, element('button', 'Create task', { type: 'submit' }));
+      const alert = element('p', undefined, { class: 'alert', role: 'alert', hidden: '' });
+      const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
+      const filter = element('select', undefined, { id: 'task-filter' });
+      for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+      const filterRow = element('div', undefined, { class: 'filter' });
+      filterRow.append(filterLabel, filter);
+      const list = element('section', undefined, { 'aria-label': 'Tasks' });
+      app.append(form, alert, filterRow, list);
+
+      async function refresh() {
+        const taskResponse = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks');
+        if (!taskResponse.ok) throw new Error('Could not load tasks');
+        const tasks = await taskResponse.json();
+        list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
+          const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': 'Complete ' + task.title });
+          checkbox.checked = task.completed;
+          checkbox.addEventListener('change', async () => {
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked })
+            });
+            if (update.ok) await refresh();
+          });
+          row.append(checkbox, element('span', task.title));
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', refresh);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          alert.textContent = 'Task title is required';
+          alert.hidden = false;
+          input.focus();
+          return;
+        }
+        alert.hidden = true;
+        const create = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+        });
+        if (create.ok) {
+          input.value = '';
+          await refresh();
+        }
+      });
+      await refresh();
     }
 
     (projectPath ? showProject(decodeURIComponent(projectPath[1])) : showList())
@@ -178,6 +244,42 @@ const server = createServer(async (request, response) => {
       return;
     }
     sendJson(response, 200, project);
+    return;
+  }
+
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+  if (tasksMatch && request.method === 'GET') {
+    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
+    if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+    const tasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(project.id)
+      .map(task => ({ ...task, completed: Boolean(task.completed) }));
+    sendJson(response, 200, tasks);
+    return;
+  }
+
+  if (tasksMatch && request.method === 'POST') {
+    try {
+      const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      const body = await readJson(request);
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
+      const task = { id: randomUUID(), project_id: project.id, title, completed: false };
+      database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)').run(task.id, task.project_id, title, Date.now());
+      sendJson(response, 201, task);
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
+
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+  if (taskMatch && request.method === 'PATCH') {
+    try {
+      const body = await readJson(request);
+      if (typeof body.completed !== 'boolean') { sendJson(response, 400, { error: 'Completion must be a boolean' }); return; }
+      const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
+      if (!result.changes) { sendJson(response, 404, { error: 'Task not found' }); return; }
+      sendJson(response, 200, { id: taskMatch[1], completed: body.completed });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
 
