@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
 
 LEASE = re.compile(rb'e30\.([A-Za-z0-9_-]+)\.([0-9a-f]{48})(?![0-9a-f])')
@@ -53,7 +54,17 @@ class Scanner:
                 pass
         if depth > 8:
             raise ValueError('archive nesting exceeds inspection limit: ' + label)
-        if data.startswith((b'# v2 git bundle\n', b'# v3 git bundle\n')):
+        if re.search(r'objects/[0-9a-f]{2}/[0-9a-f]{38}$', label) and data:
+            decoded = zlib.decompress(data)
+            header, payload = decoded.split(b'\x00', 1)
+            kind, size = header.split(b' ', 1)
+            if kind not in (b'blob', b'tree', b'commit', b'tag') or int(size) != len(payload):
+                raise ValueError('Corrupt nonempty loose Git object: ' + label)
+            self.decoded_members += 1
+            self.scan(payload, label + '::loose-object', depth + 1)
+        elif data.startswith(b'PACK'):
+            self.scan_pack(data, label)
+        elif data.startswith((b'# v2 git bundle\n', b'# v3 git bundle\n')):
             self.scan_bundle(data, label)
         elif data.startswith(b'PK\x03\x04'):
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -70,6 +81,14 @@ class Scanner:
                     if member.isfile():
                         self.decoded_members += 1
                         self.scan(archive.extractfile(member).read(), label + '::' + member.name, depth + 1)
+
+    def scan_pack(self, data, label):
+        # Raw interrupted Git archives may contain packed or unreachable objects.
+        with tempfile.TemporaryDirectory(prefix="ff-pack-scan-") as folder:
+            repo = Path(folder) / "repo.git"
+            subprocess.run(["git", "init", "--bare", "-q", str(repo)], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repo), "index-pack", "--stdin", "--strict"], input=data, check=True, capture_output=True)
+            self.scan_git(repo, label, all_objects=True)
 
     def scan_bundle(self, data, label):
         # Inspect every packed object, including objects not retained by a public ref.

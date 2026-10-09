@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
+import zlib
 
 spec = importlib.util.spec_from_file_location('publication_scan', Path(__file__).parents[1]/'scripts/scan-publication.py')
 module = importlib.util.module_from_spec(spec)
@@ -53,6 +54,31 @@ class PublicationScanTests(unittest.TestCase):
             scanner.scan(bundle.read_bytes(), 'bundle')
             self.assertTrue(scanner.findings)
             self.assertEqual(scanner.bundles, 1)
+
+    def test_raw_git_loose_object_decoded_and_empty_corruption_retained(self):
+        secret=b'test-only-compressed-git-secret'
+        scanner=module.Scanner({secret})
+        label='workspace.tar::work/.git/objects/ab/'+'c'*38
+        scanner.scan(zlib.compress(b'blob '+str(len(secret)).encode()+b'\x00'+secret),label)
+        self.assertIn((label+'::loose-object','known credential'),scanner.findings)
+        scanner.scan(b'',label)
+        with self.assertRaises(zlib.error):scanner.scan(b'corrupt compressed bytes',label)
+
+    def test_raw_git_pack_includes_deleted_secret(self):
+        secret=b'test-only-packed-deleted-secret'
+        with tempfile.TemporaryDirectory() as folder:
+            repo=Path(folder)/'repo'
+            subprocess.run(['git','init','-q',str(repo)],check=True)
+            subprocess.run(['git','-C',str(repo),'config','user.name','Test'],check=True)
+            subprocess.run(['git','-C',str(repo),'config','user.email','test@example.invalid'],check=True)
+            (repo/'secret.txt').write_bytes(secret)
+            subprocess.run(['git','-C',str(repo),'add','.'],check=True)
+            subprocess.run(['git','-C',str(repo),'commit','-qm','fixture'],check=True)
+            subprocess.run(['git','-C',str(repo),'gc'],check=True,capture_output=True)
+            scanner=module.Scanner({secret})
+            pack=next((repo/'.git/objects/pack').glob('*.pack'))
+            scanner.scan(pack.read_bytes(),'raw-git-pack')
+            self.assertTrue(scanner.findings)
 
     def test_credential_fields_and_public_ids(self):
         result = module.credential_values({'provider': {'access': 'test-only-access-credential', 'refresh_token': 'test-only-refresh-credential', 'accountId': 'test-only-host-account-routing-id', 'public_id': 'public-identification'}})
