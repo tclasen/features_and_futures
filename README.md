@@ -8,7 +8,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open http://localhost:8080. The server binds to `0.0.0.0`. Defaults are port
 8080 and database `data/workboard.sqlite`. Keep the database file to preserve
-projects, tasks, task completion, and archive state across restarts. `GET /health` returns `{"status":"ok"}`.
+projects (including renamed names), tasks, task completion, and archive state across restarts. `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks:
 
@@ -19,4 +19,5 @@ npm test
 The checks use a temporary SQLite database and verify validation, escaping,
 creation order, project detail navigation, health, task filtering and project
 isolation, completion toggles, archive/restore, completion summaries, legacy
-database migration, and restart persistence.
+database migration, rename validation and identity preservation, archived rename
+protection, and restart persistence.

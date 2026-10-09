@@ -34,6 +34,7 @@ const listProjects = db.prepare(`
 `);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const insertProject = db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
 
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY position');
@@ -131,8 +132,14 @@ function projectPage(project, filter = 'All', error = '') {
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="card task-create" action="${path}/rename" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form class="card task-create" action="${path}/tasks" method="post">
-      ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text">
@@ -200,6 +207,30 @@ const server = http.createServer(async (req, res) => {
       insertProject.run(randomUUID(), name);
       redirect(res, '/');
       return;
+    }
+    const renameMatch = url.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/rename$/);
+    if (req.method === 'POST' && renameMatch) {
+      const project = findProject.get(renameMatch[1]);
+      if (project) {
+        const form = await readForm(req);
+        if (!form) {
+          sendHtml(res, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(res, 403, projectPage(project, filter, 'Archived project'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(res, 400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        redirect(res, `/projects/${project.id}?filter=${filter}`);
+        return;
+      }
     }
     const archiveMatch = url.pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/(archive|restore)$/);
     if (req.method === 'POST' && archiveMatch) {
