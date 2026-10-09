@@ -36,12 +36,12 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-003");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    project = ROOT / "projects/workboard/revisions/v002"
+    project = ROOT / "projects/workboard/revisions/v003"
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
     profiles_text = (ROOT / "docs/builder-instructions.md").read_text()
@@ -88,16 +88,16 @@ def prepare():
         (path / "packet.md").write_text(packet)
         tasks.append({"task_id":task_id,"stage":stage,"packet_sha256":digest_bytes(packet.encode()),
                       "suite_hash":digest_json(file_hashes(frozen / "project/acceptance"))})
-    ollama = json.loads(checked(["curl", "-fsS", "http://127.0.0.1:11434/api/tags"]))
-    selected = next(m for m in ollama["models"] if m["name"] == "gpt-oss:120b" and m.get("details",{}).get("format") == "gguf")
-    # Keep all resolver candidates too; serving aliases can share a public name.
-    write_json(frozen / "ollama-tags.json", ollama)
+    from .local_provider import provenance
+    local_provider=provenance()
+    selected=local_provider["model"]
+    write_json(frozen / "local-provider.json",local_provider)
     manifest = {
         "schema_version":1, "status":"running", "experiment_id":"instruction-effects",
-        "experiment_revision":"pilot-v003", "run_id":args.run, "purpose":"engineering-pilot",
-        "project_id":"workboard","project_revision":"v002",
-        "lineage":{"source_run":"pilot-002","variation":"Private data-only app transfer, unique attempt inference route, noninterrupting database snapshots and exact public heading semantics"}, "frozen_at":timestamp(),
-        "runtime":{"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
+        "experiment_revision":"pilot-v004", "run_id":args.run, "purpose":"engineering-pilot",
+        "project_id":"workboard","project_revision":"v003",
+        "lineage":{"source_run":"pilot-003","variation":"Isolated exact local model and native pre-parser accounting; explicit built-in modules and browser network isolation"}, "frozen_at":timestamp(),
+        "runtime":{"local_provider":local_provider,"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
                    "image":IMAGE,"image_digest":IMAGE_DIGEST, "sbx_version":"0.47.0",
                    "node":"22.22.1","playwright":"1.64.0","chromium":"156.0.8078.4",
                    "resource_limits":{"cpus":4,"memory":"4g","deployment_memory":"512m"},
@@ -109,7 +109,7 @@ def prepare():
                    "model_mappings":{"gpt-oss:120b":selected,
                        "gpt-6-luna":{"provider":"OpenAI subscription", "reasoning":"medium"},
                        "gpt-6.1-sol":{"provider":"OpenAI subscription", "reasoning":"medium"}},
-                   "warmup":"six smoke and six file-edit checks completed before task dispatch",
+                   "warmup":"Prior six model/harness file-edit checks; isolated local provider verified during preflight; all preflight usage retained",
                    "cache":"native provider caching; no shared source/context cache; report both price references"},
         "provenance":{"pm_commit":git(ROOT,"rev-parse","HEAD"),"starter_commit":starter_commit,
                       "starter_tree":git(seed,"rev-parse","HEAD^{tree}"),

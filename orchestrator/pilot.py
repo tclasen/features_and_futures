@@ -41,7 +41,7 @@ def verify_isolation(probe):
     return (probe["own_workspace"] and not any(probe[x] for x in
         ("master_repo","sibling_repo","host_auth","docker_socket_readable"))
         and all(not probe[x]["readable"] for x in
-            ("github","github_api","raw_source","mirror","generic_internet","direct_ollama"))
+            ("github","github_api","raw_source","mirror","generic_internet","direct_ollama","no_proxy_github","no_proxy_local_provider","no_proxy_direct_ip"))
         and probe["gateway"].get("status")==405)
 
 def archive(run, repo, builder, checkpoint, output):
@@ -59,7 +59,7 @@ def archive(run, repo, builder, checkpoint, output):
     return json.loads((run/"builders"/builder/"checkpoints"/checkpoint/"index.json").read_text())
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-003");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     manifest=json.loads((run/"manifest.json").read_text())
     manifest_hash=digest_json(manifest)
@@ -73,7 +73,14 @@ def main():
     identity={k:manifest[k] for k in ("experiment_id","experiment_revision","project_id","project_revision","run_id")}
     identity["manifest_sha256"]=manifest_hash
     ledger=Ledger(run,identity)
-    gateway=InferenceGateway(ledger,manifest["pricing"])
+    from .local_provider import provenance
+    provider=provenance()
+    frozen_provider=manifest["runtime"]["local_provider"]
+    for key in ("binary_sha256","runner_binary_sha256","instrumentation_sha256","model","settings"):
+        if provider[key]!=frozen_provider[key]:
+            raise InfrastructureError(f"Local provider provenance changed: {key}")
+    gateway=InferenceGateway(ledger,manifest["pricing"],local_endpoint=provider["endpoint"],
+        native_usage_path=provider["native_usage_file"])
     state["status"]="running"; state["last_error"]=None
     write_json(run/"state.json",state)
     ledger.event("runner_started",process_id=os.getpid())
@@ -165,9 +172,11 @@ def main():
                            all(u.get(k)==attrs[k] for k in ("builder_id","task_id","attempt_id"))]
                     if not usage or any(u["counts"] is None for u in usage):
                         raise RuntimeError(f"{bid} {attempt_id}: incomplete native accounting; preserve and diagnose before retrying")
-                    if any(u["status"]!=200 for u in usage):
+                    if any(u["status"]!=200 and u.get("outcome")!="builder-invalid-tool-call" for u in usage):
                         raise RuntimeError(f"{bid} {attempt_id}: provider failure; preserve and diagnose")
-                    diagnostics=[]
+                    diagnostics=[{"contract":"Generated tool arguments must be valid for the assigned harness",
+                        "observed_parser_error":u["tool_parser_error"]} for u in usage
+                        if u.get("outcome")=="builder-invalid-tool-call"]
                     if result.returncode:
                         diagnostics.append({"contract":"Harness exited unsuccessfully",
                                             "exit_code":result.returncode})

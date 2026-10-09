@@ -14,9 +14,11 @@ from .evidence import append_json, canonical, digest_bytes, native_counts, price
 
 
 class InferenceGateway:
-    def __init__(self, ledger, prices, port=0):
+    def __init__(self, ledger, prices, port=0, local_endpoint="http://127.0.0.1:11434", native_usage_path=None):
         self.ledger = ledger
         self.prices = prices
+        self.local_endpoint = local_endpoint
+        self.native_usage_path = Path(native_usage_path) if native_usage_path else None
         self.active = None
         self.lock = threading.Lock()
         self.idle = threading.Condition()
@@ -147,7 +149,8 @@ class InferenceGateway:
         else:
             route = "/v1/chat/completions" if handler.path.endswith(
                 "/chat/completions") else "/v1/responses"
-            url = "http://127.0.0.1:11434" + route
+            url = self.local_endpoint + route
+            headers["X-FF-Request-ID"] = request_id
         usage = None
         response_id = None
         actual_model = None
@@ -222,6 +225,38 @@ class InferenceGateway:
         finally:
             response_file = raw_dir / f"{request_id}.response.raw"
             response_file.write_bytes(raw)
+            native_observations = []
+            parser_error = None
+            usage_source = "compatible-api-terminal-counters"
+            api_usage = usage
+            if lease["provider"] == "ollama" and self.native_usage_path and self.native_usage_path.exists():
+                for line in self.native_usage_path.read_text().splitlines():
+                    try:
+                        observed = json.loads(line)
+                    except ValueError:
+                        continue
+                    if observed.get("request_id") == request_id:
+                        native_observations.append(observed)
+                completed = [e for e in native_observations if e["kind"] == "native_generation_completed"]
+                errors = [e for e in native_observations if e["kind"] == "tool_parser_error"]
+                if len(completed) == 1:
+                    native = completed[0]["usage"]
+                    if usage:
+                        a, b = native_counts(usage), native_counts(native)
+                        if any(a[k] != b[k] for k in ("input_tokens", "cached_input_tokens", "output_tokens")):
+                            outcome += ":native-counter-mismatch"
+                            usage = None
+                        else:
+                            usage_source = "compatible-api-verified-against-native-runner"
+                    else:
+                        usage = native
+                        usage_source = "native-runner-before-compatible-api-tool-parsing"
+                    if errors:
+                        parser_error = errors[-1]["error"]
+                        outcome = "builder-invalid-tool-call"
+                else:
+                    outcome += ":missing-or-duplicate-native-observation"
+                (raw_dir / f"{request_id}.native-usage.json").write_text(canonical(native_observations)+"\n")
             try:
                 counts = native_counts(usage)
                 pricing = price_counts(counts, self.prices[lease["model"]]["pricing"])
@@ -234,6 +269,9 @@ class InferenceGateway:
                 "actual_model": actual_model, "started_monotonic_ns": start["monotonic_ns"],
                 "ended_monotonic_ns": time.monotonic_ns(), "clock_id": self.ledger.clock_id,
                 "status": status, "outcome": outcome, "usage": usage,
+                "api_usage": api_usage, "usage_source": usage_source,
+                "tool_parser_error": parser_error,
+                "native_observations_sha256": digest_bytes(canonical(native_observations).encode()) if native_observations else None,
                 "counts": counts, "cost": pricing, "counting_method": "native-provider-counters",
                 "request_sha256": digest_bytes(original),
                 "response_sha256": digest_bytes(bytes(raw)),

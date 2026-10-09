@@ -145,6 +145,17 @@ for label,url in [
         result[label]={"status":error.code,"readable":False}
     except Exception as error:
         result[label]={"error":type(error).__name__,"readable":False}
+for label,url in [
+    ("no_proxy_github","https://github.com/tclasen/features_and_futures"),
+    ("no_proxy_local_provider","http://host.docker.internal:11435/api/tags"),
+    ("no_proxy_direct_ip","https://1.1.1.1")]:
+    try:
+        response=urllib.request.build_opener(urllib.request.ProxyHandler({})).open(url,timeout=5)
+        result[label]={"status":response.status,"readable":True}
+    except urllib.error.HTTPError as error:
+        result[label]={"status":error.code,"readable":False}
+    except Exception as error:
+        result[label]={"error":type(error).__name__,"readable":False}
 print(json.dumps(result))
 """.replace("WORKSPACE", repr(str(workspace))).replace(
         "SIBLING", repr(str(sibling))).replace("PORT", str(gateway_port))

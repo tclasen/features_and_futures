@@ -2,14 +2,15 @@
 import argparse
 import json
 import tarfile
+import tempfile
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
-from .evidence import digest_bytes,digest_json,price_counts,read_jsonl
+from .evidence import digest_bytes,digest_json,price_counts,read_jsonl,native_counts
 from .prepare import ROOT,checked,write_json,git
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-003");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     m=json.loads((run/"manifest.json").read_text())
     state=json.loads((run/"state.json").read_text())
@@ -19,9 +20,13 @@ def main():
     counts=Counter(e["kind"] for e in events)
     if len({u["request_id"] for u in usage})!=len(usage): problems.append("duplicate inference requests")
     costs={}
+    instructions=json.loads((run/"definitions/instructions.json").read_text())
+    delivered=set()
+    configurations={b["builder_id"]:b for b in m["runtime"]["builder_configurations"]}
     for u in usage:
         if u["counts"] is None:
             problems.append("missing usage: "+u["request_id"]);continue
+        if native_counts(u["usage"])!=u["counts"]: problems.append("native usage normalization mismatch: "+u["request_id"])
         model=m["pricing"][u["model"]]
         if price_counts(u["counts"],model["pricing"])!=u["cost"]: problems.append("cost mismatch: "+u["request_id"])
         if u["pricing_snapshot_sha256"]!=model["snapshot_sha256"]:problems.append("price snapshot mismatch")
@@ -29,6 +34,28 @@ def main():
         for suffix,field in (("request.json","request_sha256"),("response.raw","response_sha256")):
             if digest_bytes((raw/(u["request_id"]+"."+suffix)).read_bytes())!=u[field]:
                 problems.append("raw inference checksum mismatch: "+u["request_id"])
+        if u["model"]=="gpt-oss:120b" and "local_provider" in m["runtime"]:
+            nativefile=raw/(u["request_id"]+".native-usage.json")
+            observations=json.loads(nativefile.read_text())
+            if digest_json(observations)!=u["native_observations_sha256"]:
+                problems.append("native observation checksum mismatch: "+u["request_id"])
+            completed=[o for o in observations if o["kind"]=="native_generation_completed"]
+            if len(completed)!=1 or any(native_counts(completed[0]["usage"])[k]!=u["counts"][k] for k in ("input_tokens","cached_input_tokens","output_tokens")):
+                problems.append("native observer consistency failure: "+u["request_id"])
+        identity=(u["builder_id"],u["task_id"],u["attempt_id"])
+        if identity not in delivered:
+            payload=json.loads((raw/(u["request_id"]+".request.json")).read_text())
+            def strings(value):
+                if isinstance(value,str): return [value]
+                if isinstance(value,list): return [t for v in value for t in strings(v)]
+                if isinstance(value,dict): return [t for v in value.values() for t in strings(v)]
+                return []
+            text="\n".join(strings(payload))
+            packet=(run/"tasks"/u["task_id"]/"packet.md").read_text()
+            profile=instructions["profiles"][configurations[u["builder_id"]]["profile"]]
+            if packet not in text:problems.append("common packet missing: "+str(identity))
+            if profile and profile not in text:problems.append("assigned profile missing: "+str(identity))
+            delivered.add(identity)
     tasks=[];builder_rows=[]
     for b in m["runtime"]["builder_configurations"]:
         bid=b["builder_id"];rows=[]
@@ -115,6 +142,11 @@ def main():
         for ref in index["github_refs"]:
             if git(ROOT,"rev-parse",ref)!=index["source_commit"] and ref.endswith("/head"):
                 problems.append("checkpoint ref mismatch: "+ref)
+        with tempfile.TemporaryDirectory(prefix="ff-history-verify-") as directory:
+            checked(["git","init","--bare",directory])
+            checked(["git","-C",directory,"fetch",str(indexfile.parent/"history.bundle"),"+refs/*:refs/*"])
+            restored=git(Path(directory),"rev-parse",index["source_commit"]+"^{tree}")
+            if restored!=index["source_tree"]:problems.append("restored tree mismatch: "+str(indexfile))
         archive_count+=1
     complete=(state["status"]=="completed" and not problems and counts["task_accepted"]==54
               and counts["post_deployment_checks_passed"]==54 and counts["deployment_promoted"]==54)
