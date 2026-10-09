@@ -8,7 +8,10 @@ const taskForm = document.querySelector('#create-task');
 const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const taskList = document.querySelector('#tasks');
+const projectFilter = document.querySelector('#project-filter');
 let projectId;
+let archived = false;
+let projectData = [];
 let tasks = [];
 
 function showError(message) {
@@ -33,9 +36,41 @@ function appendProject(project) {
   open.type = 'button';
   open.textContent = 'Open project';
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(name, open);
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completed}/${project.total} completed`;
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    showError('');
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, saved);
+      renderProjects();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      archive.disabled = false;
+    }
+  });
+  row.append(name, summary, open, archive);
   projects.append(row);
 }
+
+function renderProjects() {
+  projects.replaceChildren();
+  for (const project of projectData) {
+    if (project.archived === (projectFilter.value === 'archived')) appendProject(project);
+  }
+}
+
+projectFilter.addEventListener('change', renderProjects);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -50,7 +85,8 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    appendProject(project);
+    projectData.push(project);
+    renderProjects();
     nameInput.value = '';
     nameInput.focus();
   } catch (error) {
@@ -75,8 +111,10 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = archived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
+      if (archived) return;
       checkbox.disabled = true;
       showError('');
       try {
@@ -91,7 +129,7 @@ function renderTasks() {
         checkbox.checked = task.completed;
         showError(error.message);
       } finally {
-        checkbox.disabled = false;
+        checkbox.disabled = archived;
       }
     });
     row.append(title, checkbox);
@@ -102,6 +140,7 @@ function renderTasks() {
 taskFilter.addEventListener('change', renderTasks);
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (archived) return;
   showError('');
   const title = taskTitleInput.value.trim();
   if (!title) return showError('Task title is required');
@@ -120,7 +159,7 @@ taskForm.addEventListener('submit', async (event) => {
   } catch (error) {
     showError(error.message);
   } finally {
-    button.disabled = false;
+    button.disabled = archived;
   }
 });
 
@@ -133,12 +172,15 @@ async function loadPage() {
       document.querySelector('#project-title').textContent = project.name;
       document.title = `${project.name} — Workboard`;
       projectId = project.id;
+      archived = Boolean(project.archived);
+      document.querySelector('#archived-notice').hidden = !archived;
+      taskForm.querySelector('button').disabled = archived;
       tasks = await request(`/api/projects/${projectId}/tasks`);
       renderTasks();
     } else {
       listView.hidden = false;
-      const data = await request('/api/projects');
-      data.forEach(appendProject);
+      projectData = await request('/api/projects');
+      renderProjects();
     }
   } catch (error) {
     showError(error.message);

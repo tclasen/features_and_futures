@@ -105,3 +105,88 @@ test('project task UI validates, filters, updates completion and rolls back erro
   await element('#task-filter').trigger('change');
   assert.deepEqual(titles(), ['<b>Open task</b>', 'Done task', 'New task']);
 });
+
+async function loadUI(pathname, fetch) {
+  const elements = new Map();
+  const element = (selector) => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  element('#project-filter').value = 'active';
+  element('#task-filter').value = 'all';
+  const window = { location: { pathname } };
+  runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
+    document: { querySelector: element, createElement: () => new Element() }, window, fetch,
+  });
+  await settle();
+  return { element, window };
+}
+
+test('project list filters, summaries, archive, restore and navigation', async () => {
+  const data = [
+    { id: 1, name: 'First', archived: false, completed: 1, total: 2 },
+    { id: 2, name: 'Second', archived: false, completed: 0, total: 0 },
+  ];
+  let fail = false;
+  const { element, window } = await loadUI('/', async (path, options) => {
+    if (fail) return { ok: false, json: async () => ({ error: 'Save failed' }) };
+    let result = data;
+    if (options?.method === 'PATCH') {
+      result = data.find((project) => path.endsWith(`/${project.id}`));
+      result.archived = JSON.parse(options.body).archived;
+    }
+    return { ok: true, json: async () => structuredClone(result) };
+  });
+  const rows = () => element('#projects').children;
+  assert.equal(rows().length, 2);
+  assert.equal(rows()[0].dataset.testid, 'project-row');
+  assert.equal(rows()[0].children[1].dataset.testid, 'project-summary');
+  assert.equal(rows()[0].children[1].textContent, '1/2 completed');
+  assert.equal(rows()[1].children[1].textContent, '0/0 completed');
+  fail = true;
+  await rows()[0].children[3].trigger('click');
+  assert.equal(rows().length, 2);
+  assert.equal(element('#error').textContent, 'Save failed');
+  fail = false;
+  await rows()[0].children[3].trigger('click');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[0].textContent, 'Second');
+  element('#project-filter').value = 'archived';
+  await element('#project-filter').trigger('change');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[3].textContent, 'Restore project');
+  await rows()[0].children[2].trigger('click');
+  assert.equal(window.location.href, '/projects/1');
+  await rows()[0].children[3].trigger('click');
+  assert.equal(rows().length, 0);
+  element('#project-filter').value = 'active';
+  await element('#project-filter').trigger('change');
+  assert.equal(rows().length, 2);
+  assert.equal(rows()[0].children[0].textContent, 'First');
+  assert.equal(rows()[0].children[1].textContent, '1/2 completed');
+});
+
+test('archived project is visibly read-only and task filtering remains usable', async () => {
+  let writes = 0;
+  const { element } = await loadUI('/projects/1', async (path, options) => {
+    if (options) writes++;
+    const data = path.endsWith('/tasks') ? [
+      { id: 1, title: 'Open', completed: false },
+      { id: 2, title: 'Done', completed: true },
+    ] : { id: 1, name: 'Archived', archived: true };
+    return { ok: true, json: async () => data };
+  });
+  assert.equal(element('#archived-notice').hidden, false);
+  assert.equal(element('#create-task').querySelector('button').disabled, true);
+  assert.equal(element('#tasks').children.length, 2);
+  for (const row of element('#tasks').children) assert.equal(row.children[1].disabled, true);
+  element('#task-title').value = 'Blocked';
+  await element('#create-task').trigger('submit');
+  await element('#tasks').children[0].children[1].trigger('change');
+  assert.equal(writes, 0);
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').trigger('change');
+  assert.equal(element('#tasks').children.length, 1);
+  assert.equal(element('#tasks').children[0].children[0].textContent, 'Done');
+  assert.equal(element('#tasks').children[0].children[1].disabled, true);
+});

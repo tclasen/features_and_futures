@@ -127,6 +127,37 @@ test('launch contract, validation, creation order and process-restart persistenc
     server = undefined;
     server = await launch(path);
     assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
+
+    const projectRoute = `/api/projects/${first.id}`;
+    let summary = await (await get(projectRoute)).json();
+    assert.equal(summary.total, 2);
+    assert.equal(summary.completed, 0);
+    assert.equal(summary.archived, false);
+    await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { completed: true });
+    firstTask.completed = true;
+    assert.equal((await send(projectRoute, 'PATCH', { archived: 'true' })).status, 400);
+    summary = await (await send(projectRoute, 'PATCH', { archived: true })).json();
+    assert.equal(summary.archived, true);
+    assert.equal(summary.completed, 1);
+    assert.equal(summary.total, 2);
+    assert.equal((await send(taskRoute, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
+    await server.stop();
+    server = undefined;
+    server = await launch(path);
+    assert.deepEqual(await (await get(projectRoute)).json(), summary);
+    assert.deepEqual((await (await get('/api/projects')).json()).find((p) => p.id === first.id), summary);
+    summary = await (await send(projectRoute, 'PATCH', { archived: false })).json();
+    assert.equal(summary.archived, false);
+    assert.equal(summary.completed, 1);
+    assert.deepEqual(await (await get(taskRoute)).json(), [firstTask, secondTask]);
+    await server.stop();
+    server = undefined;
+    server = await launch(path);
+    assert.deepEqual(await (await get(projectRoute)).json(), summary);
+    assert.equal((await send(`${taskRoute}/${firstTask.id}`, 'PATCH', { completed: false })).status, 200);
+    assert.equal((await (await get(projectRoute)).json()).completed, 0);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
