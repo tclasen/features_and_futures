@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17212b; background: #f5f7fa; }
+    body { max-width: 760px; margin: 48px auto; padding: 0 20px; }
+    h1 { margin: 0 0 24px; }
+    form, .project-row { display: flex; gap: 12px; align-items: center; }
+    form { margin-bottom: 24px; }
+    input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #aab5c0; border-radius: 6px; font: inherit; }
+    button { padding: 10px 14px; border: 0; border-radius: 6px; background: #175cd3; color: white; font: inherit; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #84adff; outline-offset: 2px; }
+    .project-row { justify-content: space-between; padding: 14px; margin: 10px 0; border: 1px solid #d7dee6; border-radius: 8px; background: white; }
+    .error { color: #b42318; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      if (match) {
+        const projects = await fetch('/api/projects').then((response) => response.json());
+        const project = projects.find((item) => String(item.id) === match[1]);
+        if (!project) { app.innerHTML = '<h1>Project not found</h1><button id="back">Projects</button>'; }
+        else app.innerHTML = `<button id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+        document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+        return;
+      }
+      app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form><p class="error" role="alert" aria-live="polite"></p><section id="projects" aria-label="Projects"></section>';
+      const list = document.querySelector('#projects');
+      async function loadProjects() {
+        const projects = await fetch('/api/projects').then((response) => response.json());
+        list.innerHTML = projects.map((project) => `<article class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-project-id="${project.id}">Open project</button></article>`).join('');
+        list.querySelectorAll('button').forEach((button) => button.addEventListener('click', () => { location.href = `/projects/${button.dataset.projectId}`; }));
+      }
+      await loadProjects();
+      document.querySelector('#create-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const error = document.querySelector('.error');
+        const name = document.querySelector('#project-name').value.trim();
+        error.textContent = '';
+        if (!name) { error.textContent = 'Project name is required'; return; }
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!response.ok) { error.textContent = 'Project name is required'; return; }
+        document.querySelector('#project-name').value = '';
+        await loadProjects();
+      });
+    }
+    render();
+  </script>
+</body>
+</html>
