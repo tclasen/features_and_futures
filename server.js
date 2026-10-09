@@ -1,16 +1,17 @@
 import http from 'node:http';
-import { promises as fs } from 'node:fs';
+import { URL } from 'node:url';
 import path from 'node:path';
-import url from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import sqlite from 'node:sqlite';
 
-const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'workboard.db');
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'workboard.db');
 
-// Initialize DB and ensure table exists
-// Synchronous SQLite database using the experimental built‑in API.
+// Initialize SQLite database using the experimental synchronous API.
+const { DatabaseSync } = sqlite;
 const db = new DatabaseSync(DB_PATH);
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
@@ -18,33 +19,19 @@ db.exec(`
     name TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
-function jsonResponse(res, status, payload) {
-  const data = JSON.stringify(payload);
-  res.writeHead(status, {
-    'Content-Type': 'application/json',
-    'Content-Length': Buffer.byteLength(data),
-  });
-  res.end(data);
-}
+const PUBLIC_DIR = path.join(process.cwd(), 'public');
 
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-async function serveStatic(req, res) {
-  const urlObj = new URL(req.url, `http://${req.headers.host}`);
-  let pathname = urlObj.pathname;
-  // SPA root
-  if (pathname === '/') pathname = '/index.html';
-  // Project detail page
-  if (/^\/projects\/\d+$/.test(pathname)) pathname = '/project.html';
-  const filePath = path.join(__dirname, 'public', pathname);
+// Helper to serve static files
+async function serveStatic(filePath, res) {
   try {
     const data = await fs.readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
@@ -52,65 +39,146 @@ async function serveStatic(req, res) {
       '.html': 'text/html',
       '.js': 'application/javascript',
       '.css': 'text/css',
+      '.json': 'application/json',
     }[ext] || 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': mime });
     res.end(data);
-  } catch (_) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
+  } catch (e) {
+    res.writeHead(404);
     res.end('Not found');
   }
 }
 
-async function handler(req, res) {
-  const { method } = req;
-  const urlObj = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = urlObj.pathname;
-
-  if (pathname === '/health' && method === 'GET') {
-    return jsonResponse(res, 200, { status: 'ok' });
+// Simple JSON body parser
+async function parseJson(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
   }
-
-  if (pathname.startsWith('/api/')) {
-    // db is already available synchronously
-
-    // List projects
-    if (pathname === '/api/projects' && method === 'GET') {
-      const rows = db.prepare('SELECT id, name FROM projects ORDER BY id ASC').all();
-      return jsonResponse(res, 200, rows);
-    }
-
-    // Create project
-    if (pathname === '/api/projects' && method === 'POST') {
-      const body = await readBody(req);
-      let payload;
-      try { payload = JSON.parse(body); } catch { return jsonResponse(res, 400, { error: 'Invalid JSON' }); }
-      const name = (payload.name || '').trim();
-      if (!name) {
-        return jsonResponse(res, 400, { error: 'Project name is required' });
-      }
-      const stmt = db.prepare('INSERT INTO projects (name) VALUES (?)');
-      const info = stmt.run(name);
-      const newProject = { id: info.lastInsertRowid, name };
-      return jsonResponse(res, 201, newProject);
-    }
-
-    // Get single project
-    const match = pathname.match(/^\/api\/projects\/(\d+)$/);
-    if (match && method === 'GET') {
-      const id = Number(match[1]);
-      const row = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
-      if (!row) return jsonResponse(res, 404, { error: 'Not found' });
-      return jsonResponse(res, 200, row);
-    }
-
-    return jsonResponse(res, 404, { error: 'Not found' });
-  }
-
-  // Static assets
-  return serveStatic(req, res);
+  const raw = Buffer.concat(chunks).toString();
+  return raw ? JSON.parse(raw) : {};
 }
 
-const server = http.createServer(handler);
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
+
+  // Health endpoint
+  if (pathname === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  // API routes under /api/
+  if (pathname.startsWith('/api/')) {
+    // Enable CORS for local testing
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // /api/projects
+    if (pathname === '/api/projects') {
+        if (req.method === 'GET') {
+        const rows = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(rows));
+        return;
+      }
+      if (req.method === 'POST') {
+        const { name } = await parseJson(req);
+        const trimmed = (name || '').trim();
+        if (!trimmed) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Project name is required' }));
+          return;
+        }
+        const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(trimmed);
+        const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(result.lastInsertRowid);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(project));
+        return;
+      }
+    }
+
+    // /api/projects/:id/tasks and /api/projects/:id
+    const projectIdMatch = pathname.match(/^\/api\/projects\/(\d+)(?:\/tasks)?$/);
+    if (projectIdMatch) {
+      const projectId = Number(projectIdMatch[1]);
+      if (pathname.endsWith('/tasks')) {
+        if (req.method === 'GET') {
+          const stmt = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+          const tasks = stmt.all(projectId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(tasks));
+          return;
+        }
+        if (req.method === 'POST') {
+          const { title } = await parseJson(req);
+          const trimmed = (title || '').trim();
+          if (!trimmed) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Task title is required' }));
+            return;
+          }
+          db.prepare('INSERT INTO tasks (project_id, title, completed) VALUES (?,?,0)')
+            .run(projectId, trimmed);
+          const tasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id')
+            .all(projectId);
+          res.writeHead(201, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(tasks));
+          return;
+        }
+      } else {
+        // GET single project (used for heading)
+        if (req.method === 'GET') {
+          const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(projectId);
+          if (!project) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Project not found' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(project));
+          return;
+        }
+      }
+    }
+
+    // PATCH task completion
+    const taskPatchMatch = pathname.match(/^\/api\/tasks\/(\d+)$/);
+    if (taskPatchMatch && req.method === 'PATCH') {
+      const taskId = Number(taskPatchMatch[1]);
+      const { completed } = await parseJson(req);
+      const completedInt = completed ? 1 : 0;
+      db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completedInt, taskId);
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // Unknown API route
+    res.writeHead(404);
+    res.end('Not found');
+    return;
+  }
+
+  // Serve static files. For any non-API path, fallback to index.html (client‑side routing)
+  if (pathname === '/' || pathname.startsWith('/projects')) {
+    await serveStatic(path.join(PUBLIC_DIR, 'index.html'), res);
+    return;
+  }
+
+  // Attempt to serve the exact file from public
+  const filePath = path.join(PUBLIC_DIR, pathname);
+  await serveStatic(filePath, res);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
