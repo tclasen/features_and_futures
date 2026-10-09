@@ -45,3 +45,11 @@ Documentation and repository-structure work do not start an evaluation. When an 
 Builder dispatch, orchestration, and the recovery actions above are part of an authorized evaluation. The PM may perform a reversion directly or instruct the builder to do it without requesting permission for each action. Preserve and verify the failed-attempt archive before changing the working repository. Using conversational sub-agents as builders is not equivalent to running the specified model/harness combinations in Docker.
 
 Keep PM decisions in version control. Preserve existing evidence and histories; correct records through explicit superseding events rather than rewriting observations. Include what changed, how it was checked, and any measurement limitations in progress reports.
+
+## Evidence readiness
+
+Before changing measurement or stopping behavior, read [the evidence decisions](docs/evidence-analysis.md) and [the pilot runtime](docs/pilot-runtime.md). A completed pilot requires every configuration at the final shared checkpoint, complete native request accounting including failed calls, independently recomputed costs, verified common packet/profile delivery, cumulative upgrade/restart checks and restorable original histories. Report unavailable stability measures honestly.
+
+Freeze the exact local provider/model catalog and any observation-only instrumentation. Do not repair generated tool arguments in the gateway. Preserve native parser failures as measured attempts; distinguish missing counters and transport/resource failures from builder defects. Keep real provider credentials and the native accounting sidecar outside builder sandboxes. Recheck direct network access with proxy settings bypassed.
+
+Never claim that one three-task pilot establishes maintainability effects. Preregister the main experiment's independent replication, practical margins and repeated-look/multiple-comparison rule before its first task. Use uncached native-token reference cost as the primary cost outcome and keep cache-aware estimates separately visible.

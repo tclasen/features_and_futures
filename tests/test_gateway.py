@@ -78,6 +78,49 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual("fixture-snapshot", rows[0]["pricing_snapshot_sha256"])
         self.assertIsNotNone(rows[0]["cost"])
 
+    def test_failed_tool_parse_retains_native_consumption(self):
+        sidecar=Path(self.temp.name)/"native.jsonl"
+        self.gateway.native_usage_path=sidecar
+        def upstream(request, **kwargs):
+            if request.full_url.startswith("http://127.0.0.1:11434"):
+                identity=request.headers["X-ff-request-id"]
+                records=[{"kind":"native_generation_completed","request_id":identity,
+                    "usage":{"input_tokens":31,"output_tokens":7}},
+                    {"kind":"tool_parser_error","request_id":identity,"error":"invalid generated JSON"}]
+                sidecar.write_text("\n".join(json.dumps(r) for r in records)+"\n")
+                raise urllib.error.HTTPError(request.full_url,500,"invalid tool arguments",{},
+                    io.BytesIO(b'{"error":"invalid generated JSON"}'))
+            return self.original_urlopen(request,**kwargs)
+        with patch("orchestrator.gateway.urllib.request.urlopen",side_effect=upstream):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self.call({"model":"fixture-model","input":"hello"})
+            self.assertEqual(500,caught.exception.code)
+            self.gateway.wait_idle()
+        record=read_jsonl(self.ledger.root/"usage.jsonl")[0]
+        self.assertEqual(31,record["counts"]["input_tokens"])
+        self.assertEqual(7,record["counts"]["output_tokens"])
+        self.assertEqual("builder-invalid-tool-call",record["outcome"])
+        self.assertIsNotNone(record["cost"])
+        self.assertIsNotNone(record["native_observations_sha256"])
+
+    def test_native_counter_disagreement_is_missing_evidence(self):
+        sidecar=Path(self.temp.name)/"native.jsonl"
+        self.gateway.native_usage_path=sidecar
+        def upstream(request,**kwargs):
+            if request.full_url.startswith("http://127.0.0.1:11434"):
+                sidecar.write_text(json.dumps({"kind":"native_generation_completed",
+                    "request_id":request.headers["X-ff-request-id"],
+                    "usage":{"input_tokens":99,"output_tokens":2}})+"\n")
+                return Upstream(json.dumps({"usage":{"input_tokens":3,"output_tokens":2}}).encode())
+            return self.original_urlopen(request,**kwargs)
+        with patch("orchestrator.gateway.urllib.request.urlopen",side_effect=upstream):
+            with self.call({"model":"fixture-model","input":"hello"}) as result:result.read()
+            self.gateway.wait_idle()
+        record=read_jsonl(self.ledger.root/"usage.jsonl")[0]
+        self.assertIsNone(record["counts"])
+        self.assertIsNone(record["cost"])
+        self.assertIn("native-counter-mismatch",record["outcome"])
+
     def test_gateway_does_not_expose_arbitrary_host_urls(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.original_urlopen(self.base + "/api/tags", timeout=10)

@@ -70,6 +70,7 @@ def main():
                 end=next((e for e in ev if e["kind"]=="attempt_finished" and e["attempt_id"]==start["attempt_id"]),None)
                 if end and end["clock_id"]==start["clock_id"]:
                     attempts.append({"attempt_id":start["attempt_id"],
+                        "wall_nanoseconds":end["monotonic_ns"]-start["monotonic_ns"],
                         "wall_seconds":(end["monotonic_ns"]-start["monotonic_ns"])/1e9})
                 else:problems.append("unfinished/cross-clock attempt: "+bid+"/"+task_id)
             requests=[u for u in usage if u["builder_id"]==bid and u["task_id"]==task_id]
@@ -77,7 +78,8 @@ def main():
             uncached=sum((Decimal(u["cost"]["uncached_reference_usd"]) for u in requests if u["cost"]),Decimal(0))
             if not accept: problems.append("not accepted: "+bid+"/"+task_id)
             row={"builder_id":bid,"task_id":task_id,"accepted":bool(accept),"attempts":attempts,
-                "builder_execution_seconds":sum(a["wall_seconds"] for a in attempts),
+                "builder_execution_nanoseconds":sum(a["wall_nanoseconds"] for a in attempts),
+                "builder_execution_seconds":sum(a["wall_nanoseconds"] for a in attempts)/1e9,
                 "time_to_acceptance_seconds":(accept["monotonic_ns"]-dispatch["monotonic_ns"])/1e9 if accept and dispatch else None,
                 "time_to_deployment_seconds":(promotion["monotonic_ns"]-dispatch["monotonic_ns"])/1e9 if promotion and dispatch else None,
                 "first_submission_accepted":bool(accept and accept["attempt_id"]=="attempt-001"),
@@ -91,6 +93,14 @@ def main():
                 "accepted_commit":accept["commit"] if accept else None,
                 "accepted_tree":accept["tree"] if accept else None}
             if accept:
+                prior=next((r["accepted_commit"] for r in reversed(rows) if r["accepted"]),m["provenance"]["starter_commit"])
+                changes=git(ROOT,"diff","--no-ext-diff","--no-textconv","--numstat","--no-renames",prior,accept["commit"]).splitlines()
+                parsed=[line.split("\t",2) for line in changes if line]
+                row["change_statistics"]={"files_changed":len(parsed),
+                    "lines_added":sum(int(a) for a,d,name in parsed if a!="-"),
+                    "lines_removed":sum(int(d) for a,d,name in parsed if d!="-"),
+                    "binary_files_changed":sum(a=="-" for a,d,name in parsed),
+                    "scope":"All committed file changes against prior accepted checkpoint; context, not quality."}
                 output=run/"tasks"/task_id/"attempts"/bid/accept["attempt_id"]
                 result=json.loads((output/"result.json").read_text())
                 phases={p["phase"]:p for p in result["acceptance_statistics"]}
@@ -106,7 +116,7 @@ def main():
                     row["production_source_lines"]=sum(
                         len(archive.extractfile(f).read().splitlines()) for f in entries
                         if Path(f.name).suffix in {".js",".mjs",".html",".css"}
-                        and not any(part in {"test","tests","__tests__"} for part in Path(f.name).parts)
+                        and not any(part in {"test","tests","__tests__"} for part in Path(f.name).parts))
             rows.append(row);tasks.append(row)
         ev=[e for e in events if e.get("builder_id")==bid]
         promotions=[e for e in ev if e["kind"]=="deployment_promoted"]
@@ -122,6 +132,7 @@ def main():
         duration=(max(e["monotonic_ns"] for e in post_checks)-min(e["monotonic_ns"] for e in all_dispatch))/1e9 if all_dispatch and post_checks else None
         active=sum(r["builder_execution_seconds"] for r in rows)
         builder_rows.append({**b,"tasks_accepted":sum(r["accepted"] for r in rows),
+            "execution_nanoseconds":sum(r["builder_execution_nanoseconds"] for r in rows),
             "execution_seconds":active,"cache_aware_usd":str(sum((Decimal(r["cache_aware_usd"]) for r in rows),Decimal(0))),
             "uncached_reference_usd":str(sum((Decimal(r["uncached_reference_usd"]) for r in rows),Decimal(0))),
             "first_submission_acceptance":sum(r["first_submission_accepted"] for r in rows)/3,
@@ -157,11 +168,13 @@ def main():
         "event_counts":dict(counts),"requests":len(usage),
         "native_count_coverage":sum(u["counts"] is not None for u in usage)/len(usage) if usage else None,
         "archive_checkpoints":archive_count,"problems":problems,"builders":builder_rows,"tasks":tasks,
-        "limitations":["One trajectory and three tasks per configuration do not establish instruction effects.",
+        "limitations":["Strict clean-working-tree validation also rejects untracked runtime artifacts; clarify this operational contract before the main run.",
+            "One trajectory and three tasks per configuration do not establish instruction effects.",
             "Subscription models, host contention and native caches are not experimentally controlled.",
             "Native provider counters are observed; hidden/provider-added tokens cannot be independently reconstructed.",
             "PM conversation usage and invoice cost are unavailable; costs are frozen OpenRouter reference estimates.",
             "Five-second health checks supply narrow stability evidence; no recovery sample when no incidents.",
+            "Attempt wall time includes a small PM observer/gateway drain overhead after harness return.",
             "Main-run sequential statistical stopping and independent replication still require preregistration."]}
     version=run/"reports"/("report-"+digest_json(report)[:16]+".json")
     write_json(version,report)
