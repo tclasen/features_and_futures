@@ -14,6 +14,8 @@ The project list initially shows Active projects. Each row includes its complete
 
 Active project pages also let you rename a project. Names are trimmed and required; renaming keeps the same URL, creation order, tasks, and summary. Archived projects cannot be renamed until restored.
 
+Each task row lets you rename its title. Titles are trimmed and required; renaming preserves ownership, creation order, completion, filter membership, and project summaries. Archived projects disable task rename fields and buttons until restored.
+
 Verify:
 
 ```sh

@@ -37,6 +37,7 @@ const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 
 function taskData(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -130,6 +131,12 @@ const server = http.createServer(async (request, response) => {
       if (taskId && request.method === 'PATCH') {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJson(request);
+        if (input && Object.hasOwn(input, 'title')) {
+          const title = typeof input.title === 'string' ? input.title.trim() : '';
+          if (!title) return json(response, 400, { error: 'Task title is required' });
+          renameTask.run(title, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(projectId, taskId)));
+        }
         if (typeof input?.completed !== 'boolean') {
           return json(response, 400, { error: 'Completion must be a boolean' });
         }
