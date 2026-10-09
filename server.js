@@ -9,8 +9,10 @@ mkdirSync(dirname(databasePath), { recursive: true });
 const db = new DatabaseSync(databasePath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -18,8 +20,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0
 )`);
 
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  FROM projects p WHERE p.archived = ? ORDER BY p.id ASC`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -42,22 +48,26 @@ if(path.startsWith('/projects/')){
   const back=document.createElement('button'); back.id='back'; back.textContent='Projects'; back.addEventListener('click',()=>location.href='/'); app.append(back);
   const heading=document.createElement('h1'); heading.textContent=project?.name ?? 'Project not found'; app.append(heading);
   if(project){
+    if(project.archived){const notice=document.createElement('p');notice.textContent='Archived project';app.append(notice)}
     const form=document.createElement('form'); form.id='task-form';
     const field=document.createElement('div'); const label=document.createElement('label'); label.htmlFor='task-title'; label.textContent='Task title';
     const input=document.createElement('input'); input.id='task-title'; input.type='text'; field.append(label,input);
     const create=document.createElement('button'); create.type='submit'; create.textContent='Create task'; form.append(field,create); app.append(form);
+    if(project.archived){input.disabled=true;create.disabled=true}
     const message=document.createElement('p'); message.className='alert'; message.setAttribute('role','alert'); message.hidden=true; app.append(message);
     const filterWrap=document.createElement('div'); const filterLabel=document.createElement('label'); filterLabel.htmlFor='task-filter'; filterLabel.textContent='Task filter';
     const filter=document.createElement('select'); filter.id='task-filter'; for(const value of ['All','Open','Completed']){const option=document.createElement('option');option.textContent=value;option.value=value;filter.append(option)} filterWrap.append(filterLabel,filter); app.append(filterWrap);
     const tasks=document.createElement('section'); tasks.setAttribute('aria-label','Tasks'); app.append(tasks);
-    async function refresh(){const response=await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks');const rows=await response.json();tasks.replaceChildren();for(const task of rows){if(filter.value==='Open'&&task.completed||filter.value==='Completed'&&!task.completed)continue;const row=document.createElement('div');row.className='project-row';row.dataset.testid='task-row';const title=document.createElement('span');title.textContent=task.title;const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=!!task.completed;checkbox.setAttribute('aria-label','Complete '+task.title);checkbox.addEventListener('change',async()=>{await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:checkbox.checked})});await refresh()});row.append(title,checkbox);tasks.append(row)}}
+    async function refresh(){const response=await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks');const rows=await response.json();tasks.replaceChildren();for(const task of rows){if(filter.value==='Open'&&task.completed||filter.value==='Completed'&&!task.completed)continue;const row=document.createElement('div');row.className='project-row';row.dataset.testid='task-row';const title=document.createElement('span');title.textContent=task.title;const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=!!task.completed;checkbox.disabled=!!project.archived;checkbox.setAttribute('aria-label','Complete '+task.title);checkbox.addEventListener('change',async()=>{await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:checkbox.checked})});await refresh()});row.append(title,checkbox);tasks.append(row)}}
     filter.addEventListener('change',refresh);
     form.addEventListener('submit',async event=>{event.preventDefault();const title=input.value.trim();if(!title){message.textContent='Task title is required';message.hidden=false;return}const response=await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title})});if(response.ok){input.value='';message.hidden=true;message.textContent='';await refresh()}});
     await refresh();
   }
 }else{
   const form=document.querySelector('#create-form'), input=document.querySelector('#project-name'), msg=document.querySelector('#message'), list=document.querySelector('#project-list');
-  async function refresh(){const response=await fetch('/api/projects');const projects=await response.json();list.replaceChildren();for(const project of projects){const row=document.createElement('div');row.className='project-row';row.dataset.testid='project-row';const name=document.createElement('span');name.textContent=project.name;const open=document.createElement('button');open.type='button';open.textContent='Open project';open.addEventListener('click',()=>location.href='/projects/'+project.id);row.append(name,open);list.append(row)}}
+  const filterWrap=document.createElement('div');const filterLabel=document.createElement('label');filterLabel.htmlFor='project-filter';filterLabel.textContent='Project filter';const filter=document.createElement('select');filter.id='project-filter';for(const value of ['Active','Archived']){const option=document.createElement('option');option.value=value;option.textContent=value;filter.append(option)}filterWrap.append(filterLabel,filter);list.before(filterWrap);
+  async function refresh(){const response=await fetch('/api/projects?filter='+filter.value);const projects=await response.json();list.replaceChildren();for(const project of projects){const row=document.createElement('div');row.className='project-row';row.dataset.testid='project-row';const name=document.createElement('span');name.textContent=project.name;const summary=document.createElement('span');summary.dataset.testid='project-summary';summary.textContent=project.completedCount+'/'+project.totalCount+' completed';const controls=document.createElement('div');const open=document.createElement('button');open.type='button';open.textContent='Open project';open.addEventListener('click',()=>location.href='/projects/'+project.id);const archive=document.createElement('button');archive.type='button';archive.textContent=project.archived?'Restore project':'Archive project';archive.addEventListener('click',async()=>{await fetch('/api/projects/'+project.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({archived:!project.archived})});await refresh()});controls.append(open,archive);row.append(name,summary,controls);list.append(row)}}
+  filter.addEventListener('change',refresh);
   form.addEventListener('submit',async event=>{event.preventDefault();const name=input.value.trim();if(!name){msg.textContent='Project name is required';msg.hidden=false;return}const response=await fetch('/api/projects',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});if(response.ok){input.value='';msg.hidden=true;msg.textContent='';await refresh()}});
   refresh();
 }
@@ -74,7 +84,15 @@ const server = http.createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(response, 200, listProjects.all());
+    return sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (request.method === 'PATCH' && archiveMatch) {
+    let body=''; for await (const chunk of request) body += chunk;
+    let archived; try { archived=JSON.parse(body).archived; } catch { return sendJson(response,400,{error:'Invalid request'}); }
+    if(typeof archived!=='boolean') return sendJson(response,400,{error:'Invalid archive state'});
+    const project=getProject.get(Number(archiveMatch[1])); if(!project) return sendJson(response,404,{error:'Project not found'});
+    updateArchive.run(archived?1:0,project.id); return sendJson(response,200,{ok:true});
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
@@ -89,6 +107,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && tasksMatch) {
     const project = getProject.get(Number(tasksMatch[1]));
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived project' });
     let body = '';
     for await (const chunk of request) body += chunk;
     let title;
@@ -106,6 +125,7 @@ const server = http.createServer(async (request, response) => {
     if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
     const task = getTask.get(Number(taskMatch[1]));
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (getProject.get(task.projectId).archived) return sendJson(response, 409, { error: 'Archived project' });
     updateTask.run(completed ? 1 : 0, task.id);
     return sendJson(response, 200, { ok: true });
   }
