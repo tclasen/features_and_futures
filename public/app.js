@@ -5,10 +5,15 @@ function $(selector) {
   return document.querySelector(selector);
 }
 
+// Create an alert element that is discoverable by assistive technologies.
+// Adding `role="alert"` ensures the element is exposed to screen‑readers and
+// provides a reliable selector for acceptance tests – they look for an element
+// with `role="alert"` containing the error text.
 function createAlert(message) {
   const el = document.createElement('div');
   el.className = 'alert';
   el.textContent = message;
+  el.setAttribute('role', 'alert');
   return el;
 }
 
