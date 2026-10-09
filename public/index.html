@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f4f6fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 4rem auto; padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 4px 20px #18243a12; }
+    h1 { margin-top: 0; }
+    form { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; }
+    label { display: grid; gap: .35rem; font-weight: 600; }
+    input, button { font: inherit; padding: .65rem .8rem; border: 1px solid #aeb8ca; border-radius: 6px; }
+    button { cursor: pointer; background: #244cba; color: white; border-color: #244cba; }
+    button:hover { background: #173b9c; }
+    .project-list { list-style: none; padding: 0; display: grid; gap: .7rem; }
+    [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid #dce1eb; border-radius: 8px; padding: .85rem 1rem; }
+    [role="alert"] { color: #a11b29; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <main id="app"><h1>Workboard</h1></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const api = async (path, options) => {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
+    const button = (label, action) => {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.textContent = label;
+      element.addEventListener('click', action);
+      return element;
+    };
+    async function showProjects() {
+      history.pushState({}, '', '/');
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Workboard';
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.htmlFor = 'project-name';
+      label.textContent = 'Project name';
+      const input = document.createElement('input');
+      input.id = 'project-name';
+      input.name = 'name';
+      input.type = 'text';
+      label.append(input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create project';
+      form.append(label, submit);
+      const alert = document.createElement('p');
+      alert.setAttribute('role', 'alert');
+      const list = document.createElement('ul');
+      list.className = 'project-list';
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        alert.textContent = '';
+        try {
+          await api('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+          await renderRows(list);
+          input.value = '';
+        } catch (error) {
+          alert.textContent = error.message === 'Project name is required' ? error.message : 'Unable to create project';
+        }
+      });
+      app.append(heading, form, alert, list);
+      await renderRows(list);
+    }
+    async function renderRows(list) {
+      const projects = await api('/api/projects');
+      list.replaceChildren();
+      for (const project of projects) {
+        const row = document.createElement('li');
+        row.dataset.testid = 'project-row';
+        const name = document.createElement('span');
+        name.textContent = project.name;
+        row.append(name, button('Open project', () => showProject(project)));
+        list.append(row);
+      }
+    }
+    async function showProject(project) {
+      history.pushState({}, '', `/projects/${project.id}`);
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = project.name;
+      app.append(button('Projects', showProjects), heading);
+    }
+    async function route() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      if (!match) return showProjects();
+      try {
+        await showProject(await api(`/api/projects/${match[1]}`));
+      } catch {
+        await showProjects();
+      }
+    }
+    addEventListener('popstate', route);
+    route();
+  </script>
+</body>
+</html>
