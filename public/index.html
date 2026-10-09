@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17212b; background: #f4f7fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    main { width: min(760px, calc(100% - 40px)); margin: 64px auto; }
+    h1 { margin: 0 0 28px; font-size: 2rem; letter-spacing: -.03em; }
+    .panel { padding: 24px; background: white; border: 1px solid #dce3e9; border-radius: 12px; box-shadow: 0 8px 24px #1a344410; }
+    form { display: flex; gap: 12px; align-items: end; }
+    label { display: block; margin-bottom: 7px; font-weight: 600; }
+    .field { flex: 1; }
+    input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #aebbc6; border-radius: 7px; font: inherit; }
+    button { min-height: 42px; padding: 0 16px; border: 0; border-radius: 7px; background: #1769aa; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+    button:hover { background: #10578f; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #83bdf0; outline-offset: 2px; }
+    .rows { display: grid; gap: 10px; margin-top: 22px; }
+    [data-testid="project-row"] { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 64px; padding: 10px 12px 10px 16px; border: 1px solid #dce3e9; border-radius: 8px; }
+    [data-testid="project-row"] button { background: #e9f3fb; color: #125384; }
+    [data-testid="project-row"] button:hover { background: #d7eaf8; }
+    .error { margin: 14px 0 0; color: #a12626; font-weight: 600; }
+    .back { margin-bottom: 22px; background: #e9f3fb; color: #125384; }
+    .empty { margin: 22px 0 0; color: #536370; }
+    @media (max-width: 520px) { main { margin: 32px auto; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const request = async (path, options) => {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Something went wrong');
+      return data;
+    };
+
+    async function renderList() {
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Workboard';
+      app.append(heading);
+      const panel = document.createElement('section');
+      panel.className = 'panel';
+      const form = document.createElement('form');
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.htmlFor = 'project-name';
+      label.textContent = 'Project name';
+      const input = document.createElement('input');
+      input.id = 'project-name';
+      input.name = 'name';
+      input.type = 'text';
+      input.autocomplete = 'off';
+      field.append(label, input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create project';
+      form.append(field, submit);
+      const feedback = document.createElement('div');
+      feedback.setAttribute('role', 'alert');
+      const rows = document.createElement('div');
+      rows.className = 'rows';
+      panel.append(form, feedback, rows);
+      app.append(panel);
+
+      async function loadProjects() {
+        const projects = await request('/api/projects');
+        rows.replaceChildren();
+        if (!projects.length) {
+          const empty = document.createElement('p');
+          empty.className = 'empty';
+          empty.textContent = 'No projects yet.';
+          rows.append(empty);
+        }
+        for (const project of projects) {
+          const row = document.createElement('div');
+          row.dataset.testid = 'project-row';
+          const name = document.createElement('span');
+          name.textContent = project.name;
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = 'Open project';
+          open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
+          row.append(name, open);
+          rows.append(row);
+        }
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        feedback.className = 'error';
+        feedback.textContent = '';
+        const name = input.value.trim();
+        if (!name) {
+          feedback.textContent = 'Project name is required';
+          input.focus();
+          return;
+        }
+        try {
+          await request('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          input.value = '';
+          await loadProjects();
+          input.focus();
+        } catch (error) { feedback.textContent = error.message; }
+      });
+      await loadProjects();
+    }
+
+    async function renderProject(id) {
+      app.replaceChildren();
+      const project = await request(`/api/projects/${id}`);
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'back';
+      back.textContent = 'Projects';
+      back.addEventListener('click', () => { location.href = '/'; });
+      const heading = document.createElement('h1');
+      heading.textContent = project.name;
+      app.append(back, heading);
+    }
+
+    const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+    if (match) renderProject(match[1]).catch(() => { location.href = '/'; });
+    else renderList().catch((error) => { app.textContent = error.message; });
+  </script>
+</body>
+</html>
