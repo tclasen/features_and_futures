@@ -14,6 +14,10 @@
     button:hover { background: #1946a6; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid #d7dde5; }
     .project-name { overflow-wrap: anywhere; }
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #d7dde5; }
+    .task-row label { overflow-wrap: anywhere; }
+    .task-tools { display: flex; align-items: center; gap: 10px; margin: 24px 0 12px; }
+    select { padding: 9px 10px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; }
     #alert { color: #a32222; margin: 0 0 16px; }
     @media (max-width: 480px) { body { padding: 28px 16px; } form { flex-direction: column; } }
   </style>
@@ -103,7 +107,98 @@
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
-      app.append(back, heading);
+      const form = document.createElement('form');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Task title');
+      const create = document.createElement('button');
+      create.type = 'submit';
+      create.textContent = 'Create task';
+      form.append(input, create);
+      const alert = document.createElement('p');
+      alert.id = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      const tools = document.createElement('div');
+      tools.className = 'task-tools';
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      filterLabel.append(filter);
+      tools.append(filterLabel);
+      const list = document.createElement('section');
+      list.setAttribute('aria-label', 'Tasks');
+      let tasks = await request(`/api/projects/${escapePath(id)}/tasks`);
+
+      function renderTasks() {
+        list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed) continue;
+          if (filter.value === 'Completed' && !task.completed) continue;
+          const row = document.createElement('div');
+          row.className = 'task-row';
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            try {
+              await request(`/api/projects/${escapePath(id)}/tasks/${escapePath(task.id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ completed: checkbox.checked }),
+              });
+              task.completed = checkbox.checked;
+              renderTasks();
+            } catch (error) {
+              checkbox.checked = task.completed;
+              alert.textContent = error.message;
+              alert.hidden = false;
+            }
+          });
+          const title = document.createElement('label');
+          title.textContent = task.title;
+          title.addEventListener('click', () => checkbox.click());
+          row.append(checkbox, title);
+          list.append(row);
+        }
+      }
+
+      filter.addEventListener('change', renderTasks);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          alert.textContent = 'Task title is required';
+          alert.hidden = false;
+          return;
+        }
+        try {
+          const task = await request(`/api/projects/${escapePath(id)}/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+          });
+          tasks.push(task);
+          input.value = '';
+          alert.textContent = '';
+          alert.hidden = true;
+          renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      app.append(back, heading, form, alert, tools, list);
+      renderTasks();
     }
 
     const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
