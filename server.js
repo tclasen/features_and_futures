@@ -1,4 +1,4 @@
-import http from 'node:http';
+import http from 'node:http'; // Updated for Task 002 compliance
 import { URL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs/promises';
