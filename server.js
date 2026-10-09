@@ -68,7 +68,7 @@ async function handleRequest(req, res) {
   // API routes
   if (pathname === '/api/projects') {
     if (req.method === 'GET') {
-      const rows = db.all('SELECT id, name FROM projects ORDER BY id');
+      const rows = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
       jsonResponse(res, rows);
     } else if (req.method === 'POST') {
       let body = '';
@@ -83,7 +83,7 @@ async function handleRequest(req, res) {
           }
           const stmt = db.prepare('INSERT INTO projects (name) VALUES (?)');
           const result = stmt.run(name);
-          const newId = result.lastID;
+          const newId = result.lastInsertRowid;
           jsonResponse(res, { id: newId, name }, 201);
         } catch (e) {
           jsonResponse(res, { error: 'Invalid request' }, 400);
@@ -100,7 +100,7 @@ async function handleRequest(req, res) {
   const projectMatch = pathname.match(/^\/projects\/(\d+)$/);
   if (projectMatch && req.method === 'GET') {
     const id = projectMatch[1];
-    const row = db.get('SELECT id, name FROM projects WHERE id = ?', id);
+    const row = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
     if (!row) {
       res.writeHead(404);
       res.end('Project not found');
