@@ -1,0 +1,30 @@
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+export function openStore(path) {
+  mkdirSync(dirname(path), { recursive: true });
+  const database = new DatabaseSync(path);
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL CHECK(length(trim(name)) > 0)
+    );
+  `);
+  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
+  const find = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
+
+  return {
+    listProjects: () => list.all(),
+    getProject: (id) => find.get(id),
+    createProject(name) {
+      if (typeof name !== 'string' || !name.trim()) {
+        throw new TypeError('Project name is required');
+      }
+      const result = insert.run(name.trim());
+      return find.get(result.lastInsertRowid);
+    },
+    close: () => database.close(),
+  };
+}
