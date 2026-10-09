@@ -104,3 +104,73 @@ test('project validation, creation order, navigation assets, and process restart
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task validation, project ownership, completion changes, and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let running;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    running = await startServer(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${running.baseUrl}${path}`, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    });
+    const first = await (await request('/api/projects', 'POST', { name: 'First' })).json();
+    const second = await (await request('/api/projects', 'POST', { name: 'Second' })).json();
+    const tasksPath = `/api/projects/${first.id}/tasks`;
+    const otherPath = `/api/projects/${second.id}/tasks`;
+    assert.deepEqual(await (await request(tasksPath)).json(), []);
+    for (const title of ['', ' \t\n ', null, 42]) {
+      const response = await request(tasksPath, 'POST', { title });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    const malformed = await fetch(`${running.baseUrl}${tasksPath}`, { method: 'POST', body: '{' });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await (await request(tasksPath)).json(), []);
+    assert.equal((await request('/api/projects/999999/tasks', 'POST', { title: 'Missing' })).status, 404);
+
+    const created = await request(tasksPath, 'POST', { title: '  First task  ' });
+    assert.equal(created.status, 201);
+    const task = await created.json();
+    assert.deepEqual(task, { id: task.id, title: 'First task', completed: false });
+    const later = await (await request(tasksPath, 'POST', { title: '<script>literal task</script>' })).json();
+    const other = await (await request(otherPath, 'POST', { title: 'Other project task' })).json();
+    assert.ok(later.id > task.id);
+    assert.deepEqual(await (await request(tasksPath)).json(), [task, later]);
+    assert.deepEqual(await (await request(otherPath)).json(), [other]);
+
+    for (const completed of ['true', 1, null]) {
+      assert.equal((await request(`${tasksPath}/${task.id}`, 'PATCH', { completed })).status, 400);
+    }
+    assert.equal((await request(`${otherPath}/${task.id}`, 'PATCH', { completed: true })).status, 404);
+    assert.equal((await request(`${tasksPath}/999999`, 'PATCH', { completed: true })).status, 404);
+    const completedResponse = await request(`${tasksPath}/${task.id}`, 'PATCH', { completed: true });
+    assert.equal(completedResponse.status, 200);
+    const completedTask = { ...task, completed: true };
+    assert.deepEqual(await completedResponse.json(), completedTask);
+    assert.deepEqual(await (await request(tasksPath)).json(), [completedTask, later]);
+    assert.deepEqual(await (await request(otherPath)).json(), [other]);
+
+    await running.stop();
+    running = undefined;
+    running = await startServer(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [completedTask, later]);
+    assert.deepEqual(await (await request(otherPath)).json(), [other]);
+    assert.equal((await request(`/projects/${first.id}`)).status, 200);
+    const reopened = await request(`${tasksPath}/${task.id}`, 'PATCH', { completed: false });
+    assert.deepEqual(await reopened.json(), task);
+    const afterRestart = await (await request(tasksPath, 'POST', { title: 'After restart' })).json();
+    assert.ok(afterRestart.id > other.id);
+    await running.stop();
+    running = undefined;
+    running = await startServer(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [task, later, afterRestart]);
+  } finally {
+    if (running) await running.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
