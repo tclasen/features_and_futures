@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { runInNewContext } from 'node:vm';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -181,6 +182,80 @@ test('tasks validate, filter, remain scoped, and persist completion', { timeout:
     await server.stop();
     server = await start(dbPath);
     assert.doesNotMatch(rows(await detail(1))[0], / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive migration, summaries, read-only tasks, and restore persist', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const dbPath = join(directory, 'archive.sqlite');
+  // Seed the previous schema to verify existing data survives the upgrade.
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));
+    INSERT INTO projects (name) VALUES ('Existing'), ('Empty');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Open', 0);
+  `);
+  db.close();
+  let server;
+  try {
+    server = await start(dbPath);
+    const get = path => fetch(`${server.url}${path}`).then(response => response.text());
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const projectRows = html => [...html.matchAll(/data-testid="project-row"[\s\S]*?<\/div>/g)].map(match => match[0]);
+    let html = await get('/');
+    assert.match(html, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(html, /<option selected>Active<\/option><option>Archived<\/option>/);
+    assert.match(projectRows(html)[0], /data-testid="project-summary">1\/2 completed/);
+    assert.match(projectRows(html)[1], /data-testid="project-summary">0\/0 completed/);
+    assert.match(projectRows(html)[0], />Archive project<\/button>/);
+    assert.equal((await post('/projects/1/archive')).status, 303);
+    assert.equal(projectRows(await get('/')).length, 1);
+    html = await get('/?filter=Archived');
+    assert.equal(projectRows(html).length, 1);
+    assert.match(html, /Existing/);
+    assert.match(html, />Open project<\/button>/);
+    assert.match(html, />Restore project<\/button>/);
+    assert.match(html, /1\/2 completed/);
+    const archivedPage = await get('/projects/1');
+    assert.match(archivedPage, /Archived project/);
+    assert.match(archivedPage, /<button type="submit" disabled>Create task/);
+    assert.equal((archivedPage.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+    html = await get('/projects/1?filter=Completed');
+    assert.match(html, /aria-label="Complete Done"/);
+    assert.doesNotMatch(html, /aria-label="Complete Open"/);
+    html = await get('/projects/1?filter=Open');
+    assert.match(html, /aria-label="Complete Open"/);
+    assert.doesNotMatch(html, /aria-label="Complete Done"/);
+    assert.equal((await post('/projects/1/tasks', { title: 'Blocked' })).status, 403);
+    assert.equal((await post('/projects/1/tasks/1', {})).status, 403);
+    assert.equal(await get('/projects/1'), archivedPage);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), archivedPage);
+    assert.match(await get('/?filter=Archived'), /1\/2 completed/);
+    assert.equal((await post('/projects/1/restore')).status, 303);
+    assert.equal(projectRows(await get('/?filter=Archived')).length, 0);
+    html = await get('/projects/1');
+    assert.doesNotMatch(html, /Archived project| disabled/);
+    assert.match(html, /aria-label="Complete Done" checked/);
+    assert.equal((await post('/projects/1/tasks', { title: 'After restore' })).status, 303);
+    assert.match(await get('/'), /1\/3 completed/);
+    await post('/projects/1/tasks/2', { completed: '1' });
+    assert.match(await get('/'), /2\/3 completed/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.match(await get('/'), /2\/3 completed/);
+    assert.match(await get('/projects/1'), /After restore/);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+    assert.equal((await post('/projects/999/restore')).status, 404);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
