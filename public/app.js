@@ -76,6 +76,77 @@ async function renderProject(id) {
   try {
     const project = await request(`/api/projects/${encodeURIComponent(id)}`);
     app.append(element('h1', {}, project.name));
+    const form = element('form', { className: 'create-form' });
+    const label = element('label', { for: 'task-title' }, 'Task title');
+    const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
+    const submit = element('button', { type: 'submit' }, 'Create task');
+    const alert = element('p', { className: 'alert', role: 'alert', hidden: '' });
+    form.append(label, input, submit);
+    const filterLabel = element('label', { for: 'task-filter' }, 'Task filter');
+    const filter = element('select', { id: 'task-filter', name: 'filter' });
+    for (const value of ['All', 'Open', 'Completed']) {
+      filter.append(element('option', { value }, value));
+    }
+    const tasks = element('section', { className: 'tasks', 'aria-label': 'Tasks' });
+    app.append(form, alert, filterLabel, filter, tasks);
+
+    const refreshTasks = async () => {
+      const allTasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+      tasks.replaceChildren();
+      const selected = filter.value;
+      for (const task of allTasks) {
+        if (selected === 'Open' && task.completed) continue;
+        if (selected === 'Completed' && !task.completed) continue;
+        const row = element('article', { 'data-testid': 'task-row', className: 'task-row' });
+        const checkbox = element('input', {
+          type: 'checkbox',
+          'aria-label': `Complete ${task.title}`,
+        });
+        checkbox.checked = Boolean(task.completed);
+        checkbox.addEventListener('change', async () => {
+          checkbox.disabled = true;
+          try {
+            await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked }),
+            });
+            await refreshTasks();
+          } catch (error) {
+            checkbox.checked = !checkbox.checked;
+            alert.textContent = error.message;
+            alert.hidden = false;
+            checkbox.disabled = false;
+          }
+        });
+        row.append(element('span', {}, task.title), checkbox);
+        tasks.append(row);
+      }
+    };
+    filter.addEventListener('change', refreshTasks);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      alert.hidden = true;
+      const title = input.value.trim();
+      if (!title) {
+        alert.textContent = 'Task title is required';
+        alert.hidden = false;
+        return;
+      }
+      try {
+        await request(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        input.value = '';
+        await refreshTasks();
+      } catch (error) {
+        alert.textContent = error.message;
+        alert.hidden = false;
+      }
+    });
+    await refreshTasks();
   } catch {
     app.append(element('h1', {}, 'Project not found'));
   }
