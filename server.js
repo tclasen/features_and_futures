@@ -343,8 +343,8 @@ function shutdown() {
     database.close();
     process.exitCode = 0;
   });
-  // Close idle keep-alive sockets while allowing active requests to finish.
-  server.closeIdleConnections();
+  // Ensure shutdown completes even when clients retain active keep-alive sockets.
+  server.closeAllConnections();
 }
 
 process.once('SIGINT', shutdown);
