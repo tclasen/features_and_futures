@@ -44,11 +44,11 @@ async function render() {
     const response = await fetch('/api/projects/' + match[1]);
     if (!response.ok) { app.innerHTML = '<h1>Project not found</h1><button id="back">Projects</button>'; document.getElementById('back').onclick = () => navigate('/'); return; }
     const project = await response.json();
-    app.innerHTML = '<button id="back">Projects</button><h1>' + escapeHtml(project.name) + '</h1>' + (project.archived ? '<p>Archived project</p>' : '<form id="rename-form"><label for="new-project-name">New project name</label><input id="new-project-name" name="name" type="text" autocomplete="off"><button type="submit">Rename project</button></form><p class="alert" id="rename-error" role="alert" hidden></p>') + '<form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off" ' + (project.archived ? 'disabled' : '') + '><button type="submit" ' + (project.archived ? 'disabled' : '') + '>Create task</button></form><p class="alert" id="task-error" role="alert" hidden></p><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><section id="tasks" aria-label="Tasks"></section>';
+    app.innerHTML = '<button id="back">Projects</button><h1>' + escapeHtml(project.name) + '</h1>' + (project.archived ? '<p>Archived project</p>' : '') + '<form id="rename-form"><label for="new-project-name">New project name</label><input id="new-project-name" name="name" type="text" autocomplete="off" ' + (project.archived ? 'disabled' : '') + '><button type="submit" ' + (project.archived ? 'disabled' : '') + '>Rename project</button></form><p class="alert" id="rename-error" role="alert" hidden></p><form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off" ' + (project.archived ? 'disabled' : '') + '><button type="submit" ' + (project.archived ? 'disabled' : '') + '>Create task</button></form><p class="alert" id="task-error" role="alert" hidden></p><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><section id="tasks" aria-label="Tasks"></section>';
     document.getElementById('back').onclick = () => navigate('/');
+    const renameForm = document.getElementById('rename-form');
+    const renameError = document.getElementById('rename-error');
     if (!project.archived) {
-      const renameForm = document.getElementById('rename-form');
-      const renameError = document.getElementById('rename-error');
       renameForm.onsubmit = async event => {
         event.preventDefault();
         const name = new FormData(renameForm).get('name').trim();
