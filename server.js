@@ -74,11 +74,40 @@ function page(title, content) {
       input.focus();
     }
   });
+  const pendingSaves = new Set();
   document.querySelectorAll('.task input[type="checkbox"]').forEach(input => {
-    input.addEventListener('change', () => input.form.requestSubmit());
+    input.addEventListener('change', () => {
+      const completed = input.checked;
+      const body = new URLSearchParams(new FormData(input.form));
+      body.set('completed', completed ? '1' : '0');
+      input.disabled = true;
+      const save = (async () => {
+        try {
+          const response = await fetch(input.form.action, {
+            method: 'POST', body, headers: { Accept: 'application/json' }, keepalive: true,
+          });
+          if (!response.ok) throw new Error('Completion could not be saved');
+          const filter = document.getElementById('task-filter');
+          if (filter.value !== 'All' && completed !== (filter.value === 'Completed')) {
+            input.closest('.task').remove();
+          }
+          document.getElementById('completion-error').textContent = '';
+        } catch {
+          input.checked = !completed;
+          document.getElementById('completion-error').textContent = 'Task completion could not be saved. Please try again.';
+        } finally {
+          input.disabled = false;
+        }
+      })();
+      pendingSaves.add(save);
+      save.finally(() => pendingSaves.delete(save));
+    });
   });
   const filter = document.getElementById('task-filter');
-  if (filter) filter.addEventListener('change', () => filter.form.requestSubmit());
+  if (filter) filter.addEventListener('change', async () => {
+    await Promise.all(pendingSaves);
+    filter.form.requestSubmit();
+  });
 </script>
 </body></html>`;
 }
@@ -123,6 +152,7 @@ function projectPage(project, filter = 'All', error = '') {
         `<option${value === filter ? ' selected' : ''}>${value}</option>`).join('')}</select>
       <noscript><button type="submit">Apply filter</button></noscript>
     </form>
+    <p id="completion-error" role="alert"></p>
     <div class="tasks">${tasks.map(task => `<div class="task" data-testid="task-row">
       <form method="post" action="/projects/${project.id}/tasks/${task.id}">
         <label><input type="checkbox" name="completed" value="1" aria-label="${escapeHtml('Complete ' + task.title)}"${task.completed ? ' checked' : ''}><span>${escapeHtml(task.title)}</span></label>
@@ -193,6 +223,11 @@ const server = http.createServer(async (request, response) => {
         const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId);
         if (!result.changes) {
           sendHtml(response, 404, page('Task not found', '<h1>Task not found</h1>'));
+          return;
+        }
+        if (request.headers.accept === 'application/json') {
+          response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          response.end(JSON.stringify({ completed: form.get('completed') === '1' }));
           return;
         }
       } else {

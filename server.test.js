@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { runInNewContext } from 'node:vm';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -144,6 +145,93 @@ test('tasks validate, filter, stay within their project, and persist completion'
     await server.stop();
     server = await start(dbPath);
     assert.doesNotMatch(rows(await html('/projects/1'))[0], / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('browser completion saves without navigation and filtering waits for unchecked state to persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-browser-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'tasks.sqlite');
+    server = await start(dbPath);
+    const post = (path, values) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values),
+    });
+    await post('/projects', { name: 'Completion regression' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const html = await (await fetch(`${server.base}/projects/1`)).text();
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const handlers = {};
+    let submissions = 0;
+    let removed = false;
+    const input = {
+      checked: true, disabled: false,
+      form: { action: `${server.base}/projects/1/tasks/1` },
+      addEventListener: (name, handler) => { handlers[name] = handler; },
+      closest: () => ({ remove: () => { removed = true; } }),
+    };
+    const filter = {
+      value: 'All',
+      form: { requestSubmit: () => { submissions++; } },
+      addEventListener: (name, handler) => { handlers.filter = handler; },
+    };
+    const error = { textContent: '' };
+    let release;
+    let finish;
+    const held = new Promise(resolve => { release = resolve; });
+    const finished = new Promise(resolve => { finish = resolve; });
+    let fail = false;
+    runInNewContext(script, {
+      document: {
+        querySelector: () => null,
+        querySelectorAll: () => [input],
+        getElementById: id => id === 'task-filter' ? filter : error,
+      },
+      URLSearchParams,
+      FormData: class { constructor() { return new URLSearchParams({ filter: 'All' }); } },
+      fetch: async (url, options) => {
+        assert.equal(options.keepalive, true);
+        assert.equal(options.body.get('completed'), input.checked ? '1' : '0');
+        await held;
+        if (fail) throw new Error('Connection failed');
+        const response = await fetch(url, options);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.clone().json(), { completed: input.checked });
+        finish();
+        return response;
+      },
+    });
+    input.checked = false;
+    handlers.change();
+    assert.equal(input.disabled, true);
+    filter.value = 'Open';
+    const filtering = handlers.filter();
+    assert.equal(submissions, 0, 'filter must not navigate during a pending save');
+    release();
+    await finished;
+    await filtering;
+    assert.equal(submissions, 1);
+    assert.equal(input.checked, false);
+    assert.equal(input.disabled, false);
+    assert.equal(removed, false);
+    assert.equal(error.textContent, '');
+    await server.stop();
+    server = await start(dbPath);
+    const reloaded = await (await fetch(`${server.base}/projects/1`)).text();
+    assert.match(reloaded, /aria-label="Complete Done task"/);
+    assert.doesNotMatch(reloaded, /aria-label="Complete Done task" checked/);
+
+    fail = true;
+    input.checked = true;
+    handlers.change();
+    await handlers.filter();
+    assert.equal(input.checked, false, 'failed saves restore the previously saved state');
+    assert.equal(input.disabled, false);
+    assert.match(error.textContent, /could not be saved/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
