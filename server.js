@@ -1,17 +1,18 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import sqlite from 'node:sqlite';
-import sqlite3 from 'node:sqlite3';
+import * as sqlite from 'node:sqlite';
+
+
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const DB_PATH = process.env.DB_PATH || 'workboard.db';
 
 async function initDb() {
-  const db = await sqlite.open({ filename: DB_PATH, driver: sqlite3.Database });
-  await db.run(`CREATE TABLE IF NOT EXISTS projects (
+  const db = new sqlite.DatabaseSync(DB_PATH);
+  db.exec(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
-  )`);
+  );`);
   return db;
 }
 
@@ -83,7 +84,7 @@ async function loadProjects() {
     row.textContent = p.name + ' ';
     const btn = document.createElement('button');
     btn.textContent = 'Open project';
-    btn.onclick = () => { location.href = `/projects/\${p.id}`; };
+    btn.onclick = () => { location.href = '/projects/' + p.id; };
     row.appendChild(btn);
     list.appendChild(row);
   }
@@ -123,7 +124,7 @@ window.onload = loadProjects;
 
     // API: list projects
     if (req.method === 'GET' && pathname === '/projects') {
-      const rows = await db.all('SELECT id, name FROM projects ORDER BY id ASC');
+      const rows = db.all('SELECT id, name FROM projects ORDER BY id ASC');
       return sendJson(res, 200, rows);
     }
 
@@ -137,7 +138,7 @@ window.onload = loadProjects;
           res.writeHead(400, { 'Content-Type': 'text/plain' });
           return res.end('Project name is required');
         }
-        const result = await db.run('INSERT INTO projects (name) VALUES (?)', name);
+        const result = db.run('INSERT INTO projects (name) VALUES (?)', name);
         const project = { id: result.lastID, name };
         return sendJson(res, 201, project);
       } catch (e) {
@@ -150,7 +151,7 @@ window.onload = loadProjects;
     const projectPageMatch = pathname.match(/^\/projects\/(\d+)$/);
     if (req.method === 'GET' && projectPageMatch) {
       const id = Number(projectPageMatch[1]);
-      const row = await db.get('SELECT id, name FROM projects WHERE id = ?', id);
+      const row = db.get('SELECT id, name FROM projects WHERE id = ?', id);
       if (!row) return notFound(res);
       const projectHtml = `<!DOCTYPE html>
 <html lang="en">
