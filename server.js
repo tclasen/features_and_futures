@@ -1,8 +1,12 @@
 import http from 'node:http';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const port = Number(process.env.PORT || 8080);
-const db = new DatabaseSync(process.env.DB_PATH || './workboard.sqlite');
+const dbPath = process.env.DB_PATH || './workboard.sqlite';
+if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
+const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
