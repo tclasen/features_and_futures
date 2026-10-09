@@ -31,6 +31,7 @@ const projectSelection = `
 const listProjects = database.prepare(`${projectSelection} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectSelection} WHERE projects.id = ? GROUP BY projects.id`);
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -85,8 +86,16 @@ const server = http.createServer(async (request, response) => {
       return json(response, project ? 200 : 404, project ? projectData(project) : { error: 'Project not found' });
     }
     if (request.method === 'PATCH' && projectRoute) {
-      if (!findProject.get(projectRoute[1])) return json(response, 404, { error: 'Project not found' });
+      const project = findProject.get(projectRoute[1]);
+      if (!project) return json(response, 404, { error: 'Project not found' });
       const input = await readJson(request);
+      if (input && Object.hasOwn(input, 'name')) {
+        if (project.archived) return json(response, 409, { error: 'Archived project' });
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return json(response, 400, { error: 'Project name is required' });
+        renameProject.run(name, project.id);
+        return json(response, 200, projectData(findProject.get(project.id)));
+      }
       if (typeof input?.archived !== 'boolean') {
         return json(response, 400, { error: 'Archive state must be a boolean' });
       }

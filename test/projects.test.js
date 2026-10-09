@@ -188,3 +188,66 @@ test('archive and restore preserve tasks and summaries, including an existing da
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('renaming preserves project identity, order, tasks, and summaries across restarts and restoration', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.url + path, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }),
+    });
+    const first = await (await request('/api/projects', 'POST', { name: 'Original' })).json();
+    const second = await (await request('/api/projects', 'POST', { name: 'Second' })).json();
+    const projectPath = `/api/projects/${first.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const openTask = await (await request(tasksPath, 'POST', { title: 'Open task' })).json();
+    const doneTask = await (await request(tasksPath, 'POST', { title: 'Done task' })).json();
+    await request(`${tasksPath}/${doneTask.id}`, 'PATCH', { completed: true });
+    const tasks = [openTask, { ...doneTask, completed: true }];
+    const original = { ...first, totalCount: 2, completedCount: 1 };
+    for (const name of ['', ' \t\n ', null, 123]) {
+      const invalid = await request(projectPath, 'PATCH', { name });
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Project name is required' });
+      assert.deepEqual(await (await request(projectPath)).json(), original);
+    }
+    assert.equal((await request('/api/projects/99999', 'PATCH', { name: 'Missing' })).status, 404);
+    const rename = await request(projectPath, 'PATCH', { name: ' \tRenamed project\n ' });
+    assert.equal(rename.status, 200);
+    const renamed = { ...original, name: 'Renamed project' };
+    assert.deepEqual(await rename.json(), renamed);
+    assert.deepEqual(await (await request('/api/projects')).json(), [renamed, second]);
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    assert.equal((await request(`/projects/${first.id}`)).status, 200);
+
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(projectPath)).json(), renamed);
+    assert.deepEqual(await (await request('/api/projects')).json(), [renamed, second]);
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    await request(projectPath, 'PATCH', { archived: true });
+    const blocked = await request(projectPath, 'PATCH', { name: 'Blocked rename' });
+    assert.equal(blocked.status, 409);
+    assert.deepEqual(await blocked.json(), { error: 'Archived project' });
+    assert.deepEqual(await (await request(projectPath)).json(), { ...renamed, archived: true });
+    await request(projectPath, 'PATCH', { archived: false });
+    const restored = { ...renamed, name: 'Restored name' };
+    assert.deepEqual(await (await request(projectPath, 'PATCH', { name: ' Restored name ' })).json(), restored);
+
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request('/api/projects')).json(), [restored, second]);
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    assert.equal((await request(`/projects/${first.id}`)).status, 200);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

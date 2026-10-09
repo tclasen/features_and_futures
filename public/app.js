@@ -48,6 +48,40 @@ function projectRow(project, onArchiveChange) {
   return row;
 }
 
+function setupRename(project) {
+  const form = document.querySelector('#rename-form');
+  const input = document.querySelector('#new-project-name');
+  const submit = form.querySelector('button');
+  input.disabled = project.archived;
+  submit.disabled = project.archived;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    if (!input.value.trim()) {
+      showError('Project name is required');
+      return;
+    }
+    submit.disabled = true;
+    document.querySelector('[role="alert"]').hidden = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: input.value }),
+      });
+      project.name = saved.name;
+      document.querySelector('h1').textContent = saved.name;
+      document.title = `${saved.name} · Workboard`;
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = project.archived;
+    }
+  });
+}
+
 function setupTasks(project) {
   const projectId = project.id;
   const list = document.querySelector('#task-list');
@@ -141,6 +175,13 @@ async function render() {
         app.insertAdjacentHTML('beforeend', '<p>Archived project</p>');
       }
       app.insertAdjacentHTML('beforeend', `
+        <form id="rename-form">
+          <label for="new-project-name">New project name</label>
+          <div class="create-controls">
+            <input id="new-project-name" name="name" type="text" autocomplete="off" disabled>
+            <button type="submit" disabled>Rename project</button>
+          </div>
+        </form>
         <form id="task-form">
           <label for="task-title">Task title</label>
           <div class="create-controls">
@@ -158,6 +199,7 @@ async function render() {
         </div>
         <section aria-label="Tasks" id="task-list"></section>
       `);
+      setupRename(project);
       await setupTasks(project);
     } catch (error) {
       if (!document.querySelector('h1').textContent) {

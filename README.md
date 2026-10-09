@@ -12,6 +12,8 @@ Open `http://localhost:8080`. Create projects and open them to create tasks, tog
 
 The project list initially shows Active projects. Each row includes its completed/total task summary. Archive a project to move it to the Archived filter, where it can be opened or restored. Archived project pages keep task filtering available while disabling task creation and completion changes. Existing databases migrate automatically without losing projects or tasks.
 
+Active project pages also let you rename a project. Names are trimmed and required; renaming keeps the same URL, creation order, tasks, and summary. Archived projects cannot be renamed until restored.
+
 Verify:
 
 ```sh
@@ -19,4 +21,4 @@ npm test
 curl http://localhost:8080/health
 ```
 
-The integration tests check health, project and task validation and trimming, creation order, project isolation, completion changes, detail routes, archive/restore, completion summaries, migration from an existing database, and persistence across server restarts using temporary SQLite files.
+The integration tests check health, project and task validation and trimming, creation order, project isolation, completion changes, detail routes, archive/restore, renaming while preserving identity and data, completion summaries, migration from an existing database, and persistence across server restarts using temporary SQLite files.
