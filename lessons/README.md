@@ -17,3 +17,4 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L011 | Interpretable delivery evidence | verified |
 | L012 | Public histories need enforced isolation | verified |
 | L013 | Request coverage must start from dispatches | adopted |
+| L014 | Repeated-failure attention and source variation | prepared |
