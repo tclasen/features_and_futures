@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    body { margin: 0; }
+    main { width: min(720px, calc(100% - 36px)); margin: 56px auto; }
+    h1 { font-size: 2rem; margin: 0 0 24px; }
+    form, .project-row { display: flex; gap: 12px; align-items: center; }
+    form { margin-bottom: 22px; }
+    label { font-weight: 600; }
+    input { font: inherit; padding: 10px 12px; border: 1px solid #aab4c0; border-radius: 6px; flex: 1; min-width: 0; }
+    button { font: inherit; padding: 9px 14px; border: 0; border-radius: 6px; background: #2055c7; color: white; cursor: pointer; }
+    button:hover { background: #1745a8; }
+    .project-row { justify-content: space-between; padding: 14px 16px; margin: 10px 0; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .project-name { font-weight: 600; overflow-wrap: anywhere; }
+    .alert { color: #a21d2d; margin: 0 0 14px; }
+    .back { margin-bottom: 20px; }
+    .task-row { display: flex; gap: 12px; align-items: center; padding: 12px 16px; margin: 10px 0; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .task-row label { flex: 1; overflow-wrap: anywhere; }
+    select { font: inherit; padding: 9px; border: 1px solid #aab4c0; border-radius: 6px; }
+    @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } form button { align-self: flex-start; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const api = async (url, options) => {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
+    function element(tag, text, className) {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    }
+    async function showList(message = '') {
+      app.replaceChildren();
+      app.append(element('h1', 'Workboard'));
+      if (message) {
+        const alert = element('p', message, 'alert');
+        alert.setAttribute('role', 'alert');
+        app.append(alert);
+      }
+      const projectFilterLabel = element('label', 'Project filter'); projectFilterLabel.htmlFor = 'project-filter';
+      const projectFilter = document.createElement('select'); projectFilter.id = 'project-filter';
+      for (const value of ['Active', 'Archived']) { const option = element('option', value); option.value = value; projectFilter.append(option); }
+      app.append(projectFilterLabel, projectFilter);
+      const form = document.createElement('form');
+      const label = element('label', 'Project name');
+      label.htmlFor = 'project-name';
+      const input = document.createElement('input');
+      input.id = 'project-name'; input.name = 'name'; input.type = 'text'; input.autocomplete = 'off';
+      const button = element('button', 'Create project'); button.type = 'submit';
+      form.append(label, input, button);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) return showList('Project name is required');
+        try {
+          const project = await api('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+          await showList();
+        } catch (error) { showList(error.message); }
+      });
+      app.append(form);
+      const list = element('section');
+      list.setAttribute('aria-label', 'Projects');
+      try {
+        const projects = await api('/api/projects');
+        const renderProjects = () => {
+          list.replaceChildren();
+          for (const project of projects.filter(p => Boolean(p.archived) === (projectFilter.value === 'Archived'))) {
+            const row = element('div', undefined, 'project-row'); row.dataset.testid = 'project-row';
+            row.append(element('span', project.name, 'project-name'));
+            const summary = element('span', `${project.completedCount}/${project.totalCount} completed`); summary.dataset.testid = 'project-summary'; row.append(summary);
+            const open = element('button', 'Open project'); open.type = 'button';
+            open.addEventListener('click', () => { history.pushState({}, '', `/projects/${project.id}`); showProject(project); });
+            row.append(open);
+            const action = element('button', project.archived ? 'Restore project' : 'Archive project'); action.type = 'button';
+            action.addEventListener('click', async () => { await api(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' }); showList(); });
+            row.append(action); list.append(row);
+          }
+        };
+        projectFilter.addEventListener('change', renderProjects); renderProjects();
+      } catch (error) { app.append(element('p', error.message, 'alert')); }
+      app.append(list);
+    }
+    async function showProject(project, message = '') {
+      app.replaceChildren();
+      const back = element('button', 'Projects', 'back'); back.type = 'button';
+      back.addEventListener('click', () => { history.pushState({}, '', '/'); showList(); });
+      app.append(back, element('h1', project.name));
+      if (project.archived) app.append(element('p', 'Archived project'));
+      const form = document.createElement('form');
+      const label = element('label', 'Task title'); label.htmlFor = 'task-title';
+      const input = document.createElement('input'); input.id = 'task-title'; input.name = 'title'; input.type = 'text'; input.autocomplete = 'off';
+      const create = element('button', 'Create task'); create.type = 'submit';
+      if (project.archived) { create.disabled = true; input.disabled = true; }
+      form.append(label, input, create);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) return showProject(project, 'Task title is required');
+        try {
+          await api(`/api/projects/${project.id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+          showProject(project);
+        } catch (error) { showProject(project, error.message); }
+      });
+      app.append(form);
+      if (message) { const alert = element('p', message, 'alert'); alert.setAttribute('role', 'alert'); app.append(alert); }
+      const filterLabel = element('label', 'Task filter'); filterLabel.htmlFor = 'task-filter';
+      const filter = document.createElement('select'); filter.id = 'task-filter';
+      for (const value of ['All', 'Open', 'Completed']) { const option = element('option', value); option.value = value; filter.append(option); }
+      app.append(filterLabel, filter);
+      const list = element('section'); list.setAttribute('aria-label', 'Tasks'); app.append(list);
+      let tasks = [];
+      try { tasks = await api(`/api/projects/${project.id}/tasks`); } catch (error) { app.append(element('p', error.message, 'alert')); }
+      const renderTasks = () => {
+        list.replaceChildren();
+        for (const task of tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed)) {
+          const row = element('div', undefined, 'task-row'); row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.disabled = Boolean(project.archived); checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => { try { await api(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); task.completed = checkbox.checked; renderTasks(); } catch (error) { checkbox.checked = task.completed; } });
+          row.append(checkbox, element('span', task.title)); list.append(row);
+        }
+      };
+      filter.addEventListener('change', renderTasks); renderTasks();
+    }
+    async function route() {
+      const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+      if (!match) return showList();
+      try { showProject(await api(`/api/projects/${match[1]}`)); }
+      catch { history.replaceState({}, '', '/'); showList(); }
+    }
+    addEventListener('popstate', route);
+    route();
+  </script>
+</body>
+</html>

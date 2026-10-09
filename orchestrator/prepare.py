@@ -12,8 +12,8 @@ from .configurations import builder_configurations
 from .evidence import digest_bytes, digest_json, timestamp
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = "docker.io/library/features-and-futures-builder:pilot-v001"
-IMAGE_DIGEST = "sha256:04ff7064a2620ad9a41a9941fe80527c69dd450a16f277d6fdd721e9b28585d0"
+IMAGE = "docker.io/library/features-and-futures-builder:pilot-v002"
+IMAGE_DIGEST = "sha256:0d3fa94fb2ffdbaa08b63034deb7fc57ccfe312606a31ba32180e463647f10b7"
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,7 +47,7 @@ def prepare():
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007", "v009", "v010"): raise ValueError("Unsupported project revision")
+    if args.project_revision not in ("v003", "v004", "v005", "v006", "v007", "v009", "v010", "v011", "v012"): raise ValueError("Unsupported project revision")
     project = ROOT / "projects/workboard/revisions" / args.project_revision
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
@@ -108,7 +108,7 @@ def prepare():
         "experiment_revision":args.experiment_revision, "run_id":args.run, "purpose":"engineering-pilot",
         "project_id":"workboard","project_revision":args.project_revision,
         "lineage":{"source_run":args.source_run,"variation":f"{args.model_set} model matrix; unchanged {args.project_revision} public tasks; feedback {args.feedback_rendering}; strict native accounting"}, "frozen_at":timestamp(),
-        "runtime":{**local_runtime,"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
+        "runtime":{**local_runtime,"builder_configurations":builders,"harness_versions":{"codex":"0.162.1","pi":"1.1.0"},
                    "image":IMAGE,"image_digest":IMAGE_DIGEST, "sbx_version":"0.47.0",
                    "node":"22.22.1","playwright":"1.64.0","chromium":"156.0.8078.4",
                    "resource_limits":{"cpus":4,"memory":"4g","deployment_memory":"512m"},
@@ -131,8 +131,8 @@ def prepare():
                    "cache":"native provider caching; no shared source/context cache; report both price references"},
         "provenance":{"pm_commit":git(ROOT,"rev-parse","HEAD"),"starter_commit":starter_commit,
                       "starter_tree":git(seed,"rev-parse","HEAD^{tree}"),
-                      "image_archive_sha256":"90450bd7619f4b0f1f2f246f7b6ae22d247490e2227602c6a690a3c657b8ea47",
-                      "image_config_sha256":"0ce50460d98e8b9215f523c38ad4123aaf6cbfd44a81a61bb13141d0c9219275",
+                      "image_archive_sha256":"aebb05872638f3c53b5098ee6d6d7f3c52477c4c8be35ef760a2a001579cd0b2",
+                      "image_config_sha256":"5b0c431da453c6d4c89a8eacc03fe59326c7baebac2c95029cac307acf2c2182",
                       "definition_hashes":file_hashes(frozen)},
         "tasks":tasks,"pricing":prices,
         "execution":{"scheduling_seed":43,"order":scheduling_order,"scheduling":args.scheduling,"max_parallel_builders":len(builders) if args.scheduling=="parallel-rounds" else 1, "rotation_positions":rotation,
