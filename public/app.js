@@ -81,6 +81,71 @@ async function showProject(id) {
   const back = element('button', 'Projects', 'back-button');
   back.addEventListener('click', () => { location.href = '/'; });
   view.append(back, element('h2', project.name));
+
+  const form = element('form', undefined, 'create-form');
+  const label = element('label', 'Task title');
+  label.htmlFor = 'task-title';
+  const input = element('input');
+  input.id = 'task-title';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  const create = element('button', 'Create task');
+  create.type = 'submit';
+  const alert = element('p');
+  alert.setAttribute('role', 'alert');
+  alert.hidden = true;
+  form.append(label, input, create, alert);
+
+  const filterLabel = element('label', 'Task filter');
+  filterLabel.htmlFor = 'task-filter';
+  const filter = element('select');
+  filter.id = 'task-filter';
+  for (const value of ['All', 'Open', 'Completed']) filter.append(new Option(value, value));
+  filterLabel.append(filter);
+  const list = element('div', undefined, 'task-list');
+  view.append(form, filterLabel, list);
+
+  async function refresh() {
+    const tasksResponse = await fetch(`/api/projects/${id}/tasks`);
+    const tasks = await tasksResponse.json();
+    list.replaceChildren();
+    for (const task of tasks) {
+      if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+      const row = element('article', undefined, 'task-row');
+      row.dataset.testid = 'task-row';
+      row.append(element('span', task.title, 'project-name'));
+      const checkbox = element('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = Boolean(task.completed);
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+        await refresh();
+      });
+      row.append(checkbox);
+      list.append(row);
+    }
+  }
+  filter.addEventListener('change', refresh);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title) {
+      alert.textContent = 'Task title is required';
+      alert.hidden = false;
+      return;
+    }
+    const result = await fetch(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+    if (!result.ok) {
+      alert.textContent = (await result.json()).error;
+      alert.hidden = false;
+      return;
+    }
+    input.value = '';
+    alert.hidden = true;
+    await refresh();
+  });
+  await refresh();
 }
 
 if (pathMatch) showProject(pathMatch[1]);
