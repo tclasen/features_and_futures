@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #182c3d; background: #f4f6f8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 64px auto; padding: 32px; background: white; border: 1px solid #dce2e8; border-radius: 12px; }
+    h1 { margin: 0 0 28px; font-size: 32px; overflow-wrap: anywhere; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+    .fields { display: flex; gap: 12px; }
+    input { flex: 1; min-width: 0; border: 1px solid #8896a4; border-radius: 6px; padding: 12px; font: inherit; }
+    button { border: 1px solid #2458aa; background: #2458aa; color: white; border-radius: 6px; padding: 12px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #194485; }
+    button:disabled { opacity: .6; cursor: wait; }
+    :focus-visible { outline: 3px solid #d38b00; outline-offset: 3px; }
+    [role="alert"] { color: #a02020; margin: 16px 0; }
+    h2 { font-size: 20px; margin-top: 36px; }
+    #project-list { list-style: none; margin: 0; padding: 0; }
+    [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid #dce2e8; padding: 16px 0; }
+    .project-name { overflow-wrap: anywhere; min-width: 0; }
+    [data-testid="project-row"] button { flex-shrink: 0; }
+    .muted { color: #536578; }
+    @media (max-width: 560px) { main { margin: 20px 12px; padding: 24px; } .fields { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.getElementById('app');
+    let renderVersion = 0;
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+      return data;
+    }
+    function showError(message) {
+      const alert = document.getElementById('error');
+      alert.textContent = message;
+      alert.hidden = false;
+    }
+    function navigate(path) {
+      history.pushState(null, '', path);
+      render();
+    }
+    function addRow(project) {
+      const row = document.createElement('li');
+      row.dataset.testid = 'project-row';
+      const name = document.createElement('span');
+      name.className = 'project-name';
+      name.textContent = project.name;
+      const open = document.createElement('button');
+      open.textContent = 'Open project';
+      open.addEventListener('click', () => navigate('/projects/' + project.id));
+      row.append(name, open);
+      document.getElementById('project-list').append(row);
+      document.getElementById('empty').hidden = true;
+    }
+    async function render() {
+      const version = ++renderVersion;
+      const path = location.pathname;
+      if (path === '/') {
+        document.title = 'Workboard';
+        app.innerHTML = `<h1>Workboard</h1>
+          <form><label for="project-name">Project name</label>
+          <div class="fields"><input id="project-name" name="name" autocomplete="off"><button type="submit">Create project</button></div></form>
+          <p id="error" role="alert" hidden></p>
+          <h2>Projects</h2><p id="empty" class="muted" hidden>No projects yet.</p><ul id="project-list"></ul>`;
+        const form = app.querySelector('form');
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const input = document.getElementById('project-name');
+          const name = input.value.trim();
+          if (!name) { showError('Project name is required'); return; }
+          const button = form.querySelector('button');
+          button.disabled = true;
+          document.getElementById('error').hidden = true;
+          try {
+            const project = await api('/api/projects', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+            });
+            if (version !== renderVersion) return;
+            addRow(project);
+            input.value = '';
+            input.focus();
+          } catch (error) { if (version === renderVersion) showError(error.message); }
+          finally { button.disabled = false; }
+        });
+        try {
+          form.querySelector('button').disabled = true;
+          const projects = await api('/api/projects');
+          if (version !== renderVersion) return;
+          document.getElementById('empty').hidden = projects.length > 0;
+          projects.forEach(addRow);
+        } catch (error) { if (version === renderVersion) showError(error.message); }
+        finally { form.querySelector('button').disabled = false; }
+      } else {
+        app.innerHTML = '<button id="back">Projects</button><h1 style="margin-top:28px">Loading project…</h1><p id="error" role="alert" hidden></p>';
+        document.getElementById('back').addEventListener('click', () => navigate('/'));
+        try {
+          const project = await api('/api' + path);
+          if (version !== renderVersion) return;
+          app.querySelector('h1').textContent = project.name;
+          document.title = project.name + ' · Workboard';
+        } catch (error) {
+          if (version !== renderVersion) return;
+          app.querySelector('h1').textContent = 'Project unavailable';
+          showError(error.message);
+        }
+      }
+    }
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
