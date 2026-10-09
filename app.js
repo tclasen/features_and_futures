@@ -3,6 +3,7 @@ const form = document.querySelector('#create-form');
 const input = document.querySelector('#project-name');
 const error = document.querySelector('#error');
 const list = document.querySelector('#project-list');
+const projectFilter = document.querySelector('#project-filter');
 const detail = document.querySelector('#project-detail');
 
 async function projects() {
@@ -15,6 +16,7 @@ function showList() {
   document.title = 'Workboard';
   app.querySelector('h1').hidden = false;
   form.hidden = false;
+  projectFilter.hidden = false;
   list.hidden = false;
   detail.hidden = true;
 }
@@ -24,6 +26,7 @@ async function renderList() {
   const items = await projects();
   list.replaceChildren();
   for (const project of items) {
+    if (Boolean(project.archived) !== (projectFilter.value === 'Archived')) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
     row.className = 'project-row';
@@ -33,7 +36,17 @@ async function renderList() {
     button.type = 'button';
     button.textContent = 'Open project';
     button.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(name, button);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+    const stateButton = document.createElement('button');
+    stateButton.type = 'button';
+    stateButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+    stateButton.addEventListener('click', async () => {
+      const response = await fetch(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+      if (response.ok) await renderList();
+    });
+    row.append(name, summary, button, stateButton);
     list.append(row);
   }
 }
@@ -47,6 +60,7 @@ async function renderRoute() {
   document.title = `${project.name} — Workboard`;
   app.querySelector('h1').hidden = true;
   form.hidden = true;
+  projectFilter.hidden = true;
   list.hidden = true;
   detail.hidden = false;
   detail.replaceChildren();
@@ -57,6 +71,11 @@ async function renderRoute() {
   back.textContent = 'Projects';
   back.addEventListener('click', () => { location.href = '/'; });
   detail.append(heading, back);
+  if (project.archived) {
+    const archivedNotice = document.createElement('p');
+    archivedNotice.textContent = 'Archived project';
+    detail.append(archivedNotice);
+  }
 
   const taskForm = document.createElement('form');
   taskForm.className = 'task-form';
@@ -72,6 +91,7 @@ async function renderRoute() {
   const taskSubmit = document.createElement('button');
   taskSubmit.type = 'submit';
   taskSubmit.textContent = 'Create task';
+  taskSubmit.disabled = Boolean(project.archived);
   taskControls.append(taskInput, taskSubmit);
   const taskError = document.createElement('p');
   taskError.setAttribute('role', 'alert');
@@ -108,6 +128,7 @@ async function renderRoute() {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = Boolean(task.completed);
+      checkbox.disabled = Boolean(project.archived);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         const result = await fetch(`/api/projects/${project.id}/tasks/${task.id}`, {
@@ -141,6 +162,8 @@ async function renderRoute() {
   });
   await renderTasks();
 }
+
+projectFilter.addEventListener('change', () => renderList().catch(() => {}));
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
