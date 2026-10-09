@@ -44,7 +44,12 @@ async function render() {
       if (version !== renderVersion) return;
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
-      const tasks = await createTaskPanel(project.id, api);
+      if (project.archived) {
+        const status = document.createElement('p');
+        status.textContent = 'Archived project';
+        app.append(status);
+      }
+      const tasks = await createTaskPanel(project.id, api, Boolean(project.archived));
       if (version !== renderVersion) return;
       app.append(tasks);
     } catch (error) {
@@ -69,13 +74,55 @@ async function render() {
     form.append(label, input, submit);
     const list = document.createElement('div');
     list.setAttribute('aria-label', 'Projects');
+    const projects = [];
+    const filterLabel = document.createElement('label');
+    filterLabel.htmlFor = 'project-filter';
+    filterLabel.textContent = 'Project filter';
+    const filter = document.createElement('select');
+    filter.id = 'project-filter';
+    for (const value of ['Active', 'Archived']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      filter.append(option);
+    }
+    filter.value = 'Active';
+    const filterBar = document.createElement('div');
+    filterBar.className = 'task-filter';
+    filterBar.append(filterLabel, filter);
+    function renderProjects() {
+      list.replaceChildren();
+      projects.filter((project) => Boolean(project.archived) === (filter.value === 'Archived')).forEach(addProject);
+    }
+    filter.addEventListener('change', renderProjects);
     function addProject(project) {
       const row = document.createElement('div');
       row.className = 'project-row';
       row.dataset.testid = 'project-row';
       const name = document.createElement('span');
       name.textContent = project.name;
-      row.append(name, button('Open project', () => navigate(`/projects/${project.id}`)));
+      const summary = document.createElement('span');
+      summary.dataset.testid = 'project-summary';
+      summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+      const archive = button(project.archived ? 'Restore project' : 'Archive project', async () => {
+        archive.disabled = true;
+        alert.hidden = true;
+        try {
+          const saved = await api(`/api/projects/${project.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived: !project.archived }),
+          });
+          if (version !== renderVersion) return;
+          Object.assign(project, saved);
+          renderProjects();
+        } catch (error) {
+          if (version === renderVersion) showError(alert, error);
+        } finally {
+          archive.disabled = false;
+        }
+      });
+      row.append(name, summary, button('Open project', () => navigate(`/projects/${project.id}`)), archive);
       list.append(row);
     }
     form.addEventListener('submit', async (event) => {
@@ -93,7 +140,8 @@ async function render() {
           body: JSON.stringify({ name: input.value }),
         });
         if (version !== renderVersion) return;
-        addProject(project);
+        projects.push(project);
+        renderProjects();
         input.value = '';
         input.focus();
       } catch (error) {
@@ -102,13 +150,14 @@ async function render() {
         submit.disabled = false;
       }
     });
-    app.append(heading, form, alert, list);
+    app.append(heading, form, alert, filterBar, list);
     // Do not allow a creation to race the initial list load.
     submit.disabled = true;
     try {
-      const projects = await api('/api/projects');
+      const saved = await api('/api/projects');
       if (version !== renderVersion) return;
-      projects.forEach(addProject);
+      projects.push(...saved);
+      renderProjects();
     } catch (error) {
       if (version !== renderVersion) return;
       showError(alert, error);

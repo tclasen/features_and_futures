@@ -1,4 +1,4 @@
-export async function createTaskPanel(projectId, api) {
+export async function createTaskPanel(projectId, api, archived = false) {
   const path = `/api/projects/${projectId}/tasks`;
   const tasks = await api(path);
   const panel = document.createElement('section');
@@ -14,6 +14,7 @@ export async function createTaskPanel(projectId, api) {
   const submit = document.createElement('button');
   submit.type = 'submit';
   submit.textContent = 'Create task';
+  submit.disabled = archived;
   form.append(label, input, submit);
 
   const alert = document.createElement('p');
@@ -53,10 +54,12 @@ export async function createTaskPanel(projectId, api) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
+      checkbox.disabled = archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       const title = document.createElement('span');
       title.textContent = task.title;
       checkbox.addEventListener('change', async () => {
+        if (archived) return;
         checkbox.disabled = true;
         alert.hidden = true;
         try {
@@ -81,6 +84,7 @@ export async function createTaskPanel(projectId, api) {
   filter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (archived) return;
     alert.hidden = true;
     if (!input.value.trim()) {
       showError(new Error('Task title is required'));

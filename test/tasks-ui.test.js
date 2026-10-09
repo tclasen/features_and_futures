@@ -36,6 +36,43 @@ function titles(panel) {
   return taskRows(panel).map((row) => row.children[1].textContent);
 }
 
+test('archived task panel is read-only while retaining filtering', async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: (tag) => new Element(tag) };
+  const calls = [];
+  async function api(path, options) {
+    calls.push({ path, options });
+    return [
+      { id: 1, title: 'Done', completed: true },
+      { id: 2, title: 'Pending', completed: false },
+    ];
+  }
+  try {
+    const panel = await createTaskPanel(7, api, true);
+    const form = find(panel, (element) => element.tag === 'form');
+    const submit = find(form, (element) => element.tag === 'button');
+    const filter = find(panel, (element) => element.id === 'task-filter');
+    assert.equal(submit.disabled, true);
+    assert.deepEqual(titles(panel), ['Done', 'Pending']);
+    assert.ok(taskRows(panel).every((row) => row.children[0].disabled));
+    await taskRows(panel)[0].children[0].dispatch('change');
+    find(panel, (element) => element.id === 'task-title').value = 'Blocked';
+    await form.dispatch('submit');
+    assert.equal(calls.length, 1);
+    filter.value = 'Open';
+    await filter.dispatch('change');
+    assert.deepEqual(titles(panel), ['Pending']);
+    assert.equal(taskRows(panel)[0].children[0].disabled, true);
+    filter.value = 'Completed';
+    await filter.dispatch('change');
+    assert.deepEqual(titles(panel), ['Done']);
+    assert.equal(taskRows(panel)[0].children[0].disabled, true);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test('task panel creates, validates, filters, toggles, and handles save failures', async () => {
   const previousDocument = globalThis.document;
   globalThis.document = { createElement: (tag) => new Element(tag) };
