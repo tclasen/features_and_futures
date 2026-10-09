@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from .evidence import digest_bytes,digest_json,price_counts,read_jsonl,native_counts
 from .prepare import ROOT,checked,write_json,git
+from .configurations import required_checkpoints, checkpoint_coverage
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
@@ -159,10 +160,11 @@ def main():
             restored=git(Path(directory),"rev-parse",index["source_commit"]+"^{tree}")
             if restored!=index["source_tree"]:problems.append("restored tree mismatch: "+str(indexfile))
         archive_count+=1
-    complete=(state["status"]=="completed" and not problems and counts["task_accepted"]==54
-              and counts["post_deployment_checks_passed"]==54 and counts["deployment_promoted"]==54)
+    problems.extend(checkpoint_coverage(m,events))
+    expected_checkpoints=len(required_checkpoints(m))
+    complete=(state["status"]=="completed" and not problems)
     report={"schema_version":1,"readiness_passed":complete,"state":state["status"],
-        "manifest_sha256":digest_json(m),"analysis_code_sha256":digest_bytes(Path(__file__).read_bytes()),
+        "expected_checkpoints":expected_checkpoints,"manifest_sha256":digest_json(m),"analysis_code_sha256":digest_bytes(Path(__file__).read_bytes()),
         "inputs":{"events_sha256":digest_bytes((run/"events.jsonl").read_bytes()),
                   "usage_sha256":digest_bytes((run/"usage.jsonl").read_bytes())},
         "event_counts":dict(counts),"requests":len(usage),

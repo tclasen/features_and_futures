@@ -72,17 +72,21 @@ def main():
     if state["status"]=="completed":
         print("Pilot already completed. Run orchestrator.report to verify.",flush=True)
         return
+    if state["status"] in ("superseded", "aborted"):
+        raise InfrastructureError("This run is closed; prepare a new run instead of resuming it")
     identity={k:manifest[k] for k in ("experiment_id","experiment_revision","project_id","project_revision","run_id")}
     identity["manifest_sha256"]=manifest_hash
     ledger=Ledger(run,identity)
-    from .local_provider import provenance
-    provider=provenance()
-    frozen_provider=manifest["runtime"]["local_provider"]
-    for key in ("binary_sha256","runner_binary_sha256","instrumentation_sha256","model","settings"):
-        if provider[key]!=frozen_provider[key]:
-            raise InfrastructureError(f"Local provider provenance changed: {key}")
-    gateway=InferenceGateway(ledger,manifest["pricing"],local_endpoint=provider["endpoint"],
-        native_usage_path=provider["native_usage_file"])
+    provider_args = {"local_endpoint": None}
+    if "local_provider" in manifest["runtime"]:
+        from .local_provider import provenance
+        provider=provenance()
+        frozen_provider=manifest["runtime"]["local_provider"]
+        for key in ("binary_sha256","runner_binary_sha256","instrumentation_sha256","model","settings"):
+            if provider[key]!=frozen_provider[key]:
+                raise InfrastructureError(f"Local provider provenance changed: {key}")
+        provider_args = {"local_endpoint": provider["endpoint"], "native_usage_path": provider["native_usage_file"]}
+    gateway=InferenceGateway(ledger,manifest["pricing"],**provider_args)
     state["status"]="running"; state["last_error"]=None
     write_json(run/"state.json",state)
     ledger.event("runner_started",process_id=os.getpid(),
@@ -92,7 +96,8 @@ def main():
     try:
         for task in manifest["tasks"]:
             task_id=task["task_id"]; stage=task["stage"]
-            order=builders[(stage-1)*6:]+builders[:(stage-1)*6]
+            offset=((stage-1)*manifest["execution"].get("rotation_positions",6)) % len(builders)
+            order=builders[offset:]+builders[:offset]
             for builder in order:
                 bid=builder["builder_id"]; accepted=state["accepted"].get(bid)
                 if accepted and accepted["stage"]>=stage:
@@ -312,8 +317,8 @@ def main():
             ledger.event("round_completed",task_id=task_id,stage=stage)
         state["status"]="completed"; state["completed_at"]=timestamp()
         write_json(run/"state.json",state)
-        ledger.event("pilot_completed",accepted_tasks=len(state["accepted"])*3)
-        print("PILOT COMPLETED: 18 builders, three rounds.",flush=True)
+        ledger.event("pilot_completed",accepted_tasks=len(builders)*len(manifest["tasks"]))
+        print(f"PILOT COMPLETED: {len(builders)} builders, {len(manifest['tasks'])} rounds.",flush=True)
     except BaseException as error:
         state["status"]="infrastructure_attention";state["last_error"]=str(error)
         write_json(run/"state.json",state)

@@ -1,13 +1,12 @@
 """Freeze the actual pilot inputs before dispatch."""
 import argparse
-import itertools
 import json
 import platform
-import random
 import shutil
 import subprocess
 from pathlib import Path
 from .adapters import invoke, price_snapshot
+from .configurations import builder_configurations
 from .evidence import digest_bytes, digest_json, timestamp
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +35,7 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2"),default="legacy-v1");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="full");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
@@ -53,12 +52,8 @@ def prepare():
                 "maximum": quotes("Maximum SWE guidance")}
     contract = quotes("Shared operational contract")
     write_json(frozen / "instructions.json", {"contract": contract, "profiles": profiles})
-    configs = list(itertools.product(
-        ["gpt-oss:120b", "gpt-6-luna", "gpt-6.1-sol"], ["codex", "pi"],
-        ["none", "minimal", "maximum"]))
-    random.Random(43).shuffle(configs)
-    builders = [{"builder_id": f"b{i+1:03d}", "model": m, "harness": h, "profile": p,
-                 "reasoning": "medium"} for i, (m,h,p) in enumerate(configs)]
+    builders = builder_configurations(args.model_set)
+    selected_models = {b["model"] for b in builders}
     sibling = Path("/Users/Shared/projects/features-and-futures-builders") / args.run
     seed = sibling / "starter"
     seed.mkdir(parents=True)
@@ -75,7 +70,7 @@ def prepare():
         git(repo, "remote", "remove", "origin")
         git(repo, "config", "user.name", "Experiment Builder")
         git(repo, "config", "user.email", "builder@experiment.invalid")
-    prices = price_snapshot(run / "pricing")
+    prices = price_snapshot(run / "pricing", models=selected_models)
     write_json(frozen / "pricing-mappings.json", prices)
     tasks = []
     for stage in range(1,4):
@@ -89,16 +84,19 @@ def prepare():
         (path / "packet.md").write_text(packet)
         tasks.append({"task_id":task_id,"stage":stage,"packet_sha256":digest_bytes(packet.encode()),
                       "suite_hash":digest_json(file_hashes(frozen / "project/acceptance"))})
-    from .local_provider import provenance
-    local_provider=provenance()
-    selected=local_provider["model"]
-    write_json(frozen / "local-provider.json",local_provider)
+    local_runtime = {}
+    if "gpt-oss:120b" in selected_models:
+        from .local_provider import provenance
+        local_provider=provenance()
+        local_runtime["local_provider"]=local_provider
+        write_json(frozen / "local-provider.json",local_provider)
+    rotation = len(builders) // 3
     manifest = {
         "schema_version":1, "status":"running", "experiment_id":"instruction-effects",
         "experiment_revision":args.experiment_revision, "run_id":args.run, "purpose":"engineering-pilot",
         "project_id":"workboard","project_revision":args.project_revision,
-        "lineage":{"source_run":args.source_run,"variation":"Row locators accept direct and wrapped visible text; strict native accounting; feedback revision explicitly frozen"}, "frozen_at":timestamp(),
-        "runtime":{"local_provider":local_provider,"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
+        "lineage":{"source_run":args.source_run,"variation":f"{args.model_set} model matrix; unchanged {args.project_revision} public tasks; feedback {args.feedback_rendering}; strict native accounting"}, "frozen_at":timestamp(),
+        "runtime":{**local_runtime,"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
                    "image":IMAGE,"image_digest":IMAGE_DIGEST, "sbx_version":"0.47.0",
                    "node":"22.22.1","playwright":"1.64.0","chromium":"156.0.8078.4",
                    "resource_limits":{"cpus":4,"memory":"4g","deployment_memory":"512m"},
@@ -107,10 +105,10 @@ def prepare():
                            "cpu":checked(["sysctl","-n","machdep.cpu.brand_string"])},
                    "context_policy":"fresh home/session for every instruction; private sandbox repository persists",
                    "egress":"deny by default; only the PM leased inference gateway allowed",
-                   "model_mappings":{"gpt-oss:120b":selected,
+                   "model_mappings":{**({"gpt-oss:120b":local_provider["model"]} if local_runtime else {}),
                        "gpt-6-luna":{"provider":"OpenAI subscription", "reasoning":"medium"},
                        "gpt-6.1-sol":{"provider":"OpenAI subscription", "reasoning":"medium"}},
-                   "warmup":"Prior six model/harness file-edit checks; isolated local provider verified during preflight; all preflight usage retained",
+                   "warmup":"Prior native model/harness file-edit checks retained; selected-model provenance recorded. No local inference required for hosted-only runs.",
                    "cache":"native provider caching; no shared source/context cache; report both price references"},
         "provenance":{"pm_commit":git(ROOT,"rev-parse","HEAD"),"starter_commit":starter_commit,
                       "starter_tree":git(seed,"rev-parse","HEAD^{tree}"),
@@ -118,10 +116,10 @@ def prepare():
                       "image_config_sha256":"0ce50460d98e8b9215f523c38ad4123aaf6cbfd44a81a61bb13141d0c9219275",
                       "definition_hashes":file_hashes(frozen)},
         "tasks":tasks,"pricing":prices,
-        "execution":{"scheduling_seed":43,"order":"sequential; rotate by six builder positions per round",
+        "execution":{"scheduling_seed":43,"order":f"sequential; rotate by {rotation} builder positions per round", "rotation_positions":rotation,
                      "retry_limit":None,"feedback_rendering":args.feedback_rendering,"unchanged_failure_notify_after":10},
         "evidence_policy":{"purpose":"infrastructure readiness; no claim of instruction effect",
-                           "stop":"all 18 builders accepted all three tasks with complete native usage",
+                           "stop":f"all {len(builders)} builders accepted all three tasks with complete native usage",
                            "post_deployment_window_seconds":5,
                            "main_run":"not started by this pilot command",
                            "pm_conversation_tokens":"unavailable; not included in builder cost"},

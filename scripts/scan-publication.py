@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 LEASE = re.compile(rb'e30\.([A-Za-z0-9_-]+)\.([0-9a-f]{48})(?![0-9a-f])')
-TOKEN_FIELDS = {'access', 'refresh', 'access_token', 'refresh_token', 'api_key', 'apikey', 'token', 'accountid', 'account_id'}
+TOKEN_FIELDS = {'access', 'refresh', 'access_token', 'refresh_token', 'api_key', 'apikey', 'token', 'accountid', 'account_id', 'id_token', 'idtoken', 'openai_api_key'}
 
 
 def credential_values(value):

@@ -67,7 +67,7 @@ def main():
     state = json.loads(state_bytes)
     manifest_bytes = (run/'manifest.json').read_bytes()
     manifest = json.loads(manifest_bytes)
-    report = reconcile(events, records, state['status'] == 'completed')
+    report = reconcile(events, records, state['status'] in ('completed', 'superseded', 'aborted'))
     report.update({'schema_version': 1, 'state': state['status'], 'audit_module_sha256': digest_bytes(Path(__file__).read_bytes()),
                    'inputs': {'events_sha256': digest_bytes(event_bytes), 'usage_sha256': digest_bytes(usage_bytes), 'state_sha256': digest_bytes(state_bytes), 'manifest_file_sha256': digest_bytes(manifest_bytes)},
                    'limitations': ['Request linkage complements native-receipt validation; it cannot reconstruct hidden usage.', 'Pending request IDs in a live run are unresolved, not zero-cost calls.']})

@@ -1,6 +1,6 @@
 # Engineering pilot runtime
 
-The authorized pilot uses all 18 model/harness/instruction configurations for three cumulative Workboard tasks. This is a readiness exercise, not evidence of a maintainability effect. Do not launch the indefinite main experiment from the pilot runner.
+The current authorized pilot uses all 12 hosted model/harness/instruction configurations for three cumulative Workboard tasks. This is a readiness exercise, not evidence of a maintainability effect. Do not launch the indefinite main experiment from the pilot runner.
 
 The workload and public requirements are in projects/workboard/revisions/v003. Node 22.22.1, built-in HTTP/SQLite, JavaScript ES modules and browser JavaScript are shared stack constraints. Application dependencies are excluded to avoid unrelated package/network differences in this first pilot.
 
@@ -31,7 +31,7 @@ Commands, run from the PM repository:
 - python3 -u -B -m orchestrator.pilot --run pilot-004 (resumable)
 - python3 -B -m orchestrator.report --run pilot-004 (rederive and verify readiness)
 
-The pilot passes only when all 54 builder tasks are accepted, every actual pilot inference has complete native usage and reproducible pricing, all source/history checksums restore correctly, required test phases pass, and the reports reconcile with raw events. Retain every infrastructure preflight failure. Any changed comparison rule requires a new run; PM runner bugs receive explicit correction events and preserved interrupted attempts.
+The current hosted-only pilot passes only when all 36 builder tasks are accepted, every actual pilot inference has complete native usage and reproducible pricing, all source/history checksums restore correctly, required test phases pass, and the reports reconcile with raw events. Retain every infrastructure preflight failure. Any changed comparison rule requires a new run; PM runner bugs receive explicit correction events and preserved interrupted attempts.
 
 A main run additionally requires a preregistered sequential evidence method with repeated-look and multiple-comparison control, independent confirmation runs, workload progression and practical margins. A three-task pilot cannot supply that statistical evidence or promise outage-free execution.
 
@@ -44,3 +44,9 @@ Readiness reports also verify the exact common packet and assigned treatment in 
 Pilot 004 was superseded after a confirmed PM row-locator defect and one provider stream ending without terminal usage. Its frozen definitions and original evidence remain intact. Project v004 verifies direct and wrapped row content in real browser fixtures and states the existing clean-worktree boundary explicitly. Pilot 005 starts all 18 builders fresh, retains legacy feedback and strict complete-native accounting, and commits definitions before dispatch. Latest stable registry versions were rechecked as Codex 0.162.0 and Pi 1.1.0. See the per-run readiness reports for completion; no successful pilot is implied by preparation.
 
 Pilot 005 exposed a rejected-app cleanup defect: a failed blank-input acceptance attempt also produced a non-SQLite runtime file, and cleanup tried to make a SQLite backup. Rejected cleanup now preserves opaque database/log bytes when backup fails and always stops its own sandbox. Original acceptance diagnostics, result, time, usage and source remain unchanged. Two cleanup checks and the complete infrastructure suite verify the fix before resumption; the task clock is retained.
+
+## Hosted-only transition, 2026-10-09
+
+The user selected Luna and Sol across both harnesses and all three profiles for the next pilot and subsequent evals. Pilot 005 closed incomplete with 19 of 54 accepted checkpoints; its 1,797 native requests have complete terminal reconciliation. Pilot 006 remains an unused frozen full-matrix preparation. Pilot 007 uses fresh repositories, the same v004 workload and cumulative tests, feedback revision `native-parser-and-supplied-schemas-v2`, and a four-position round rotation for its 12 configurations. No local provider is queried or required by hosted-only preparation/execution. All prior timing, costs, failures and independent Git histories remain retained.
+
+Prepare using `python3 -B -m orchestrator.prepare --run pilot-007 --experiment-revision pilot-v007 --source-run pilot-005 --project-revision v004 --model-set hosted --feedback-rendering native-parser-and-supplied-schemas-v2`; dispatch only after committing the frozen inputs. Completion checks reconcile exact builder/task identities for 36 acceptances, promotions and post-deployment checks. Stronger immutable-corpus acceptance verification must cover the same 36 checkpoints. Main statistical preparation uses four model/harness pairs and 36 primary contrasts; it remains separate from this engineering pilot.

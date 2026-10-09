@@ -6,15 +6,15 @@ The primary question is whether stronger software engineering instructions impro
 
 ## Experiment matrix
 
-Each evaluation has one project manager (PM) agent and 18 independent builders: every combination of the following factors.
+Each evaluation has one project manager (PM) agent and 12 independent builders under the current hosted-only design: every combination of the following factors.
 
 | Factor | Configurations |
 | --- | --- |
-| Model | `gptoss:120b` through local Ollama; Luna 6.0 with medium reasoning; Sol 6.1 with medium reasoning |
+| Model | Luna 6.0 with medium reasoning; Sol 6.1 with medium reasoning |
 | Harness | Codex CLI; Pi coding agent |
 | Instructions | No added SWE guidance; minimal SWE guidance; maximum emphasis on SWE best practices, maintainability, and clean code |
 
-The engineering pilot resolves these to `gpt-oss:120b`, `gpt-6-luna` and `gpt-6.1-sol`, all with medium reasoning. Exact provider, image and pricing provenance is frozen in each run manifest.
+The current design resolves these to `gpt-6-luna` and `gpt-6.1-sol`, both with medium reasoning. Earlier pilots used an 18-configuration matrix including local `gpt-oss:120b`; their frozen definitions and all failures remain archived. The user selected hosted-only models for subsequent pilots and evals on 2026-10-09. Exact provider, image and pricing provenance is frozen in each run manifest.
 
 Within each run, all builders implement the same application, use the same PM-selected technology stack, receive the same ordered development tasks, and face the same PM-maintained Playwright acceptance criteria. Each has an independent repository and Git history inside its own Docker sandbox. Builders receive one development task at a time and cannot inspect other builders or PM-only materials.
 
@@ -39,6 +39,6 @@ Read [AGENTS.md](AGENTS.md) for PM behavior, [the experiment protocol](docs/expe
 
 ## Current state
 
-The authorized engineering pilot now has a measured runner, isolated inference gateway, native token accounting, a three-task Workboard acceptance suite and recoverable builder histories. Pilots 001 through 003 retain aborted PM infrastructure attempts. Pilot 004 verified private workspaces, databases and native pre-parser accounting but was superseded after a PM test defect and a provider accounting gap. Pilot 005 uses a corrected frozen suite and fresh builder repositories. See [the pilot runtime](docs/pilot-runtime.md), [evidence decisions](docs/evidence-analysis.md) and run reports for actual status. The indefinite main experiment remains separate and requires its statistical evidence method to be frozen.
+The authorized engineering pilot now has a measured runner, isolated inference gateway, native token accounting, a three-task Workboard acceptance suite and recoverable builder histories. Pilots 001 through 003 retain aborted PM infrastructure attempts. Pilot 004 verified private workspaces, databases and native pre-parser accounting but was superseded after a PM test defect and a provider accounting gap. Pilot 005 closed incomplete at 19 of 54 checkpoints, with all 1,797 requests reconciled. Pilot 006 was prepared but never dispatched. Pilot 007 prepares the user-selected 12-configuration hosted-only matrix from fresh repositories, retaining the same Workboard requirements and cumulative acceptance suite with explicitly versioned diagnostics. See [the pilot runtime](docs/pilot-runtime.md), [evidence decisions](docs/evidence-analysis.md) and run reports for actual status. The indefinite main experiment remains separate and requires its statistical evidence method to be frozen.
 
 The PM must maintain [evidence-linked lessons](docs/lessons-learned.md) and [their append-only journal](lessons/records.jsonl) during the pilot and every follow-on evaluation, and verify the controls adopted from them.

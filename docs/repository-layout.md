@@ -34,7 +34,7 @@ Exploratory runs can invent successive shared features. Their evolving requireme
 4. Resolve all preparation fields and snapshot source definitions and treatments with Git revision and content hashes. Harness versions and images must be pinned for that execution; log differences from earlier runs.
 5. Provision fresh independent builder repositories outside this master repository, verify isolation/accounting, and only then mark the run started.
 
-The initial pilot covers all 18 configurations and three shared tasks. The pilot calibrates instrumentation and evidence analysis; it is not a maintainability finding. Whether the main experiment proceeds automatically after the pilot remains unresolved.
+The current hosted-only pilot covers all 12 configurations; earlier pilots used 18 configurations and three shared tasks. The pilot calibrates instrumentation and evidence analysis; it is not a maintainability finding. The main evaluation is a separate launch after readiness and preregistration.
 
 ## Evidence and comparisons
 

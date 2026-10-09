@@ -20,3 +20,5 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L014 | Repeated-failure attention and source variation | prepared |
 | L015 | Context budgets and compaction readiness | observed |
 | L016 | Verify preserved repairs before rollback | adopted |
+
+| L017 | Hosted-only scope preserves the instruction experiment | adopted |

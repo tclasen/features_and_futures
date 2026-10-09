@@ -17,6 +17,11 @@ class ConfirmationTests(unittest.TestCase):
         allocated=sum((look_alpha(j)*54 for j in range(1,101)),Fraction(0))
         self.assertEqual(allocated,Fraction(1,20)*Fraction(100,101))
 
+    def test_hosted_family_preserves_global_error_allocation(self):
+        allocated=sum((look_alpha(j,contrasts=36)*36 for j in range(1,101)),Fraction(0))
+        self.assertEqual(allocated,Fraction(1,20)*Fraction(100,101))
+        with self.assertRaises(ValueError):look_alpha(1,contrasts=0)
+
     def test_practical_findings_with_independent_replication(self):
         for value,expected in (("0.6","improvement"),("1","practical_equivalence"),("1.4","regression")):
             result=median_interval([value]*16,look_alpha(1))

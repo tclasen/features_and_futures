@@ -99,6 +99,8 @@ class InferenceGateway:
         return self.server.server_port
 
     def lease(self, model, builder_id, task_id, attempt_id, provider):
+        if provider == "ollama" and self.local_endpoint is None:
+            raise ValueError("Local inference is disabled for this run")
         claim = {"https://api.openai.com/auth": {
             "chatgpt_account_id": "pilot-local-lease"}, "nonce": secrets.token_hex(24)}
         encoded = base64.urlsafe_b64encode(canonical(claim).encode()).decode().rstrip("=")

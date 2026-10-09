@@ -2,7 +2,7 @@
 
 ## Design and interpretation
 
-The initial experiment uses the full 3 × 2 × 3 matrix described in [README.md](../README.md). Future experiment revisions may explicitly vary the matrix, application type, or requirements. Follow [repository organization](repository-layout.md) to keep project revisions, experiment revisions, and runs separate. Within a run, each configuration follows the same task sequence from identical starter contents. Compare instruction profiles within each fixed model/harness combination before pooling results.
+The current experiment uses the hosted-only 2 × 2 × 3 matrix described in [README.md](../README.md). Earlier pilots retain their original 3 × 2 × 3 definitions. Future experiment revisions may explicitly vary the matrix, application type, or requirements. Follow [repository organization](repository-layout.md) to keep project revisions, experiment revisions, and runs separate. Within a run, each configuration follows the same task sequence from identical starter contents. Compare instruction profiles within each fixed model/harness combination before pooling results.
 
 One trajectory per configuration supports descriptive comparisons, not strong causal conclusions. Repeated runs begin with fresh repositories and contexts, use the same frozen workload, and record seeds and scheduling. Show results by task checkpoint and codebase size as well as aggregate totals. Preserve instruction overhead: additional prompt tokens and engineering work are part of the treatment.
 
@@ -56,9 +56,9 @@ Continue correction or restart attempts until the builder passes; there is no fi
 
 ## Pilot and evidence-based stopping
 
-Prepare a three-task pilot covering all 18 initial configurations: setup, a feature addition, and a change to earlier behavior. It validates isolation, subscription access, request accounting, acceptance testing, and recovery. Whether to proceed automatically into the main run after the pilot is unresolved.
+Prepare a three-task pilot covering all 12 current hosted configurations: setup, a feature addition, and a change to earlier behavior. It validates isolation, subscription access, request accounting, acceptance testing, and recovery. Whether to proceed automatically into the main run after the pilot is unresolved.
 
-The main workload continues feature additions and revisions without a source-line threshold. Look for sustained later task differences or practical equivalence among the three instruction treatments within each of the six model/harness combinations. Initial practical margins are 20% for task time or reference cost and 10 percentage points for first-submission failure rate. Confirm candidate findings with independent repeats of the frozen workload.
+The main workload continues feature additions and revisions without a source-line threshold. Look for sustained later task differences or practical equivalence among the three instruction treatments within each of the four hosted model/harness combinations. Initial practical margins are 20% for task time or reference cost and 10 percentage points for first-submission failure rate. Confirm candidate findings with independent repeats of the frozen workload.
 
 Before the main run, freeze an evidence method that addresses uncertainty, repeated looks, multiple comparisons, and confirmation. The practical margins alone are not a statistical stopping test; no such test is implemented yet. Do not declare a breakpoint merely because one task exceeds a margin.
 

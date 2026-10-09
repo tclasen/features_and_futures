@@ -178,7 +178,7 @@ print(json.dumps(result))
     return json.loads(result.stdout)
 
 
-def price_snapshot(root):
+def price_snapshot(root, models=None):
     import urllib.request
     from .evidence import digest_bytes, timestamp
     root.mkdir(parents=True, exist_ok=True)
@@ -201,5 +201,5 @@ def price_snapshot(root):
     return {
         model: {"reference_id": reference, "pricing": all_models[reference]["pricing"],
                 "snapshot_sha256": digest_bytes(raw)}
-        for model, reference in mapping.items()
+        for model, reference in mapping.items() if models is None or model in models
     }

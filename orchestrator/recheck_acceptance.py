@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from .evidence import digest_bytes, digest_json, read_jsonl, timestamp
 from .prepare import ROOT, file_hashes, git, write_json
+from .configurations import required_checkpoints
 from .validation import Deployment, run_suite
 
 
@@ -94,7 +95,7 @@ def main():
                     deployment.stop()
             write_json(target/'diagnostic-result.json', entry)
             results.append(entry)
-            write_json(output/'results.json', {'suite_revision': args.suite_revision, 'suite_hashes': suite_hashes, 'results': results, 'complete_54_checkpoint_corpus': len(results) == 54, 'all_checked_passed': all(r['passed'] for r in results)})
+            write_json(output/'results.json', {'suite_revision': args.suite_revision, 'suite_hashes': suite_hashes, 'results': results, 'expected_checkpoints': len(required_checkpoints(original)), 'complete_checkpoint_corpus': {(r['builder_id'],r['task_id']) for r in results} == required_checkpoints(original), 'complete_54_checkpoint_corpus': len(results) == 54 and len(required_checkpoints(original)) == 54, 'all_checked_passed': all(r['passed'] for r in results)})
             print(json.dumps({'builder': bid, 'stage': stage, 'passed': entry['passed'], 'checked': len(results)}), flush=True)
     assert file_hashes(snapshot) == suite_hashes
     print('Diagnostic evidence: '+str(output), flush=True)

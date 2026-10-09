@@ -8,10 +8,12 @@ from math import comb
 
 CONTRASTS = 54  # 6 model/harness pairs * 3 instruction pairs * 3 primary outcomes.
 
-def look_alpha(look_number):
+def look_alpha(look_number, contrasts=CONTRASTS):
     if not isinstance(look_number, int) or look_number < 1:
         raise ValueError("Look numbers begin at one and must include every attempted look.")
-    return Fraction(1, 20 * CONTRASTS * look_number * (look_number + 1))
+    if type(contrasts) is not int or contrasts < 1:
+        raise ValueError("A positive preregistered comparison family size is required.")
+    return Fraction(1, 20 * contrasts * look_number * (look_number + 1))
 
 def median_interval(values, alpha):
     values = sorted(Decimal(str(v)) for v in values)

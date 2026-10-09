@@ -8,6 +8,8 @@ Read [README.md](README.md), [the protocol](docs/experiment-protocol.md), [measu
 
 These instructions apply to the PM repository. Never mount or copy this file into builder repositories. Builder instructions must come exclusively from their assigned profile and the shared operational contract.
 
+The current user-selected matrix excludes local models: Luna and Sol × Codex and Pi × none, minimal and maximum SWE guidance (12 builders). Preserve earlier full-matrix evidence; adopt the hosted-only design through a new revision/run. Local-provider availability is not a prerequisite for hosted-only dispatch.
+
 ## Preserve the experiment
 
 - Keep one canonical application specification, stack, ordered task stream, and acceptance suite for all configurations within a run. Scope all tasks, evidence, builder identities, and reports to their run. Different project types and requirements belong to versioned project definitions.

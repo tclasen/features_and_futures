@@ -38,6 +38,12 @@ class GatewayTests(unittest.TestCase):
             {"Authorization": "Bearer " + (key if key is not None else self.key),
              "Content-Type": "application/json"}, method="POST"), timeout=10)
 
+    def test_hosted_run_disables_local_inference_leases(self):
+        self.gateway.local_endpoint=None
+        with self.assertRaises(ValueError):
+            self.gateway.lease("fixture-model","builder","task","attempt","ollama")
+        self.assertIsInstance(self.gateway.lease("fixture-model","builder","task","attempt","subscription"),str)
+
     def test_incorrect_and_revoked_leases_cannot_infer(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.call({"model": "fixture-model"}, key="wrong")

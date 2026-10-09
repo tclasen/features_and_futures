@@ -1,19 +1,19 @@
 # Gates before the main evaluation
 
-The engineering pilot remains incomplete until all 18 configurations accept all three tasks and the full evidence checks pass. These gates prevent a successful small workload from being mistaken for proof that the long-horizon runner is ready. They do not authorize starting the main evaluation.
+The engineering pilot remains incomplete until all 12 hosted configurations accept all three tasks and the full evidence checks pass. These gates prevent a successful small workload from being mistaken for proof that the long-horizon runner is ready. They do not authorize starting the main evaluation.
 
 | Gate | Evidence required | Current status |
 | --- | --- | --- |
-| Shared pilot completion | 54 accepted commits, 54 promotions and post-promotion checks; identical cumulative suite with upgrade/restart phases | In progress |
+| Shared pilot completion | 36 accepted commits, 36 promotions and post-promotion checks; identical cumulative suite with upgrade/restart phases | In progress |
 | Native accounting | Original pilot report plus independent native-receipt and dispatch/usage/finish audits; no unknown or omitted requests | Live snapshots verified; terminal reconciliation pending |
-| Stronger acceptance coverage | Prepared v005 suite checked against all 54 immutable submissions; fixtures exercise public requirements without adding architecture constraints | All 18 stage-one submissions and one stage-two submission verified; remainder pending |
+| Stronger acceptance coverage | Prepared v005 suite checked against all 36 immutable hosted-only submissions; fixtures exercise public requirements without adding architecture constraints | Prior full-matrix diagnostics retained; hosted-only final corpus pending |
 | Source and history | Checksums, independent bundle restoration and original remote checkpoint IDs | Ongoing archives/publication; final corpus audit pending |
 | Comparable diagnostics | Explicit future feedback revision; original native errors/schemas, factual browser expectations without PM source; declared notification fingerprint | Prepared components tested; versioned adoption pending |
 | Context and compaction | Effective model/harness context budgets, input/output reserve and compaction policy recorded; native compaction stress probes for every model/harness pair with all calls metered | Pending |
 | Liveness and process timing | Observation-only monitor checked; future uniform recovery policy and harness-exit timing separated from observer drain before freezing main rules | Monitor adopted; remaining execution revision pending |
 | Stability evidence | Equal continuous/post-deployment behavioral checks and observation windows; incident/recovery detection verified in a PM-controlled fixture | Pilot has only five-second health checks; broader main policy pending |
 | Longitudinal workload | One frozen stack and shared workload progression that revisits old behavior; immutable packets/tests before each round; extension/replay beyond the three-task pilot verified | Main workload and extension/replay gate pending |
-| Statistical confirmation | Main manifest references independent repeats, practical margins, all 54 primary decisions and repeated-look/error allocation | Analysis functions tested; main preregistration pending |
+| Statistical confirmation | Main manifest references independent repeats, practical margins, all 36 primary decisions and repeated-look/error allocation | Analysis functions tested; main preregistration pending |
 | Publication | Exact target commit passes known-credential/account-ID/lease scanning, decoded archives and historical-object inspection; explicit refs verified remotely | Recurring gate; every new snapshot needs its own scan |
 
 The active pilot's Codex adapter does not explicitly set `model_context_window` or `model_auto_compact_token_limit`; Pi has explicit catalog windows. This does not prove a wrong effective Codex default, truncation, or a compaction failure. Effective defaults and the pinned harness's compaction path still need runtime verification. Current local Codex receipts have remained well below the recorded local provider context capacity; that does not exercise the boundary. The [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) documents context-window and automatic-compaction settings, but current documentation alone does not verify the frozen CLI's behavior.
