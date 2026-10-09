@@ -28,7 +28,7 @@ const page = (title, content) => `<!doctype html>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#192334;font:16px system-ui,sans-serif}main{max-width:760px;margin:64px auto;padding:0 24px}h1{font-size:36px;margin:0 0 30px}h2{font-size:20px;margin-top:36px}.panel,.project-row{background:white;border:1px solid #dce2ec;border-radius:10px;padding:20px}.panel label{display:block;font-weight:600;margin-bottom:8px}.input-line{display:flex;gap:12px;flex-wrap:wrap}input{font:inherit;border:1px solid #8996aa;border-radius:6px;padding:10px;flex:1;min-width:180px}button{font:inherit;cursor:pointer;border:0;border-radius:6px;background:#245ac5;color:white;padding:11px 16px}button:hover{background:#19469e}button:focus-visible,input:focus-visible{outline:3px solid #e69b22;outline-offset:3px}.project-row{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:12px 0}.project-name{overflow-wrap:anywhere;min-width:0}.project-row form{flex-shrink:0}[role=alert]{color:#a51926;margin-bottom:16px}.empty{color:#5b6779}
 .task-row{display:flex;align-items:center;gap:12px;background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:12px 0}.task-row label{overflow-wrap:anywhere}.task-row input{min-width:0;flex:none;width:20px;height:20px}.filter{margin:24px 0}select{font:inherit;padding:8px;border-radius:6px}select:focus-visible{outline:3px solid #e69b22;outline-offset:3px}
-</style></head><body><main>${content}</main></body></html>`;
+</style><script src="/tasks.js" defer></script></head><body><main>${content}</main></body></html>`;
 
 function sendHtml(res, status, title, content) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -54,7 +54,7 @@ ${error ? `<div role="alert">${escape(error)}</div>` : ''}
 <form class="filter" method="get" action="/projects/${project.id}"><label for="task-filter">Task filter</label>
 <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">${['All', 'Open', 'Completed'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}</select></form>
 ${tasks.length ? tasks.map(task => `<form class="task-row" data-testid="task-row" method="post" action="/projects/${project.id}/tasks/${task.id}">
-<input type="hidden" name="filter" value="${filter}"><input type="checkbox" id="task-${task.id}" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><label for="task-${task.id}">${escape(task.title)}</label></form>`).join('') : '<p class="empty">No matching tasks.</p>'}`);
+<input type="hidden" name="filter" value="${filter}"><input type="checkbox" id="task-${task.id}" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}><label for="task-${task.id}">${escape(task.title)}</label></form>`).join('') : '<p class="empty">No matching tasks.</p>'}`);
 }
 async function readForm(req) {
   let body = '';
@@ -73,12 +73,54 @@ function redirect(res, location) {
   res.end();
 }
 
+const taskScript = `
+const pendingSaves = new Set();
+document.addEventListener('change', event => {
+  const checkbox = event.target;
+  if (!checkbox.matches('.task-row input[type="checkbox"]')) return;
+  const form = checkbox.form;
+  const completed = checkbox.checked;
+  const body = new URLSearchParams(new FormData(form));
+  checkbox.disabled = true;
+  const save = (async () => {
+    try {
+      const response = await fetch(form.action, { method: 'POST', body });
+      if (!response.ok) throw new Error('Unable to save task');
+      const filter = body.get('filter');
+      if (filter !== 'All' && completed !== (filter === 'Completed')) form.remove();
+    } catch (error) {
+      checkbox.checked = !completed;
+      const alert = document.createElement('div');
+      alert.setAttribute('role', 'alert');
+      alert.textContent = 'Unable to save task. Please try again.';
+      form.after(alert);
+    } finally {
+      checkbox.disabled = false;
+    }
+  })();
+  pendingSaves.add(save);
+  save.finally(() => pendingSaves.delete(save));
+});
+document.addEventListener('submit', async event => {
+  if (!pendingSaves.size) return;
+  event.preventDefault();
+  const form = event.target;
+  const submitter = event.submitter;
+  await Promise.all([...pendingSaves]);
+  if (submitter) form.requestSubmit(submitter);
+  else form.requestSubmit();
+});
+`;
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (req.method === 'GET' && url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
+    } else if (req.method === 'GET' && url.pathname === '/tasks.js') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      res.end(taskScript);
     } else if (req.method === 'GET' && url.pathname === '/') {
       projectList(res);
     } else if (req.method === 'POST' && url.pathname === '/projects') {

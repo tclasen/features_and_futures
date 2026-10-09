@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
+import { runInNewContext } from 'node:vm';
 
 test('projects and tasks validate, filter, stay isolated, and persist across restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
@@ -82,6 +83,36 @@ test('projects and tasks validate, filter, stay isolated, and persist across res
     assert.equal((await post(taskPath, {})).status, 303);
     assert.doesNotMatch(await taskPage('Completed'), /data-testid="task-row"/);
     await post(taskPath, { completed: '1' });
+    // Exercise the browser change handler: saves must not navigate or restore
+    // a stale checked page when a user subsequently unchecks the task.
+    const handlers = {};
+    const form = { action: base + taskPath, remove() {}, after() {} };
+    const checkbox = { form, checked: true, disabled: false, matches: () => true };
+    const script = await (await fetch(base + '/tasks.js')).text();
+    runInNewContext(script, {
+      document: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+      URLSearchParams,
+      FormData: class {
+        constructor() { return [['filter', 'All'], ...(checkbox.checked ? [['completed', '1']] : [])]; }
+      },
+      fetch
+    });
+    for (const completed of [false, true, false, true]) {
+      checkbox.checked = completed;
+      handlers.change({ target: checkbox });
+      assert.equal(checkbox.disabled, true);
+      let navigated = false;
+      let prevented = false;
+      await handlers.submit({
+        target: { requestSubmit() { navigated = true; } },
+        preventDefault() { prevented = true; }
+      });
+      assert.equal(prevented, true);
+      assert.equal(navigated, true);
+      assert.equal(checkbox.disabled, false);
+      assert.equal(checkbox.checked, completed);
+      assert.equal(/ checked/.test(await taskPage()), completed);
+    }
     detail = await taskPage();
     assert.match(detail, / checked/);
     assert.match(detail, /<h1>First project<\/h1>/);
