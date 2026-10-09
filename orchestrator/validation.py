@@ -18,6 +18,7 @@ def reserve_port():
 
 class Deployment:
     def __init__(self, manifest, builder, task_id, attempt_id, repo, commit, output, prior):
+        self.created = False
         self.name = f"ff-{manifest['run_id']}-app-{builder}-{task_id[-3:]}-{attempt_id[-3:]}"
         self.source = Path(manifest["paths"]["deployments"]) / builder / task_id / attempt_id
         self.output = output
@@ -41,6 +42,7 @@ class Deployment:
         checked(["sbx","create","--name",self.name,"--cpus","4","--memory","512m",
                  "--skills","off","--pull","never","-t",manifest["runtime"]["image"],
                  "--publish",f"127.0.0.1:{self.port}:8080/tcp4","shell"])
+        self.created = True
         with archive.open("rb") as stream:
             script="import sys,pathlib,tarfile;p=pathlib.Path('/home/agent/app');p.mkdir();tarfile.open(fileobj=sys.stdin.buffer,mode='r|').extractall(p,filter='data');(p/'.runtime').mkdir()"
             result=subprocess.run(["sbx","exec","-i",self.name,"python3","-c",script],stdin=stream,capture_output=True)
@@ -69,6 +71,15 @@ proc=subprocess.Popen(['npm','start'],cwd=p,env=env,stdout=log,stderr=log,
 """
         checked(["sbx","exec",self.name,"python3","-c",script,root])
         self.health()
+
+    def probe_health(self):
+        # A post-promotion sample must expose an outage, rather than retry it away.
+        try:
+            with urllib.request.urlopen(self.base+"/health",timeout=2) as response:
+                if response.status!=200 or json.load(response)!={"status":"ok"}:
+                    raise RuntimeError("Post-promotion health contract failed")
+        except Exception as error:
+            raise RuntimeError("Post-promotion health sample failed: "+str(error)) from error
 
     def health(self):
         deadline = time.monotonic()+30
@@ -113,6 +124,8 @@ if p.exists():
             (self.output/"server.log").write_bytes(result.stdout)
 
     def stop(self):
+        if not getattr(self,"created",True):
+            return
         # Rejected apps may have absent/corrupt/non-SQLite data. Preserve raw
         # evidence when a consistent backup is impossible, then stop the VM.
         try:
@@ -152,15 +165,24 @@ def run_suite(master, run, deployment, output, stage, phase, prefix):
         raise RuntimeError("PM acceptance runner produced no result: "+result.stderr[-2000:])
     report = json.loads((target/"results.json").read_text())
     diagnostics=[]
+    feedback_v3=(run/"manifest.json").exists() and json.loads((run/"manifest.json").read_text())["execution"].get("feedback_rendering")=="native-and-visible-state-v3"
     def visit(suites):
         for suite in suites:
             for spec in suite.get("specs",[]):
                 for test in spec.get("tests",[]):
                     for res in test.get("results",[]):
                         if res["status"] not in ("passed","skipped"):
-                            diagnostics.append({
-                                "test":spec["title"],"phase":phase,"status":res["status"],
-                                "errors":[e.get("message","") for e in res.get("errors",[])]})
+                            item={"test":spec["title"],"phase":phase,"status":res["status"],
+                                  "errors":[e.get("message","") for e in res.get("errors",[])]}
+                            if feedback_v3:
+                                from .diagnostics import browser_diagnostics, page_snapshot
+                                item=browser_diagnostics([item],master)[0]
+                                for attachment in res.get("attachments",[]):
+                                    path=Path(attachment.get("path", ""))
+                                    if path.name=="error-context.md" and path.is_file() and path.resolve().is_relative_to(target.resolve()):
+                                        snapshot=page_snapshot(path.read_text())
+                                        if snapshot: item["page_snapshot"]=snapshot
+                            diagnostics.append(item)
             visit(suite.get("suites",[]))
     visit(report.get("suites",[]))
     return result.returncode == 0, diagnostics, report.get("stats",{})

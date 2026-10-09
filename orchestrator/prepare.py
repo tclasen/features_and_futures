@@ -42,12 +42,12 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="hosted");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="parallel-rounds");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-005");parser.add_argument("--project-revision",default="v004");parser.add_argument("--experiment-revision",default="pilot-v005");parser.add_argument("--source-run",default="pilot-004");parser.add_argument("--feedback-rendering",choices=("legacy-v1","native-parser-and-supplied-schemas-v2","native-and-visible-state-v3"),default="legacy-v1");parser.add_argument("--model-set",choices=("full","hosted"),default="hosted");parser.add_argument("--scheduling",choices=("sequential","parallel-rounds"),default="parallel-rounds");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    if args.project_revision not in ("v003", "v004"): raise ValueError("Unsupported project revision")
+    if args.project_revision not in ("v003", "v004", "v005", "v006"): raise ValueError("Unsupported project revision")
     project = ROOT / "projects/workboard/revisions" / args.project_revision
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
@@ -79,9 +79,11 @@ def prepare():
         git(repo, "config", "user.email", "builder@experiment.invalid")
     prices = price_snapshot(run / "pricing", models=selected_models)
     write_json(frozen / "pricing-mappings.json", prices)
+    from .workload import project_checkpoints, phase_expectations
     tasks = []
-    for stage in range(1,4):
-        task_id = f"task-{stage:03d}"
+    for checkpoint in project_checkpoints(project):
+        stage=checkpoint["stage"]
+        task_id=checkpoint["task_id"]
         packet = contract + "\n\n" + (frozen / "project/SPEC.md").read_text()
         packet += "\n\nCumulative requirements through this task:\n"
         for prior in range(1, stage+1):
@@ -89,7 +91,9 @@ def prepare():
         path = run / "tasks" / task_id
         path.mkdir(parents=True, exist_ok=True)
         (path / "packet.md").write_text(packet)
-        tasks.append({"task_id":task_id,"stage":stage,"packet_sha256":digest_bytes(packet.encode()),
+        tasks.append({"task_id":task_id,"stage":stage,
+                      **({"expected_phase_checks":phase_expectations(checkpoint)} if "expected_phase_checks" in checkpoint else {}),
+                      "packet_sha256":digest_bytes(packet.encode()),
                       "suite_hash":digest_json(file_hashes(frozen / "project/acceptance"))})
     local_runtime = {}
     if "gpt-oss:120b" in selected_models:
@@ -112,6 +116,12 @@ def prepare():
                            "memory_bytes":int(checked(["sysctl","-n","hw.memsize"])),
                            "cpu":checked(["sysctl","-n","machdep.cpu.brand_string"])},
                    "context_policy":"fresh home/session for every instruction; private sandbox repository persists",
+                   **({"harness_context":{
+                       "codex":{"context_window":272000,"auto_compact_token_limit":255616,
+                                "output_reserve":"Native Codex Responses behavior; no independent CLI output cap verified"},
+                       "pi":{"context_window":272000,"max_output_tokens":16384,
+                             "compaction":{"enabled":True,"reserveTokens":16384,"keepRecentTokens":20000}}}}
+                      if args.feedback_rendering=="native-and-visible-state-v3" else {}),
                    "egress":"deny by default; only the PM leased inference gateway allowed",
                    "model_mappings":{**({"gpt-oss:120b":local_provider["model"]} if local_runtime else {}),
                        "gpt-6-luna":{"provider":"OpenAI subscription", "reasoning":"medium"},
@@ -125,10 +135,14 @@ def prepare():
                       "definition_hashes":file_hashes(frozen)},
         "tasks":tasks,"pricing":prices,
         "execution":{"scheduling_seed":43,"order":scheduling_order,"scheduling":args.scheduling,"max_parallel_builders":len(builders) if args.scheduling=="parallel-rounds" else 1, "rotation_positions":rotation,
-                     "retry_limit":None,"feedback_rendering":args.feedback_rendering,"unchanged_failure_notify_after":10},
+                     "retry_limit":None,"feedback_rendering":args.feedback_rendering,"unchanged_failure_notify_after":10,
+                     **({"timing_revision":"harness-return-v2","recovery_policy":"uniform public assertions and visible snapshot on every rejection; preserve working tree"} if args.feedback_rendering=="native-and-visible-state-v3" else {})},
         "evidence_policy":{"purpose":"infrastructure readiness; no claim of instruction effect",
-                           "stop":f"all {len(builders)} builders accepted all three tasks with complete native usage",
-                           "post_deployment_window_seconds":5,
+                           "stop":f"all {len(builders)} builders accepted all {len(tasks)} tasks with complete native usage",
+                           "post_deployment_window_seconds":30 if args.feedback_rendering=="native-and-visible-state-v3" else 5,
+                           **({"stability_revision":"behavior-and-restart-v2","post_deployment_interval_seconds":5,
+                               "incident_policy":"One same-revision process restart; failed recovery halts cohort for archived diagnosis"}
+                              if args.feedback_rendering=="native-and-visible-state-v3" else {}),
                            "main_run":"not started by this pilot command",
                            "pm_conversation_tokens":"unavailable; not included in builder cost"},
         "paths":{"builders":str(sibling),

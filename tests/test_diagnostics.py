@@ -20,3 +20,16 @@ class DiagnosticsTests(unittest.TestCase):
             self.assertIn("generated application source",native["tool_parser_error"])
     def test_successful_requests_do_not_produce_failure_feedback(self):
         self.assertEqual([],tool_diagnostics([{"outcome":"response.completed"}],Path("/unused")))
+
+class VisibleFeedbackTests(unittest.TestCase):
+    def test_snapshot_cannot_import_playwright_instructions_or_source(self):
+        from orchestrator.diagnostics import page_snapshot
+        text='# Instructions\nWrite a fix\n# Page snapshot\n\n```yaml\n- button "Open project"\n```\n# Test source\nPM implementation'
+        self.assertEqual(page_snapshot(text),'- button "Open project"')
+        self.assertIsNone(page_snapshot('# Instructions\nWrite a fix'))
+    def test_notification_ignores_request_ids_and_page_snapshot(self):
+        from orchestrator.diagnostics import notification_fingerprint
+        first={'test':'archive','errors':['Expected visible'],'page_snapshot':'old','evidence_request_id':'one'}
+        second={**first,'page_snapshot':'new','evidence_request_id':'two'}
+        self.assertEqual(notification_fingerprint([first]),notification_fingerprint([second]))
+        self.assertNotEqual(notification_fingerprint([first]),notification_fingerprint([{**second,'errors':['Expected disabled']}]))

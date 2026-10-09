@@ -138,7 +138,7 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
                 if u.get("builder_id")==bid and u.get("task_id")==task_id
                 and u.get("attempt_id")==previous[-1].name]
             concise=(tool_diagnostics(prior_usage,previous[-1])
-                if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else [])
+                if manifest["execution"].get("feedback_rendering")in ("native-parser-and-supplied-schemas-v2","native-and-visible-state-v3") else [])
             if concise:
                 revised=dict(prior_feedback)
                 revised["observations"]=concise+[o for o in prior_feedback["observations"]
@@ -182,10 +182,16 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         observer=CommitObserver(sandbox,ledger,attrs); observer.start()
         print(f"{task_id} {bid} {builder['model']} {builder['harness']} {builder['profile']} {attempt_id} START",flush=True)
         result=None
+        returned=[]
+        def on_return(exit_code):
+            returned.append(ledger.event("harness_returned",exit_code=exit_code,**attrs))
+        timing_v2=manifest["execution"].get("timing_revision")=="harness-return-v2"
         try:
             result=execute_attempt(sandbox,builder["harness"],builder["model"],key,
                 gateway.port,packet+feedback,output,instructions["profiles"][builder["profile"]],
-                on_start=on_start,workdir=WORK)
+                on_start=on_start,workdir=WORK,
+                on_return=on_return if timing_v2 else None,
+                context_settings=manifest["runtime"].get("harness_context",{}).get(builder["harness"]))
         finally:
             observer.stop()
             gateway.revoke()
@@ -207,7 +213,7 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         if any(u["status"]!=200 and u.get("outcome")!="builder-invalid-tool-call" for u in usage):
             raise RuntimeError(f"{bid} {attempt_id}: provider failure; preserve and diagnose")
         diagnostics=(tool_diagnostics(usage,output)
-            if manifest["execution"].get("feedback_rendering")=="native-parser-and-supplied-schemas-v2" else
+            if manifest["execution"].get("feedback_rendering")in ("native-parser-and-supplied-schemas-v2","native-and-visible-state-v3") else
             [{"contract":"Generated tool arguments must be valid for the assigned harness",
               "observed":u["tool_parser_error"]} for u in usage
              if u.get("outcome")=="builder-invalid-tool-call"])
@@ -258,7 +264,8 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         ledger.event("validation_finished",success=passed,statistics=stats,**attrs)
         write_json(output/"result.json",{
             "accepted":passed,"commit":head,"tree":tree,
-            "attempt_wall_seconds":(ended["monotonic_ns"]-started[0]["monotonic_ns"])/1e9,
+            "attempt_wall_seconds":((returned[0] if returned else ended)["monotonic_ns"]-started[0]["monotonic_ns"])/1e9,
+            **({"observer_drain_seconds":(ended["monotonic_ns"]-returned[0]["monotonic_ns"])/1e9} if returned else {}),
             "requests":len(usage),"native_usage_complete":True,
             "acceptance_statistics":stats,"diagnostics":diagnostics})
         if passed:
@@ -270,14 +277,29 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
             ledger.event("deployment_promoted",commit=head,tree=tree,
                          prior_commit=prior_commit,included_commits=included,**attrs)
             promoted=time.monotonic()
-            try:
-                while time.monotonic()-promoted<manifest["evidence_policy"]["post_deployment_window_seconds"]:
-                    deployment.health()
-                    time.sleep(.5)
-                ledger.event("post_deployment_checks_passed",commit=head,**attrs)
-            except RuntimeError as error:
-                ledger.event("incident_detected",observed=str(error),commit=head,**attrs)
-                raise
+            if manifest["evidence_policy"].get("stability_revision")=="behavior-and-restart-v2":
+                from .stability import monitor_promotion
+                observation_number=[0]
+                def check_promotion():
+                    deployment.probe_health()
+                    observation_number[0]+=1
+                    phase=f"observation-{observation_number[0]:03d}"
+                    ok,errors,counts=run_suite(ROOT,run,deployment,output,stage,phase,task_id)
+                    ledger.event("post_deployment_sample",commit=head,success=ok,statistics=counts,**attrs)
+                    if not ok or errors or counts.get("expected")!=1 or counts.get("skipped",0):
+                        raise RuntimeError("Post-promotion behavioral check failed: "+json.dumps(errors))
+                monitor_promotion(ledger,{"commit":head,**attrs},check_promotion,deployment.restart,
+                                  manifest["evidence_policy"]["post_deployment_window_seconds"],
+                                  manifest["evidence_policy"]["post_deployment_interval_seconds"])
+            else:
+                try:
+                    while time.monotonic()-promoted<manifest["evidence_policy"]["post_deployment_window_seconds"]:
+                        deployment.health()
+                        time.sleep(.5)
+                    ledger.event("post_deployment_checks_passed",commit=head,**attrs)
+                except RuntimeError as error:
+                    ledger.event("incident_detected",observed=str(error),commit=head,**attrs)
+                    raise
             accepted={"stage":stage,"commit":head,"tree":tree,
                       "sandbox":deployment.name,"database":str(deployment.database),
                       "fixture_prefix":task_id}
@@ -306,7 +328,8 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
         ledger.event("attempt_rejected",**recovery,**attrs)
         ledger.event("feedback_issued",**attrs)
         feedback="\n\nFeedback on your previous submission:\n"+(output/"feedback.json").read_text()
-        fingerprint=digest_json(diagnostics)
+        from .diagnostics import notification_fingerprint
+        fingerprint=(notification_fingerprint(diagnostics) if manifest["execution"].get("feedback_rendering")=="native-and-visible-state-v3" else digest_json(diagnostics))
         consecutive=consecutive+1 if previous_fingerprint==fingerprint else 1
         previous_fingerprint=fingerprint
         with state_lock:

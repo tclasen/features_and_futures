@@ -11,7 +11,8 @@ def invoke(command, *, stdin=None, timeout=None):
 
 
 def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
-                      treatment=""):
+                      treatment="", *, context_settings=None):
+    context_settings = context_settings or {}
     config_root = "/home/agent/.ff-context-" + attempt_key
     base_url = f"http://host.docker.internal:{gateway_port}/attempts/" + __import__("hashlib").sha256(key.encode()).hexdigest()[:24]
     if harness == "pi":
@@ -22,8 +23,8 @@ def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
             "apiKey": "$FF_GATEWAY_KEY",
             "models": [{
                 "id": model, "name": model, "reasoning": True,
-                "input": ["text"], "contextWindow": 131072 if model == "gpt-oss:120b" else 272000,
-                "maxTokens": 16384,
+                "input": ["text"], "contextWindow": context_settings.get("context_window", 131072 if model == "gpt-oss:120b" else 272000),
+                "maxTokens": context_settings.get("max_output_tokens", 16384),
                 "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
                 "compat": {"supportsReasoningEffort": True, "supportsUsageInStreaming": True},
             }],
@@ -34,6 +35,7 @@ def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
                 "transport": "sse", "packages": [], "skills": [],
                 "quietStartup": True, "defaultThinkingLevel": "medium",
                 "retry": {"enabled": False},
+                **({"compaction": context_settings["compaction"]} if "compaction" in context_settings else {}),
             }),
             "treatment.txt": treatment,
         }
@@ -80,6 +82,9 @@ def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
             "-c", "model_providers.pilot.stream_max_retries=0",
             "-c", "model_providers.pilot.requires_openai_auth=false",
         ]
+        for setting in ("context_window", "auto_compact_token_limit"):
+            if setting in context_settings:
+                command += ["-c", "model_" + setting + "=" + str(context_settings[setting])]
         if treatment:
             command += ["-c", "developer_instructions=" + json.dumps(treatment)]
         command += ["-"]
@@ -87,10 +92,10 @@ def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
 
 
 def execute_attempt(sandbox, harness, model, key, gateway_port, prompt, output,
-                    treatment="", *, timeout=None, smoke=False, on_start=None, workdir=None):
+                    treatment="", *, timeout=None, smoke=False, on_start=None, workdir=None, on_return=None, context_settings=None):
     output.mkdir(parents=True, exist_ok=True)
     command = configure_attempt(sandbox, harness, model, key, gateway_port,
-                                uuid.uuid4().hex, treatment)
+                                uuid.uuid4().hex, treatment, context_settings=context_settings)
     if workdir:
         pos=command.index(sandbox)
         command[pos:pos]=["-w",workdir]
@@ -103,7 +108,14 @@ def execute_attempt(sandbox, harness, model, key, gateway_port, prompt, output,
         stdin = prompt
     if on_start:
         on_start()
-    result = invoke(command, stdin=stdin, timeout=timeout)
+    try:
+        result = invoke(command, stdin=stdin, timeout=timeout)
+    except BaseException:
+        if on_return:
+            on_return(None)
+        raise
+    if on_return:
+        on_return(result.returncode)
     # Lease credentials never survive publication even if a harness echoes them.
     (output / "harness.stdout.jsonl").write_text(result.stdout.replace(key, "[REDACTED-LEASE]"))
     (output / "harness.stderr.log").write_text(result.stderr.replace(key, "[REDACTED-LEASE]"))

@@ -68,7 +68,8 @@ def main():
             promotion=next((e for e in ev if e["kind"]=="deployment_promoted"),None)
             attempts=[]
             for start in [e for e in ev if e["kind"]=="attempt_started"]:
-                end=next((e for e in ev if e["kind"]=="attempt_finished" and e["attempt_id"]==start["attempt_id"]),None)
+                end_kind="harness_returned" if m["execution"].get("timing_revision")=="harness-return-v2" else "attempt_finished"
+                end=next((e for e in ev if e["kind"]==end_kind and e["attempt_id"]==start["attempt_id"]),None)
                 if end and end["clock_id"]==start["clock_id"]:
                     attempts.append({"attempt_id":start["attempt_id"],
                         "wall_nanoseconds":end["monotonic_ns"]-start["monotonic_ns"],
@@ -105,8 +106,8 @@ def main():
                 output=run/"tasks"/task_id/"attempts"/bid/accept["attempt_id"]
                 result=json.loads((output/"result.json").read_text())
                 phases={p["phase"]:p for p in result["acceptance_statistics"]}
-                expected={"acceptance":4 if t["stage"]==1 else 8 if t["stage"]==2 else 11,"postrestart":1}
-                if t["stage"]>1: expected["upgrade"]=1
+                from .workload import phase_expectations
+                expected=phase_expectations(t)
                 for phase,n in expected.items():
                     if phase not in phases or phases[phase].get("expected")!=n or phases[phase].get("unexpected",0)>0:
                         problems.append("incomplete suite: "+bid+"/"+task_id+"/"+phase)
@@ -132,18 +133,27 @@ def main():
         post_checks=[e for e in events if e["kind"]=="post_deployment_checks_passed"]
         duration=(max(e["monotonic_ns"] for e in post_checks)-min(e["monotonic_ns"] for e in all_dispatch))/1e9 if all_dispatch and post_checks else None
         active=sum(r["builder_execution_seconds"] for r in rows)
+        recovered=[]
+        for incident in incidents:
+            recovery=next((e for e in ev if e["kind"]=="incident_recovered" and e.get("incident_id")==incident["event_id"]),None)
+            if recovery:
+                if recovery["clock_id"]!=incident["clock_id"] or recovery["monotonic_ns"]<incident["monotonic_ns"]:
+                    problems.append("invalid recovery timing: "+incident["event_id"])
+                else: recovered.append({"incident_id":incident["event_id"],"seconds":(recovery["monotonic_ns"]-incident["monotonic_ns"])/1e9})
+        failed_promotions={(i.get("task_id"),i.get("attempt_id")) for i in incidents}
         builder_rows.append({**b,"tasks_accepted":sum(r["accepted"] for r in rows),
             "execution_nanoseconds":sum(r["builder_execution_nanoseconds"] for r in rows),
             "execution_seconds":active,"cache_aware_usd":str(sum((Decimal(r["cache_aware_usd"]) for r in rows),Decimal(0))),
             "uncached_reference_usd":str(sum((Decimal(r["uncached_reference_usd"]) for r in rows),Decimal(0))),
-            "first_submission_acceptance":sum(r["first_submission_accepted"] for r in rows)/3,
-            "dora":{"surrogate":"persistent sbx deployment; five-second post-promotion health observation",
+            "first_submission_acceptance":sum(r["first_submission_accepted"] for r in rows)/len(m["tasks"]),
+            "dora":{"surrogate":("persistent sbx deployment; health and sentinel behavior; "+str(m["evidence_policy"]["post_deployment_window_seconds"])+"-second window" if m["evidence_policy"].get("stability_revision")=="behavior-and-restart-v2" else "persistent sbx deployment; five-second post-promotion health observation"),
                     "promotions":len(promotions),"incidents":len(incidents),"change_lead_times":lead,
                     "nominal_common_window_seconds":duration,
                     "promotions_per_nominal_day":len(promotions)/duration*86400 if duration else None,
                     "promotions_per_builder_active_hour":len(promotions)/active*3600 if active else None,
-                    "change_failure_rate":len(incidents)/len(promotions) if promotions else None,
-                    "failed_deployment_recovery_seconds":None,
+                    "change_failure_rate":len(failed_promotions)/len(promotions) if promotions else None,
+                    "failed_deployment_recovery_seconds":recovered or None,
+                    **({"unrecovered_incidents":len(incidents)-len(recovered)} if incidents else {}),
                     "deployment_rework_rate":sum(e["kind"]=="incident_repair_promoted" for e in ev)/len(promotions) if promotions else None}})
     archive_count=0
     for indexfile in sorted((run/"builders").glob("*/checkpoints/*/index.json")):

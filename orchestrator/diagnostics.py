@@ -27,3 +27,27 @@ def tool_diagnostics(usage, output):
             "supplied_tool_schemas":tools,
         })
     return diagnostics
+
+
+def browser_diagnostics(diagnostics, pm_root):
+    """Return public assertion facts and only the failing page's YAML snapshot."""
+    from .proposals.browser_feedback_v1 import browser_diagnostics as sanitize
+    return sanitize(diagnostics, pm_root)
+
+
+def page_snapshot(text):
+    import re
+    match=re.search(r'^# Page snapshot\s*\n+```yaml\n(.*?)\n```',text,re.M|re.S)
+    return match.group(1) if match else None
+
+
+def notification_fingerprint(diagnostics):
+    from .evidence import digest_json
+    normalized=[]
+    for item in diagnostics:
+        copy={k:v for k,v in item.items() if k not in ('evidence_request_id','supplied_tool_schemas','page_snapshot')}
+        if copy.get('contract')=='Generated tool arguments must be valid for the assigned harness':
+            original=copy.get('observed','')
+            if ', err=' in original: copy['observed']=original.rsplit(', err=',1)[-1]
+        normalized.append(copy)
+    return digest_json(normalized)
