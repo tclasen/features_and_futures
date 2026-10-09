@@ -55,8 +55,8 @@ class PublicationScanTests(unittest.TestCase):
             self.assertEqual(scanner.bundles, 1)
 
     def test_credential_fields_and_public_ids(self):
-        result = module.credential_values({'provider': {'access': 'test-only-access-credential', 'refresh_token': 'test-only-refresh-credential', 'account_id': 'public-identification'}})
-        self.assertEqual(result, {b'test-only-access-credential', b'test-only-refresh-credential'})
+        result = module.credential_values({'provider': {'access': 'test-only-access-credential', 'refresh_token': 'test-only-refresh-credential', 'accountId': 'test-only-host-account-routing-id', 'public_id': 'public-identification'}})
+        self.assertEqual(result, {b'test-only-access-credential', b'test-only-refresh-credential', b'test-only-host-account-routing-id'})
 
 
 if __name__ == '__main__':
