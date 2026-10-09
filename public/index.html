@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #192333; background: #f4f6fa; }
+    body { max-width: 760px; margin: 3rem auto; padding: 0 1.25rem; }
+    h1 { margin-bottom: 1.5rem; }
+    form { display: flex; gap: .65rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    input, button { font: inherit; padding: .65rem .8rem; border: 1px solid #aab4c3; border-radius: 6px; }
+    input { flex: 1; min-width: 220px; background: white; }
+    button { background: #244fa3; color: white; border-color: #244fa3; cursor: pointer; }
+    button:hover { background: #193c80; }
+    .project-list { display: grid; gap: .7rem; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; background: white; border: 1px solid #dce1e9; border-radius: 8px; }
+    .alert { color: #a32323; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapePath = id => `/projects/${encodeURIComponent(id)}`;
+    async function projects() {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error('Could not load projects');
+      return response.json();
+    }
+    function go(path) { history.pushState({}, '', path); render(); }
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+      if (match) {
+        const list = await projects();
+        const project = list.find(item => String(item.id) === match[1]);
+        app.replaceChildren();
+        const back = document.createElement('button'); back.textContent = 'Projects'; back.onclick = () => go('/'); app.append(back);
+        const heading = document.createElement('h1'); heading.textContent = project ? project.name : 'Project not found'; app.append(heading);
+        return;
+      }
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" aria-label="Project name"><button type="submit">Create project</button></form>
+        <p class="alert" role="alert" aria-live="polite"></p><section class="project-list" aria-label="Projects"></section>`;
+      const alert = app.querySelector('.alert');
+      app.querySelector('form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = app.querySelector('input').value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; return; }
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!response.ok) { alert.textContent = 'Project name is required'; return; }
+        event.currentTarget.reset(); alert.textContent = ''; await render();
+      });
+      const list = app.querySelector('.project-list');
+      for (const project of await projects()) {
+        const row = document.createElement('div'); row.className = 'project-row'; row.dataset.testid = 'project-row';
+        const name = document.createElement('span'); name.textContent = project.name;
+        const open = document.createElement('button'); open.textContent = 'Open project'; open.onclick = () => go(escapePath(project.id));
+        row.append(name, open); list.append(row);
+      }
+    }
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
