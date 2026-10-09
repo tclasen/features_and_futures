@@ -7,10 +7,15 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+  COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +43,7 @@ async function render() {
     const response = await fetch('/api/projects/' + match[1]);
     if (!response.ok) { app.innerHTML = '<h1>Project not found</h1><button id="back">Projects</button>'; document.getElementById('back').onclick = () => navigate('/'); return; }
     const project = await response.json();
-    app.innerHTML = '<button id="back">Projects</button><h1>' + escapeHtml(project.name) + '</h1><form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off"><button type="submit">Create task</button></form><p class="alert" id="task-error" role="alert" hidden></p><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><section id="tasks" aria-label="Tasks"></section>';
+    app.innerHTML = '<button id="back">Projects</button><h1>' + escapeHtml(project.name) + '</h1>' + (project.archived ? '<p>Archived project</p>' : '') + '<form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off" ' + (project.archived ? 'disabled' : '') + '><button type="submit" ' + (project.archived ? 'disabled' : '') + '>Create task</button></form><p class="alert" id="task-error" role="alert" hidden></p><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><section id="tasks" aria-label="Tasks"></section>';
     document.getElementById('back').onclick = () => navigate('/');
     const taskForm = document.getElementById('task-form');
     const taskError = document.getElementById('task-error');
@@ -46,7 +51,7 @@ async function render() {
     const refreshTasks = async () => {
       const tasks = await (await fetch('/api/projects/' + match[1] + '/tasks')).json();
       const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
-      document.getElementById('tasks').innerHTML = shown.map(task => '<div class="task-row" data-testid="task-row"><span>' + escapeHtml(task.title) + '</span><input type="checkbox" aria-label="Complete ' + escapeHtml(task.title) + '" data-task="' + task.id + '" ' + (task.completed ? 'checked' : '') + '></div>').join('');
+      document.getElementById('tasks').innerHTML = shown.map(task => '<div class="task-row" data-testid="task-row"><span>' + escapeHtml(task.title) + '</span><input type="checkbox" aria-label="Complete ' + escapeHtml(task.title) + '" data-task="' + task.id + '" ' + (task.completed ? 'checked' : '') + (project.archived ? ' disabled' : '') + '></div>').join('');
       document.querySelectorAll('[data-task]').forEach(box => box.onchange = async () => { await fetch('/api/projects/' + match[1] + '/tasks/' + box.dataset.task, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({completed:box.checked})}); await refreshTasks(); });
     };
     filter.onchange = refreshTasks;
@@ -60,14 +65,17 @@ async function render() {
     await refreshTasks();
     return;
   }
-  app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"><button type="submit">Create project</button></form><p class="alert" id="error" role="alert" hidden></p><section id="projects" aria-label="Projects"></section>';
+  app.innerHTML = '<h1>Workboard</h1><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select><form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"><button type="submit">Create project</button></form><p class="alert" id="error" role="alert" hidden></p><section id="projects" aria-label="Projects"></section>';
   const form = document.getElementById('create-form');
   const error = document.getElementById('error');
   const refresh = async () => {
-    const projects = await (await fetch('/api/projects')).json();
-    document.getElementById('projects').innerHTML = projects.map(p => '<div class="project-row" data-testid="project-row"><span>' + escapeHtml(p.name) + '</span><button type="button" data-project="' + p.id + '">Open project</button></div>').join('');
+    const archived = document.getElementById('project-filter').value === 'Archived';
+    const projects = await (await fetch('/api/projects?archived=' + archived)).json();
+    document.getElementById('projects').innerHTML = projects.map(p => '<div class="project-row" data-testid="project-row"><span>' + escapeHtml(p.name) + '</span><span data-testid="project-summary">' + p.completedCount + '/' + p.totalCount + ' completed</span><button type="button" data-project="' + p.id + '">Open project</button><button type="button" data-archive="' + p.id + '">' + (archived ? 'Restore project' : 'Archive project') + '</button></div>').join('');
     document.querySelectorAll('[data-project]').forEach(button => button.onclick = () => navigate('/projects/' + button.dataset.project));
+    document.querySelectorAll('[data-archive]').forEach(button => button.onclick = async () => { await fetch('/api/projects/' + button.dataset.archive + '/archive', {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived:!archived})}); await refresh(); });
   };
+  document.getElementById('project-filter').onchange = refresh;
   form.onsubmit = async event => {
     event.preventDefault();
     const name = new FormData(form).get('name').trim();
@@ -90,7 +98,14 @@ function sendJson(response, status, value) {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/health') return sendJson(response, 200, { status: 'ok' });
-  if (request.method === 'GET' && url.pathname === '/api/projects') return sendJson(response, 200, listProjects.all());
+  if (request.method === 'GET' && url.pathname === '/api/projects') return sendJson(response, 200, listProjects.all(url.searchParams.get('archived') === 'true' ? 1 : 0));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (request.method === 'PATCH' && archiveMatch) {
+    let body = ''; for await (const chunk of request) body += chunk;
+    try { const value = JSON.parse(body).archived; if (typeof value !== 'boolean') throw new Error(); setArchived.run(value ? 1 : 0, Number(archiveMatch[1])); }
+    catch { return sendJson(response, 400, { error: 'Invalid archived value' }); }
+    return sendJson(response, 200, { status: 'ok' });
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
     const project = getProject.get(Number(projectMatch[1]));
