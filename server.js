@@ -31,6 +31,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 
 const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -66,7 +67,7 @@ if(path.startsWith('/projects/')){
     const filterWrap=document.createElement('div'); const filterLabel=document.createElement('label'); filterLabel.htmlFor='task-filter'; filterLabel.textContent='Task filter';
     const filter=document.createElement('select'); filter.id='task-filter'; for(const value of ['All','Open','Completed']){const option=document.createElement('option');option.textContent=value;option.value=value;filter.append(option)} filterWrap.append(filterLabel,filter); app.append(filterWrap);
     const tasks=document.createElement('section'); tasks.setAttribute('aria-label','Tasks'); app.append(tasks);
-    async function refresh(){const response=await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks');const rows=await response.json();tasks.replaceChildren();for(const task of rows){if(filter.value==='Open'&&task.completed||filter.value==='Completed'&&!task.completed)continue;const row=document.createElement('div');row.className='project-row';row.dataset.testid='task-row';const title=document.createElement('span');title.textContent=task.title;const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=!!task.completed;checkbox.disabled=!!project.archived;checkbox.setAttribute('aria-label','Complete '+task.title);checkbox.addEventListener('change',async()=>{await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:checkbox.checked})});await refresh()});row.append(title,checkbox);tasks.append(row)}}
+    async function refresh(){const response=await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks');const rows=await response.json();tasks.replaceChildren();for(const task of rows){if(filter.value==='Open'&&task.completed||filter.value==='Completed'&&!task.completed)continue;const row=document.createElement('div');row.className='project-row';row.dataset.testid='task-row';const title=document.createElement('span');title.textContent=task.title;const renameTaskForm=document.createElement('form');renameTaskForm.addEventListener('submit',async event=>{event.preventDefault();const newTitle=renameInput.value.trim();if(!newTitle){message.textContent='Task title is required';message.hidden=false;return}const update=await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({title:newTitle})});if(update.ok){message.hidden=true;message.textContent='';await refresh()}});const renameInput=document.createElement('input');renameInput.type='text';renameInput.value=task.title;renameInput.setAttribute('aria-label','New task title');const renameButton=document.createElement('button');renameButton.type='submit';renameButton.textContent='Rename task';renameTaskForm.append(renameInput,renameButton);renameInput.disabled=!!project.archived;renameButton.disabled=!!project.archived;const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=!!task.completed;checkbox.disabled=!!project.archived;checkbox.setAttribute('aria-label','Complete '+task.title);checkbox.addEventListener('change',async()=>{await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:checkbox.checked})});await refresh()});row.append(title,renameTaskForm,checkbox);tasks.append(row)}}
     filter.addEventListener('change',refresh);
     form.addEventListener('submit',async event=>{event.preventDefault();const title=input.value.trim();if(!title){message.textContent='Task title is required';message.hidden=false;return}const response=await fetch('/api/projects/'+encodeURIComponent(id)+'/tasks',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title})});if(response.ok){input.value='';message.hidden=true;message.textContent='';await refresh()}});
     await refresh();
@@ -134,13 +135,17 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'PATCH' && taskMatch) {
     let body = '';
     for await (const chunk of request) body += chunk;
-    let completed;
-    try { completed = JSON.parse(body).completed; } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
-    if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
+    let payload;
+    try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
     const task = getTask.get(Number(taskMatch[1]));
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
     if (getProject.get(task.projectId).archived) return sendJson(response, 409, { error: 'Archived project' });
-    updateTask.run(completed ? 1 : 0, task.id);
+    if (Object.hasOwn(payload, 'title')) {
+      if (typeof payload.title !== 'string' || !payload.title.trim()) return sendJson(response, 400, { error: 'Task title is required' });
+      renameTask.run(payload.title.trim(), task.id);
+    } else if (typeof payload.completed === 'boolean') {
+      updateTask.run(payload.completed ? 1 : 0, task.id);
+    } else return sendJson(response, 400, { error: 'Invalid task update' });
     return sendJson(response, 200, { ok: true });
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
