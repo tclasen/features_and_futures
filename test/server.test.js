@@ -103,6 +103,7 @@ test('projects, tasks, archive summaries and renames survive migration and serve
     assert.deepEqual(await (await fetch(base + projectPath)).json(), { ...summary, archived: 1 });
     assert.equal((await taskRequest(tasksPath, 'POST', { title: 'Forbidden task' })).status, 409);
     assert.equal((await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.equal((await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { title: 'Forbidden title' })).status, 409);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(base + projectPath)).json(), { ...summary, archived: 1 });
@@ -123,6 +124,23 @@ test('projects, tasks, archive summaries and renames survive migration and serve
     assert.deepEqual(await renamedResponse.json(), renamed);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
     assert.deepEqual(await (await fetch(base + tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
+    for (const title of ['', '   ', null]) {
+      const invalidRename = await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { title });
+      assert.equal(invalidRename.status, 400);
+      assert.equal((await invalidRename.json()).error, 'Task title is required');
+      assert.deepEqual(await (await fetch(base + tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
+    }
+    assert.equal((await taskRequest(`${otherPath}/${task.id}`, 'PATCH', { title: 'Wrong owner' })).status, 404);
+    const renamedTask = await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { title: '  Renamed task  ' });
+    assert.equal(renamedTask.status, 200);
+    task.title = 'Renamed task';
+    assert.deepEqual(await renamedTask.json(), { ...task, completed: true });
+    assert.deepEqual(await (await fetch(base + tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(base + tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
+    assert.deepEqual(await (await fetch(base + otherPath)).json(), []);
     const unchecked = await taskRequest(`${tasksPath}/${task.id}`, 'PATCH', { completed: false });
     assert.equal(unchecked.status, 200);
     assert.equal((await unchecked.json()).completed, false);
