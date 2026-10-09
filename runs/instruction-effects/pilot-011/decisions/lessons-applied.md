@@ -1,0 +1,7 @@
+# Pilot011 preparation
+
+Twelve fresh hosted builders run concurrently within each round with an enforced full-cohort barrier. Retain all superseded009/010 evidence. Adopt L025 archive-before-remove-v1 and64GiB reserve before native attempts; exact removal has been exercised against a real PM-owned sandbox, followed by successful independent Git and SQLite restoration.105 PM regression checks pass. Runtime adoption across builders remains pending.
+
+Retain L023 foreground native deployment lifetime and L024 synchronized blank-validation baseline, both verified by all12 first-round010 deployments. Retain L015 explicit context budgets/native compaction accounting, L020/L021 uniform assertions plus visible-state feedback and native-return timing, L02230second behavioral observation and one measured same-code restart. Prior eight missing010 receipts remain missing; three damaged histories retain raw objects and earlier valid checkpoints.
+
+Four prefix task packets are frozen before dispatch. Select task005(task rename) from v008 before seeing011 outcomes. Freeze and commit its cumulative packet and suite after the fourth barrier; then seal at minimum5tasks. No model/stack/harness/instruction changes, code sharing, acceptance weakening or builder repairs by PM. Verify the actual appended native round and complete evidence before claiming longitudinal readiness. The main evaluation is separate.
