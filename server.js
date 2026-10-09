@@ -59,18 +59,17 @@ async function render() {
     document.title = project ? project.name + ' - Workboard' : 'Workboard';
     if (!project) return;
 
-    if (!project.archived) {
-      const renameForm = document.createElement('form');
-      renameForm.innerHTML = '<label for="new-project-name">New project name</label><input id="new-project-name" name="name" aria-label="New project name"><button type="submit">Rename project</button>';
-      const renameMessage = document.createElement('div'); renameMessage.setAttribute('role', 'alert'); renameMessage.setAttribute('aria-live', 'polite');
-      app.append(renameForm, renameMessage);
-      renameForm.addEventListener('submit', async event => {
-        event.preventDefault(); const name = renameForm.elements.name.value.trim();
-        if (!name) { renameMessage.textContent = 'Project name is required'; return; }
-        const response = await fetch('/api/projects/' + project.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-        if (response.ok) render();
-      });
-    }
+    const renameForm = document.createElement('form');
+    renameForm.innerHTML = '<label for="new-project-name">New project name</label><input id="new-project-name" name="name" aria-label="New project name"><button type="submit">Rename project</button>';
+    const renameMessage = document.createElement('div'); renameMessage.setAttribute('role', 'alert'); renameMessage.setAttribute('aria-live', 'polite');
+    if (project.archived) { renameForm.elements.name.disabled = true; renameForm.querySelector('button').disabled = true; }
+    app.append(renameForm, renameMessage);
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault(); const name = renameForm.elements.name.value.trim();
+      if (!name) { renameMessage.textContent = 'Project name is required'; return; }
+      const response = await fetch('/api/projects/' + project.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (response.ok) render();
+    });
     const form = document.createElement('form');
     form.innerHTML = '<label for="task-title">Task title</label><input id="task-title" name="title" aria-label="Task title"><button type="submit">Create task</button>';
     if (project.archived) { form.elements.title.disabled = true; form.querySelector('button').disabled = true; }
