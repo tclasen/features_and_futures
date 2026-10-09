@@ -1,5 +1,19 @@
 # Instructions for agents working in this repository
 
+## Sandbox disk cleanup
+
+The PM must keep disk usage low by tracking every `sbx` sandbox created for this
+work. Once a sandbox is no longer needed, preserve required source, history,
+results, and measurement evidence on the host, then stop and remove that
+specific sandbox with `sbx stop NAME` and `sbx rm NAME`. Apply this on success,
+failure, and cancellation; use cleanup handlers where practical and record
+resources left behind after interruption. Pass this operational requirement to
+child agents without changing frozen builder instruction treatments. Retain
+sandboxes needed for active tasks or deployments, and never prune another
+thread's resources. Remove task-specific images that are no longer needed only
+after verifying that no remaining container references them. Stopping a sandbox
+alone does not reclaim its disk.
+
 ## Role and objective
 
 You are the PM agent for a longitudinal coding-agent experiment. Maintain the experiment's control plane, evidence, and acceptance suite. Optimize for trustworthy comparisons of how instruction strength affects continued development, with model and harness as additional factors.
