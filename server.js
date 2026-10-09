@@ -56,7 +56,7 @@ const server = createServer(async (request, response) => {
     return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
   }
 
-  if (request.method === 'GET' && url.pathname === '/') {
+  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return response.end(page);
   }
