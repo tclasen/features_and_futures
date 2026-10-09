@@ -144,7 +144,7 @@ test('tasks upgrade existing databases, validate, isolate projects, and persist 
     server = await start(databasePath);
     assert.deepEqual(await (await getTasks()).json(), [saved, second]);
     assert.deepEqual(await (await getTasks(2)).json(), [other]);
-    assert.deepEqual(await (await fetch(`${server.url}/api/projects/1`)).json(), { id: 1, name: 'Existing project' });
+    assert.deepEqual(await (await fetch(`${server.url}/api/projects/1`)).json(), { id: 1, name: 'Existing project', archived: false, total_count: 2, completed_count: 1 });
     const html = await (await fetch(`${server.url}/projects/1`)).text();
     assert.match(html, /<label for="task-title">Task title<\/label>/);
     assert.match(html, /Create task/);
@@ -152,6 +152,30 @@ test('tasks upgrade existing databases, validate, isolate projects, and persist 
     assert.match(html, /<option value="all" selected>All<\/option>/);
     assert.match(html, />Open<\/option>/);
     assert.match(html, />Completed<\/option>/);
+    const archive = (archived) => fetch(`${server.url}/api/projects/1`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
+    });
+    assert.equal((await archive('true')).status, 400);
+    const archived = await (await archive(true)).json();
+    assert.deepEqual(archived, { id: 1, name: 'Existing project', archived: true, total_count: 2, completed_count: 1 });
+    assert.equal((await createTask('Blocked')).status, 409);
+    assert.equal((await complete(first.id, false)).status, 409);
+    assert.deepEqual(await (await getTasks()).json(), [saved, second]);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await fetch(`${server.url}/api/projects/1`)).json(), archived);
+    assert.deepEqual((await (await fetch(`${server.url}/api/projects`)).json())[0], archived);
+    assert.deepEqual(await (await getTasks()).json(), [saved, second]);
+    assert.equal((await archive(false)).status, 200);
+    assert.deepEqual(await (await getTasks()).json(), [saved, second]);
+    await complete(second.id, true);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await fetch(`${server.url}/api/projects/1`)).json(), {
+      ...archived, archived: false, completed_count: 2,
+    });
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

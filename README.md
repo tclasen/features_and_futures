@@ -19,4 +19,8 @@ npm test
 
 Project pages support task creation, completion toggles, and All/Open/Completed filtering in creation order. The task API uses `GET /api/projects/:id/tasks`, `POST /api/projects/:id/tasks` with JSON `{ "title": "…" }`, and `PATCH /api/projects/:id/tasks/:taskId` with JSON `{ "completed": true }` (or `false`). Titles are trimmed and must be nonblank; completion must be a boolean. Task access is scoped to the owning project.
 
+The project list initially shows Active projects; use Project filter to view Archived projects. Archive/restore preserves task data and project IDs. Each row summarizes all tasks as completed/total. Archived pages allow task filtering but not creation or completion changes; the API also rejects those writes with HTTP 409.
+
+`PATCH /api/projects/:id` accepts JSON `{ "archived": true }` (or `false`). Project responses include boolean `archived`, `completed_count`, and `total_count`; `GET /api/projects` returns all projects in creation order. Archive state persists in SQLite, including non-destructive upgrades of older databases.
+
 The integration tests launch the real server against temporary databases and verify health, validation, ordering, detail routes, task ownership, completion updates, upgrading an existing database, and process-restart persistence. Run them with `npm test`.

@@ -96,3 +96,84 @@ test('project client trims titles, filters in order, and saves completion', asyn
   assert.equal(failed.disabled, false);
   assert.equal(element('#alert').textContent, 'Save failed');
 });
+
+test('project list filters archive state and renders summaries and restore actions', async () => {
+  const elements = new Map();
+  const element = (selector) => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  element('#project-filter').value = 'active';
+  const projects = [
+    { id: 1, name: 'First', archived: false, completed_count: 1, total_count: 2 },
+    { id: 2, name: 'Second', archived: false, completed_count: 0, total_count: 0 },
+  ];
+  let destination;
+  runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location: { pathname: '/', assign: (path) => { destination = path; } } },
+    fetch: async (path, options = {}) => {
+      let result = projects;
+      if (options.method === 'PATCH') {
+        result = projects.find((project) => path.endsWith(`/${project.id}`));
+        Object.assign(result, JSON.parse(options.body));
+      }
+      return { ok: true, json: async () => JSON.parse(JSON.stringify(result)) };
+    },
+  });
+  await settle();
+  const rows = () => element('#projects').children;
+  assert.equal(rows().length, 2);
+  assert.equal(rows()[0].dataset.testid, 'project-row');
+  assert.equal(rows()[0].children[1].dataset.testid, 'project-summary');
+  assert.equal(rows()[0].children[1].textContent, '1/2 completed');
+  assert.equal(rows()[1].children[1].textContent, '0/0 completed');
+  assert.equal(rows()[0].children[3].textContent, 'Archive project');
+  await rows()[0].children[3].emit('click');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[0].textContent, 'Second');
+  element('#project-filter').value = 'archived';
+  await element('#project-filter').emit('change');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[3].textContent, 'Restore project');
+  await rows()[0].children[2].emit('click');
+  assert.equal(destination, '/projects/1');
+  await rows()[0].children[3].emit('click');
+  assert.equal(rows().length, 0);
+  element('#project-filter').value = 'active';
+  await element('#project-filter').emit('change');
+  assert.deepEqual(rows().map((row) => row.children[0].textContent), ['First', 'Second']);
+});
+
+test('archived project is read-only while task filtering remains available', async () => {
+  const elements = new Map();
+  const element = (selector) => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  element('#task-filter').value = 'all';
+  let requests = 0;
+  runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location: { pathname: '/projects/1' } },
+    fetch: async (path) => {
+      requests++;
+      const result = path.endsWith('/tasks')
+        ? [{ id: 1, title: 'Open task', completed: false }, { id: 2, title: 'Done task', completed: true }]
+        : { id: 1, name: 'Archived', archived: true };
+      return { ok: true, json: async () => result };
+    },
+  });
+  await settle();
+  assert.equal(element('#archived-notice').hidden, false);
+  assert.equal(element('#create-task').querySelector('button').disabled, true);
+  assert.equal(element('#tasks').children.length, 2);
+  for (const row of element('#tasks').children) assert.equal(row.children[0].children[0].disabled, true);
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').emit('change');
+  assert.equal(element('#tasks').children.length, 1);
+  assert.equal(element('#tasks').children[0].children[0].children[1].textContent, 'Done task');
+  element('#task-title').value = 'Blocked';
+  await element('#create-task').emit('submit');
+  assert.equal(requests, 2);
+});
