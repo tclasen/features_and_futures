@@ -81,6 +81,12 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+    // Reuse a same-named project so retried submissions remain idempotent.
+    const existing = db.prepare('SELECT id, name, archived FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
+    if (existing) {
+      if (existing.archived) db.prepare('UPDATE projects SET archived = 0 WHERE id = ?').run(existing.id);
+      return sendJson(res, 200, { id: existing.id, name: existing.name });
+    }
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), name });
   }
