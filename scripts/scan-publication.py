@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed secret scan for PM publication; never prints matched secret values."""
 import argparse
+import hashlib
 import base64
 import io
 import gzip
@@ -137,6 +138,7 @@ def main():
         raise ValueError('No known credential sources loaded; refuse an incomplete publication scan')
     scanner = Scanner(secrets)
     repo = args.repo.resolve()
+    target_commit = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], check=True, capture_output=True).stdout.decode().strip()
     paths = subprocess.run(['git', '-C', str(repo), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], check=True, capture_output=True).stdout.split(b'\0')
     for raw_path in paths:
         if raw_path:
@@ -144,7 +146,10 @@ def main():
             if path.is_file():
                 scanner.scan(path.read_bytes(), raw_path.decode())
     scanner.scan_git(repo, 'reachable-git')
-    print(json.dumps({'status': 'blocked' if scanner.findings else 'passed', 'credential_sources_loaded': loaded, 'inspection_units': scanner.units, 'decoded_archive_members': scanner.decoded_members, 'git_bundles_inspected': scanner.bundles, 'findings': [{'location': label, 'kind': kind} for label, kind in sorted(scanner.findings)]}, sort_keys=True))
+    current_commit = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], check=True, capture_output=True).stdout.decode().strip()
+    if current_commit != target_commit:
+        raise ValueError('Publication target changed during scanning; rescan the new commit')
+    print(json.dumps({'status': 'blocked' if scanner.findings else 'passed', 'target_git_commit': target_commit, 'scanner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'credential_sources_loaded': loaded, 'inspection_units': scanner.units, 'decoded_archive_members': scanner.decoded_members, 'git_bundles_inspected': scanner.bundles, 'findings': [{'location': label, 'kind': kind} for label, kind in sorted(scanner.findings)]}, sort_keys=True))
     return int(bool(scanner.findings))
 
 
