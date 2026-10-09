@@ -11,7 +11,7 @@ from pathlib import Path
 from .adapters import execute_attempt, isolation_probe, sandbox_policy, invoke
 from .evidence import Ledger, digest_bytes, digest_json, read_jsonl, timestamp
 from .gateway import InferenceGateway
-from .prepare import ROOT, checked, file_hashes, git, write_json
+from .prepare import ROOT, checked, file_hashes, git, write_json, InfrastructureError
 from .validation import Deployment, run_suite
 from .private import WORK, sandbox_git, initialize, export
 
@@ -59,7 +59,7 @@ def archive(run, repo, builder, checkpoint, output):
     return json.loads((run/"builders"/builder/"checkpoints"/checkpoint/"index.json").read_text())
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-002");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-003");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     manifest=json.loads((run/"manifest.json").read_text())
     manifest_hash=digest_json(manifest)
@@ -184,8 +184,6 @@ def main():
                     deployment=None; stats=[]
                     ledger.event("validation_started",commit=head,**attrs)
                     if not diagnostics:
-                        if accepted:
-                            checked(["sbx","stop",accepted["sandbox"]])
                         try:
                             deployment=Deployment(manifest,bid,task_id,attempt_id,repo,head,output,accepted)
                             if accepted:
@@ -205,9 +203,11 @@ def main():
                                 diagnostics.extend(errors); stats.append({"phase":"postrestart",**counts})
                                 if not ok and not errors:
                                     diagnostics.append({"contract":"Restart acceptance run failed"})
+                            if not diagnostics:
+                                deployment.capture()
                         except RuntimeError as error:
                             # Launch errors attributable to submitted app; missing PM reports are infrastructure.
-                            if "PM acceptance runner" in str(error):
+                            if isinstance(error, InfrastructureError) or "PM acceptance runner" in str(error):
                                 raise
                             diagnostics.append({"contract":"Application launch/health or restart failed",
                                                 "observed":str(error)})
@@ -222,6 +222,8 @@ def main():
                         ledger.event("task_accepted",commit=head,tree=tree,**attrs)
                         prior_commit=accepted["commit"] if accepted else manifest["provenance"]["starter_commit"]
                         included=git(repo,"rev-list",f"{prior_commit}..{head}").splitlines()
+                        if accepted:
+                            checked(["sbx","stop",accepted["sandbox"]])
                         ledger.event("deployment_promoted",commit=head,tree=tree,
                                      prior_commit=prior_commit,included_commits=included,**attrs)
                         promoted=time.monotonic()
@@ -239,21 +241,17 @@ def main():
                         state["accepted"][bid]=accepted
                         write_json(run/"state.json",state)
                         # Persist a clean database snapshot by stopping all app processes.
-                        deployment.stop_process()
                         deployment.capture()
                         for suffix in ("","-wal","-shm"):
                             file=Path(str(deployment.database)+suffix)
                             if file.exists(): shutil.copy2(file,output/("accepted.sqlite"+suffix))
-                        deployment.start()
                         log=deployment.source/".runtime/server.log"
                         if log.exists(): shutil.copy2(log,output/"server.log")
                         print(f"{task_id} {bid} ACCEPTED {attempt_id} requests={len(usage)}",flush=True)
                         break
                     if deployment: deployment.stop()
                     if accepted:
-                        # Restore the prior live surrogate; unchanged revision is not a promotion.
-                        invoke(["sbx","exec",accepted["sandbox"],"true"])
-                        ledger.event("prior_deployment_resumed",commit=accepted["commit"],**attrs)
+                        ledger.event("prior_deployment_preserved",commit=accepted["commit"],**attrs)
                     recovery={"decision":"correction_in_place","actor":"pm",
                               "pre_commit":head,"post_commit":head,"pre_tree":tree,"post_tree":tree,
                               "reason":"Return objective launch/behavior/submission evidence; preserve useful implementation",

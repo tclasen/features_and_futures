@@ -18,10 +18,14 @@ def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2) + "\n")
 
+class InfrastructureError(RuntimeError):
+    pass
+
+
 def checked(command, **kwargs):
     result = invoke(command, **kwargs)
     if result.returncode:
-        raise RuntimeError(f"{command[:3]} failed: {result.stderr[-4000:]}")
+        raise InfrastructureError(f"{command[:3]} failed: {result.stderr[-4000:]}")
     return result.stdout.strip()
 
 def git(repo, *args):
@@ -32,12 +36,12 @@ def file_hashes(path):
             for f in sorted(path.rglob("*")) if f.is_file()}
 
 def prepare():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-002");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-003");args=parser.parse_args()
     if not __import__("re").fullmatch(r"pilot-[0-9]{3}",args.run): raise ValueError("Invalid pilot run ID")
     run = ROOT / "runs/instruction-effects" / args.run
     if (run / "manifest.json").exists():
         raise RuntimeError("Manifest already frozen; resume the existing run.")
-    project = ROOT / "projects/workboard/revisions/v001"
+    project = ROOT / "projects/workboard/revisions/v002"
     frozen = run / "definitions"
     shutil.copytree(project, frozen / "project", ignore=shutil.ignore_patterns(".local"))
     profiles_text = (ROOT / "docs/builder-instructions.md").read_text()
@@ -90,8 +94,9 @@ def prepare():
     write_json(frozen / "ollama-tags.json", ollama)
     manifest = {
         "schema_version":1, "status":"running", "experiment_id":"instruction-effects",
-        "experiment_revision":"pilot-v002", "run_id":args.run, "purpose":"engineering-pilot",
-        "project_id":"workboard","project_revision":"v001", "frozen_at":timestamp(),
+        "experiment_revision":"pilot-v003", "run_id":args.run, "purpose":"engineering-pilot",
+        "project_id":"workboard","project_revision":"v002",
+        "lineage":{"source_run":"pilot-002","variation":"Private data-only app transfer, unique attempt inference route, noninterrupting database snapshots and exact public heading semantics"}, "frozen_at":timestamp(),
         "runtime":{"builder_configurations":builders,"harness_versions":{"codex":"0.162.0","pi":"1.1.0"},
                    "image":IMAGE,"image_digest":IMAGE_DIGEST, "sbx_version":"0.47.0",
                    "node":"22.22.1","playwright":"1.64.0","chromium":"156.0.8078.4",

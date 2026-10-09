@@ -40,9 +40,18 @@ class Deployment:
                     shutil.copy2(old, Path(str(self.database)+suffix))
         checked(["sbx","create","--name",self.name,"--cpus","4","--memory","512m",
                  "--skills","off","--pull","never","-t",manifest["runtime"]["image"],
-                 "--publish",f"127.0.0.1:{self.port}:8080/tcp4","shell",str(self.source)+":ro"])
-        checked(["sbx","exec",self.name,"cp","-a",str(self.source),self.private_root])
-        checked(["sbx","exec",self.name,"chmod","-R","u+w",self.private_root])
+                 "--publish",f"127.0.0.1:{self.port}:8080/tcp4","shell"])
+        with archive.open("rb") as stream:
+            script="import sys,pathlib,tarfile;p=pathlib.Path('/home/agent/app');p.mkdir();tarfile.open(fileobj=sys.stdin.buffer,mode='r|').extractall(p,filter='data');(p/'.runtime').mkdir()"
+            result=subprocess.run(["sbx","exec","-i",self.name,"python3","-c",script],stdin=stream,capture_output=True)
+            if result.returncode:raise RuntimeError(result.stderr.decode())
+        for name in ("app.sqlite","app.sqlite-wal","app.sqlite-shm"):
+            path=runtime/name
+            if path.exists():
+                with path.open("rb") as stream:
+                    script="import pathlib,sys;pathlib.Path(sys.argv[1]).write_bytes(sys.stdin.buffer.read())"
+                    result=subprocess.run(["sbx","exec","-i",self.name,"python3","-c",script,self.private_root+"/.runtime/"+name],stdin=stream,capture_output=True)
+                    if result.returncode:raise RuntimeError(result.stderr.decode())
         policy = json.loads(checked(["sbx","policy","ls",self.name,"--json"]))
         write_json(output / "deployment-policy.json",policy)
         self.start()
@@ -89,11 +98,19 @@ if p.exists():
         self.start()
 
     def capture(self):
-        for name in ("server.log","app.sqlite","app.sqlite-wal","app.sqlite-shm"):
-            result=subprocess.run(["sbx","exec",self.name,"cat",self.private_root+"/.runtime/"+name],capture_output=True)
-            if result.returncode==0:
-                (self.source/".runtime"/name).write_bytes(result.stdout)
-                if name=="server.log": (self.output/"server.log").write_bytes(result.stdout)
+        # SQLite backup creates a consistent private snapshot without interrupting the surrogate.
+        script="import sqlite3,sys,pathlib;a=sqlite3.connect(sys.argv[1]);b=sqlite3.connect(sys.argv[2]);a.backup(b);b.close();a.close();sys.stdout.buffer.write(pathlib.Path(sys.argv[2]).read_bytes())"
+        result=subprocess.run(["sbx","exec",self.name,"python3","-c",script,
+            self.private_root+"/.runtime/app.sqlite",self.private_root+"/.runtime/snapshot.sqlite"],capture_output=True)
+        if result.returncode:raise RuntimeError("PM database backup failed: "+result.stderr.decode())
+        self.database.write_bytes(result.stdout)
+        for suffix in ("-wal","-shm"):
+            stale=Path(str(self.database)+suffix)
+            if stale.exists(): stale.unlink()
+        result=subprocess.run(["sbx","exec",self.name,"cat",self.private_root+"/.runtime/server.log"],capture_output=True)
+        if result.returncode==0:
+            (self.source/".runtime/server.log").write_bytes(result.stdout)
+            (self.output/"server.log").write_bytes(result.stdout)
 
     def stop(self):
         self.stop_process()

@@ -9,7 +9,7 @@ from .evidence import digest_bytes,digest_json,price_counts,read_jsonl
 from .prepare import ROOT,checked,write_json,git
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-002");args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-003");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     m=json.loads((run/"manifest.json").read_text())
     state=json.loads((run/"state.json").read_text())

@@ -13,7 +13,7 @@ def invoke(command, *, stdin=None, timeout=None):
 def configure_attempt(sandbox, harness, model, key, gateway_port, attempt_key,
                       treatment=""):
     config_root = "/home/agent/.ff-context-" + attempt_key
-    base_url = f"http://host.docker.internal:{gateway_port}"
+    base_url = f"http://host.docker.internal:{gateway_port}/attempts/" + __import__("hashlib").sha256(key.encode()).hexdigest()[:24]
     if harness == "pi":
         provider_api = "openai-completions" if model == "gpt-oss:120b" else (
             "openai-codex-responses")

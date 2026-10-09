@@ -2,7 +2,7 @@
 
 The authorized pilot uses all 18 model/harness/instruction configurations for three cumulative Workboard tasks. This is a readiness exercise, not evidence of a maintainability effect. Do not launch the indefinite main experiment from the pilot runner.
 
-The workload and public requirements are in projects/workboard/revisions/v001. Node 22.22.1, built-in HTTP/SQLite, JavaScript ES modules and browser JavaScript are shared stack constraints. Application dependencies are excluded to avoid unrelated package/network differences in this first pilot.
+The workload and public requirements are in projects/workboard/revisions/v002. Node 22.22.1, built-in HTTP/SQLite, JavaScript ES modules and browser JavaScript are shared stack constraints. Application dependencies are excluded to avoid unrelated package/network differences in this first pilot.
 
 Preparation copies exact project, instruction and price definitions into the run, hashes them, creates independent Git roots from one identical starter commit and freezes all three packets before dispatch. Run manifest bytes are immutable. state.json is a resume index, not an observation; append-only events and usage are authoritative.
 
@@ -18,16 +18,16 @@ Run sequentially in reproducibly randomized order, rotating six positions each t
 
 Before validation, stop the builder, archive original history/committed source and a separate complete working tree. Reject dirty submissions, unchanged checkpoints, disallowed application dependencies and failed public behavior. Give factual test diagnostics using the same format. Preserve bounded changes for correction. Broad destructive failures may be reverted only after the verified rejected archive, under the repository's existing recovery authority.
 
-Run untrusted app code in its own network-denied 512 MiB sbx, exposing only a loopback HTTP port. Mount the submission read-only, copy it into private sandbox storage and keep the database there; synchronized writable mounts can replace SQLite inodes and cause SQLITE_READONLY_DBMOVED. Host Playwright contains PM tests and restricts browser requests to that app origin. Existing database files are copied from the stopped previous deployment into a fresh immutable-submission environment. Test the previous persistence sentinel, the cumulative current requirements, then the current sentinel after a real process-group restart. Prefix fixtures by task so retained earlier data does not collide. Capture reports, traces, logs, commit/tree IDs, timing and raw usage.
+Run untrusted app code in its own network-denied 512 MiB sbx, exposing only a loopback HTTP port. Transfer the submission archive into private sandbox storage without a host mount and keep the database there; synchronized writable mounts can replace SQLite inodes and cause SQLITE_READONLY_DBMOVED. Host Playwright contains PM tests and restricts browser requests to that app origin. Copy a consistent SQLite backup from the previous accepted checkpoint into the candidate environment. Keep the prior surrogate running during candidate validation; stop it only when promoting the accepted replacement. Test the previous persistence sentinel, the cumulative current requirements, then the current sentinel after a real process-group restart. Prefix fixtures by task so retained earlier data does not collide. Capture reports, traces, logs, commit/tree IDs, timing and raw usage.
 
 Promote only accepted revisions. Equal five-second health observation follows each promotion; retain the persistent surrogate for the next upgrade. Pre-acceptance failures are not DORA deployment failures. Poll Git commit appearance each second and declare that observation uncertainty. Record promotion/incident/recovery events separately; no incidents means no recovery-duration sample. Pilot stability checks are deliberately narrow and cannot establish production reliability.
 
 Commands, run from the PM repository:
 - python3 -B -m unittest discover -s tests -v
-- python3 -B -m orchestrator.prepare --run pilot-002 (once, after the preflight checks)
+- python3 -B -m orchestrator.prepare --run pilot-003 (once, after the preflight checks)
 - Commit prepared definitions, manifest and task packets before dispatch.
-- python3 -u -B -m orchestrator.pilot --run pilot-002 (resumable)
-- python3 -B -m orchestrator.report --run pilot-002 (rederive and verify readiness)
+- python3 -u -B -m orchestrator.pilot --run pilot-003 (resumable)
+- python3 -B -m orchestrator.report --run pilot-003 (rederive and verify readiness)
 
 The pilot passes only when all 54 builder tasks are accepted, every actual pilot inference has complete native usage and reproducible pricing, all source/history checksums restore correctly, required test phases pass, and the reports reconcile with raw events. Retain every infrastructure preflight failure. Any changed comparison rule requires a new run; PM runner bugs receive explicit correction events and preserved interrupted attempts.
 

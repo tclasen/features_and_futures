@@ -32,13 +32,16 @@ class InferenceGateway:
                 self.send_error(405, "Only metered inference POST requests are supported.")
 
             def do_POST(self):
+                gateway.ledger.event("gateway_post_observed",route=self.path,content_length=self.headers.get("Content-Length"),content_encoding=self.headers.get("Content-Encoding"))
                 with gateway.lock:
                     lease = dict(gateway.active) if gateway.active else None
                 key = self.headers.get("Authorization", "").removeprefix("Bearer ")
                 if not lease or not secrets.compare_digest(key, lease["key"]):
                     self.send_error(403, "Inactive or incorrect inference lease.")
                     return
-                if self.path not in {"/v1/responses", "/codex/responses",
+                prefix="/attempts/" + __import__("hashlib").sha256(key.encode()).hexdigest()[:24]
+                route=self.path.removeprefix(prefix)
+                if route not in {"/v1/responses", "/codex/responses",
                                      "/v1/codex/responses", "/v1/chat/completions"}:
                     self.send_error(404, "Not an inference route.")
                     return
@@ -159,6 +162,7 @@ class InferenceGateway:
                 handler.send_response(status)
                 handler.send_header("Content-Type", "text/event-stream" if payload.get("stream") else upstream.headers.get(
                     "Content-Type", "application/json"))
+                handler.send_header("Cache-Control", "no-store")
                 handler.send_header("Connection", "close")
                 handler.end_headers()
                 sent_headers = True
