@@ -29,6 +29,11 @@ class RecoveryFeedbackTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 append_recovery_instruction('',root,'b008','task-002')
 
+    def test_correction_keeps_preserved_working_tree(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); self.write(root,action='continue-preserved-working-tree')
+            self.assertIn('Recorded PM recovery action',append_recovery_instruction('failure',root,'b008','task-002'))
+
     def test_no_recovery_leaves_feedback_unchanged(self):
         with tempfile.TemporaryDirectory() as folder:
             self.assertEqual(append_recovery_instruction('same',folder,'b008','task-002'),'same')

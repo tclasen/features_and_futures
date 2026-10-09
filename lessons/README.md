@@ -19,3 +19,4 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L013 | Request coverage must start from dispatches | adopted |
 | L014 | Repeated-failure attention and source variation | prepared |
 | L015 | Context budgets and compaction readiness | observed |
+| L016 | Verify preserved repairs before rollback | adopted |

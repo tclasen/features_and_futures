@@ -10,6 +10,6 @@ def append_recovery_instruction(feedback, previous_output, builder_id, task_id):
     recovery = json.loads(path.read_text())
     if recovery.get('builder_id') != builder_id or recovery.get('task_id') != task_id:
         raise ValueError('Recovery instruction belongs to a different builder/task')
-    if recovery.get('action') != 'restore-last-accepted-checkpoint' or not isinstance(recovery.get('message'), str):
+    if recovery.get('action') not in ('restore-last-accepted-checkpoint', 'continue-preserved-working-tree') or not isinstance(recovery.get('message'), str):
         raise ValueError('Unsupported recovery instruction')
     return feedback+'\n\nRecorded PM recovery action:\n'+recovery['message']
