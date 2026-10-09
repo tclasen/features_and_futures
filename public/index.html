@@ -10,6 +10,7 @@
       main { max-width: 720px; margin: 64px auto; padding: 0 24px; }
       h1 { font-size: 2rem; overflow-wrap: anywhere; }
       form { padding: 24px; background: white; border: 1px solid #d5dde5; border-radius: 10px; }
+      form + form { margin-top: 16px; }
       label { display: block; margin-bottom: 8px; font-weight: 600; }
       .fields { display: flex; gap: 12px; flex-wrap: wrap; }
       input[type="text"] { flex: 1; min-width: 160px; padding: 10px; border: 1px solid #8192a3; border-radius: 5px; font: inherit; }
@@ -164,7 +165,14 @@
           }
           const controls = document.createElement('section');
           controls.innerHTML = `
-            <form>
+            <form id="rename-project">
+              <label for="new-project-name">New project name</label>
+              <div class="fields">
+                <input id="new-project-name" name="name" type="text" autocomplete="off">
+                <button type="submit">Rename project</button>
+              </div>
+            </form>
+            <form id="create-task">
               <label for="task-title">Task title</label>
               <div class="fields">
                 <input id="task-title" name="title" type="text" autocomplete="off">
@@ -179,7 +187,35 @@
             </div>
             <div id="tasks"></div>`;
           app.append(controls);
-          const form = controls.querySelector('form');
+          const renameForm = controls.querySelector('#rename-project');
+          const renameInput = renameForm.querySelector('input');
+          const renameSubmit = renameForm.querySelector('button');
+          renameInput.disabled = project.archived;
+          renameSubmit.disabled = project.archived;
+          renameForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (project.archived) return;
+            const name = renameInput.value.trim();
+            if (!name) return showError('Project name is required');
+            showError('');
+            renameSubmit.disabled = true;
+            try {
+              const saved = await request(`/api/projects/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+              });
+              project.name = saved.name;
+              app.querySelector('h1').textContent = saved.name;
+              document.title = `${saved.name} — Workboard`;
+              renameInput.value = '';
+            } catch (error) {
+              showError(error.message);
+            } finally {
+              renameSubmit.disabled = project.archived;
+            }
+          });
+          const form = controls.querySelector('#create-task');
           const input = controls.querySelector('#task-title');
           const submit = form.querySelector('button');
           const filter = controls.querySelector('select');

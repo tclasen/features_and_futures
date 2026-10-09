@@ -171,6 +171,70 @@ test('projects and tasks validate, preserve order and ownership, and survive a s
 });
 
 
+test('renaming preserves identity, order, tasks, summaries, and persistence, and requires an active project', async () => {
+  const directory = await mkdtemp(resolve('.test-workboard-'));
+  let server;
+  try {
+    const databasePath = resolve(directory, 'rename.sqlite');
+    server = await startServer(databasePath);
+    const send = (path, method, body) => fetch(`${server.url}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const get = (path) => fetch(`${server.url}${path}`).then((response) => response.json());
+    const first = await (await send('/api/projects', 'POST', { name: 'Original' })).json();
+    const second = await (await send('/api/projects', 'POST', { name: 'Second' })).json();
+    const path = `/api/projects/${first.id}`;
+    const task = await (await send(`${path}/tasks`, 'POST', { title: 'Keep this task' })).json();
+    const completedTask = await (await send(`${path}/tasks/${task.id}`, 'PATCH', { completed: true })).json();
+    const original = { ...first, totalCount: 1, completedCount: 1 };
+
+    for (const name of ['', ' \n\t ', null, 42]) {
+      const response = await send(path, 'PATCH', { name });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      assert.deepEqual(await get(path), original);
+    }
+    assert.equal((await send('/api/projects/999999', 'PATCH', { name: 'Missing' })).status, 404);
+    const renamed = { ...original, name: '<Renamed> & "project"' };
+    const response = await send(path, 'PATCH', { name: '  <Renamed> & "project" \n' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), renamed);
+    assert.deepEqual(await get('/api/projects'), [renamed, second]);
+    assert.deepEqual(await get(`${path}/tasks`), [completedTask]);
+    assert.equal((await fetch(`${server.url}/projects/${first.id}`)).status, 200);
+
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(await get('/api/projects'), [renamed, second]);
+    assert.deepEqual(await get(`${path}/tasks`), [completedTask]);
+    const archived = { ...renamed, archived: true };
+    assert.deepEqual(await (await send(path, 'PATCH', { archived: true })).json(), archived);
+    const blocked = await send(path, 'PATCH', { name: 'Cannot rename' });
+    assert.equal(blocked.status, 409);
+    assert.deepEqual(await blocked.json(), { error: 'Archived project' });
+    assert.deepEqual(await get(path), archived);
+
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal((await send(path, 'PATCH', { name: 'Still archived' })).status, 409);
+    assert.deepEqual(await (await send(path, 'PATCH', { archived: false })).json(), renamed);
+    const restoredRename = { ...renamed, name: 'Restored and renamed' };
+    assert.deepEqual(await (await send(path, 'PATCH', { name: ' Restored and renamed ' })).json(), restoredRename);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(await get('/api/projects'), [restoredRename, second]);
+    assert.deepEqual(await get(`${path}/tasks`), [completedTask]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('migrates an existing projects database without losing projects or tasks', async () => {
   const directory = await mkdtemp(resolve('.test-workboard-'));
   let server;
