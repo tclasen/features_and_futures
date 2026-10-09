@@ -16,6 +16,10 @@ PORT=8080 DB_PATH=/tmp/workboard.sqlite npm start
 Open `http://localhost:8080/` to create and open projects.
 On a project page, create tasks, toggle their completion checkboxes, and choose
 All, Open, or Completed from Task filter. Tasks and completion persist in SQLite.
+Project rows show completed/total task counts. Use Project filter to switch between
+Active and Archived projects, and Archive project or Restore project to move them.
+Archived project pages keep tasks visible and filterable while disabling task
+creation and completion changes. Existing databases are upgraded automatically.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks:
