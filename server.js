@@ -10,6 +10,12 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
 
 const page = `<!doctype html>
@@ -47,6 +53,37 @@ async function render() {
     app.append(back);
     const heading = document.createElement('h1'); heading.textContent = project ? project.name : 'Project not found'; app.append(heading);
     document.title = project ? project.name + ' - Workboard' : 'Workboard';
+    if (!project) return;
+
+    const form = document.createElement('form');
+    form.innerHTML = '<label for="task-title">Task title</label><input id="task-title" name="title" aria-label="Task title"><button type="submit">Create task</button>';
+    const message = document.createElement('div'); message.setAttribute('role', 'alert'); message.setAttribute('aria-live', 'polite');
+    const filterLabel = document.createElement('label'); filterLabel.htmlFor = 'task-filter'; filterLabel.textContent = 'Task filter';
+    const filter = document.createElement('select'); filter.id = 'task-filter'; filter.setAttribute('aria-label', 'Task filter');
+    for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
+    const list = document.createElement('section'); list.setAttribute('aria-label', 'Tasks');
+    app.append(form, message, filterLabel, filter, list);
+    async function loadTasks() {
+      const response = await fetch('/api/projects/' + project.id + '/tasks');
+      const tasks = await response.json(); list.replaceChildren();
+      for (const task of tasks) {
+        if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+        const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'project-row';
+        const title = document.createElement('span'); title.textContent = task.title;
+        const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+        checkbox.addEventListener('change', async () => { await fetch('/api/tasks/' + task.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); await loadTasks(); });
+        row.append(title, checkbox); list.append(row);
+      }
+    }
+    filter.addEventListener('change', loadTasks);
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); const title = form.elements.title.value.trim();
+      if (!title) { message.textContent = 'Task title is required'; return; }
+      message.textContent = '';
+      await fetch('/api/projects/' + project.id + '/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      form.reset(); await loadTasks();
+    });
+    await loadTasks();
     return;
   }
   document.title = 'Workboard';
@@ -82,6 +119,30 @@ const server = createServer(async (req, res) => {
     res.end(body);
   };
   if (url.pathname === '/health' && req.method === 'GET') return send(200, JSON.stringify({ status: 'ok' }));
+  const taskPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (taskPath && req.method === 'GET') {
+    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskPath[1])).map(task => ({ ...task, completed: Boolean(task.completed) }))));
+  }
+  if (taskPath && req.method === 'POST') {
+    try {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      const input = JSON.parse(raw); const title = typeof input.title === 'string' ? input.title.trim() : '';
+      if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(Number(taskPath[1]))) return send(404, JSON.stringify({ error: 'Project not found' }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(Number(taskPath[1]), title);
+      return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
+  const taskUpdate = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskUpdate && req.method === 'PATCH') {
+    try {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      const input = JSON.parse(raw);
+      if (typeof input.completed !== 'boolean') return send(400, JSON.stringify({ error: 'Invalid completion state' }));
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(input.completed ? 1 : 0, Number(taskUpdate[1]));
+      return result.changes ? send(200, JSON.stringify({ status: 'ok' })) : send(404, JSON.stringify({ error: 'Task not found' }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
     return send(200, JSON.stringify(db.prepare('SELECT id, name FROM projects ORDER BY id').all()));
   }
