@@ -10,6 +10,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+);
+CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id)`);
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -32,7 +43,7 @@ function page(title, content) {
     main { max-width: 760px; margin: 48px auto; padding: 24px; }
     h1 { overflow-wrap: anywhere; }
     label { display: block; margin-bottom: 8px; font-weight: 600; }
-    input, button { font: inherit; border-radius: 6px; padding: 10px 14px; }
+    input, select, button { font: inherit; border-radius: 6px; padding: 10px 14px; }
     input { border: 1px solid #68758a; max-width: 100%; box-sizing: border-box; }
     button { background: #244eab; color: white; border: 1px solid #244eab; cursor: pointer; }
     button:hover { background: #183b87; }
@@ -66,6 +77,49 @@ function projectsPage(error = '') {
       </li>`).join('')}</ul>` : '<p>No projects yet.</p>'}`);
 }
 
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function projectPage(project, filter = 'All', error = '') {
+  const tasks = listTasks.all(project.id).filter(task =>
+    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+  return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
+    <form action="/" method="get"><button type="submit">Projects</button></form>
+    <h2>Tasks</h2>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form method="post" action="/projects/${project.id}/tasks">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <div class="create"><input id="task-title" name="title" type="text">
+      <button type="submit">Create task</button></div>
+    </form>
+    <form method="get" action="/projects/${project.id}">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <noscript><button type="submit">Apply filter</button></noscript>
+    </form>
+    <ul class="projects">${tasks.map(task => `<li class="project" data-testid="task-row">
+      <span>${escapeHtml(task.title)}</span>
+      <form method="post" action="/projects/${project.id}/tasks/${task.id}">
+        <input type="hidden" name="filter" value="${filter}">
+        <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+        <noscript><button type="submit">Save completion</button></noscript>
+      </form>
+    </li>`).join('')}</ul>`);
+}
+
+async function readForm(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk.toString();
+    if (Buffer.byteLength(body) > 65536) return null;
+  }
+  return new URLSearchParams(body);
+}
+
 function html(res, status, content) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(content);
@@ -84,15 +138,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/projects') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk.toString();
-        if (Buffer.byteLength(body) > 65536) {
-          html(res, 413, page('Request too large', '<h1>Request too large</h1>'));
-          return;
-        }
+      const form = await readForm(req);
+      if (!form) {
+        html(res, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
       }
-      const name = (new URLSearchParams(body).get('name') || '').trim();
+      const name = (form.get('name') || '').trim();
       if (!name) {
         html(res, 400, projectsPage('Project name is required'));
         return;
@@ -102,12 +153,42 @@ const server = http.createServer(async (req, res) => {
       res.end();
       return;
     }
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/.exec(url.pathname);
+    if (req.method === 'POST' && taskMatch) {
+      const project = findProject.get(taskMatch[1]);
+      if (!project) {
+        html(res, 404, page('Not found', '<h1>Not found</h1>'));
+        return;
+      }
+      const form = await readForm(req);
+      if (!form) {
+        html(res, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
+      }
+      const filter = taskFilter(form.get('filter'));
+      if (taskMatch[2]) {
+        const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
+        if (!result.changes) {
+          html(res, 404, page('Not found', '<h1>Not found</h1>'));
+          return;
+        }
+      } else {
+        const title = (form.get('title') || '').trim();
+        if (!title) {
+          html(res, 400, projectPage(project, filter, 'Task title is required'));
+          return;
+        }
+        createTask.run(project.id, title);
+      }
+      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+      res.end();
+      return;
+    }
     const match = /^\/projects\/([1-9]\d*)$/.exec(url.pathname);
     if (req.method === 'GET' && match) {
       const project = findProject.get(match[1]);
       if (project) {
-        html(res, 200, page(project.name, `<h1>${escapeHtml(project.name)}</h1>
-          <form action="/" method="get"><button type="submit">Projects</button></form>`));
+        html(res, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
         return;
       }
     }

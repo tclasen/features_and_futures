@@ -6,9 +6,11 @@ Requires Node.js 22.22.1. No dependency installation is needed.
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open http://localhost:8080. The server binds to `0.0.0.0`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The SQLite file retains project names and IDs across restarts. `GET /health` returns `{"status":"ok"}`.
+Open http://localhost:8080. The server binds to `0.0.0.0`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The SQLite file retains project names, IDs, tasks, and completion state across restarts. `GET /health` returns `{"status":"ok"}`.
 
 Projects are created using the labelled form, listed in creation order, and opened using their row's `Open project` button. The `Projects` button returns to the list. Blank names show a validation alert without creating a project.
+
+Each project has a `Task title` form for creating trimmed task titles. Blank titles show a validation alert. Tasks appear in creation order, with completion checkboxes that save automatically. Use `Task filter` to show All (the default), Open, or Completed tasks. Tasks stay within their own project, and direct project URLs work after reloads.
 
 Run the automated HTTP and restart-persistence checks:
 
