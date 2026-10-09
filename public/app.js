@@ -1,9 +1,11 @@
+import { createTaskPanel } from './tasks.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(data.error || 'Unable to complete request');
   return data;
 }
 
@@ -42,6 +44,9 @@ async function render() {
       if (version !== renderVersion) return;
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      const tasks = await createTaskPanel(project.id, api);
+      if (version !== renderVersion) return;
+      app.append(tasks);
     } catch (error) {
       if (version !== renderVersion) return;
       heading.textContent = 'Project unavailable';
