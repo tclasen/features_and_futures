@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17212b; background: #f4f7fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 48px auto; padding: 0 24px; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    form, .project-row { background: white; border: 1px solid #d9e1e8; border-radius: 10px; padding: 20px; }
+    form { display: grid; gap: 10px; margin-bottom: 20px; }
+    label { font-weight: 600; }
+    input { font: inherit; padding: 10px 12px; border: 1px solid #9eacb8; border-radius: 6px; }
+    button { font: inherit; font-weight: 600; color: white; background: #1769aa; border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer; }
+    button:hover { background: #10568e; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; }
+    .alert { color: #a12622; margin: 0 0 16px; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+
+    async function loadProjects() {
+      const response = await fetch('/api/projects');
+      return response.json();
+    }
+
+    function showList(message = '') {
+      app.innerHTML = `
+        <h1>Workboard</h1>
+        <form id="create-project">
+          <label for="project-name">Project name</label>
+          <input id="project-name" name="name" type="text" autocomplete="off">
+          <button type="submit">Create project</button>
+        </form>
+        <p class="alert" role="alert"${message ? '' : ' hidden'}>${message}</p>
+        <section id="projects" aria-label="Projects"></section>`;
+      const form = app.querySelector('#create-project');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = new FormData(form).get('name').trim();
+        if (!name) {
+          showList('Project name is required');
+          return;
+        }
+        const response = await fetch('/api/projects', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (response.ok) showList();
+      });
+      loadProjects().then((projects) => {
+        const list = app.querySelector('#projects');
+        for (const project of projects) {
+          const row = document.createElement('div');
+          row.className = 'project-row';
+          row.dataset.testid = 'project-row';
+          const name = document.createElement('span');
+          name.textContent = project.name;
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = 'Open project';
+          open.addEventListener('click', () => { location.href = `/projects/${encodeURIComponent(project.id)}`; });
+          row.append(name, open);
+          list.append(row);
+        }
+      });
+    }
+
+    async function showProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) { showList(); return; }
+      const project = await response.json();
+      app.innerHTML = '<button type="button" id="back">Projects</button><h1></h1>';
+      app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+      app.querySelector('h1').textContent = project.name;
+    }
+
+    const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+    if (match) showProject(decodeURIComponent(match[1]));
+    else showList();
+  </script>
+</body>
+</html>
