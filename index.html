@@ -35,7 +35,7 @@
       return data;
     }
 
-    function projectRow(project) {
+    function projectRow(project, onChange) {
       const row = document.createElement('div');
       row.className = 'project-row';
       row.dataset.testid = 'project-row';
@@ -48,7 +48,19 @@
       open.addEventListener('click', () => {
         location.href = `/projects/${escapePath(project.id)}`;
       });
-      row.append(name, open);
+      const summary = document.createElement('span');
+      summary.dataset.testid = 'project-summary';
+      summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+      const change = document.createElement('button');
+      change.type = 'button';
+      change.textContent = project.archived ? 'Restore project' : 'Archive project';
+      change.addEventListener('click', async () => {
+        try {
+          await request(`/api/projects/${escapePath(project.id)}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+          await onChange();
+        } catch (error) { window.alert(error.message); }
+      });
+      row.append(name, summary, open, change);
       return row;
     }
 
@@ -70,6 +82,17 @@
       alert.hidden = true;
       const list = document.createElement('section');
       list.setAttribute('aria-label', 'Projects');
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Project filter');
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option'); option.value = value; option.textContent = value; filter.append(option);
+      }
+      async function loadProjects() {
+        const projects = await request(`/api/projects?archived=${filter.value === 'Archived'}`);
+        list.replaceChildren();
+        for (const project of projects) list.append(projectRow(project, loadProjects));
+      }
+      filter.addEventListener('change', loadProjects);
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = input.value.trim();
@@ -87,15 +110,14 @@
           alert.hidden = true;
           alert.textContent = '';
           input.value = '';
-          list.append(projectRow(project));
+          await loadProjects();
         } catch (error) {
           alert.textContent = error.message;
           alert.hidden = false;
         }
       });
-      app.append(heading, form, alert, list);
-      const projects = await request('/api/projects');
-      for (const project of projects) list.append(projectRow(project));
+      app.append(heading, filter, form, alert, list);
+      await loadProjects();
     }
 
     async function showProject(id) {
@@ -107,6 +129,9 @@
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
+      const archivedNotice = document.createElement('p');
+      archivedNotice.textContent = project.archived ? 'Archived project' : '';
+      archivedNotice.hidden = !project.archived;
       const form = document.createElement('form');
       const input = document.createElement('input');
       input.type = 'text';
@@ -114,6 +139,7 @@
       const create = document.createElement('button');
       create.type = 'submit';
       create.textContent = 'Create task';
+      create.disabled = project.archived;
       form.append(input, create);
       const alert = document.createElement('p');
       alert.id = 'alert';
@@ -148,6 +174,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = project.archived;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             try {
@@ -197,7 +224,7 @@
           alert.hidden = false;
         }
       });
-      app.append(back, heading, form, alert, tools, list);
+      app.append(back, heading, archivedNotice, form, alert, tools, list);
       renderTasks();
     }
 
