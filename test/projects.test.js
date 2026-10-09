@@ -79,3 +79,59 @@ test('projects validate, render safely, navigate, and survive restart', { timeou
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, remain scoped, and persist completion', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'tasks.sqlite');
+    server = await start(dbPath);
+    const post = (path, values) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const detail = (id, filter = 'All') => fetch(`${server.url}/projects/${id}?filter=${filter}`).then(r => r.text());
+    const rows = html => [...html.matchAll(/data-testid="task-row"[\s\S]*?<\/form>/g)].map(match => match[0]);
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    let html = await detail(1);
+    assert.match(html, /<label for="task-title">Task title<\/label>/);
+    assert.match(html, />Create task<\/button>/);
+    assert.match(html, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(html, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', '  \t ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 400);
+      assert.match(await response.text(), /role="alert">Task title is required/);
+      assert.equal(rows(await detail(1)).length, 0);
+    }
+    await post('/projects/1/tasks', { title: '  First task  ' });
+    await post('/projects/1/tasks', { title: 'Next <task>' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    html = await detail(1);
+    assert.equal(rows(html).length, 2);
+    assert.match(rows(html)[0], /aria-label="Complete First task"/);
+    assert.doesNotMatch(rows(html)[0], / checked/);
+    assert.match(rows(html)[1], /Next &lt;task&gt;/);
+    assert.doesNotMatch(html, /Other task/);
+    assert.equal(rows(await detail(1, 'Completed')).length, 0);
+    assert.equal(rows(await detail(1, 'Open')).length, 2);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
+    const update = await post('/projects/1/tasks/1', { completed: '1', filter: 'Open' });
+    assert.equal(update.headers.get('location'), '/projects/1?filter=Open');
+    assert.match(rows(await detail(1))[0], / checked/);
+    assert.equal(rows(await detail(1, 'Open')).length, 1);
+    assert.match(rows(await detail(1, 'Completed'))[0], /First task/);
+    const saved = await detail(1);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await detail(1), saved);
+    assert.match(await detail(2), /Other task/);
+    await post('/projects/1/tasks/1', {});
+    assert.doesNotMatch(rows(await detail(1))[0], / checked/);
+    assert.equal(rows(await detail(1, 'Completed')).length, 0);
+    assert.equal(rows(await detail(1, 'Open')).length, 2);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -6,7 +6,9 @@ Requires Node.js 22.22.1. No application dependencies or installation step.
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. Both environment variables are optional; the values above are the defaults. The database directory is created automatically. Keep the SQLite file to preserve projects across restarts.
+Open `http://localhost:8080`. Both environment variables are optional; the values above are the defaults. The database directory is created automatically. Keep the SQLite file to preserve projects, tasks, and completion states across restarts.
+
+Open a project to create tasks, toggle their completion checkboxes, and filter by All, Open, or Completed. Changes are saved immediately.
 
 `GET /health` returns `{"status":"ok"}`.
 
