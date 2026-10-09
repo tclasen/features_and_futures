@@ -60,6 +60,8 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', tit
   const visibleTasks = tasks.filter((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     <form method="get" action="/"><button type="submit">Projects</button></form>
+    <p id="completion-error" role="alert" hidden></p>
+    <script type="module" src="/project.js"></script>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create" method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
@@ -75,9 +77,9 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', tit
     </form>
     <ul class="projects" aria-label="Tasks">
       ${visibleTasks.map((task) => `<li class="task" data-testid="task-row">
-        <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
+        <form data-task-completion method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
           <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}><span>${escapeHtml(task.title)}</span></label>
         </form>
       </li>`).join('')}
     </ul>`);

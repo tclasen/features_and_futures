@@ -120,8 +120,8 @@ test('tasks validate, filter, stay in their project, and persist completion acro
   });
   server = await startServer(databasePath);
   const get = (path) => fetch(`${server.url}${path}`);
-  const post = (path, values) => fetch(`${server.url}${path}`, {
-    method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+  const post = (path, values, headers = {}) => fetch(`${server.url}${path}`, {
+    method: 'POST', body: new URLSearchParams(values), redirect: 'manual', headers,
   });
   const rows = (html) => [...html.matchAll(/<li class="task" data-testid="task-row">[\s\S]*?<\/li>/g)].map((match) => match[0]);
   const taskId = (row) => row.match(/\/tasks\/(\d+)\/completion/)[1];
@@ -164,6 +164,13 @@ test('tasks validate, filter, stay in their project, and persist completion acro
   assert.equal(complete.status, 303);
   assert.equal(complete.headers.get('location'), '/projects/1?filter=Open');
   await complete.text();
+  const saved = await post(`/projects/1/tasks/${secondId}/completion`, { completed: '1' }, { Accept: 'application/json' });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(await saved.json(), { completed: true });
+  const script = await get('/project.js');
+  assert.equal(script.status, 200);
+  assert.match(script.headers.get('content-type'), /text\/javascript/);
+  assert.match(await script.text(), /installTaskCompletion/);
 
   const completedAll = await (await get('/projects/1')).text();
   assert.match(rows(completedAll)[1], / checked/);
@@ -204,10 +211,9 @@ test('tasks validate, filter, stay in their project, and persist completion acro
   assert.equal(await (await get('/projects/1?filter=Completed')).text(), completedPage);
   assert.equal(await (await get('/projects/2')).text(), otherProjectPage);
 
-  const reopen = await post(`/projects/1/tasks/${secondId}/completion`, { filter: 'Completed' });
-  assert.equal(reopen.status, 303);
-  assert.equal(reopen.headers.get('location'), '/projects/1?filter=Completed');
-  await reopen.text();
+  const reopen = await post(`/projects/1/tasks/${secondId}/completion`, { filter: 'Completed' }, { Accept: 'application/json' });
+  assert.equal(reopen.status, 200);
+  assert.deepEqual(await reopen.json(), { completed: false });
   assert.equal(rows(await (await get('/projects/1?filter=Completed')).text()).length, 0);
   assert.equal(await (await get('/projects/1')).text(), all);
   await server.stop();

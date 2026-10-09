@@ -1,8 +1,10 @@
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { openProjectStore } from './database.js';
 import { notFoundPage, projectListPage, projectPage } from './pages.js';
 
 const store = openProjectStore(process.env.DB_PATH || 'data/workboard.sqlite');
+const projectScript = readFileSync(new URL('./project.js', import.meta.url));
 
 function html(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -39,6 +41,9 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
+    } else if (request.method === 'GET' && pathname === '/project.js') {
+      response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      response.end(projectScript);
     } else if (request.method === 'GET' && pathname === '/') {
       html(response, 200, projectListPage(store.list()));
     } else if (request.method === 'POST' && pathname === '/projects') {
@@ -77,7 +82,12 @@ const server = createServer(async (request, response) => {
           html(response, 404, notFoundPage());
           return;
         }
-        redirectToProject(response, id, taskFilter(form.get('filter')));
+        if (request.headers.accept === 'application/json') {
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ completed: form.get('completed') === '1' }));
+        } else {
+          redirectToProject(response, id, taskFilter(form.get('filter')));
+        }
       } else {
         html(response, 404, notFoundPage());
       }
