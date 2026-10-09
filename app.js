@@ -52,6 +52,35 @@ export function createApp(store) {
           ? json(response, 200, project)
           : json(response, 404, { error: 'Project not found' });
       }
+      const tasksMatch = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+      if (tasksMatch) {
+        const [, projectId, taskId] = tasksMatch;
+        if (!store.find(projectId)) return json(response, 404, { error: 'Project not found' });
+        if (!taskId && request.method === 'GET') {
+          return json(response, 200, store.listTasks(projectId));
+        }
+        if ((!taskId && request.method === 'POST') || (taskId && request.method === 'PATCH')) {
+          let body;
+          try {
+            body = await readJson(request);
+          } catch {
+            return json(response, 400, { error: 'Invalid JSON request' });
+          }
+          if (!taskId) {
+            if (typeof body?.title !== 'string' || !body.title.trim()) {
+              return json(response, 400, { error: 'Task title is required' });
+            }
+            return json(response, 201, store.createTask(projectId, body.title));
+          }
+          if (typeof body?.completed !== 'boolean') {
+            return json(response, 400, { error: 'Completion must be a boolean' });
+          }
+          const task = store.setTaskCompleted(projectId, taskId, body.completed);
+          return task
+            ? json(response, 200, task)
+            : json(response, 404, { error: 'Task not found' });
+        }
+      }
       const asset = /^\/projects\/[1-9]\d*$/.test(pathname)
         ? assets.get('/')
         : assets.get(pathname);
