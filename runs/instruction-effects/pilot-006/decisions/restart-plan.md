@@ -9,3 +9,7 @@ If the controlled replacement is approved, preserve the current attempt and nati
 The independent main-run acceptance-coverage revision v005 and the unused censored-cost proposal are outside this pilot. They require separate validation and versioned adoption before main dispatch.
 
 Automatic approval review rejected temporarily stopping the retry loop, citing the notification-and-continuation rule. This prepared replacement makes the requested approval concrete. Public publication is separately awaiting explicit scope approval for raw prompts, tool results, metadata, source and native histories after automatic review rejected publication scope. No public push is authorized by this plan alone.
+
+## Authorization resolution, 2026-10-09
+
+The user subsequently granted full pilot-completion authority without further approval requests and explicitly authorized public source, history, logs, timing and cost evidence, excluding keys/secrets. The historical approval blockers above are resolved. Pilot-005 remains active under its frozen policy because it has made substantive accepted progress; pilot-006 remains prepared and undispatched. Do not interpret this resolution as an actual restart or as starting the main experiment.
