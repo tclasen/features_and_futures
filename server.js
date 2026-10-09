@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import * as sqlite from 'node:sqlite';
+import { open } from 'node:sqlite';
+import sqlite3 from 'node:sqlite3';
 
 
 
@@ -8,8 +9,8 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const DB_PATH = process.env.DB_PATH || 'workboard.db';
 
 async function initDb() {
-  const db = new sqlite.DatabaseSync(DB_PATH);
-  db.exec(`CREATE TABLE IF NOT EXISTS projects (
+  const db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+  await db.exec(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   );`);
@@ -124,8 +125,13 @@ window.onload = loadProjects;
 
     // API: list projects
     if (req.method === 'GET' && pathname === '/projects') {
-      const rows = db.all('SELECT id, name FROM projects ORDER BY id ASC');
-      return sendJson(res, 200, rows);
+      try {
+        const rows = await db.all('SELECT id, name FROM projects ORDER BY id ASC');
+        return sendJson(res, 200, rows);
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        return res.end('Server Error');
+      }
     }
 
     // API: create project
@@ -138,7 +144,7 @@ window.onload = loadProjects;
           res.writeHead(400, { 'Content-Type': 'text/plain' });
           return res.end('Project name is required');
         }
-        const result = db.run('INSERT INTO projects (name) VALUES (?)', name);
+        const result = await db.run('INSERT INTO projects (name) VALUES (?)', name);
         const project = { id: result.lastID, name };
         return sendJson(res, 201, project);
       } catch (e) {
@@ -151,7 +157,7 @@ window.onload = loadProjects;
     const projectPageMatch = pathname.match(/^\/projects\/(\d+)$/);
     if (req.method === 'GET' && projectPageMatch) {
       const id = Number(projectPageMatch[1]);
-      const row = db.get('SELECT id, name FROM projects WHERE id = ?', id);
+      const row = await db.get('SELECT id, name FROM projects WHERE id = ?', id);
       if (!row) return notFound(res);
       const projectHtml = `<!DOCTYPE html>
 <html lang="en">
