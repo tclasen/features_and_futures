@@ -9,7 +9,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const html = readFileSync(new URL('./index.html', import.meta.url));
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -36,7 +38,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, JSON.stringify({ status: 'ok' }));
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return send(res, 200, JSON.stringify(db.prepare('SELECT id, name FROM projects ORDER BY id').all()));
+    return send(res, 200, JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) }))));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
@@ -54,12 +56,19 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)\/?$/);
+  if (req.method === 'POST' && archiveRoute) {
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveRoute[2] === 'archive' ? 1 : 0, Number(archiveRoute[1]));
+    return result.changes ? send(res, 200, JSON.stringify({ ok: true })) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
+  }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/?$/);
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
-    if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
     if (req.method === 'GET') return send(res, 200, JSON.stringify(db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
     if (req.method === 'POST') return readBody(req, res, body => {
+      if (project.archived) return send(res, 403, JSON.stringify({ error: 'Archived project' }));
       const title = String(body.title ?? '').trim();
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
@@ -68,12 +77,12 @@ const server = http.createServer((req, res) => {
   }
   const completionRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/?$/);
   if (req.method === 'PATCH' && completionRoute) return readBody(req, res, body => {
-    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, Number(completionRoute[1]));
+    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(body.completed ? 1 : 0, Number(completionRoute[1]));
     return result.changes ? send(res, 200, JSON.stringify({ ok: true })) : send(res, 404, JSON.stringify({ error: 'Task not found' }));
   });
   if (req.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
     const id = Number(url.pathname.slice('/api/projects/'.length));
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id);
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id);
     return project ? send(res, 200, JSON.stringify(project)) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
