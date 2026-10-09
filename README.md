@@ -18,6 +18,8 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Within a project, enter a **Task title** and select **Create task**. Titles are trimmed and required. Use a task's checkbox to save its completion state and **Task filter** to show **All**, **Open**, or **Completed** tasks in creation order. Tasks belong to their project; projects, tasks, and completion states persist in the configured SQLite file across restarts.
 
+The **Project filter** starts at **Active**. Select **Archive project** to move a project to **Archived**, where **Restore project** returns it to Active. Archived projects can still be opened and their tasks filtered, but task creation and completion changes are disabled. Each project row shows the completed count out of all its tasks. Archive state and tasks persist across restarts; existing databases are migrated automatically.
+
 Run the integration checks with:
 
 ```sh
