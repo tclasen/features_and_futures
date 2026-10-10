@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks support validation, filtering, isolation, archiving, renaming, priorities, summaries, and restart persistence', async (t) => {
+test('projects and tasks support validation, filtering, isolation, archiving, renaming, priorities, project defaults, summaries, and restart persistence', async (t) => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), 'data', 'test-'));
   // Exercise upgrading the original projects schema without resetting its IDs or names.
@@ -57,6 +57,8 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   assert.match(initial, /action="\/projects\/1"/);
   assert.match(initial, /data-testid="project-summary">1\/1 completed/);
   const migratedPage = await (await fetch(`${base}/projects/1`)).text();
+  assert.match(migratedPage, /<label for="default-task-priority">Default task priority<\/label>/);
+  assert.match(migratedPage, /<option value="Low">Low<\/option><option value="Normal" selected>Normal<\/option><option value="High">High<\/option>/);
   assert.match(migratedPage, /aria-label="Complete Existing task" checked/);
   assert.match(migratedPage, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
   assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
@@ -459,4 +461,95 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   assert.equal(taskCount(await taskPage()), 2);
   assert.match(filterOptions(await taskPage(), 'priority-filter'), /<option selected>All<\/option>/);
 
+  // Project defaults affect only future tasks and preserve both selected filters.
+  const defaultOptions = (html) => filterOptions(html, 'default-task-priority');
+  const taskSection = (html) => /<section[^>]*aria-label="Tasks">([\s\S]*?)<\/section>/.exec(html)[1];
+  const defaultPath = `${paths[0]}/default-priority`;
+  const selectedFilters = { filter: 'Open', priorityFilter: 'High' };
+  const beforeDefaultChange = await combinedPage('Open', 'High');
+  const beforeDefaultList = await (await fetch(base)).text();
+  const otherBeforeDefault = await taskPage(paths[1]);
+  assert.equal(defaultOptions(beforeDefaultChange),
+    '<option value="Low">Low</option><option value="Normal" selected>Normal</option><option value="High">High</option>');
+  const changeDefault = await postTask(defaultPath, { ...selectedFilters, priority: 'High' });
+  assert.equal(changeDefault.status, 303);
+  assert.equal(changeDefault.headers.get('location'), `${paths[0]}?filter=Open&priorityFilter=High`);
+  const afterDefaultChange = await (await fetch(`${base}${changeDefault.headers.get('location')}`)).text();
+  assert.match(defaultOptions(afterDefaultChange), /value="High" selected/);
+  assert.match(filterOptions(afterDefaultChange, 'task-filter'), /<option selected>Open<\/option>/);
+  assert.match(filterOptions(afterDefaultChange, 'priority-filter'), /<option selected>High<\/option>/);
+  assert.equal(taskSection(afterDefaultChange), taskSection(beforeDefaultChange));
+  assert.equal(await taskPage(paths[1]), otherBeforeDefault);
+  assert.equal(await (await fetch(base)).text(), beforeDefaultList);
+  for (const priority of ['', 'Urgent']) {
+    assert.equal((await postTask(defaultPath, { ...selectedFilters, priority })).status, 400);
+  }
+  assert.equal((await postTask('/projects/99999/default-priority', { priority: 'Low' })).status, 404);
+  assert.equal(await combinedPage('Open', 'High'), afterDefaultChange);
+  await stop();
+  base = await start();
+  assert.equal(await combinedPage('Open', 'High'), afterDefaultChange);
+
+  const highCreation = await postTask(`${paths[0]}/tasks`, { ...selectedFilters, title: '  Inherited high  ' });
+  assert.equal(highCreation.headers.get('location'), `${paths[0]}?filter=Open&priorityFilter=High`);
+  const highFiltered = await combinedPage('Open', 'High');
+  assert.equal(taskCount(highFiltered), 2);
+  assert.ok(highFiltered.indexOf('class="task-title">Filtered rename') < highFiltered.indexOf('class="task-title">Inherited high'));
+  const taskRows = [...(await taskPage()).matchAll(/<div class="task-row" data-testid="task-row">[\s\S]*?<\/div>/g)];
+  const highRow = taskRows.find(([html]) => html.includes('aria-label="Complete Inherited high"'))[0];
+  assert.match(highRow, /<option selected>High<\/option>/);
+  assert.doesNotMatch(highRow, /type="checkbox"[^>]* checked/);
+  const inheritedTaskPath = /action="(\/projects\/\d+\/tasks\/\d+)"/.exec(highRow)[1];
+  assert.equal((await postTask(inheritedTaskPath, { completed: '1' })).status, 303);
+  assert.equal((await postTask(`${inheritedTaskPath}/rename`, { title: 'Inherited renamed' })).status, 303);
+
+  for (const priority of ['Low', 'Normal']) {
+    const existingTasks = taskSection(await taskPage());
+    const existingList = await (await fetch(base)).text();
+    assert.equal((await postTask(defaultPath, { priority })).status, 303);
+    assert.equal(taskSection(await taskPage()), existingTasks);
+    assert.equal(await (await fetch(base)).text(), existingList);
+    assert.equal((await postTask(`${paths[0]}/tasks`, { title: `Inherited ${priority}` })).status, 303);
+    const matchingPage = await combinedPage('Open', priority);
+    assert.match(matchingPage, new RegExp(`aria-label="Complete Inherited ${priority}"`));
+  }
+  const inheritedCompleted = await combinedPage('Completed', 'High');
+  assert.equal(taskCount(inheritedCompleted), 1);
+  assert.match(inheritedCompleted, /aria-label="Complete Inherited renamed" checked/);
+  assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/5 completed/);
+  // Each project inherits its own default, independently of all existing tasks.
+  assert.equal((await postTask(`${paths[1]}/default-priority`, { priority: 'Low' })).status, 303);
+  assert.equal((await postTask(`${paths[1]}/tasks`, { title: 'Other inherited low' })).status, 303);
+  assert.match(defaultOptions(await taskPage()), /value="Normal" selected/);
+  assert.match(defaultOptions(await taskPage(paths[1])), /value="Low" selected/);
+  const otherSaved = await taskPage(paths[1]);
+  assert.match(otherSaved, /<option selected>Low<\/option>/);
+  assert.match(otherSaved, /<option selected>Normal<\/option>/);
+
+  assert.equal((await postTask(defaultPath, { priority: 'High' })).status, 303);
+  assert.equal((await postTask(`${paths[0]}/rename`, { name: 'Default preserved' })).status, 303);
+  const defaultSaved = await taskPage();
+  assert.match(defaultOptions(defaultSaved), /value="High" selected/);
+  const defaultSavedList = await (await fetch(base)).text();
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), defaultSaved);
+  assert.equal(await taskPage(paths[1]), otherSaved);
+  assert.equal(await (await fetch(base)).text(), defaultSavedList);
+  assert.equal((await postTask(`${paths[0]}/archive`, {})).status, 303);
+  const archivedDefault = await taskPage();
+  assert.match(archivedDefault, /<select id="default-task-priority"[^>]* disabled/);
+  assert.match(defaultOptions(archivedDefault), /value="High" selected/);
+  assert.equal((await postTask(defaultPath, { ...selectedFilters, priority: 'Low' })).status, 403);
+  assert.equal(await taskPage(), archivedDefault);
+  assert.equal(taskCount(await combinedPage('Completed', 'High')), 1);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), archivedDefault);
+  assert.equal((await postTask(`${paths[0]}/restore`, {})).status, 303);
+  assert.equal(await taskPage(), defaultSaved);
+  assert.equal((await postTask(defaultPath, { priority: 'Low' })).status, 303);
+  assert.match(defaultOptions(await taskPage()), /value="Low" selected/);
+  assert.equal(taskSection(await taskPage()), taskSection(defaultSaved));
+  assert.equal(await (await fetch(base)).text(), defaultSavedList);
 });
