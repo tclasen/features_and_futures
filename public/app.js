@@ -20,25 +20,29 @@ async function render() {
     } catch { /* Render the list if project lookup is unavailable. */ }
   }
   app.innerHTML = `<h1>Workboard</h1>
+    <label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select>
     <form id="create-form"><label for="project-name">Project name</label><div class="create-line"><input id="project-name" name="name" type="text"><button type="submit">Create project</button></div></form>
     <p id="alert" class="alert" role="alert" hidden></p><section id="projects" aria-label="Projects"></section>`;
   document.querySelector('#create-form').addEventListener('submit', createProject);
+  document.querySelector('#project-filter').addEventListener('change', loadProjects);
   await loadProjects();
 }
 
 function renderProject(project) {
   app.innerHTML = `<button class="back" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     <form id="task-form"><label for="task-title">Task title</label><div class="create-line"><input id="task-title" type="text"><button type="submit">Create task</button></div></form>
     <p id="task-alert" class="alert" role="alert" hidden></p>
     <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
     <section id="tasks" aria-label="Tasks"></section>`;
+  document.querySelector('#task-form button').disabled = project.archived;
   document.querySelector('#back').addEventListener('click', () => navigate('/'));
   document.querySelector('#task-form').addEventListener('submit', event => createTask(event, project.id));
-  document.querySelector('#task-filter').addEventListener('change', () => loadTasks(project.id));
-  loadTasks(project.id);
+  document.querySelector('#task-filter').addEventListener('change', () => loadTasks(project.id, project.archived));
+  loadTasks(project.id, project.archived);
 }
 
-async function loadTasks(projectId) {
+async function loadTasks(projectId, archived = false) {
   const tasks = await request(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
   const filter = document.querySelector('#task-filter').value;
   const list = document.querySelector('#tasks');
@@ -53,6 +57,7 @@ async function loadTasks(projectId) {
     const label = document.createElement('label');
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox'; checkbox.checked = task.completed;
+    checkbox.disabled = archived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
@@ -80,9 +85,11 @@ async function createTask(event, projectId) {
 
 async function loadProjects() {
   const projects = await request('/api/projects');
+  const filter = document.querySelector('#project-filter').value;
+  const visibleProjects = projects.filter(project => project.archived === (filter === 'Archived'));
   const list = document.querySelector('#projects');
   list.replaceChildren();
-  for (const project of projects) {
+  for (const project of visibleProjects) {
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
     row.className = 'project-row';
@@ -91,7 +98,16 @@ async function loadProjects() {
     const button = document.createElement('button');
     button.textContent = 'Open project';
     button.addEventListener('click', () => navigate(`/projects/${encodeURIComponent(project.id)}`));
-    row.append(name, button);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+    const stateButton = document.createElement('button');
+    stateButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+    stateButton.addEventListener('click', async () => {
+      await request(`/api/projects/${encodeURIComponent(project.id)}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+      await loadProjects();
+    });
+    row.append(name, summary, button, stateButton);
     list.append(row);
   }
 }

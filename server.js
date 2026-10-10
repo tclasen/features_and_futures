@@ -11,7 +11,7 @@ const dbPath = resolve(process.env.DB_PATH || join(root, 'workboard.sqlite'));
 await mkdir(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
-  CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -20,13 +20,15 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 `);
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok' });
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return json(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid').all());
+    return json(res, 200, db.prepare('SELECT p.id, p.name, p.archived, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count FROM projects p ORDER BY p.created_at, p.rowid').all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/?$/);
   if (tasksMatch && req.method === 'GET') {
@@ -37,7 +39,9 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'POST') {
     try {
       const projectId = decodeURIComponent(tasksMatch[1]);
-      if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (project.archived) return json(res, 409, { error: 'Archived projects cannot be changed' });
       const body = await readBody(req);
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) return json(res, 400, { error: 'Task title is required' });
@@ -51,10 +55,17 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readBody(req);
       if (typeof body.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(Number(body.completed), decodeURIComponent(taskMatch[1]));
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(Number(body.completed), decodeURIComponent(taskMatch[1]));
       if (!result.changes) return json(res, 404, { error: 'Task not found' });
       return json(res, 200, { completed: body.completed });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)\/?$/);
+  if (archiveMatch && req.method === 'POST') {
+    const id = decodeURIComponent(archiveMatch[1]);
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, id);
+    if (!result.changes) return json(res, 404, { error: 'Project not found' });
+    return json(res, 200, { archived: archiveMatch[2] === 'archive' });
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     try {
@@ -62,7 +73,7 @@ const server = http.createServer(async (req, res) => {
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return json(res, 400, { error: 'Project name is required' });
       const id = randomUUID();
-      db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(id, name, Date.now());
+      db.prepare('INSERT INTO projects (id, name, created_at, archived) VALUES (?, ?, ?, 0)').run(id, name, Date.now());
       return json(res, 201, { id, name });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
