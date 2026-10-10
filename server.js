@@ -28,6 +28,7 @@ const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
@@ -108,12 +109,13 @@ const server = http.createServer(async (req, res) => {
     try {
       for await (const chunk of req) body += chunk;
       const data = JSON.parse(body);
-      if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
       const projectId = Number(taskMatch[1]), taskId = Number(taskMatch[2]);
       const project = getProject.get(projectId);
       if (!project) return sendJson(res, 404, { error: 'Project not found' });
       if (project.archived) return sendJson(res, 403, { error: 'Archived project' });
-      updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+      if (typeof data.completed === 'boolean') updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+      else if (typeof data.title === 'string' && data.title.trim()) renameTask.run(data.title.trim(), taskId, projectId);
+      else return sendJson(res, 400, { error: typeof data.title === 'string' ? 'Task title is required' : 'Invalid task update' });
       const task = getTask.get(taskId, projectId);
       if (!task) return sendJson(res, 404, { error: 'Task not found' });
       return sendJson(res, 200, task);

@@ -96,10 +96,20 @@
       async function renderTasks() {
         const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(r => r.json());
         const visible = tasks.filter(task => filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed));
-        list.innerHTML = visible.map(task => `<div data-testid="task-row"><input type="checkbox" data-task="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('');
+        list.innerHTML = visible.map(task => `<div data-testid="task-row"><input type="checkbox" data-task="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeHtml(task.title)}</span><form data-rename-task="${task.id}"><label for="rename-task-${task.id}">New task title</label><input id="rename-task-${task.id}" type="text" aria-label="New task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form></div>`).join('');
         list.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
           await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${box.dataset.task}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
           renderTasks();
+        }));
+        list.querySelectorAll('[data-rename-task]').forEach(form => form.addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = form.querySelector('input').value.trim();
+          if (!title) {
+            const alert = app.querySelector('#task-alert');
+            alert.textContent = 'Task title is required'; alert.hidden = false; return;
+          }
+          const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${form.dataset.renameTask}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+          if (result.ok) renderTasks();
         }));
       }
       filter.addEventListener('change', renderTasks);
