@@ -168,8 +168,9 @@ async function renderTasks(project) {
   const destinations = (await api('/api/projects'))
     .filter(candidate => !candidate.archived && candidate.id !== project.id);
 
-  // Keep each row's destination choice when another saved edit refreshes the list.
-  const selectedDestinations = new Map();
+  // Reuse row controls: an asynchronous save must not replace a destination
+  // select while the user is choosing an option (or discard other draft edits).
+  const taskRows = new Map();
 
   function displayTasks() {
     const visible = tasks.filter(task =>
@@ -179,7 +180,12 @@ async function renderTasks(project) {
       ((!appliedFrom && !appliedThrough) ||
         (task.due_date && (!appliedFrom || task.due_date >= appliedFrom) &&
           (!appliedThrough || task.due_date <= appliedThrough))));
-    list.replaceChildren(...visible.map(task => {
+    const rows = visible.map(task => {
+      const existing = taskRows.get(task.id);
+      if (existing) {
+        existing.sync();
+        return existing.row;
+      }
       const row = document.createElement('div');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -309,12 +315,6 @@ async function renderTasks(project) {
         option.textContent = candidate.name;
         destination.append(option);
       }
-      if (selectedDestinations.has(task.id)) {
-        destination.value = selectedDestinations.get(task.id);
-      }
-      destination.addEventListener('change', () => {
-        selectedDestinations.set(task.id, destination.value);
-      });
       const moveButton = document.createElement('button');
       moveButton.type = 'submit';
       moveButton.textContent = 'Move task';
@@ -332,14 +332,36 @@ async function renderTasks(project) {
             body: JSON.stringify({ destination_project_id: Number(destination.value) }),
           });
           tasks = tasks.filter(candidate => candidate.id !== task.id);
-          selectedDestinations.delete(task.id);
+          taskRows.delete(task.id);
           displayTasks();
         } catch (error) { showAlert(error.message); }
         finally { moveButton.disabled = Boolean(project.archived) || destinations.length === 0; }
       });
       row.append(checkbox, title, renameForm, priorityLabel, priority, dueForm, moveForm);
+      let savedTitle = task.title;
+      let savedPriority = task.priority;
+      let savedDueDate = task.due_date;
+      taskRows.set(task.id, {
+        row,
+        sync() {
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          title.textContent = task.title;
+          // Update saved values without resetting unrelated in-progress inputs.
+          if (savedTitle !== task.title) renameInput.value = task.title;
+          if (savedPriority !== task.priority) priority.value = task.priority;
+          if (savedDueDate !== task.due_date) dueInput.value = task.due_date || '';
+          savedTitle = task.title;
+          savedPriority = task.priority;
+          savedDueDate = task.due_date;
+        },
+      });
       return row;
-    }));
+    });
+    const currentRows = Array.from(list.children);
+    if (rows.length !== currentRows.length || rows.some((row, index) => row !== currentRows[index])) {
+      list.replaceChildren(...rows);
+    }
   }
   displayTasks();
   filter.addEventListener('change', displayTasks);

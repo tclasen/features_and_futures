@@ -398,6 +398,33 @@ test('a pending edit does not reset a chosen move destination when rows refresh'
   assert.deepEqual(p.titles(), ['Low done', 'Normal open', 'Normal done', 'High open', 'High done']);
 });
 
+test('destination controls survive a save between selecting an option and its change event', async () => {
+  const p = await page(false, true, [{ id: 4, name: 'Intended destination', archived: false }]);
+  const row = p.rows()[0];
+  const moveForm = row.querySelectorAll('form')[2];
+  const destination = moveForm.querySelector('select');
+  const renameInput = row.querySelectorAll('form')[0].querySelector('input');
+  const dueInput = row.querySelectorAll('form')[1].querySelector('input');
+  renameInput.value = 'Unsubmitted rename';
+  dueInput.value = '2033-01-01';
+  const release = p.deferNextEdit();
+  const editing = p.select(row.querySelector('select'), 'High');
+  // A native selection may be in progress before its change handler runs.
+  destination.value = '4';
+  release();
+  await editing;
+  assert.equal(p.rows()[0], row);
+  assert.equal(p.rows()[0].querySelectorAll('form')[2], moveForm);
+  await destination.fire('change');
+  assert.equal(destination.value, '4');
+  assert.equal(renameInput.value, 'Unsubmitted rename');
+  assert.equal(dueInput.value, '2033-01-01');
+  await moveForm.fire('submit');
+  assert.equal(p.tasks[0].destination_project_id, 4);
+  assert.equal(p.tasks[0].priority, 'High');
+  assert.deepEqual(p.titles(), ['Low done', 'Normal open', 'Normal done', 'High open', 'High done']);
+});
+
 test('move controls have no placeholder and are disabled without eligible destinations', async () => {
   const p = await page(false, false);
   for (const row of p.rows()) {
