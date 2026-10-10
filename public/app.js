@@ -96,6 +96,18 @@ async function showProject(id) {
   back.addEventListener('click', () => { location.href = '/'; });
   const heading = element('h1', project.name);
   const archivedNotice = project.archived ? element('p', 'Archived project', 'archived-notice') : null;
+  const defaultPriorityLabel = element('label', 'Default task priority');
+  defaultPriorityLabel.htmlFor = 'default-task-priority';
+  const defaultPriority = element('select');
+  defaultPriority.id = 'default-task-priority';
+  defaultPriority.disabled = project.archived;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.defaultTaskPriority || 'Normal';
+  defaultPriorityLabel.append(defaultPriority);
   const renameForm = element('form', undefined, 'create-form rename-form');
   const renameLabel = element('label', 'New project name');
   renameLabel.htmlFor = 'new-project-name';
@@ -148,8 +160,27 @@ async function showProject(id) {
   priorityFilterLabel.append(priorityFilter);
   const taskList = element('div', undefined, 'task-list');
   taskList.setAttribute('aria-label', 'Tasks');
-  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, form, alert, filterLabel, priorityFilterLabel, taskList);
-  else content.append(back, heading, renameForm, form, alert, filterLabel, priorityFilterLabel, taskList);
+  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, taskList);
+  else content.append(back, heading, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, taskList);
+
+  defaultPriority.addEventListener('change', async () => {
+    const previousValue = project.defaultTaskPriority || 'Normal';
+    defaultPriority.disabled = true;
+    try {
+      await request(`/api/projects/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ defaultTaskPriority: defaultPriority.value }),
+      });
+      project.defaultTaskPriority = defaultPriority.value;
+    } catch (error) {
+      defaultPriority.value = previousValue;
+      alert.textContent = error.message;
+      alert.hidden = false;
+    } finally {
+      defaultPriority.disabled = project.archived;
+    }
+  });
 
   renameForm.addEventListener('submit', async (event) => {
     event.preventDefault();
