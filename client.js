@@ -39,17 +39,49 @@ async function showProjects() {
   input.name = 'name';
   const submit = element('button', { type: 'submit', text: 'Create project' });
   form.append(label, input, submit);
-  const list = element('div', { className: 'project-list' });
-  const projects = await request('/api/projects');
-  for (const project of projects) {
-    const row = element('article', { className: 'project-row' });
-    row.dataset.testid = 'project-row';
-    row.append(element('span', { text: project.name }));
-    const open = element('button', { type: 'button', text: 'Open project' });
-    open.addEventListener('click', () => navigate(`/projects/${project.id}`));
-    row.append(open);
-    list.append(row);
+  const filterLabel = element('label', { text: 'Project filter' });
+  filterLabel.htmlFor = 'project-filter';
+  const filter = element('select');
+  filter.id = 'project-filter';
+  for (const value of ['Active', 'Archived']) {
+    const option = element('option', { text: value });
+    option.value = value;
+    filter.append(option);
   }
+  const list = element('div', { className: 'project-list' });
+  const drawProjects = async () => {
+    const archived = filter.value === 'Archived';
+    const projects = await request(`/api/projects?archived=${archived}`);
+    list.replaceChildren();
+    for (const project of projects) {
+      const row = element('article', { className: 'project-row' });
+      row.dataset.testid = 'project-row';
+      const details = element('div', { className: 'project-details' });
+      details.append(element('span', { text: project.name }));
+      const summary = element('span', { className: 'project-summary', text: `${project.completedCount}/${project.totalCount} completed` });
+      summary.dataset.testid = 'project-summary';
+      details.append(summary);
+      const actions = element('div', { className: 'project-actions' });
+      const open = element('button', { type: 'button', text: 'Open project' });
+      open.addEventListener('click', () => navigate(`/projects/${project.id}`));
+      actions.append(open);
+      const archive = element('button', { type: 'button', text: archived ? 'Restore project' : 'Archive project' });
+      archive.addEventListener('click', async () => {
+        try {
+          await request(`/api/projects/${project.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived: !archived })
+          });
+          await drawProjects();
+        } catch (error) { showError(error.message); }
+      });
+      actions.append(archive);
+      row.append(details, actions);
+      list.append(row);
+    }
+  };
+  filter.addEventListener('change', drawProjects);
+  await drawProjects();
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const name = input.value.trim();
@@ -69,7 +101,7 @@ async function showProjects() {
       showError(error.message);
     }
   });
-  app.replaceChildren(heading, form, list);
+  app.replaceChildren(heading, form, filterLabel, filter, list);
 }
 
 async function showProject(id) {
@@ -85,6 +117,14 @@ async function showProject(id) {
     input.id = 'task-title';
     input.name = 'title';
     const submit = element('button', { type: 'submit', text: 'Create task' });
+    const archived = Boolean(project.archived);
+    if (archived) {
+      const status = element('p', { text: 'Archived project' });
+      status.className = 'archived-status';
+      app.append(status);
+      submit.disabled = true;
+      input.disabled = true;
+    }
     form.append(label, input, submit);
 
     const filterLabel = element('label', { text: 'Task filter' });
@@ -109,6 +149,7 @@ async function showProject(id) {
         row.append(element('span', { text: task.title }));
         const checkbox = element('input', { type: 'checkbox', label: `Complete ${task.title}` });
         checkbox.checked = completed;
+        checkbox.disabled = archived;
         checkbox.addEventListener('change', async () => {
           try {
             const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
@@ -150,7 +191,13 @@ async function showProject(id) {
         showError(error.message);
       }
     });
-    app.replaceChildren(heading, back, form, filterLabel, filter, list);
+    app.replaceChildren(heading, back);
+    if (archived) {
+      const status = element('p', { text: 'Archived project' });
+      status.className = 'archived-status';
+      app.append(status);
+    }
+    app.append(form, filterLabel, filter, list);
   } catch {
     app.replaceChildren(element('h1', { text: 'Project not found' }));
     const back = element('button', { type: 'button', text: 'Projects' });

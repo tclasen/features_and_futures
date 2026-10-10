@@ -24,6 +24,10 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 
 const indexHtml = await readFile(join(root, 'index.html'));
 const styles = await readFile(join(root, 'styles.css'));
@@ -43,7 +47,13 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    sendJson(response, 200, database.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
+    sendJson(response, 200, database.prepare(`
+      SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+        COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
+    `).all(archived));
     return;
   }
 
@@ -73,7 +83,7 @@ const server = createServer(async (request, response) => {
     const route = url.pathname.slice('/api/projects/'.length).split('/');
     const id = Number(route[0]);
     const project = Number.isInteger(id) && id > 0
-      ? database.prepare('SELECT id, name FROM projects WHERE id = ?').get(id)
+      ? database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id)
       : undefined;
     if (!project) {
       sendJson(response, 404, { error: 'Project not found' });
@@ -85,6 +95,10 @@ const server = createServer(async (request, response) => {
         return;
       }
       if (request.method === 'POST') {
+        if (project.archived) {
+          sendJson(response, 409, { error: 'Archived projects cannot have new tasks' });
+          return;
+        }
         let body = '';
         for await (const chunk of request) body += chunk;
         try {
@@ -107,6 +121,10 @@ const server = createServer(async (request, response) => {
       }
     }
     if (route.length === 3 && route[1] === 'tasks' && request.method === 'PATCH') {
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
       const taskId = Number(route[2]);
       let body = '';
       for await (const chunk of request) body += chunk;
@@ -137,6 +155,26 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET') {
       sendJson(response, 200, project);
+      return;
+    }
+    if (request.method === 'PATCH') {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      try {
+        const payload = JSON.parse(body);
+        if (typeof payload.archived !== 'boolean') {
+          sendJson(response, 400, { error: 'Invalid project update' });
+          return;
+        }
+        database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(payload.archived ? 1 : 0, id);
+        sendJson(response, 200, { ...project, archived: payload.archived ? 1 : 0 });
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          sendJson(response, 400, { error: 'Invalid JSON' });
+          return;
+        }
+        throw error;
+      }
       return;
     }
     sendJson(response, 405, { error: 'Method not allowed' });
