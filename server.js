@@ -9,7 +9,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -20,6 +21,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))
 )`);
 // Upgrade databases created by earlier checkpoints.
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) throw error;
+}
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
   if (!String(error.message).includes('duplicate column')) throw error;
 }
@@ -39,7 +43,7 @@ const server = http.createServer(async (req, res) => {
     return send(200, JSON.stringify({ status: 'ok' }));
   }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
       COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all();
     return send(200, JSON.stringify(projects));
@@ -55,6 +59,18 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return send(400, JSON.stringify({ error: 'Invalid request' }));
     }
+  }
+  const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultPriorityRoute && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const priority = JSON.parse(body).priority;
+      if (!['Low', 'Normal', 'High'].includes(priority)) return send(400, JSON.stringify({ error: 'Invalid task priority' }));
+      const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(priority, Number(defaultPriorityRoute[1]));
+      if (!result.changes) return send(404, JSON.stringify({ error: 'Project not found' }));
+      return send(200, JSON.stringify({ ok: true }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (archiveRoute && req.method === 'PATCH') {
@@ -97,8 +113,9 @@ const server = http.createServer(async (req, res) => {
       try {
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
-        const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-        return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' }));
+        const priority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
+        const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
+        return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority }));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
   }
