@@ -18,6 +18,8 @@
     #alert { color: #a11; margin: .75rem 0 0; }
     #project-list { display: grid; gap: .65rem; margin-top: 1.25rem; }
     .project-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    #task-list { display: grid; gap: .65rem; margin-top: 1.25rem; }
+    .task-row { display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #dce2ec; border-radius: 8px; padding: 1rem; }
   </style>
 </head>
 <body>
@@ -102,6 +104,73 @@
       const heading = document.createElement('h1');
       heading.textContent = project.name;
       app.append(back, heading);
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Task title');
+      label.append(input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create task';
+      form.append(label, submit);
+      const alert = document.createElement('p');
+      alert.setAttribute('role', 'alert');
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.textContent = value;
+        option.value = value;
+        filter.append(option);
+      }
+      filterLabel.append(filter);
+      const list = document.createElement('section');
+      list.id = 'task-list';
+      list.setAttribute('aria-label', 'Tasks');
+      app.append(form, alert, filterLabel, list);
+      let tasks = [];
+      function showTasks() {
+        list.replaceChildren();
+        for (const task of tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed)) {
+          const row = document.createElement('div');
+          row.className = 'task-row';
+          row.dataset.testid = 'task-row';
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            try {
+              await request(`/api/projects/${id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+              task.completed = checkbox.checked;
+              showTasks();
+            } catch (error) { alert.textContent = error.message; }
+          });
+          row.append(title, checkbox);
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', showTasks);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        alert.textContent = '';
+        const title = input.value.trim();
+        if (!title) { alert.textContent = 'Task title is required'; return; }
+        try {
+          const task = await request(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+          tasks.push(task);
+          input.value = '';
+          showTasks();
+        } catch (error) { alert.textContent = error.message; }
+      });
+      tasks = await request(`/api/projects/${id}/tasks`);
+      showTasks();
     }
     async function render() {
       try {
