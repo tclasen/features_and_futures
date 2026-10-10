@@ -66,6 +66,7 @@
           const filter = app.querySelector('#task-filter');
           const priorityFilter = app.querySelector('#priority-filter');
           let tasks = [];
+          const destinationProjects = (await request('/api/projects')).filter(item => !item.archived && item.id !== project.id);
           let appliedDueRange = { from: '', through: '' };
           const validDate = value => {
             const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -84,7 +85,7 @@
                 (!appliedDueRange.from || task.dueDate >= appliedDueRange.from) &&
                 (!appliedDueRange.through || task.dueDate <= appliedDueRange.through))
             );
-            tasksList.innerHTML = shown.map(task => `<div class="row" data-testid="task-row"><span>${esc(task.title)}</span><input type="checkbox" aria-label="Complete ${esc(task.title)}" data-task-id="${esc(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><form class="task-rename" data-task-id="${esc(task.id)}"><label><span class="visually-hidden">New task title</span><input aria-label="New task title" type="text" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><label>Task due date<input aria-label="Task due date" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${esc(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}></label><button type="button" data-action="save-date" data-task-id="${esc(task.id)}" ${project.archived ? 'disabled' : ''}>Save due date</button><label>Task priority<select aria-label="Task priority" data-task-id="${esc(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label></div>`).join('');
+            tasksList.innerHTML = shown.map(task => `<div class="row" data-testid="task-row"><span>${esc(task.title)}</span><input type="checkbox" aria-label="Complete ${esc(task.title)}" data-task-id="${esc(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><form class="task-rename" data-task-id="${esc(task.id)}"><label><span class="visually-hidden">New task title</span><input aria-label="New task title" type="text" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><label>Task due date<input aria-label="Task due date" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${esc(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}></label><button type="button" data-action="save-date" data-task-id="${esc(task.id)}" ${project.archived ? 'disabled' : ''}>Save due date</button><label>Task priority<select aria-label="Task priority" data-task-id="${esc(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><label>Destination project<select aria-label="Destination project" data-task-id="${esc(task.id)}" ${project.archived || !destinationProjects.length ? 'disabled' : ''}>${destinationProjects.map(destination => `<option value="${esc(destination.id)}">${esc(destination.name)}</option>`).join('')}</select></label><button type="button" data-action="move-task" data-task-id="${esc(task.id)}" ${project.archived || !destinationProjects.length ? 'disabled' : ''}>Move task</button></div>`).join('');
             tasksList.querySelectorAll('.task-rename').forEach(form => form.addEventListener('submit', async event => {
               event.preventDefault();
               const input = form.querySelector('input');
@@ -111,6 +112,14 @@
                 await request(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(select.dataset.taskId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: select.value }) });
                 await refreshTasks();
               } catch (error) { app.querySelector('#message').textContent = error.message; await refreshTasks(); }
+            }));
+            tasksList.querySelectorAll('button[data-action="move-task"]').forEach(button => button.addEventListener('click', async () => {
+              const destination = button.parentElement.querySelector('select[aria-label="Destination project"]').value;
+              try {
+                await request(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(button.dataset.taskId)}/move`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destinationProjectId: destination }) });
+                app.querySelector('#message').textContent = '';
+                await refreshTasks();
+              } catch (error) { app.querySelector('#message').textContent = error.message; }
             }));
             tasksList.querySelectorAll('input[type="checkbox"]').forEach(box => box.addEventListener('change', async () => {
               try {
