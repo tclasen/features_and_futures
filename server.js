@@ -13,6 +13,7 @@ try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT
 try { db.exec('ALTER TABLE projects ADD COLUMN renamed_at INTEGER'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const html = await readFile(new URL('./index.html', import.meta.url));
 const sendJson = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
 async function bodyJson(req) { let raw = ''; for await (const chunk of req) raw += chunk; return JSON.parse(raw); }
@@ -50,7 +51,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch) {
     const projectId = decodeURIComponent(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    if (req.method === 'GET') return sendJson(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id=? ORDER BY created_at,rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    if (req.method === 'GET') return sendJson(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id=? ORDER BY created_at,rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (db.prepare('SELECT archived FROM projects WHERE id=?').get(projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
       try { const body = await bodyJson(req); const title = typeof body.title === 'string' ? body.title.trim() : ''; if (!title) return sendJson(res, 400, { error: 'Task title is required' }); const priority = db.prepare('SELECT default_priority FROM projects WHERE id=?').get(projectId).default_priority; const task = { id: randomUUID(), projectId, title, completed: false, priority }; db.prepare('INSERT INTO tasks (id,project_id,title,priority,created_at) VALUES (?,?,?,?,?)').run(task.id, projectId, title, priority, Date.now()); return sendJson(res, 201, task); }
@@ -74,6 +75,25 @@ const server = http.createServer(async (req, res) => {
       if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
       const result = db.prepare('UPDATE tasks SET priority=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(body.priority, decodeURIComponent(priorityMatch[1]));
       return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Task not found' });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/due-date$/);
+  if (req.method === 'PATCH' && dueDateMatch) {
+    try {
+      const body = await bodyJson(req);
+      const rawDate = typeof body.dueDate === 'string' ? body.dueDate.trim() : '';
+      let dueDate = null;
+      if (rawDate) {
+        const match = rawDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const [, yearText, monthText, dayText] = match;
+        const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+        const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        dueDate = rawDate;
+      }
+      const result = db.prepare('UPDATE tasks SET due_date=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(dueDate, decodeURIComponent(dueDateMatch[1]));
+      return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Active task not found' });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
