@@ -103,6 +103,12 @@ async function renderProject(id) {
   const priorityFilterLabel = element('label', { text: 'Priority filter' }); priorityFilterLabel.htmlFor = 'priority-filter';
   const priorityFilter = element('select'); priorityFilter.id = 'priority-filter';
   for (const value of ['All', 'Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; priorityFilter.append(option); }
+  const dueFromLabel = element('label', { text: 'Due from' }); dueFromLabel.htmlFor = 'due-from';
+  const dueFrom = element('input'); dueFrom.type = 'text'; dueFrom.id = 'due-from';
+  const dueThroughLabel = element('label', { text: 'Due through' }); dueThroughLabel.htmlFor = 'due-through';
+  const dueThrough = element('input'); dueThrough.type = 'text'; dueThrough.id = 'due-through';
+  const applyDueRange = element('button', { text: 'Apply due range' }); applyDueRange.type = 'button';
+  let appliedDueFrom = '', appliedDueThrough = '';
   const list = element('section', { className: 'task-list' });
   let taskRenderVersion = 0;
   async function refreshTasks() {
@@ -112,6 +118,7 @@ async function renderProject(id) {
     list.replaceChildren();
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed || priorityFilter.value !== 'All' && priorityFilter.value !== task.priority) continue;
+      if ((appliedDueFrom || appliedDueThrough) && (!task.dueDate || (appliedDueFrom && task.dueDate < appliedDueFrom) || (appliedDueThrough && task.dueDate > appliedDueThrough))) continue;
       const row = element('article', { testId: 'task-row', className: 'task-row' });
       const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`); checkbox.disabled = Boolean(project.archived);
@@ -172,9 +179,25 @@ async function renderProject(id) {
       await refreshTasks(); input.value = ''; alert.hidden = true;
     } catch (error) { alert.textContent = error.message; alert.hidden = false; }
   });
+  applyDueRange.addEventListener('click', () => {
+    const from = dueFrom.value.trim(), through = dueThrough.value.trim();
+    const validDate = value => {
+      if (!value) return true;
+      const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!match) return false;
+      const [, y, m, d] = match.map(Number);
+      if (y < 1 || m < 1 || m > 12 || d < 1) return false;
+      const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+      return d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+    };
+    if (!validDate(from) || !validDate(through)) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return; }
+    if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return; }
+    appliedDueFrom = from; appliedDueThrough = through; alert.hidden = true;
+    refreshTasks();
+  });
   filter.addEventListener('change', refreshTasks);
   priorityFilter.addEventListener('change', refreshTasks);
-  app.append(renameForm, defaultLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+  app.append(renameForm, defaultLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
   await refreshTasks();
 }
 
