@@ -36,6 +36,7 @@ const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE proje
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, data) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -80,7 +81,9 @@ async function handle(request, response) {
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
     const projectId = Number(tasksMatch[1]);
-    if (!getProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
     const result = createTask.run(projectId, title);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: 0 });
   }
@@ -94,7 +97,19 @@ async function handle(request, response) {
     } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
+    if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      const task = getTask.get(taskId);
+      if (!task || task.project_id !== projectId) return sendJson(response, 404, { error: 'Task not found' });
+      const project = getProject.get(projectId);
+      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+      renameTask.run(title, taskId, projectId);
+      return sendJson(response, 200, { id: taskId, title });
+    }
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
+    const project = getProject.get(projectId);
+    if (!project || project.archived) return sendJson(response, 404, { error: 'Task not found' });
     if (!getTask.get(taskId) || !updateTask.run(body.completed ? 1 : 0, taskId, projectId).changes) return sendJson(response, 404, { error: 'Task not found' });
     return sendJson(response, 200, { id: taskId, completed: body.completed });
   }

@@ -90,7 +90,32 @@ async function renderTasks() {
         await renderTasks();
       } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
     });
-    row.append(title, checkbox);
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.disabled = Boolean(window.currentProjectArchived);
+    const renameButton = document.createElement('button');
+    renameButton.type = 'button';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = Boolean(window.currentProjectArchived);
+    renameButton.addEventListener('click', async () => {
+      const newTitle = renameInput.value.trim();
+      if (!newTitle) {
+        taskAlert.textContent = 'Task title is required';
+        taskAlert.hidden = false;
+        return;
+      }
+      try {
+        await request(`/api/projects/${currentProjectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle })
+        });
+        taskAlert.hidden = true;
+        await renderTasks();
+      } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
+    });
+    row.append(title, checkbox, renameInput, renameButton);
     taskList.append(row);
   }
 }
