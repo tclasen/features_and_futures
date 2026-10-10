@@ -44,6 +44,13 @@ when multiple tasks return in a different order. Positions survive restarts and
 project renaming, archival and restoration. Moving preserves completion, priority and due date,
 and retains the source page’s filters. Both project summaries reflect the new
 ownership. Archived projects cannot send or receive moved tasks.
+The project list supports Project search, intersecting the Active/Archived filter.
+Project pages support Task search, intersecting completion, priority and due-range
+filters. Searches match substrings ignoring ASCII letter case and trim surrounding
+query whitespace while preserving internal whitespace. Applied task search and
+filters remain in place during edits and moves; summaries still count every task.
+Search remains available while archived. Opening a project or returning through
+Projects starts with an empty query.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
