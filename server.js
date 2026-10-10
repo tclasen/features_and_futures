@@ -49,6 +49,7 @@ const updateTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ?');
 
 function isValidDueDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -207,6 +208,22 @@ const server = createServer(async (request, response) => {
     if (getProject.get(task.project_id).archived) return sendJson(response, 409, { error: 'Archived project' });
     updateTaskDueDate.run(dueDate || null, task.id);
     return sendJson(response, 200, { ...task, due_date: dueDate || null });
+  }
+  const moveTaskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/move\/?$/);
+  if (request.method === 'PATCH' && moveTaskMatch) {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    const task = getTask.get(decodeURIComponent(moveTaskMatch[1]));
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    const source = getProject.get(task.project_id);
+    if (source.archived) return sendJson(response, 409, { error: 'Archived project' });
+    const destinationId = typeof body?.destinationProjectId === 'string' ? body.destinationProjectId : '';
+    const destination = getProject.get(destinationId);
+    if (!destination || destination.archived || destination.id === source.id) {
+      return sendJson(response, 400, { error: 'Invalid destination project' });
+    }
+    moveTask.run(destination.id, Date.now(), task.id);
+    return sendJson(response, 200, { ...task, project_id: destination.id });
   }
   if (request.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
     const project = getProject.get(decodeURIComponent(url.pathname.slice('/api/projects/'.length)));

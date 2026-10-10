@@ -98,9 +98,13 @@ async function showRoute() {
 }
 
 async function loadTasks() {
-  const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`);
-  if (!response.ok) throw new Error('Unable to load tasks');
-  const tasks = await response.json();
+  const [response, projectsResponse] = await Promise.all([
+    fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`),
+    fetch('/api/projects?filter=Active')
+  ]);
+  if (!response.ok || !projectsResponse.ok) throw new Error('Unable to load tasks');
+  const [tasks, activeProjects] = await Promise.all([response.json(), projectsResponse.json()]);
+  const destinations = activeProjects.filter(project => project.id !== activeProjectId);
   const filter = taskFilter.value;
   const selectedPriority = priorityFilter.value;
   const { from, through } = appliedDueRange;
@@ -214,7 +218,37 @@ async function loadTasks() {
       }
       await loadTasks();
     });
-    row.append(title, label, priority, renameForm, dueDateForm);
+    const moveForm = document.createElement('form');
+    moveForm.className = 'task-move-form';
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    destination.disabled = activeProjectArchived || destinations.length === 0;
+    for (const project of destinations) {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    const moveButton = document.createElement('button');
+    moveButton.type = 'submit';
+    moveButton.textContent = 'Move task';
+    moveButton.disabled = destination.disabled;
+    moveForm.append(destination, moveButton);
+    moveForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const update = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/move`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ destinationProjectId: destination.value })
+      });
+      if (!update.ok) {
+        showError('Unable to move task');
+        return;
+      }
+      error.hidden = true;
+      await loadTasks();
+    });
+    row.append(title, label, priority, renameForm, dueDateForm, moveForm);
     taskContainer.append(row);
   }
 }
