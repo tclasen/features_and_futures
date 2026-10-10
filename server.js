@@ -55,7 +55,7 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, id ASC');
-const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
+const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)');
 const getRememberedPosition = db.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?');
 const nextPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_positions WHERE project_id = ?');
 const rememberPosition = db.prepare('INSERT OR IGNORE INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)');
@@ -119,8 +119,9 @@ const server = http.createServer(async (req, res) => {
       if (owningProject.archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
-      const result = addTask.run(projectId, title, owningProject.defaultPriority, projectId);
-      rememberPosition.run(Number(result.lastInsertRowid), projectId, nextPosition.get(projectId).position);
+      const position = nextPosition.get(projectId).position;
+      const result = addTask.run(projectId, title, owningProject.defaultPriority, position);
+      rememberPosition.run(Number(result.lastInsertRowid), projectId, position);
       return send(201, 'application/json; charset=utf-8', JSON.stringify(getTask.get(Number(result.lastInsertRowid), projectId)));
     }
     const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
