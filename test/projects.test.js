@@ -729,6 +729,7 @@ test('migrates existing tasks to Normal without changing their saved data', asyn
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
   const database = new DatabaseSync(databasePath);
+  database.exec('PRAGMA busy_timeout = 5000');
   database.exec(`CREATE TABLE projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0
   );
@@ -748,7 +749,7 @@ test('migrates existing tasks to Normal without changing their saved data', asyn
   try {
     let migrated = false;
     for (let attempt = 0; attempt < 100; attempt++) {
-      if (database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+      if (database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
         migrated = true;
         break;
       }
@@ -757,7 +758,7 @@ test('migrates existing tasks to Normal without changing their saved data', asyn
     }
     assert.ok(migrated, `Migration did not complete: ${output}`);
     assert.deepEqual(database.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
-      before.map(task => ({ ...task, priority: 'Normal', due_date: '' })));
+      before.map(task => ({ ...task, priority: 'Normal', due_date: '', position: task.id })));
     assert.equal(database.prepare('SELECT archived FROM projects WHERE id = 2').get().archived, 1);
     assert.deepEqual(database.prepare('SELECT default_priority FROM projects ORDER BY id').all().map(project => project.default_priority), ['Normal', 'Normal']);
   } finally {
