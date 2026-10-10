@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, archive, summaries, isolation, migration, and persistence', async () => {
+test('projects and tasks: validation, rename, archive, summaries, isolation, migration, and persistence', async () => {
   const directory = await mkdtemp(join(process.cwd(), '.workboard-test-'));
   let child;
   async function start() {
@@ -180,6 +180,54 @@ test('projects and tasks: validation, archive, summaries, isolation, migration, 
     assert.equal(await (await fetch(base)).text(), restoredList);
     assert.equal((await saveCompletion(taskPaths[0], false)).status, 303);
     assert.equal(await (await fetch(base + paths[0])).text(), savedDetail);
+    const rename = async (name, filter = 'All') => fetch(`${base}${paths[0]}/rename`, {
+      method: 'POST', body: new URLSearchParams({ name, filter }), redirect: 'manual',
+    });
+    assert.match(savedDetail, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(savedDetail, /<input id="new-project-name" name="name" type="text">/);
+    assert.match(savedDetail, /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', '  \t ']) {
+      const invalid = await rename(name);
+      assert.equal(invalid.status, 200);
+      const body = await invalid.text();
+      assert.match(body, /role="alert">Project name is required/);
+      assert.match(body, /<h1>First project<\/h1>/);
+      assert.equal(await (await fetch(base)).text(), savedList);
+      assert.equal(await (await fetch(base + paths[0])).text(), savedDetail);
+    }
+    const renamed = await rename('  Renamed <project> & "name"  ', 'Completed');
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), `${paths[0]}?filter=Completed`);
+    const renamedDetail = await (await fetch(base + paths[0])).text();
+    const replaceName = body => body.replace('First project', 'Renamed &lt;project&gt; &amp; &quot;name&quot;');
+    assert.equal(renamedDetail, replaceName(savedDetail));
+    const renamedList = await (await fetch(base)).text();
+    assert.equal(renamedList, replaceName(savedList));
+    assert.equal(await (await fetch(`${base}${paths[0]}?filter=Completed`)).text(), replaceName(savedCompleted));
+    assert.equal((await fetch(`${base}/projects/999999/rename`, {
+      method: 'POST', body: new URLSearchParams({ name: 'Missing' }),
+    })).status, 404);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedDetail);
+    await fetch(`${base}${paths[0]}/archive`, { method: 'POST' });
+    const archivedRenamedDetail = await (await fetch(base + paths[0])).text();
+    assert.match(archivedRenamedDetail, /<input id="new-project-name" name="name" type="text" disabled>/);
+    assert.match(archivedRenamedDetail, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await rename('Blocked rename')).status, 403);
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedRenamedDetail);
+    await fetch(`${base}${paths[0]}/restore`, { method: 'POST' });
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedDetail);
+    assert.equal((await rename('  Restored project  ')).status, 303);
+    const restoredRenamedDetail = await (await fetch(base + paths[0])).text();
+    assert.equal(restoredRenamedDetail, savedDetail.replace('First project', 'Restored project'));
+    const restoredRenamedList = await (await fetch(base)).text();
+    assert.equal(restoredRenamedList, savedList.replace('First project', 'Restored project'));
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), restoredRenamedDetail);
+    assert.equal(await (await fetch(base)).text(), restoredRenamedList);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
