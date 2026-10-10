@@ -24,6 +24,8 @@ Active project pages support renaming with a trimmed, required name. Renaming pr
 
 Each task row supports renaming with a trimmed, required title. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries, while updating the completion checkbox label. Archived projects disable task rename controls and reject rename requests. Restoring a project enables task renaming again. Task titles persist across reloads and process restarts.
 
+Each task row has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority changes persist independently without changing task titles, completion, ownership, order, filters, or project summaries. Renaming preserves priority. Archived projects disable priority selectors and reject priority changes; restoration enables them with their saved values. Invalid priority values are rejected without modifying data.
+
 Run syntax checks and integration tests:
 
 ```sh
@@ -31,4 +33,4 @@ npm run check
 npm test
 ```
 
-The integration tests start real server processes on ephemeral ports and verify validation, creation order, escaping, task filtering, project isolation, completion updates, archive/restore, renaming without identity changes, completion summaries, archived mutation rejection, database migration, and restart persistence using temporary databases that are removed afterward.
+The integration tests start real server processes on ephemeral ports and verify validation, creation order, escaping, task filtering, project isolation, completion updates, archive/restore, renaming without identity changes, independent task priorities, completion summaries, archived mutation rejection, database migration, and restart persistence using temporary databases that are removed afterward.
