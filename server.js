@@ -34,6 +34,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 
 const json = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -47,6 +50,7 @@ async function handle(req, res) {
   const taskRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename\/?$/);
   const taskPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority\/?$/);
   const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority\/?$/);
+  const taskDueDateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date\/?$/);
   async function readBody() {
     let body = '';
     for await (const chunk of req) {
@@ -59,9 +63,34 @@ async function handle(req, res) {
   if (taskRoute && req.method === 'GET') {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId)
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId)
       .map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), completed: Boolean(task.completed) }));
     return json(res, 200, tasks);
+  }
+  if (taskDueDateRoute && req.method === 'PATCH') {
+    const projectId = Number(taskDueDateRoute[1]);
+    const taskId = Number(taskDueDateRoute[2]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
+    let body;
+    try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
+    const rawDate = String(body.dueDate ?? '').trim();
+    let dueDate = null;
+    if (rawDate) {
+      const match = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (year < 1 || month < 1 || month > 12 || day < 1 || day > monthDays[month - 1]) {
+        return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      }
+      dueDate = rawDate;
+    }
+    const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate, taskId, projectId);
+    if (!result.changes) return json(res, 404, { error: 'Task not found' });
+    return json(res, 200, { id: taskId, projectId, dueDate });
   }
   if (taskPriorityRoute && req.method === 'PATCH') {
     const projectId = Number(taskPriorityRoute[1]);
