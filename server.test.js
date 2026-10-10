@@ -40,7 +40,12 @@ test('projects and tasks: validation, rename, archive, priorities, summaries, is
     const health = await fetch(`${base}/health`);
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
+    const client = await fetch(`${base}/client.js`);
+    assert.equal(client.status, 200);
+    assert.match(client.headers.get('content-type'), /text\/javascript/);
+    assert.match(await client.text(), /event.preventDefault\(\)/);
     const initial = await (await fetch(base)).text();
+    assert.match(initial, /<script src="\/client.js" defer><\/script>/);
     assert.match(initial, /<h1>Workboard<\/h1>/);
     assert.match(initial, /<label for="project-name">Project name<\/label>/);
     assert.match(initial, />Create project<\/button>/);

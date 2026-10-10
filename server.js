@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const databasePath = process.env.DB_PATH || 'workboard.sqlite';
@@ -41,6 +41,7 @@ const priorities = ['Low', 'Normal', 'High'];
 const taskFilter = value => ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 const priorityFilter = value => ['All', ...priorities].includes(value) ? value : 'All';
 const projectLocation = (id, filter, priority) => `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}`;
+const clientScript = readFileSync(new URL('./client.js', import.meta.url));
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -53,6 +54,7 @@ function page(content) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Workboard</title>
+  <script src="/client.js" defer></script>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; background: #f4f6fa; color: #17263d; font: 16px/1.5 system-ui, sans-serif; }
@@ -191,6 +193,9 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
+    } else if (request.method === 'GET' && pathname === '/client.js') {
+      response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      response.end(clientScript);
     } else if (request.method === 'GET' && pathname === '/') {
       html(response, 200, projectsPage('', projectFilter(url.searchParams.get('filter'))));
     } else if (request.method === 'POST' && pathname === '/projects') {
