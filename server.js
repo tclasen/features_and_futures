@@ -1,12 +1,15 @@
 import http from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const port = Number(process.env.PORT || 8080);
-// Resolve once at startup so a relative DB_PATH always identifies the same
-// file for this process, even if later code changes the working directory.
-const dbPath = resolve(process.env.DB_PATH || join(process.cwd(), 'data', 'workboard.sqlite'));
+// Keep the default database beside the application data directory even when
+// npm start is invoked from a different working directory after a restart.
+const appDirectory = dirname(fileURLToPath(import.meta.url));
+const configuredDbPath = process.env.DB_PATH;
+const dbPath = resolve(appDirectory, configuredDbPath || join(appDirectory, 'data', 'workboard.sqlite'));
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec('PRAGMA synchronous = FULL');
