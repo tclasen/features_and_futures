@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, filtering, archive, summaries, migration, and restart persistence', async () => {
+test('projects and tasks: validation, filtering, archive, rename, summaries, migration, and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Start with the previous schema to exercise migration of existing databases.
   const previousDb = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -197,6 +197,61 @@ test('projects and tasks: validation, filtering, archive, summaries, migration, 
     assert.match(projectRows(finalList)[1], /data-testid="project-summary">0\/1 completed/);
     assert.equal(await (await fetch(`${base}/projects/${ids[0]}`)).text(), openHtml);
     assert.equal((await fetch(`${base}/projects/999999`)).status, 404);
+
+    assert.match(openHtml, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(openHtml, /<input id="new-project-name"[^>]*>/);
+    assert.match(openHtml, /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', '  \t\n ']) {
+      const invalidRename = await post(`/projects/${ids[0]}/rename`, { name });
+      assert.equal(invalidRename.status, 422);
+      const invalidHtml = await invalidRename.text();
+      assert.match(invalidHtml, /role="alert">Project name is required/);
+      assert.match(invalidHtml, /<h1>First project<\/h1>/);
+      assert.deepEqual(rows(invalidHtml), rows(openHtml));
+      assert.equal(await (await fetch(base)).text(), finalList);
+    }
+    // Rename with a completed task to check that completion state survives.
+    await post(`/projects/${ids[0]}/tasks/${taskId}`, { completed: '1' });
+    const beforeRename = await projectHtml(ids[0]);
+    const renameResponse = await post(`/projects/${ids[0]}/rename`, { name: '  Renamed <project> "quoted" 🎉  ', filter: 'Completed' });
+    assert.equal(renameResponse.status, 303);
+    assert.equal(renameResponse.headers.get('location'), `/projects/${ids[0]}?filter=Completed`);
+    const renamedDetail = await projectHtml(ids[0]);
+    assert.match(renamedDetail, /<h1>Renamed &lt;project&gt; &quot;quoted&quot; 🎉<\/h1>/);
+    assert.deepEqual(rows(renamedDetail), rows(beforeRename));
+    const renamedList = await (await fetch(base)).text();
+    const renamedRows = projectRows(renamedList);
+    assert.equal(renamedRows.length, 2);
+    assert.match(renamedRows[0], /Renamed &lt;project&gt; &quot;quoted&quot; 🎉/);
+    assert.match(renamedRows[0], new RegExp(`action="/projects/${ids[0]}"`));
+    assert.match(renamedRows[0], /data-testid="project-summary">1\/2 completed/);
+    assert.match(renamedRows[1], /Second &lt;project&gt;/);
+    assert.equal(rows(await projectHtml(ids[1])).length, 1);
+    assert.equal((await post('/projects/999999/rename', { name: 'Missing' })).status, 404);
+
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), renamedDetail);
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    await post(`/projects/${ids[0]}/archive`, {});
+    const archivedRenamed = await projectHtml(ids[0]);
+    assert.match(archivedRenamed, /<input id="new-project-name"[^>]* disabled>/);
+    assert.match(archivedRenamed, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await post(`/projects/${ids[0]}/rename`, { name: 'Blocked rename' })).status, 403);
+    assert.equal(await projectHtml(ids[0]), archivedRenamed);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), archivedRenamed);
+    await post(`/projects/${ids[0]}/restore`, {});
+    assert.equal(await projectHtml(ids[0]), renamedDetail);
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    assert.equal((await post(`/projects/${ids[0]}/rename`, { name: 'Restored project' })).status, 303);
+    const restoredRenamed = await projectHtml(ids[0]);
+    assert.match(restoredRenamed, /<h1>Restored project<\/h1>/);
+    assert.deepEqual(rows(restoredRenamed), rows(beforeRename));
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), restoredRenamed);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
