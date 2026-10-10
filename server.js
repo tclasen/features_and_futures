@@ -23,6 +23,7 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT
+    , sort_order INTEGER NOT NULL DEFAULT 0
   );
 `);
 // Older databases from Task 001/002 have no archive column.
@@ -40,6 +41,13 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 }
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'sort_order')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  database.exec(`UPDATE tasks AS task SET sort_order = (
+    SELECT COUNT(*) - 1 FROM tasks AS earlier
+    WHERE earlier.project_id = task.project_id AND earlier.id <= task.id
+  )`);
 }
 
 function isValidDueDate(value) {
@@ -136,7 +144,7 @@ const server = createServer(async (request, response) => {
     const projectExists = database.prepare('SELECT archived, default_priority FROM projects WHERE id = ?').get(projectId);
     if (!projectExists) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId)
         .map((task) => ({ ...task, completed: Boolean(task.completed) }));
       return sendJson(response, 200, tasks);
     }
@@ -145,9 +153,29 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, projectExists.default_priority);
+      const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, projectExists.default_priority, nextOrder);
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: projectExists.default_priority });
     }
+  }
+  const moveTaskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveTaskMatch && request.method === 'PATCH') {
+    const sourceId = Number(moveTaskMatch[1]);
+    const taskId = Number(moveTaskMatch[2]);
+    const body = await readJson(request);
+    const destinationId = Number(body?.destinationProjectId);
+    if (!Number.isSafeInteger(destinationId) || destinationId < 1 || destinationId === sourceId) {
+      return sendJson(response, 400, { error: 'Destination project is invalid' });
+    }
+    const source = database.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+    const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    if (!source || !destination) return sendJson(response, 404, { error: 'Project not found' });
+    if (source.archived || destination.archived) return sendJson(response, 409, { error: 'Tasks can only move between active projects' });
+    const task = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+    database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
+    return sendJson(response, 200, { id: taskId, projectId: destinationId });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   const taskDueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);

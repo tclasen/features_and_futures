@@ -164,6 +164,7 @@ async function renderProject(id) {
     });
 
     let tasks = [];
+    let activeProjects = [];
     let appliedDueRange = { from: '', through: '' };
     function isValidCalendarDate(value) {
       const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -260,6 +261,33 @@ async function renderProject(id) {
           }
         });
         row.append(priority);
+        const destinations = activeProjects.filter((candidate) => candidate.id !== Number(id));
+        const destination = element('select', undefined, { 'aria-label': 'Destination project' });
+        for (const candidate of destinations) {
+          destination.append(element('option', candidate.name, { value: candidate.id }));
+        }
+        const moveButton = element('button', 'Move task', { type: 'button' });
+        destination.disabled = project.archived || destinations.length === 0;
+        moveButton.disabled = project.archived || destinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          if (!destination.value) return;
+          moveButton.disabled = true;
+          try {
+            await request(`/api/projects/${id}/tasks/${task.id}/move`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ destinationProjectId: Number(destination.value) })
+            });
+            tasks = tasks.filter((candidate) => candidate.id !== task.id);
+            alert.hidden = true;
+            showTasks();
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+            moveButton.disabled = project.archived || destinations.length === 0;
+          }
+        });
+        row.append(destination, moveButton);
         const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = task.completed;
         checkbox.disabled = project.archived;
@@ -281,7 +309,10 @@ async function renderProject(id) {
       }
     }
     async function loadTasks() {
-      tasks = await request(`/api/projects/${id}/tasks`);
+      [tasks, activeProjects] = await Promise.all([
+        request(`/api/projects/${id}/tasks`),
+        request('/api/projects').then((projects) => projects.filter((candidate) => !candidate.archived))
+      ]);
       showTasks();
     }
     filter.addEventListener('change', showTasks);
