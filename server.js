@@ -142,19 +142,33 @@ function priorityFilter(value) {
   return priorities.includes(value) ? value : 'All';
 }
 
-function projectLocation(projectId, filter, priority) {
+function readDueRange(params) {
+  const from = (params.get('dueFrom') ?? '').trim();
+  const through = (params.get('dueThrough') ?? '').trim();
+  return (!from || validDueDate(from)) && (!through || validDueDate(through)) &&
+    (!from || !through || from <= through) ? { from, through } : { from: '', through: '' };
+}
+
+function projectUrl(projectId, filter, priority, range) {
   const query = new URLSearchParams();
   if (filter !== 'All') query.set('filter', filter);
   if (priority !== 'All') query.set('priorityFilter', priority);
+  if (range.from) query.set('dueFrom', range.from);
+  if (range.through) query.set('dueThrough', range.through);
   return `/projects/${projectId}${query.size ? `?${query}` : ''}`;
 }
 
-function projectPage(project, filter = 'All', error = '', priority = 'All') {
+function renderProjectPage(project, filter, error, priority, range) {
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${range.from}">
+          <input type="hidden" name="dueThrough" value="${range.through}">`;
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
-          <input type="hidden" name="priorityFilter" value="${priority}">`;
+          <input type="hidden" name="priorityFilter" value="${priority}">${rangeFields}`;
   const tasks = listTasks.all(project.id).filter(task =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
-    (priority === 'All' || task.priority === priority));
+    (priority === 'All' || task.priority === priority) &&
+    ((!range.from && !range.through) || (task.due_date &&
+      (!range.from || task.due_date >= range.from) &&
+      (!range.through || task.due_date <= range.through))));
   return page(`<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
@@ -179,6 +193,7 @@ function projectPage(project, filter = 'All', error = '', priority = 'All') {
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <form method="get" action="/projects/${project.id}">
+      ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -187,6 +202,14 @@ function projectPage(project, filter = 'All', error = '', priority = 'All') {
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
         ${['All', ...priorities].map(option => `<option${priority === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form method="post" action="/projects/${project.id}/due-range">
+      ${filterFields}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${range.from}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${range.through}">
+      <button type="submit">Apply due range</button>
     </form>
     <section aria-label="Tasks">
       ${tasks.map(task => `<div class="task-row" data-testid="task-row">
@@ -222,7 +245,7 @@ function sendHtml(response, status, html) {
   response.end(html);
 }
 
-async function readForm(request) {
+async function parseForm(request) {
   let body = '';
   for await (const chunk of request) {
     body += chunk.toString();
@@ -238,6 +261,17 @@ async function readForm(request) {
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
+    // Carry the applied range through every render and redirect in this request.
+    let range = readDueRange(url.searchParams);
+    const readForm = async request => {
+      const form = await parseForm(request);
+      range = readDueRange(form);
+      return form;
+    };
+    const projectPage = (project, filter, error, priority) =>
+      renderProjectPage(project, filter, error, priority, range);
+    const projectLocation = (projectId, filter, priority) =>
+      projectUrl(projectId, filter, priority, range);
     if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -269,6 +303,30 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), '', priorityFilter(url.searchParams.get('priorityFilter'))));
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/due-range$/.test(url.pathname)) {
+      const project = getProject.get(url.pathname.split('/')[2]);
+      if (!project) {
+        sendHtml(response, 404, page('<h1>Project not found</h1>'));
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      const priority = priorityFilter(form.get('priorityFilter'));
+      const from = (form.get('rangeFrom') ?? '').trim();
+      const through = (form.get('rangeThrough') ?? '').trim();
+      let error = '';
+      if ((from && !validDueDate(from)) || (through && !validDueDate(through))) {
+        error = 'Due range must use valid YYYY-MM-DD dates';
+      } else if (from && through && from > through) {
+        error = 'Due from must not be after Due through';
+      }
+      if (error) {
+        sendHtml(response, 200, projectPage(project, filter, error, priority));
+        return;
+      }
+      range = { from, through };
+      response.writeHead(303, { Location: projectLocation(project.id, filter, priority) });
+      response.end();
     } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/default-priority$/.test(url.pathname)) {
       const project = getProject.get(url.pathname.split('/')[2]);
       if (!project) {
