@@ -1,6 +1,6 @@
 # Workboard
 
-Tasks 001–011 provide project creation, renaming, archive/restore, completion summaries,
+Tasks 001–012 provide project creation, renaming, archive/restore, completion summaries,
 and project pages with task creation, completion checkboxes, and
 All/Open/Completed filters. Archived projects retain their tasks and allow
 filtering, while task creation and completion changes are disabled.
@@ -24,9 +24,11 @@ the last applied range. Filters remain usable in archived projects and reset
 when reopening a project; editing tasks re-evaluates the applied filters.
 Each task can be moved to another active project using Destination project and
 Move task. Destinations use current names in project creation order. Moving keeps
-the task identity, title, completion, priority, and due date and appends it after
-the destination's existing tasks. Source filters stay selected and both project
-summaries update. Archived projects cannot send or receive tasks; move controls
+the task identity, title, completion, priority, and due date. First arrivals append
+after all positions established in the destination; returning tasks recover their
+remembered position there, including when multiple tasks return in a different
+order. Positions persist across restarts, project renaming, and archive/restore.
+Source filters stay selected and both project summaries update. Archived projects cannot send or receive tasks; move controls
 are disabled when archived or when no eligible destination exists.
 Uses Node.js 22.22.1,
 JavaScript ES modules, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript.
@@ -73,4 +75,6 @@ filters together, invalid applications, edit-driven membership changes, retained
 filters during creation and renaming, archived controls, and reopening resets.
 Move checks cover destination choices, disabled controls, error recovery, retained
 filters, append order, unchanged task data, summaries, archived rejection,
-repeated moves, subsequent creation, and restart persistence.
+repeated moves, subsequent creation, and restart persistence. Return-order checks
+cover migration of existing positions, reversed returns, absent-task slots,
+independent positions across projects, current field values, and archive/restore.

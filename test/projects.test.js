@@ -63,7 +63,7 @@ test('launch contract, project and task validation, ownership, completion, and r
       completed: true, priority: 'Normal', due_date: '' }]);
     // Remove the migration fixture before exercising creation on an empty board.
     const fixtures = new DatabaseSync(databasePath);
-    fixtures.exec('DELETE FROM tasks; DELETE FROM projects;');
+    fixtures.exec('PRAGMA foreign_keys = ON; DELETE FROM tasks; DELETE FROM projects;');
     fixtures.close();
     const home = await fetch(base);
     assert.equal(home.status, 200);
@@ -376,16 +376,16 @@ test('launch contract, project and task validation, ownership, completion, and r
     await start();
     assert.deepEqual(await taskList(second.id), [otherTask, independent, moved]);
     assert.deepEqual(await list(), [first, second, third]);
-    // A second move appends in the source too; blank dates remain blank.
+    // Returning restores the source position; first arrivals still append and keep blank dates.
     assert.equal((await move(second.id, firstTask.id, first.id)).status, 200);
     assert.equal((await move(first.id, secondTask.id, second.id)).status, 200);
-    assert.deepEqual(await taskList(first.id), [thirdTask, inherited, restoredTask, { ...firstTask, completed: true }]);
+    assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, thirdTask, inherited, restoredTask]);
     assert.deepEqual(await taskList(second.id), [otherTask, independent, { ...secondTask, project_id: second.id }]);
     const afterMove = await (await createTask(second.id, 'Created after move')).json();
     assert.deepEqual(await taskList(second.id), [otherTask, independent, { ...secondTask, project_id: second.id }, afterMove]);
     await stop();
     await start();
-    assert.deepEqual(await taskList(first.id), [thirdTask, inherited, restoredTask, { ...firstTask, completed: true }]);
+    assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, thirdTask, inherited, restoredTask]);
     assert.deepEqual(await taskList(second.id), [otherTask, independent, { ...secondTask, project_id: second.id }, afterMove]);
   } finally {
     await stop();
