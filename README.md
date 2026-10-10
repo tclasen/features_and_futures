@@ -34,6 +34,12 @@ completed and total task counts across all tasks. Archiving and restoring
 preserve project IDs, tasks, and completion state. Existing databases gain
 archive state automatically, with existing projects initially active.
 
+Active project pages also support renaming. Names are trimmed, and blank names
+leave the saved name unchanged with a visible validation alert. Renaming preserves
+the project URL, creation order, tasks, and completion counts. Archived projects
+disable renaming in the interface and reject rename requests on the server;
+restoring a project enables renaming again.
+
 `npm test` checks validation, HTML escaping, project isolation, filtering,
-completion updates, archive/restore, summaries, read-only archived projects,
+completion updates, archive/restore, renaming, summaries, read-only archived projects,
 database upgrades, and persistence across server restarts.

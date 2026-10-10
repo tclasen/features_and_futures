@@ -66,7 +66,7 @@ const server = createServer(async (request, response) => {
       }
       return redirect(response, `/?filter=${archiveRoute[2] === 'archive' ? 'active' : 'archived'}`);
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(pathname);
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(pathname);
     if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -82,7 +82,13 @@ const server = createServer(async (request, response) => {
         if (project.archived) {
           return send(response, 409, projectPage(project, store.listTasks(id, filter), filter, 'Archived project'));
         }
-        if (projectRoute[2]) {
+        if (pathname === `${projectPath}/rename`) {
+          const name = (form.get('name') ?? '').trim();
+          if (!name) {
+            return send(response, 422, projectPage(project, store.listTasks(id, filter), filter, 'Project name is required'));
+          }
+          store.rename(id, name);
+        } else if (projectRoute[2]) {
           const taskId = Number(projectRoute[2]);
           if (!Number.isSafeInteger(taskId) || !store.setTaskCompleted(id, taskId, form.has('completed'))) {
             return send(response, 404, notFoundPage());
