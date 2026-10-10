@@ -156,7 +156,10 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req);
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-      const nextOrder = db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(projectId).nextOrder;
+      // Positions are allocated from the full per-project history, not just
+      // the tasks currently present. That keeps later arrivals after slots
+      // reserved by tasks that may return in the future.
+      const nextOrder = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS nextOrder FROM task_project_positions WHERE project_id = ?').get(projectId).nextOrder;
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, nextOrder);
       db.prepare('INSERT INTO task_project_positions (project_id, task_id, position) VALUES (?, ?, ?)').run(projectId, Number(result.lastInsertRowid), nextOrder);
       return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority }));
