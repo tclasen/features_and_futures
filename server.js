@@ -45,6 +45,7 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const findTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const html = await readFile(join(directory, 'index.html'));
 
 async function readJson(request) {
@@ -164,11 +165,24 @@ const server = createServer(async (request, response) => {
       sendJson(response, 409, { error: 'Archived projects cannot be changed' });
       return;
     }
-    if (typeof body?.completed !== 'boolean') {
-      sendJson(response, 400, { error: 'Completion must be a boolean' });
+    const existingTask = findTask.get(taskId, projectId);
+    if (!existingTask) {
+      sendJson(response, 404, { error: 'Task not found' });
       return;
     }
-    updateTaskCompletion.run(body.completed ? 1 : 0, taskId, projectId);
+    if (Object.hasOwn(body ?? {}, 'title')) {
+      if (typeof body?.title !== 'string' || !body.title.trim()) {
+        sendJson(response, 400, { error: 'Task title is required' });
+        return;
+      }
+      updateTaskTitle.run(body.title.trim(), taskId, projectId);
+    } else {
+      if (typeof body?.completed !== 'boolean') {
+        sendJson(response, 400, { error: 'Completion must be a boolean' });
+        return;
+      }
+      updateTaskCompletion.run(body.completed ? 1 : 0, taskId, projectId);
+    }
     const task = findTask.get(taskId, projectId);
     sendJson(response, task ? 200 : 404, task || { error: 'Task not found' });
     return;
