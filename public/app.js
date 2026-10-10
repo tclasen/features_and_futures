@@ -96,6 +96,10 @@ async function renderRoute() {
   const project = await response.json();
   activeProjectId = project.id;
   document.querySelector('#project-title').textContent = project.name;
+  const renameForm = document.querySelector('#rename-form');
+  renameForm.querySelectorAll('input, button').forEach(control => { control.disabled = project.archived; });
+  document.querySelector('#new-project-name').value = project.name;
+  document.querySelector('#rename-error').hidden = true;
   window.currentProjectArchived = project.archived;
   document.querySelector('#archived-message').hidden = !project.archived;
   document.querySelector('#task-form').querySelectorAll('input, button').forEach(control => { control.disabled = project.archived; });
@@ -136,6 +140,20 @@ document.querySelector('#create-form').addEventListener('submit', async (event) 
   } catch { showLoadError(); }
 });
 
+document.querySelector('#rename-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const input = document.querySelector('#new-project-name');
+  const name = input.value.trim();
+  const error = document.querySelector('#rename-error');
+  if (!name) { error.textContent = 'Project name is required'; error.hidden = false; return; }
+  try {
+    const response = await fetch(`/api/projects/${activeProjectId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+    if (!response.ok) throw new Error('Could not rename project');
+    document.querySelector('#project-title').textContent = name;
+    input.value = name;
+    error.hidden = true;
+  } catch { error.textContent = 'Unable to rename project'; error.hidden = false; }
+});
 document.querySelector('#task-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const input = document.querySelector('#task-title');
