@@ -70,9 +70,10 @@ function isValidDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
   const [, year, month, day] = match.map(Number);
-  if (year < 1 || month < 1 || month > 12) return false;
-  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return day >= 1 && day <= days;
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
