@@ -9,7 +9,7 @@
     body { margin: 0; }
     main { max-width: 760px; margin: 56px auto; padding: 0 24px; }
     h1 { margin: 0 0 28px; font-size: 2rem; }
-    form, .project-row { display: flex; gap: 12px; align-items: center; }
+    form, .project-row, .task-row { display: flex; gap: 12px; align-items: center; }
     form { margin-bottom: 24px; }
     label { font-weight: 600; }
     input { box-sizing: border-box; min-width: 0; flex: 1; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
@@ -18,6 +18,10 @@
     .project-list { display: grid; gap: 10px; }
     .project-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #dce2ea; border-radius: 8px; background: white; }
     .project-name { font-weight: 600; }
+    .task-list { display: grid; gap: 10px; margin-top: 18px; }
+    .task-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #dce2ea; border-radius: 8px; background: white; }
+    .task-row label { display: flex; align-items: center; gap: 10px; font-weight: 400; }
+    .task-row input { flex: initial; width: 18px; height: 18px; }
     [role="alert"] { min-height: 1.5em; margin: -12px 0 16px; color: #b42318; }
     @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
   </style>
@@ -99,13 +103,92 @@
       }
       const project = await response.json();
       app.replaceChildren();
+      const pageAlert = document.createElement('p');
+      pageAlert.setAttribute('role', 'alert');
       const back = document.createElement('button');
       back.type = 'button';
       back.textContent = 'Projects';
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
-      app.append(back, heading);
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.htmlFor = 'task-title';
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.id = 'task-title';
+      input.type = 'text';
+      const create = document.createElement('button');
+      create.type = 'submit';
+      create.textContent = 'Create task';
+      form.append(label, input, create);
+
+      const filterLabel = document.createElement('label');
+      filterLabel.htmlFor = 'task-filter';
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.id = 'task-filter';
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      const list = document.createElement('section');
+      list.className = 'task-list';
+
+      async function refreshTasks() {
+        const tasksResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+        if (!tasksResponse.ok) return;
+        const tasks = await tasksResponse.json();
+        list.replaceChildren();
+        const matching = tasks.filter((task) => filter.value === 'All'
+          || (filter.value === 'Completed' ? task.completed : !task.completed));
+        for (const task of matching) {
+          const row = document.createElement('div');
+          row.className = 'task-row';
+          row.dataset.testid = 'task-row';
+          const taskLabel = document.createElement('label');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked }),
+            });
+            if (update.ok) refreshTasks();
+          });
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          taskLabel.append(checkbox, title);
+          row.append(taskLabel);
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', refreshTasks);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          pageAlert.textContent = 'Task title is required';
+          return;
+        }
+        const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        if (result.ok) {
+          input.value = '';
+          pageAlert.textContent = '';
+          await refreshTasks();
+        }
+      });
+      app.append(back, heading, form, pageAlert, filterLabel, filter, list);
+      refreshTasks();
     }
 
     const match = location.pathname.match(/^\/projects\/([^/]+)$/);
