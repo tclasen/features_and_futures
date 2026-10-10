@@ -1391,6 +1391,57 @@ test('move forms list eligible destinations, preserve source filters and summari
   }
 });
 
+test('space and tab search matching preserves original names and titles through reload and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-whitespace-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    const names = (html, kind) => [...html.matchAll(new RegExp(`data-testid="${kind}-row"[^>]*>\\s*<span>([^<]*)</span>`, 'g'))]
+      .map((match) => match[1]);
+    const projectName = 'MiXeD \t  Board';
+    const taskTitle = 'PlAn\t \t  Release';
+    await post('/projects', { name: projectName });
+    await post('/projects', { name: 'MIXED Board' });
+    await post('/projects/1/tasks', { title: taskTitle });
+    await post('/projects/1/tasks', { title: 'PLAN  Release' });
+    await post('/projects/1/tasks/1/priority', { priority: 'high' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    await post('/projects/1/tasks/1/completion', { completed: 'true' });
+    const projectPath = `/?${new URLSearchParams({ query: ' \tmixed  \tboard ' })}`;
+    const taskState = { query: ' PLAN \t release ', filter: 'completed', priorityFilter: 'high', dueFrom: '2024-02-29' };
+    const taskPath = `/projects/1?${new URLSearchParams(taskState)}`;
+    const check = async () => {
+      assert.deepEqual(names(await get(projectPath), 'project'), [projectName, 'MIXED Board']);
+      const page = await get(taskPath);
+      assert.deepEqual(names(page, 'task'), [taskTitle]);
+      assert.ok(page.includes(`aria-label="Complete ${taskTitle}" checked`));
+      assert.deepEqual(names(await get('/projects/1'), 'task'), [taskTitle, 'PLAN  Release']);
+      assert.deepEqual(names(await get('/'), 'project'), [projectName, 'MIXED Board']);
+      assert.match(await get(projectPath), /data-testid="project-summary">1\/2 completed/);
+    };
+    await check();
+    await check(); // Reloading and clearing searches never rewrite saved text.
+    await post('/projects/1/archive');
+    assert.deepEqual(names(await get(`/?${new URLSearchParams({ filter: 'archived', query: 'mixed board' })}`), 'project'), [projectName]);
+    const archived = await get(taskPath);
+    assert.deepEqual(names(archived, 'task'), [taskTitle]);
+    assert.match(archived, /id="new-task-title-1"[^>]* disabled/);
+    assert.doesNotMatch(archived, /id="task-search"[^>]* disabled/);
+    await post('/projects/1/restore');
+    await server.stop();
+    server = await startServer(databasePath);
+    await check();
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('search forms intersect filters and preserve applied queries through edits, moves, archive and restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-search-'));
   const databasePath = join(directory, 'workboard.sqlite');
@@ -1418,7 +1469,7 @@ test('search forms intersect filters and preserve applied queries through edits,
     assert.match(list, /id="project-search"[^>]*value="aLpHa"/);
     assert.deepEqual(fields(list, '/'), { query: 'aLpHa' });
     assert.deepEqual(names(await get('/?filter=archived&query=aLpHa'), 'project'), ['ALPHA archived']);
-    assert.deepEqual(names(await get('/?query=alpha+board'), 'project'), []);
+    assert.deepEqual(names(await get('/?query=alpha+board'), 'project'), ['Alpha  Board']);
     assert.deepEqual(names(await get('/?query=alpha++board'), 'project'), ['Alpha  Board']);
     assert.deepEqual(names(await get('/?query=+++'), 'project'), ['Alpha  Board', 'Other', 'Alpha final']);
     const archived = await post('/projects/4/archive', fields(list, '/projects/4/archive'));
@@ -1486,7 +1537,7 @@ test('search forms intersect filters and preserve applied queries through edits,
     await post('/projects/2/tasks/3/move', { destinationId: '1' });
     assert.deepEqual(names(await get(path), 'task'), ['Alpha  spaced']);
     assert.deepEqual(names(await get('/projects/1?query=alpha++spaced'), 'task'), ['Alpha  spaced']);
-    assert.deepEqual(names(await get('/projects/1?query=alpha+spaced'), 'task'), []);
+    assert.deepEqual(names(await get('/projects/1?query=alpha+spaced'), 'task'), ['Alpha  spaced']);
     const summary = await get('/');
     assert.match(summary, /data-testid="project-summary">1\/6 completed/);
     await post('/projects/1/archive');
