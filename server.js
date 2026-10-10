@@ -33,6 +33,7 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const styles = readFileSync(new URL('./public/styles.css', import.meta.url));
 const projectScript = readFileSync(new URL('./public/project.js', import.meta.url));
 
@@ -140,6 +141,14 @@ function projectPage(project, filter = 'All', error = '') {
             <input type="hidden" name="filter" value="${filter}">
             <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-submit-on-change>
           </form>
+          <form class="task-rename-form" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <div class="create-controls">
+              <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+            </div>
+          </form>
         </div>`).join('')}</div>` : '<p class="empty">No tasks to show.</p>'}
     </section>`);
 }
@@ -246,7 +255,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/completion)?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const projectId = Number(taskRoute[1]);
       const taskId = taskRoute[2] ? Number(taskRoute[2]) : null;
@@ -269,9 +278,22 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           createTask.run(projectId, title);
-        } else if (!updateTask.run(body.get('completed') === '1' ? 1 : 0, taskId, projectId).changes) {
-          sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
-          return;
+        } else {
+          let result;
+          if (taskRoute[3] === 'rename') {
+            const title = (body.get('title') || '').trim();
+            if (!title) {
+              sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+              return;
+            }
+            result = renameTask.run(title, taskId, projectId);
+          } else {
+            result = updateTask.run(body.get('completed') === '1' ? 1 : 0, taskId, projectId);
+          }
+          if (!result.changes) {
+            sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
         }
         redirect(response, `/projects/${projectId}${filter === 'All' ? '' : `?filter=${filter}`}`);
         return;
