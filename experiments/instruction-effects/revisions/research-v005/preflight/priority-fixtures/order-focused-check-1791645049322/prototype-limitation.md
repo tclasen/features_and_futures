@@ -1,0 +1,1 @@
+Test072 created titles differing only in internal whitespace in the same owner. Playwright accessible-name matching collapses that whitespace, so the common checkbox helper resolves both records. Neither application ordering nor title preservation was disproved. Prospective correction uses distinct owners and literal textContent directory observations. Zero native task021 calls.

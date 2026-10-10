@@ -1,0 +1,1 @@
+Eight of10final async positives pass.071 uses the same visible order for Due date and Title, then immediately submits bulk action using old hidden state before the Title refresh.073 mistakenly targets nonexistent Export project rather than established Download project. Zero native task021 calls; both prospective corrections retain all original results/source.

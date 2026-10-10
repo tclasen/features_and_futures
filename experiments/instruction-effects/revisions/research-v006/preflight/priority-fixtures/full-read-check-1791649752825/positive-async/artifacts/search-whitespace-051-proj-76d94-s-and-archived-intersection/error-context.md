@@ -1,0 +1,519 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: search-whitespace.spec.mjs >> 051 project whitespace matching retains original names and archived intersection
+- Location: experiments/instruction-effects/revisions/research-v006/decisions/task-020-draft/suite/search-whitespace.spec.mjs:12:2
+
+# Error details
+
+```
+Test timeout of 20000ms exceeded.
+```
+
+```
+Error: locator.textContent: Test timeout of 20000ms exceeded.
+Call log:
+  - waiting for getByTestId('project-row').filter({ hasText: 'task-020 Whitespace  Saved archived' }).visible()
+
+```
+
+# Page snapshot
+
+```yaml
+- generic [active] [ref=f7e1]:
+  - heading "Workboard" [level=1] [ref=f7e2]
+  - group [ref=f7e4]:
+    - button "Task directory" [ref=f7e5]
+  - group [ref=f7e7]:
+    - generic [ref=f7e8]:
+      - text: Project JSON
+      - textbox "Project JSON" [ref=f7e9]
+    - generic [ref=f7e10]:
+      - text: Imported project name
+      - textbox "Imported project name" [ref=f7e11]
+    - button "Import project" [ref=f7e12]
+  - group [ref=f7e14]:
+    - generic [ref=f7e15]:
+      - text: Project name
+      - textbox "Project name" [ref=f7e16]
+    - button "Create project" [ref=f7e17]
+  - group [ref=f7e19]:
+    - generic [ref=f7e20]:
+      - text: Project search
+      - textbox "Project search" [ref=f7e21]
+    - button "Search projects" [ref=f7e22]
+  - generic [ref=f7e24]:
+    - text: Project filter
+    - combobox "Project filter" [ref=f7e25]:
+      - option "Active" [selected]
+      - option "Archived"
+  - generic [ref=f7e26]:
+    - text: task-012 Position first owner0/4 completed
+    - group [ref=f7e28]:
+      - button "Open project" [ref=f7e29]
+    - group [ref=f7e31]:
+      - button "Archive project" [ref=f7e32]
+  - generic [ref=f7e33]:
+    - text: task-012 Position second owner0/2 completed
+    - group [ref=f7e35]:
+      - button "Open project" [ref=f7e36]
+    - group [ref=f7e38]:
+      - button "Archive project" [ref=f7e39]
+  - generic [ref=f7e40]:
+    - text: task-018 Import restart0/1 completed
+    - group [ref=f7e42]:
+      - button "Open project" [ref=f7e43]
+    - group [ref=f7e45]:
+      - button "Archive project" [ref=f7e46]
+  - generic [ref=f7e47]:
+    - text: task-012 Search Mixed first0/0 completed
+    - group [ref=f7e49]:
+      - button "Open project" [ref=f7e50]
+    - group [ref=f7e52]:
+      - button "Archive project" [ref=f7e53]
+  - generic [ref=f7e54]:
+    - text: task-012 Search mixed last0/0 completed
+    - group [ref=f7e56]:
+      - button "Open project" [ref=f7e57]
+    - group [ref=f7e59]:
+      - button "Archive project" [ref=f7e60]
+  - generic [ref=f7e61]:
+    - text: task-012 Search double gap0/0 completed
+    - group [ref=f7e63]:
+      - button "Open project" [ref=f7e64]
+    - group [ref=f7e66]:
+      - button "Archive project" [ref=f7e67]
+  - generic [ref=f7e68]:
+    - text: task-012 Whitespace Saved first0/0 completed
+    - group [ref=f7e70]:
+      - button "Open project" [ref=f7e71]
+    - group [ref=f7e73]:
+      - button "Archive project" [ref=f7e74]
+  - generic [ref=f7e75]:
+    - text: task-020 Bulk first owner0/7 completed
+    - group [ref=f7e77]:
+      - button "Open project" [ref=f7e78]
+    - group [ref=f7e80]:
+      - button "Archive project" [ref=f7e81]
+  - generic [ref=f7e82]:
+    - text: task-020 Bulk second owner0/2 completed
+    - group [ref=f7e84]:
+      - button "Open project" [ref=f7e85]
+    - group [ref=f7e87]:
+      - button "Archive project" [ref=f7e88]
+  - generic [ref=f7e89]:
+    - text: task-020 Bulk protected1/1 completed
+    - group [ref=f7e91]:
+      - button "Open project" [ref=f7e92]
+    - group [ref=f7e94]:
+      - button "Archive project" [ref=f7e95]
+  - generic [ref=f7e96]:
+    - text: task-020 Bulk restart first1/1 completed
+    - group [ref=f7e98]:
+      - button "Open project" [ref=f7e99]
+    - group [ref=f7e101]:
+      - button "Archive project" [ref=f7e102]
+  - generic [ref=f7e103]:
+    - text: task-020 Bulk restart second1/1 completed
+    - group [ref=f7e105]:
+      - button "Open project" [ref=f7e106]
+    - group [ref=f7e108]:
+      - button "Archive project" [ref=f7e109]
+  - generic [ref=f7e110]:
+    - text: task-020 Defaults independent0/1 completed
+    - group [ref=f7e112]:
+      - button "Open project" [ref=f7e113]
+    - group [ref=f7e115]:
+      - button "Archive project" [ref=f7e116]
+  - generic [ref=f7e117]:
+    - text: task-020 Defaults inheritance1/4 completed
+    - group [ref=f7e119]:
+      - button "Open project" [ref=f7e120]
+    - group [ref=f7e122]:
+      - button "Archive project" [ref=f7e123]
+  - generic [ref=f7e124]:
+    - text: task-020 Defaults renamed0/2 completed
+    - group [ref=f7e126]:
+      - button "Open project" [ref=f7e127]
+    - group [ref=f7e129]:
+      - button "Archive project" [ref=f7e130]
+  - generic [ref=f7e131]:
+    - text: task-020 Deletion fields4/6 completed
+    - group [ref=f7e133]:
+      - button "Open project" [ref=f7e134]
+    - group [ref=f7e136]:
+      - button "Archive project" [ref=f7e137]
+  - generic [ref=f7e138]:
+    - text: task-020 Deletion target1/3 completed
+    - group [ref=f7e140]:
+      - button "Open project" [ref=f7e141]
+    - group [ref=f7e143]:
+      - button "Archive project" [ref=f7e144]
+  - generic [ref=f7e145]:
+    - text: task-020 Deletion order0/3 completed
+    - group [ref=f7e147]:
+      - button "Open project" [ref=f7e148]
+    - group [ref=f7e150]:
+      - button "Archive project" [ref=f7e151]
+  - generic [ref=f7e152]:
+    - text: task-020 Deletion restart0/0 completed
+    - group [ref=f7e154]:
+      - button "Open project" [ref=f7e155]
+    - group [ref=f7e157]:
+      - button "Archive project" [ref=f7e158]
+  - generic [ref=f7e159]:
+    - text: task-020 Deleted intersections0/0 completed
+    - group [ref=f7e161]:
+      - button "Open project" [ref=f7e162]
+    - group [ref=f7e164]:
+      - button "Archive project" [ref=f7e165]
+  - generic [ref=f7e166]:
+    - text: task-020 Directory Zulu owner1/3 completed
+    - group [ref=f7e168]:
+      - button "Open project" [ref=f7e169]
+    - group [ref=f7e171]:
+      - button "Archive project" [ref=f7e172]
+  - generic [ref=f7e173]:
+    - text: task-020 Directory Alpha owner0/1 completed
+    - group [ref=f7e175]:
+      - button "Open project" [ref=f7e176]
+    - group [ref=f7e178]:
+      - button "Archive project" [ref=f7e179]
+  - generic [ref=f7e180]:
+    - text: task-020 Directory filter owner1/5 completed
+    - group [ref=f7e182]:
+      - button "Open project" [ref=f7e183]
+    - group [ref=f7e185]:
+      - button "Archive project" [ref=f7e186]
+  - generic [ref=f7e187]:
+    - text: task-020 Directory whitespace0/1 completed
+    - group [ref=f7e189]:
+      - button "Open project" [ref=f7e190]
+    - group [ref=f7e192]:
+      - button "Archive project" [ref=f7e193]
+  - generic [ref=f7e194]:
+    - text: task-020 Calendar persistence0/1 completed
+    - group [ref=f7e196]:
+      - button "Open project" [ref=f7e197]
+    - group [ref=f7e199]:
+      - button "Archive project" [ref=f7e200]
+  - generic [ref=f7e201]:
+    - text: task-020 Calendar validation0/1 completed
+    - group [ref=f7e203]:
+      - button "Open project" [ref=f7e204]
+    - group [ref=f7e206]:
+      - button "Archive project" [ref=f7e207]
+  - generic [ref=f7e208]:
+    - text: task-020 Calendar independence2/3 completed
+    - group [ref=f7e210]:
+      - button "Open project" [ref=f7e211]
+    - group [ref=f7e213]:
+      - button "Archive project" [ref=f7e214]
+  - generic [ref=f7e215]:
+    - text: task-020 Calendar second owner0/1 completed
+    - group [ref=f7e217]:
+      - button "Open project" [ref=f7e218]
+    - group [ref=f7e220]:
+      - button "Archive project" [ref=f7e221]
+  - generic [ref=f7e222]:
+    - text: task-020 Calendar archival0/1 completed
+    - group [ref=f7e224]:
+      - button "Open project" [ref=f7e225]
+    - group [ref=f7e227]:
+      - button "Archive project" [ref=f7e228]
+  - generic [ref=f7e229]:
+    - text: task-020 Range boundaries0/5 completed
+    - group [ref=f7e231]:
+      - button "Open project" [ref=f7e232]
+    - group [ref=f7e234]:
+      - button "Archive project" [ref=f7e235]
+  - generic [ref=f7e236]:
+    - text: task-020 Range intersections0/4 completed
+    - group [ref=f7e238]:
+      - button "Open project" [ref=f7e239]
+    - group [ref=f7e241]:
+      - button "Archive project" [ref=f7e242]
+  - generic [ref=f7e243]:
+    - text: task-020 Range validation0/2 completed
+    - group [ref=f7e245]:
+      - button "Open project" [ref=f7e246]
+    - group [ref=f7e248]:
+      - button "Archive project" [ref=f7e249]
+  - generic [ref=f7e250]:
+    - text: task-020 Range archival0/2 completed
+    - group [ref=f7e252]:
+      - button "Open project" [ref=f7e253]
+    - group [ref=f7e255]:
+      - button "Archive project" [ref=f7e256]
+  - generic [ref=f7e257]:
+    - text: task-020 Range owner renamed0/3 completed
+    - group [ref=f7e259]:
+      - button "Open project" [ref=f7e260]
+    - group [ref=f7e262]:
+      - button "Archive project" [ref=f7e263]
+  - generic [ref=f7e264]:
+    - text: task-020 Export foreign0/1 completed
+    - group [ref=f7e266]:
+      - button "Open project" [ref=f7e267]
+    - group [ref=f7e269]:
+      - button "Archive project" [ref=f7e270]
+  - generic [ref=f7e271]:
+    - text: task-020 Export full Ω0/2 completed
+    - group [ref=f7e273]:
+      - button "Open project" [ref=f7e274]
+    - group [ref=f7e276]:
+      - button "Archive project" [ref=f7e277]
+  - generic [ref=f7e278]:
+    - text: task-020 Export empty0/0 completed
+    - group [ref=f7e280]:
+      - button "Open project" [ref=f7e281]
+    - group [ref=f7e283]:
+      - button "Archive project" [ref=f7e284]
+  - generic [ref=f7e285]:
+    - text: task-020 Import origin0/2 completed
+    - group [ref=f7e287]:
+      - button "Open project" [ref=f7e288]
+    - group [ref=f7e290]:
+      - button "Archive project" [ref=f7e291]
+  - generic [ref=f7e292]:
+    - text: task-020 Import copy1/4 completed
+    - group [ref=f7e294]:
+      - button "Open project" [ref=f7e295]
+    - group [ref=f7e297]:
+      - button "Archive project" [ref=f7e298]
+  - generic [ref=f7e299]:
+    - text: task-020 Parse guard existing0/1 completed
+    - group [ref=f7e301]:
+      - button "Open project" [ref=f7e302]
+    - group [ref=f7e304]:
+      - button "Archive project" [ref=f7e305]
+  - generic [ref=f7e306]:
+    - text: task-020 Task guard existing0/1 completed
+    - group [ref=f7e308]:
+      - button "Open project" [ref=f7e309]
+    - group [ref=f7e311]:
+      - button "Archive project" [ref=f7e312]
+  - generic [ref=f7e313]:
+    - text: task-020 Import restart0/1 completed
+    - group [ref=f7e315]:
+      - button "Open project" [ref=f7e316]
+    - group [ref=f7e318]:
+      - button "Archive project" [ref=f7e319]
+  - generic [ref=f7e320]:
+    - text: task-020 Import empty0/0 completed
+    - group [ref=f7e322]:
+      - button "Open project" [ref=f7e323]
+    - group [ref=f7e325]:
+      - button "Archive project" [ref=f7e326]
+  - generic [ref=f7e327]:
+    - text: task-020 Transfer target1/3 completed
+    - group [ref=f7e329]:
+      - button "Open project" [ref=f7e330]
+    - group [ref=f7e332]:
+      - button "Archive project" [ref=f7e333]
+  - generic [ref=f7e334]:
+    - text: task-020 Transfer source0/1 completed
+    - group [ref=f7e336]:
+      - button "Open project" [ref=f7e337]
+    - group [ref=f7e339]:
+      - button "Archive project" [ref=f7e340]
+  - generic [ref=f7e341]:
+    - text: task-020 Filtered transfer target0/2 completed
+    - group [ref=f7e343]:
+      - button "Open project" [ref=f7e344]
+    - group [ref=f7e346]:
+      - button "Archive project" [ref=f7e347]
+  - generic [ref=f7e348]:
+    - text: task-020 Filtered transfer source1/5 completed
+    - group [ref=f7e350]:
+      - button "Open project" [ref=f7e351]
+    - group [ref=f7e353]:
+      - button "Archive project" [ref=f7e354]
+  - generic [ref=f7e355]:
+    - text: task-020 Options first0/0 completed
+    - group [ref=f7e357]:
+      - button "Open project" [ref=f7e358]
+    - group [ref=f7e360]:
+      - button "Archive project" [ref=f7e361]
+  - generic [ref=f7e362]:
+    - text: task-020 Options second0/0 completed
+    - group [ref=f7e364]:
+      - button "Open project" [ref=f7e365]
+    - group [ref=f7e367]:
+      - button "Archive project" [ref=f7e368]
+  - generic [ref=f7e369]:
+    - text: task-020 Options owner0/1 completed
+    - group [ref=f7e371]:
+      - button "Open project" [ref=f7e372]
+    - group [ref=f7e374]:
+      - button "Archive project" [ref=f7e375]
+  - generic [ref=f7e376]:
+    - text: task-020 Read-only transfer target0/1 completed
+    - group [ref=f7e378]:
+      - button "Open project" [ref=f7e379]
+    - group [ref=f7e381]:
+      - button "Archive project" [ref=f7e382]
+  - generic [ref=f7e383]:
+    - text: task-020 Read-only transfer owner0/2 completed
+    - group [ref=f7e385]:
+      - button "Open project" [ref=f7e386]
+    - group [ref=f7e388]:
+      - button "Archive project" [ref=f7e389]
+  - generic [ref=f7e390]:
+    - text: task-020 Notes values0/2 completed
+    - group [ref=f7e392]:
+      - button "Open project" [ref=f7e393]
+    - group [ref=f7e395]:
+      - button "Archive project" [ref=f7e396]
+  - generic [ref=f7e397]:
+    - text: task-020 Notes target0/1 completed
+    - group [ref=f7e399]:
+      - button "Open project" [ref=f7e400]
+    - group [ref=f7e402]:
+      - button "Archive project" [ref=f7e403]
+  - generic [ref=f7e404]:
+    - text: task-020 Notes owner0/3 completed
+    - group [ref=f7e406]:
+      - button "Open project" [ref=f7e407]
+    - group [ref=f7e409]:
+      - button "Archive project" [ref=f7e410]
+  - generic [ref=f7e411]:
+    - text: task-020 Priority intersection1/4 completed
+    - group [ref=f7e413]:
+      - button "Open project" [ref=f7e414]
+    - group [ref=f7e416]:
+      - button "Archive project" [ref=f7e417]
+  - generic [ref=f7e418]:
+    - text: task-020 Priority live filters1/4 completed
+    - group [ref=f7e420]:
+      - button "Open project" [ref=f7e421]
+    - group [ref=f7e423]:
+      - button "Archive project" [ref=f7e424]
+  - generic [ref=f7e425]:
+    - text: task-020 Priority rename filters1/3 completed
+    - group [ref=f7e427]:
+      - button "Open project" [ref=f7e428]
+    - group [ref=f7e430]:
+      - button "Archive project" [ref=f7e431]
+  - generic [ref=f7e432]:
+    - text: task-020 Archived combined filters1/2 completed
+    - group [ref=f7e434]:
+      - button "Open project" [ref=f7e435]
+    - group [ref=f7e437]:
+      - button "Archive project" [ref=f7e438]
+  - generic [ref=f7e439]:
+    - text: task-020 Priority ownership0/2 completed
+    - group [ref=f7e441]:
+      - button "Open project" [ref=f7e442]
+    - group [ref=f7e444]:
+      - button "Archive project" [ref=f7e445]
+  - generic [ref=f7e446]:
+    - text: task-020 Priority other owner0/1 completed
+    - group [ref=f7e448]:
+      - button "Open project" [ref=f7e449]
+    - group [ref=f7e451]:
+      - button "Archive project" [ref=f7e452]
+  - generic [ref=f7e453]:
+    - text: task-020 Priority completion1/2 completed
+    - group [ref=f7e455]:
+      - button "Open project" [ref=f7e456]
+    - group [ref=f7e458]:
+      - button "Archive project" [ref=f7e459]
+  - generic [ref=f7e460]:
+    - text: task-020 Priority archive0/1 completed
+    - group [ref=f7e462]:
+      - button "Open project" [ref=f7e463]
+    - group [ref=f7e465]:
+      - button "Archive project" [ref=f7e466]
+  - generic [ref=f7e467]:
+    - text: task-020 Return holding0/0 completed
+    - group [ref=f7e469]:
+      - button "Open project" [ref=f7e470]
+    - group [ref=f7e472]:
+      - button "Archive project" [ref=f7e473]
+  - generic [ref=f7e474]:
+    - text: task-020 Return owner1/4 completed
+    - group [ref=f7e476]:
+      - button "Open project" [ref=f7e477]
+    - group [ref=f7e479]:
+      - button "Archive project" [ref=f7e480]
+  - generic [ref=f7e481]:
+    - text: task-020 Return identity holding0/0 completed
+    - group [ref=f7e483]:
+      - button "Open project" [ref=f7e484]
+    - group [ref=f7e486]:
+      - button "Archive project" [ref=f7e487]
+  - generic [ref=f7e488]:
+    - text: task-020 Returned owner renamed0/3 completed
+    - group [ref=f7e490]:
+      - button "Open project" [ref=f7e491]
+    - group [ref=f7e493]:
+      - button "Archive project" [ref=f7e494]
+  - generic [ref=f7e495]:
+    - text: task-020 Position second owner0/2 completed
+    - group [ref=f7e497]:
+      - button "Open project" [ref=f7e498]
+    - group [ref=f7e500]:
+      - button "Archive project" [ref=f7e501]
+  - generic [ref=f7e502]:
+    - text: task-020 Position third owner0/0 completed
+    - group [ref=f7e504]:
+      - button "Open project" [ref=f7e505]
+    - group [ref=f7e507]:
+      - button "Archive project" [ref=f7e508]
+  - generic [ref=f7e509]:
+    - text: task-020 Position first owner0/4 completed
+    - group [ref=f7e511]:
+      - button "Open project" [ref=f7e512]
+    - group [ref=f7e514]:
+      - button "Archive project" [ref=f7e515]
+  - generic [ref=f7e516]:
+    - text: task-020 Whitespace retained owner0/2 completed
+    - group [ref=f7e518]:
+      - button "Open project" [ref=f7e519]
+    - group [ref=f7e521]:
+      - button "Archive project" [ref=f7e522]
+  - generic [ref=f7e523]:
+    - text: task-020 Whitespace Saved first0/0 completed
+    - group [ref=f7e525]:
+      - button "Open project" [ref=f7e526]
+    - group [ref=f7e528]:
+      - button "Archive project" [ref=f7e529]
+  - generic [ref=f7e530]:
+    - text: task-020 Whitespace Saved second0/0 completed
+    - group [ref=f7e532]:
+      - button "Open project" [ref=f7e533]
+    - group [ref=f7e535]:
+      - button "Archive project" [ref=f7e536]
+```
+
+# Test source
+
+```ts
+  1  | import {test,expect} from '@playwright/test';
+  2  | import {stage,projectName,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedPriority} from './helpers.mjs';
+  3  | test.beforeEach(async({context})=>{await isolateBrowser(context);});
+  4  | if(stage>=14){
+  5  |  test('050 task search collapses spaces tabs without changing stored titles or filters',async({page})=>{
+  6  |   await createProject(page,'Whitespace retained owner');await openProject(page,'Whitespace retained owner');await createTask(page,'Original  task gap');await createTask(page,'Other task gap');await taskRow(page,'Original  task gap').getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,'Whitespace retained owner','Original  task gap','High');await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Open'});await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'High'});
+  7  |   for(const query of [' original task ','ORIGINAL   TASK','original\t task']){
+  8  |    await page.getByRole('textbox',{name:'Task search',exact:true}).fill(query);await page.getByRole('button',{name:'Search tasks',exact:true}).click();await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(1);await expect(taskRow(page,'Original  task gap')).toBeVisible();expect(await taskRow(page,'Original  task gap').textContent()).toContain('Original  task gap');await expect(page.getByRole('combobox',{name:'Task filter',exact:true}).locator('option:checked')).toHaveText('Open');await expect(page.getByRole('combobox',{name:'Priority filter',exact:true}).locator('option:checked')).toHaveText('High');
+  9  |   }
+  10 |   await page.getByRole('textbox',{name:'Task search',exact:true}).fill('');await page.getByRole('button',{name:'Search tasks',exact:true}).click();expect(await taskRow(page,'Original  task gap').textContent()).toContain('Original  task gap');await page.reload();expect(await taskRow(page,'Original  task gap').textContent()).toContain('Original  task gap');
+  11 |  });
+  12 |  test('051 project whitespace matching retains original names and archived intersection',async({page})=>{
+  13 |   await createProject(page,'Whitespace   Saved first');await createProject(page,'Whitespace Saved second');await createProject(page,'Whitespace  Saved archived');await projectRow(page,'Whitespace  Saved archived').getByRole('button',{name:'Archive project',exact:true}).click();await expect(projectRow(page,'Whitespace  Saved archived')).toHaveCount(0);
+  14 |   for(const query of ['whitespace saved',' WHITESPACE  SAVED ','whitespace\t saved']){
+  15 |    await page.getByRole('textbox',{name:'Project search',exact:true}).fill(projectName(query));await page.getByRole('button',{name:'Search projects',exact:true}).click();await expect(page.getByTestId('project-row').filter({visible:true})).toHaveCount(2);const rows=await page.getByTestId('project-row').filter({visible:true}).allTextContents();expect(rows[0]).toContain('Whitespace   Saved first');expect(rows[1]).toContain('Whitespace Saved second');
+  16 |   }
+> 17 |   await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});await expect(page.getByTestId('project-row').filter({visible:true})).toHaveCount(1);expect(await projectRow(page,'Whitespace  Saved archived').textContent()).toContain('Whitespace  Saved archived');await page.reload();expect(await projectRow(page,'Whitespace  Saved archived').textContent()).toContain('Whitespace  Saved archived');
+     |                                                                                                                                                                                                                                                                                                                                                                                             ^ Error: locator.textContent: Test timeout of 20000ms exceeded.
+  18 |  });
+  19 | }
+  20 | 
+```
