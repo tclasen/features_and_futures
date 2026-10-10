@@ -47,6 +47,22 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
   `);
 }
 database.exec('CREATE INDEX IF NOT EXISTS tasks_project_position ON tasks(project_id, position, id)');
+// Remember positions even while tasks belong elsewhere. Seed current positions for
+// older databases without overwriting any history on subsequent server starts.
+database.exec(`
+  BEGIN;
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  CREATE INDEX IF NOT EXISTS task_project_positions_order
+    ON task_project_positions(project_id, position);
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+  COMMIT;
+`);
 const taskPriorities = ['Low', 'Normal', 'High'];
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id <> ? ORDER BY id');
 const listProjects = database.prepare(`
@@ -64,18 +80,49 @@ const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))
+  VALUES (?, ?, ?, ?)
 `);
-const moveTask = database.prepare(`
-  UPDATE tasks SET project_id = ?,
-    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-  WHERE id = ? AND project_id = ?
+const updateTaskProject = database.prepare(`
+  UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?
 `);
+const findTaskPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextTaskPosition = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_project_positions WHERE project_id = ?');
+const rememberTaskPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function transaction(operation) {
+  database.exec('BEGIN');
+  try {
+    const result = operation();
+    database.exec('COMMIT');
+    return result;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function createTask(projectId, title, priority) {
+  transaction(() => {
+    const { position } = nextTaskPosition.get(projectId);
+    const { lastInsertRowid } = insertTask.run(projectId, title, priority, position);
+    rememberTaskPosition.run(lastInsertRowid, projectId, position);
+  });
+}
+
+function moveTask(taskId, sourceId, destinationId) {
+  transaction(() => {
+    const remembered = findTaskPosition.get(taskId, destinationId);
+    const { position } = remembered ?? nextTaskPosition.get(destinationId);
+    if (!remembered) rememberTaskPosition.run(taskId, destinationId, position);
+    // Keep current position and ownership in sync with the remembered position.
+    updateTaskProject.run(destinationId, position, taskId, sourceId);
+  });
+}
 
 function validDueDate(value) {
   if (value === '') return true;
@@ -440,8 +487,8 @@ const server = createServer(async (request, response) => {
         sendHtml(response, 400, projectPage(project, filters, 'Destination must be another active project'));
         return;
       }
-      // Validation and this atomic update run synchronously after reading the request body.
-      moveTask.run(destinationId, destinationId, taskId, projectId);
+      // Validation and the transaction run synchronously after reading the request body.
+      moveTask(taskId, projectId, destinationId);
       redirect(response, projectUrl(projectId, filters));
       return;
     }
@@ -567,7 +614,7 @@ const server = createServer(async (request, response) => {
             sendHtml(response, 400, projectPage(project, filters, 'Task title is required'));
             return;
           }
-          insertTask.run(id, title, currentProject.default_priority, id);
+          createTask(id, title, currentProject.default_priority);
         } else {
           const taskId = Number(match[2]);
           if (!Number.isSafeInteger(taskId)) {
