@@ -14,12 +14,23 @@ const dueFromInput = document.querySelector('#due-from');
 const dueThroughInput = document.querySelector('#due-through');
 const defaultTaskPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#project-search-form');
+const projectSearchInput = document.querySelector('#project-search');
+const taskSearchForm = document.querySelector('#task-search-form');
+const taskSearchInput = document.querySelector('#task-search');
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project');
 const newProjectNameInput = document.querySelector('#new-project-name');
 let activeProjectId;
 let activeProjectArchived = false;
 let appliedDueRange = { from: '', through: '' };
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
+
+function matchesSearch(value, query) {
+  const foldAscii = text => text.replace(/[A-Z]/g, character => character.toLowerCase());
+  return foldAscii(value).includes(foldAscii(query));
+}
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -35,7 +46,7 @@ async function loadProjects() {
   if (!response.ok) throw new Error('Unable to load projects');
   const projects = await response.json();
   projectContainer.replaceChildren();
-  for (const project of projects) {
+  for (const project of projects.filter(item => matchesSearch(item.name, appliedProjectQuery))) {
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
     row.className = 'project-row';
@@ -69,6 +80,8 @@ async function showRoute() {
   if (!match) {
     listView.hidden = false;
     detailView.hidden = true;
+    appliedProjectQuery = '';
+    projectSearchInput.value = '';
     await loadProjects();
     return;
   }
@@ -79,6 +92,8 @@ async function showRoute() {
   }
   const project = await response.json();
   appliedDueRange = { from: '', through: '' };
+  appliedTaskQuery = '';
+  taskSearchInput.value = '';
   dueFromInput.value = '';
   dueThroughInput.value = '';
   taskFilter.value = 'All';
@@ -114,6 +129,7 @@ async function loadTasks() {
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     if ((from || through) && !task.due_date) continue;
     if (from && task.due_date < from || through && task.due_date > through) continue;
+    if (!matchesSearch(task.title, appliedTaskQuery)) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'project-row';
@@ -302,6 +318,16 @@ renameForm.addEventListener('submit', async event => {
   newProjectNameInput.value = '';
 });
 projectFilter.addEventListener('change', () => loadProjects().catch(() => showError('Unable to load projects')));
+projectSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedProjectQuery = projectSearchInput.value.trim();
+  loadProjects().catch(() => showError('Unable to load projects'));
+});
+taskSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedTaskQuery = taskSearchInput.value.trim();
+  loadTasks().catch(() => showError('Unable to load tasks'));
+});
 taskForm.addEventListener('submit', async event => {
   event.preventDefault();
   error.hidden = true;
