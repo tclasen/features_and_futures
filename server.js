@@ -80,6 +80,19 @@ async function handle(req, res) {
   }
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok' });
   const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)\/?$/);
+  const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/?$/);
+  if (renameRoute && req.method === 'PATCH') {
+    const id = Number(renameRoute[1]);
+    let body;
+    try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
+    const name = String(body.name ?? '').trim();
+    if (!name) return json(res, 400, { error: 'Project name is required' });
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(id);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
+    db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+    return json(res, 200, { id, name });
+  }
   if (projectStateRoute && req.method === 'POST') {
     const id = Number(projectStateRoute[1]);
     const archived = projectStateRoute[2] === 'archive' ? 1 : 0;
