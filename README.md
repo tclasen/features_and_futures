@@ -22,3 +22,8 @@ The project list starts with Active projects; switch Project filter to Archived 
 open or restore an archived project. Archived project tasks can be viewed and
 filtered, but creation and completion changes are disabled. Completion summaries
 count every task in each project. Existing databases are migrated automatically.
+
+On an active project page, use New project name and Rename project to change its
+name. Names are trimmed and cannot be blank. Renaming preserves the project's URL,
+list position, tasks, and completion summary. Archived projects must be restored
+before they can be renamed.

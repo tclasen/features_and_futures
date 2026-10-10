@@ -30,6 +30,7 @@ export function openProjectStore(path) {
   const find = database.prepare(`${projectQuery} WHERE id = ?`);
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -59,6 +60,17 @@ export function openProjectStore(path) {
     setArchived(id, archived) {
       if (typeof archived !== 'boolean') throw new Error('Project archive state must be a boolean');
       updateArchive.run(Number(archived), id);
+      return projectRecord(find.get(id));
+    },
+    rename(id, name) {
+      requireActiveProject(id);
+      const trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) {
+        const error = new Error('Project name is required');
+        error.status = 400;
+        throw error;
+      }
+      updateName.run(trimmedName, id);
       return projectRecord(find.get(id));
     },
     listTasks: (projectId) => listTasks.all(projectId).map(taskRecord),

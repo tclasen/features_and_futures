@@ -148,11 +148,61 @@ async function renderProject(id) {
       notice.textContent = 'Archived project';
       app.append(notice);
     }
+    renderRename(project);
     await renderTasks(id, project.archived);
   } catch (error) {
     app.querySelector('h1').textContent = 'Project unavailable';
     showError(app.querySelector('[role="alert"]'), error.message);
   }
+}
+
+function renderRename(project) {
+  const section = document.createElement('section');
+  section.setAttribute('aria-label', 'Rename project');
+  section.innerHTML = `
+    <form>
+      <label for="new-project-name">New project name</label>
+      <div class="create-controls">
+        <input id="new-project-name" name="name" type="text" autocomplete="off">
+        <button type="submit">Rename project</button>
+      </div>
+    </form>
+    <p role="alert" hidden></p>`;
+  const form = section.querySelector('form');
+  const input = section.querySelector('input');
+  const button = section.querySelector('button');
+  const alert = section.querySelector('[role="alert"]');
+  input.value = project.name;
+  input.disabled = project.archived;
+  button.disabled = project.archived;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (button.disabled) return;
+    alert.hidden = true;
+    const name = input.value.trim();
+    if (!name) {
+      showError(alert, 'Project name is required');
+      input.focus();
+      return;
+    }
+    button.disabled = true;
+    try {
+      const updated = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      project.name = updated.name;
+      app.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = project.name;
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      button.disabled = project.archived;
+    }
+  });
+  app.append(section);
 }
 
 async function renderTasks(projectId, archived) {

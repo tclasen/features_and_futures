@@ -44,6 +44,78 @@ async function startServer(databasePath) {
   };
 }
 
+test('rename preserves project identity and data, persists, and requires an active project', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.baseUrl + path, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    });
+    const first = await (await request('/api/projects', 'POST', { name: 'Original' })).json();
+    const second = await (await request('/api/projects', 'POST', { name: 'Second' })).json();
+    const projectPath = `/api/projects/${first.id}`;
+    const taskPath = `${projectPath}/tasks`;
+    const task = await (await request(taskPath, 'POST', { title: 'Keep this task' })).json();
+    await request(`${taskPath}/${task.id}`, 'PATCH', { completed: true });
+    task.completed = true;
+    const original = { ...first, totalCount: 1, completedCount: 1 };
+    const assertData = async (expected) => {
+      assert.deepEqual(await (await request(projectPath)).json(), expected);
+      assert.deepEqual(await (await request('/api/projects')).json(), [expected, second]);
+      assert.deepEqual(await (await request(taskPath)).json(), [task]);
+      assert.equal((await request(`/projects/${first.id}`)).status, 200);
+    };
+
+    for (const name of ['', ' \t\n ', null, 123]) {
+      const invalid = await request(projectPath, 'PATCH', { name });
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Project name is required' });
+      await assertData(original);
+    }
+    assert.equal((await request('/api/projects/99999', 'PATCH', { name: 'Missing' })).status, 404);
+    assert.equal((await request(projectPath, 'PATCH', { name: 'Mixed', archived: true })).status, 400);
+    await assertData(original);
+    const renamed = { ...original, name: '<b>Renamed & safe</b>' };
+    const response = await request(projectPath, 'PATCH', { name: `  ${renamed.name} \t` });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), renamed);
+    await assertData(renamed);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    await assertData(renamed);
+    await request(projectPath, 'PATCH', { archived: true });
+    const archived = { ...renamed, archived: true };
+    const forbidden = await request(projectPath, 'PATCH', { name: 'Forbidden rename' });
+    assert.equal(forbidden.status, 409);
+    assert.deepEqual(await forbidden.json(), { error: 'Archived projects cannot be changed' });
+    await assertData(archived);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    await assertData(archived);
+    await request(projectPath, 'PATCH', { archived: false });
+    const restored = { ...renamed, name: 'Restored name' };
+    const restoredResponse = await request(projectPath, 'PATCH', { name: ' Restored name ' });
+    assert.equal(restoredResponse.status, 200);
+    assert.deepEqual(await restoredResponse.json(), restored);
+    await assertData(restored);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    await assertData(restored);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, retain creation order, and persist across server restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const databasePath = join(directory, 'nested', 'projects.sqlite');

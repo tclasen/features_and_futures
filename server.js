@@ -84,6 +84,12 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'PATCH') {
         const input = await readJson(request);
+        if (input && Object.hasOwn(input, 'name')) {
+          if (Object.hasOwn(input, 'archived')) {
+            return json(response, 400, { error: 'Change project name or archive state separately' });
+          }
+          return json(response, 200, store.rename(projectApi[1], input.name));
+        }
         if (typeof input?.archived !== 'boolean') {
           return json(response, 400, { error: 'Project archive state must be a boolean' });
         }
