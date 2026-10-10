@@ -41,6 +41,13 @@ Changing it preserves existing tasks, both filter selections, and summaries.
 Defaults are independent per project and persist through renaming, restarts,
 archival, and restoration. Archived projects show a disabled default selector.
 
+Each task has a Task due date textbox and Save due date button. Dates are optional:
+save an empty value to clear one, or enter a real Gregorian date in YYYY-MM-DD
+format with a year from 0001 to 9999. Surrounding whitespace is trimmed. Invalid
+dates show an alert and preserve the saved date. Dates persist without timezone
+conversion and leave other task data, filters, and summaries unchanged. Archived
+projects disable due-date edits until restored.
+
 The Project filter starts with Active projects. Archive a project to move it to
 Archived, or restore it to return it to Active. Each project shows its completed
 and total task counts. Archived projects remain readable with working task
@@ -66,4 +73,6 @@ after restarts, legacy database migration, archive/restore, summaries, and
 archived-project mutation protection, and project and task renaming with identity
 and data preservation, task priorities including migration and persistence, and
 combined completion/priority filtering with edits and archive/restore, and
-project default priorities with migration, inheritance, and persistence.
+project default priorities with migration, inheritance, and persistence, and
+optional due dates with calendar validation, clearing, migration, independence,
+filter preservation, and persistence through archive/restore and restarts.
