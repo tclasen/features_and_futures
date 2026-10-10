@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(680px, calc(100% - 32px)); margin: 64px auto; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    form { display: flex; gap: 10px; margin-bottom: 20px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    .field { flex: 1; }
+    input { width: 100%; border: 1px solid #b9c3d4; border-radius: 6px; padding: 10px 12px; font: inherit; background: white; }
+    button { border: 0; border-radius: 6px; padding: 10px 16px; font: inherit; font-weight: 600; color: white; background: #3159cb; cursor: pointer; }
+    button:hover { background: #2447ad; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; margin: 10px 0; background: white; border: 1px solid #e0e5ee; border-radius: 8px; }
+    .row button { flex: none; }
+    .alert { color: #a32222; margin: 0 0 16px; }
+    .back { margin-bottom: 20px; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #88a5ff; outline-offset: 2px; }
+    @media (max-width: 480px) { form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+      if (match) {
+        try {
+          const project = await request(`/api/projects/${encodeURIComponent(match[1])}`);
+          app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>`;
+          app.querySelector('.back').addEventListener('click', () => { location.href = '/'; });
+        } catch {
+          app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>';
+          app.querySelector('.back').addEventListener('click', () => { location.href = '/'; });
+        }
+        return;
+      }
+
+      app.innerHTML = '<h1>Workboard</h1><div id="message" role="alert" aria-live="polite"></div><form><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"></div><button type="submit">Create project</button></form><section id="projects" aria-label="Projects"></section>';
+      const list = app.querySelector('#projects');
+      const refresh = async () => {
+        const projects = await request('/api/projects');
+        list.innerHTML = projects.map(project => `<div class="row" data-testid="project-row"><span>${esc(project.name)}</span><button type="button" data-project-id="${esc(project.id)}">Open project</button></div>`).join('');
+        list.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { location.href = `/projects/${encodeURIComponent(button.dataset.projectId)}`; }));
+      };
+      app.querySelector('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = app.querySelector('#project-name').value.trim();
+        if (!name) { app.querySelector('#message').textContent = 'Project name is required'; return; }
+        try {
+          await request('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+          app.querySelector('#project-name').value = '';
+          app.querySelector('#message').textContent = '';
+          await refresh();
+        } catch (error) { app.querySelector('#message').textContent = error.message; }
+      });
+      await refresh();
+    }
+    render().catch(() => { app.innerHTML = '<h1>Workboard</h1><p role="alert">Unable to load projects</p>'; });
+  </script>
+</body>
+</html>
