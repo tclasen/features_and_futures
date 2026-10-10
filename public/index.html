@@ -18,6 +18,9 @@
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 400; overflow-wrap: anywhere; }
     .task-row input { width: 20px; height: 20px; flex-shrink: 0; }
     button { border: 0; border-radius: 6px; padding: 12px 16px; background: #244fc4; color: white; font: inherit; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .project-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .project-summary { display: block; margin-top: 6px; color: #526078; font-size: 14px; }
     button:hover { background: #193d9c; }
     :focus-visible { outline: 3px solid #e3931e; outline-offset: 3px; }
     [role="alert"] { color: #a32121; margin-top: 16px; }
@@ -63,6 +66,11 @@
           if (version !== renderVersion) return;
           app.querySelector('h1').textContent = project.name;
           document.title = project.name + ' · Workboard';
+          if (project.archived) {
+            const notice = document.createElement('p');
+            notice.textContent = 'Archived project';
+            app.append(notice);
+          }
           const controls = document.createElement('div');
           controls.className = 'task-controls';
           controls.innerHTML = `
@@ -77,6 +85,7 @@
             <div id="tasks"></div>`;
           app.append(controls);
           const form = controls.querySelector('form');
+          form.querySelector('button').disabled = Boolean(project.archived);
           const input = controls.querySelector('#task-title');
           const filter = controls.querySelector('select');
           const taskList = controls.querySelector('#tasks');
@@ -94,6 +103,7 @@
               const checkbox = document.createElement('input');
               checkbox.type = 'checkbox';
               checkbox.checked = task.completed;
+              checkbox.disabled = Boolean(project.archived);
               checkbox.setAttribute('aria-label', 'Complete ' + task.title);
               const title = document.createElement('span');
               title.textContent = task.title;
@@ -114,7 +124,7 @@
                   checkbox.checked = task.completed;
                   if (version === renderVersion) showAlert(error.message);
                 } finally {
-                  checkbox.disabled = false;
+                  checkbox.disabled = Boolean(project.archived);
                 }
               };
             }
@@ -127,6 +137,7 @@
           loaded.catch(error => { if (version === renderVersion) showAlert(error.message); });
           form.onsubmit = async event => {
             event.preventDefault();
+            if (project.archived) return;
             const title = input.value.trim();
             if (!title) return showAlert('Task title is required');
             const button = form.querySelector('button');
@@ -144,7 +155,7 @@
             } catch (error) {
               if (version === renderVersion) showAlert(error.message);
             } finally {
-              button.disabled = false;
+              button.disabled = Boolean(project.archived);
             }
           };
         } catch (error) {
@@ -160,26 +171,68 @@
           <div class="fields"><input id="project-name" name="name" type="text"><button type="submit">Create project</button></div>
         </form>
         <div role="alert" hidden></div>
+        <div class="task-filter">
+          <label for="project-filter">Project filter</label>
+          <select id="project-filter"><option>Active</option><option>Archived</option></select>
+        </div>
         <div id="projects"></div>`;
       const form = app.querySelector('form');
       const input = app.querySelector('input');
       const projects = app.querySelector('#projects');
+      const filter = app.querySelector('#project-filter');
+      let items = [];
+      function drawProjects() {
+        projects.replaceChildren();
+        items.filter(project => Boolean(project.archived) === (filter.value === 'Archived')).forEach(addRow);
+      }
+      filter.onchange = drawProjects;
       function addRow(project) {
         const row = document.createElement('div');
         row.className = 'project-row';
         row.dataset.testid = 'project-row';
         const name = document.createElement('span');
         name.textContent = project.name;
+        const summary = document.createElement('span');
+        summary.className = 'project-summary';
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = project.completed_count + '/' + project.total_count + ' completed';
+        const details = document.createElement('div');
+        details.append(name, summary);
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Open project';
         button.onclick = () => navigate('/projects/' + project.id);
-        row.append(name, button);
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.onclick = async () => {
+          archive.disabled = true;
+          showAlert('');
+          try {
+            const saved = await api('/api/projects/' + project.id, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ archived: !project.archived })
+            });
+            Object.assign(project, saved);
+            drawProjects();
+          } catch (error) {
+            if (version === renderVersion) showAlert(error.message);
+          } finally {
+            archive.disabled = false;
+          }
+        };
+        const actions = document.createElement('div');
+        actions.className = 'project-actions';
+        actions.append(button, archive);
+        row.append(details, actions);
         projects.append(row);
       }
       // Keep initial loading ahead of creation so each row appears exactly once.
-      const loaded = api('/api/projects').then(items => items.forEach(addRow));
-      loaded.catch(error => showAlert(error.message));
+      const loaded = api('/api/projects').then(loadedItems => {
+        items = loadedItems;
+        drawProjects();
+      });
+      loaded.catch(error => { if (version === renderVersion) showAlert(error.message); });
       form.onsubmit = async event => {
         event.preventDefault();
         const name = input.value.trim();
@@ -192,7 +245,8 @@
           const project = await api('/api/projects', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
           });
-          addRow(project);
+          items.push(project);
+          drawProjects();
           input.value = '';
           input.focus();
         } catch (error) {

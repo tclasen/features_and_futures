@@ -17,8 +17,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Upgrade databases created before archive support without losing projects or tasks.
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const projectSelection = `SELECT projects.id, projects.name, projects.archived,
+  COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
+const listProjects = db.prepare(projectSelection + ' GROUP BY projects.id ORDER BY projects.id');
+const findProject = db.prepare(projectSelection + ' WHERE projects.id = ? GROUP BY projects.id');
+const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -64,21 +72,34 @@ const server = http.createServer(async (request, response) => {
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return json(response, 400, { error: 'Project name is required' });
       const result = createProject.run(name);
-      return json(response, 201, { id: Number(result.lastInsertRowid), name });
+      return json(response, 201, findProject.get(Number(result.lastInsertRowid)));
     } catch (error) {
       return json(response, error.status || 400, { error: error.status ? error.message : 'Unable to create project' });
+    }
+  }
+  if (request.method === 'PATCH' && projectMatch) {
+    try {
+      const input = await readBody(request);
+      if (typeof input?.archived !== 'boolean') return json(response, 400, { error: 'Archive state must be a boolean' });
+      const result = archiveProject.run(Number(input.archived), projectMatch[1]);
+      if (!result.changes) return json(response, 404, { error: 'Project not found' });
+      return json(response, 200, findProject.get(projectMatch[1]));
+    } catch (error) {
+      return json(response, error.status || 400, { error: error.status ? error.message : 'Unable to save project' });
     }
   }
   const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
   if (tasksMatch) {
     const [, projectId, taskId] = tasksMatch;
-    if (!findProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
+    const project = findProject.get(projectId);
+    if (!project) return json(response, 404, { error: 'Project not found' });
     if (request.method === 'GET' && !taskId) {
       return json(response, 200, listTasks.all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if ((request.method === 'POST' && !taskId) || (request.method === 'PATCH' && taskId)) {
       try {
         const input = await readBody(request);
+        if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
         if (!taskId) {
           const title = typeof input?.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
