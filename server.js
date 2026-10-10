@@ -43,7 +43,9 @@ const server = http.createServer(async (req, res) => {
   if (taskRoute && req.method === 'POST') {
     try {
       const projectId = Number(taskRoute[1]);
-      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, {error:'Project not found'});
+      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return send(404, {error:'Project not found'});
+      if (project.archived) return send(403, {error:'Archived project'});
       const title = String((await readBody()).title ?? '').trim();
       if (!title) return send(400, {error:'Task title is required'});
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
@@ -53,8 +55,18 @@ const server = http.createServer(async (req, res) => {
   const taskUpdate = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskUpdate && req.method === 'PATCH') {
     try {
-      const { completed } = await readBody();
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?').run(completed ? 1 : 0, Number(taskUpdate[1]), Number(taskUpdate[2]));
+      const body = await readBody();
+      const projectId = Number(taskUpdate[1]), taskId = Number(taskUpdate[2]);
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return send(404, {error:'Project not found'});
+      if (project.archived) return send(403, {error:'Archived project'});
+      if (Object.hasOwn(body, 'title')) {
+        const title = String(body.title ?? '').trim();
+        if (!title) return send(400, {error:'Task title is required'});
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?').run(title, projectId, taskId);
+        return result.changes ? send(200, {ok:true, title}) : send(404, {error:'Task not found'});
+      }
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?').run(body.completed ? 1 : 0, projectId, taskId);
       return result.changes ? send(200, {ok:true}) : send(404, {error:'Task not found'});
     } catch { return send(400, {error:'Invalid request'}); }
   }
