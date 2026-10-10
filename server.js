@@ -466,7 +466,11 @@ function page() {
           const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notes.value })
           });
-          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
+          if (result.ok) {
+            const saved = await result.json();
+            notes.value = saved.notes;
+            await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
+          }
         });
         const destination = document.createElement('select');
         destination.setAttribute('aria-label', 'Destination project');
@@ -601,6 +605,7 @@ const server = createServer(async (request, response) => {
     if (Object.hasOwn(body || {}, 'notes')) {
       if (typeof body.notes !== 'string') return send(response, 400, JSON.stringify({ error: 'Notes must be text' }));
       result = updateTaskNotes.run(body.notes, taskMatch[2], projectId);
+      if (result.changes) return send(response, 200, JSON.stringify({ status: 'ok', notes: body.notes }));
     } else if (Object.hasOwn(body || {}, 'due_date')) {
       const rawDate = typeof body.due_date === 'string' ? body.due_date.trim() : null;
       if (rawDate === null) return send(response, 400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
