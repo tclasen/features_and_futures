@@ -35,6 +35,15 @@ function page(title, content) {
 </style></head><body><main>${content}</main></body></html>`;
 }
 
+function isValidDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
+
 async function readForm(request) {
   const chunks = [];
   let size = 0;
@@ -76,8 +85,12 @@ export function createApplication(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
     database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const priorities = ['Low', 'Normal', 'High'];
-  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+  const setTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -164,6 +177,12 @@ export function createApplication(databasePath) {
             onchange="this.form.requestSubmit()">
             ${priorities.map(priority => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
           </select>
+        </form>
+        <form action="${path}/tasks/${task.id}/due-date" method="post">
+          ${filterFields}
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
       </div>`).join('');
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -289,7 +308,7 @@ export function createApplication(databasePath) {
           return;
         }
         html(response, 200, projectPage(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter'))));
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority))?)?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date))?)?$/.test(pathname)) {
         const [, , projectId, , taskId, action] = pathname.split('/');
         const id = Number(projectId);
         const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
@@ -323,12 +342,19 @@ export function createApplication(databasePath) {
             html(response, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority));
             return;
           }
+          const dueDate = (form.get('dueDate') ?? '').trim();
+          if (action === 'due-date' && dueDate && !isValidDueDate(dueDate)) {
+            html(response, 422, projectPage(project, filter, 'Due date must be a valid YYYY-MM-DD date', selectedPriority));
+            return;
+          }
           let result;
           if (Number.isSafeInteger(taskNumber)) {
             if (action === 'rename') {
               result = renameTask.run(title, taskNumber, id);
             } else if (action === 'priority') {
               result = setTaskPriority.run(priority, taskNumber, id);
+            } else if (action === 'due-date') {
+              result = setTaskDueDate.run(dueDate, taskNumber, id);
             } else {
               result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskNumber, id);
             }
