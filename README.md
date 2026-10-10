@@ -16,7 +16,7 @@ PORT=8080 DB_PATH=data/workboard.sqlite npm start
 
 Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`. Project names are trimmed, required, and escaped when rendered. Projects are listed by their persistent creation IDs. Form submissions redirect after successful creation so refreshing the list does not create another project.
 
-Project pages support task creation, completion checkboxes, and All/Open/Completed filters. Task titles are trimmed and required. Tasks belong to their project, and completion persists in SQLite. Filter selection is stored in the page URL; task submissions preserve the current filter. The browser submits completion and filter changes automatically.
+Project pages support task creation, completion checkboxes, and All/Open/Completed filters. Task titles are trimmed and required. Tasks belong to their project, and completion persists in SQLite. Filter selections are stored in the page URL; task submissions preserve both current filters. The browser submits completion and filter changes automatically.
 
 The project list starts with Active projects and supports an Archived filter. Archive and restore preserve project IDs, tasks, and completion state. Archived project pages allow task filtering but disable creation and completion changes; the server also rejects these mutations. Each project row shows completed/total counts across all its tasks. Existing databases are migrated automatically, with existing projects remaining active.
 
@@ -26,6 +26,8 @@ Each task row supports renaming with a trimmed, required title. Renaming preserv
 
 Each task row has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority changes persist independently without changing task titles, completion, ownership, order, filters, or project summaries. Renaming preserves priority. Archived projects disable priority selectors and reject priority changes; restoration enables them with their saved values. Invalid priority values are rejected without modifying data.
 
+Each project page also has a Priority filter with All, Low, Normal, and High options. Both task filters start at All when opening a project from the list. Tasks must match both selected filters and retain creation order. Changing either filter preserves the other selection. Completion and priority edits immediately re-evaluate the rows after submission; renaming retains filter selections. Filters remain enabled in archived projects. Filtering never changes saved tasks or project summaries.
+
 Run syntax checks and integration tests:
 
 ```sh
@@ -33,4 +35,4 @@ npm run check
 npm test
 ```
 
-The integration tests start real server processes on ephemeral ports and verify validation, creation order, escaping, task filtering, project isolation, completion updates, archive/restore, renaming without identity changes, independent task priorities, completion summaries, archived mutation rejection, database migration, and restart persistence using temporary databases that are removed afterward.
+The integration tests start real server processes on ephemeral ports and verify validation, creation order, escaping, task filtering, project isolation, completion updates, archive/restore, renaming without identity changes, independent task priorities, all combined priority/completion filters, filter retention during edits, completion summaries, archived mutation rejection, database migration, and restart persistence using temporary databases that are removed afterward.
