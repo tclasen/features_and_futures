@@ -19,6 +19,7 @@ if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name 
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -46,6 +47,22 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, JSON.stringify(listProjects.all()));
+  }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (renameRoute && req.method === 'PATCH') {
+    const id = Number(renameRoute[1]);
+    const project = Number.isSafeInteger(id) && id > 0 ? getProject.get(id) : null;
+    if (!project) return send(res, 404, JSON.stringify({ error: 'Not found' }));
+    if (project.archived) return send(res, 400, JSON.stringify({ error: 'Archived projects cannot be renamed' }));
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const data = JSON.parse(body);
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+      renameProject.run(name, id);
+      return send(res, 200, JSON.stringify(getProject.get(id)));
+    } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (archiveRoute && req.method === 'POST') {
