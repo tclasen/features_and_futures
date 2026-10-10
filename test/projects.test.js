@@ -273,6 +273,74 @@ test('task rename preserves order, ownership, completion, filters, and archive p
   }
 });
 
+test('priorities migrate, default, stay independent, and persist through rename and archive', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const databasePath = join(directory, 'tasks.sqlite');
+  const oldDb = new DatabaseSync(databasePath);
+  oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('First'), ('Second');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing', 1)`);
+  oldDb.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const html = async (path = '/') => (await fetch(`${server.url}${path}`)).text();
+    const prioritySelect = (body, id) => body.match(new RegExp(`<select id="task-priority-${id}"[^>]*>[\\s\\S]*?<\\/select>`))[0];
+    const normalOptions = /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/;
+    assert.match(prioritySelect(await html('/projects/1'), 1), normalOptions);
+    await post('/projects/1/tasks', { title: 'New task' });
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    assert.match(prioritySelect(await html('/projects/1'), 2), normalOptions);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await post('/projects/1/tasks/1/priority', { priority, filter: 'Completed' });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
+      assert.match(prioritySelect(await html('/projects/1'), 1), new RegExp(`<option selected>${priority}<\\/option>`));
+    }
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    const beforeInvalid = await html('/projects/1');
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 400);
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/priority', { priority: 'Low' })).status, 404);
+    assert.equal(await html('/projects/1'), beforeInvalid);
+    assert.match(prioritySelect(await html('/projects/2'), 3), normalOptions);
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed' });
+    const detail = await html('/projects/1');
+    assert.match(prioritySelect(detail, 1), /<option selected>High<\/option>/);
+    assert.match(prioritySelect(detail, 2), /<option selected>Low<\/option>/);
+    assert.match(detail, /Complete Renamed" checked/);
+    assert.ok(detail.indexOf('<span>Renamed') < detail.indexOf('<span>New task'));
+    assert.doesNotMatch(await html('/projects/1?filter=Open'), /Complete Renamed/);
+    assert.doesNotMatch(await html('/projects/1?filter=Completed'), /Complete New task/);
+    assert.match(await html(), /1\/2 completed/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html('/projects/1'), detail);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assert.match(prioritySelect(archived, 1), / disabled/);
+    assert.match(prioritySelect(archived, 2), / disabled/);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), detail);
+    await post('/projects/1/tasks/2/priority', { priority: 'High', filter: 'Open' });
+    assert.match(prioritySelect(await html('/projects/1?filter=Open'), 2), /<option selected>High<\/option>/);
+    assert.match(await html(), /1\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('tasks validate, filter, stay project-scoped, and persist completion', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
   const databasePath = join(directory, 'tasks.sqlite');
