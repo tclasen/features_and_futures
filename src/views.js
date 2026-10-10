@@ -12,6 +12,7 @@ function page(title, content) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} · Workboard</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
 </head>
 <body><main>${content}</main></body>
 </html>`;
@@ -40,11 +41,38 @@ export function projectsPage(projects, error = '', submittedName = '') {
     </section>`);
 }
 
-export function projectPage(project) {
+export function projectPage(project, tasks = [], filter = 'All', error = '', submittedTitle = '') {
   return page(project.name, `
     <form action="/" method="get"><button class="secondary" type="submit">Projects</button></form>
     <p class="eyebrow detail-label">PROJECT</p>
-    <h1>${escapeHtml(project.name)}</h1>`);
+    <h1>${escapeHtml(project.name)}</h1>
+    <form class="create-form" action="/projects/${project.id}/tasks" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <div class="form-controls">
+        <input id="task-title" name="title" type="text" value="${escapeHtml(submittedTitle)}">
+        <button type="submit">Create task</button>
+      </div>
+      ${error ? `<p class="alert" role="alert">${escapeHtml(error)}</p>` : ''}
+    </form>
+    <form class="task-filter" action="/projects/${project.id}" method="get">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" data-submit-on-change>
+        ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <noscript><button type="submit">Apply filter</button></noscript>
+    </form>
+    <section aria-label="Tasks">
+      ${tasks.length ? tasks.map((task) => `
+        <article class="task-row" data-testid="task-row">
+          <span class="task-title">${escapeHtml(task.title)}</span>
+          <form action="/projects/${project.id}/tasks/${task.id}/completion" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} data-submit-on-change>
+            <noscript><button type="submit">Save completion</button></noscript>
+          </form>
+        </article>`).join('') : '<p class="empty">No tasks to show.</p>'}
+    </section>`);
 }
 
 export function notFoundPage() {

@@ -1,9 +1,19 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { openProjects } from './projects.js';
+import { openWorkboardStore } from './store.js';
 import { notFoundPage, projectPage, projectsPage } from './views.js';
 
 const styles = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+const browserScript = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function redirect(response, location) {
+  response.writeHead(303, { Location: location });
+  response.end();
+}
 
 function send(response, status, body, contentType = 'text/html; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': contentType });
@@ -16,7 +26,7 @@ async function readForm(request) {
   for await (const chunk of request) {
     size += chunk.length;
     if (size > 16384) {
-      const error = new Error('Project form is too large');
+      const error = new Error('Form is too large');
       error.status = 413;
       throw error;
     }
@@ -26,30 +36,57 @@ async function readForm(request) {
 }
 
 export function createWorkboardServer(databasePath) {
-  const projects = openProjects(databasePath);
+  const store = openWorkboardStore(databasePath);
   const server = createServer(async (request, response) => {
     try {
-      const { pathname } = new URL(request.url, 'http://localhost');
+      const { pathname, searchParams } = new URL(request.url, 'http://localhost');
       if (request.method === 'GET' && pathname === '/health') {
         send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
       } else if (request.method === 'GET' && pathname === '/styles.css') {
         send(response, 200, styles, 'text/css; charset=utf-8');
+      } else if (request.method === 'GET' && pathname === '/app.js') {
+        send(response, 200, browserScript, 'text/javascript; charset=utf-8');
       } else if (request.method === 'GET' && pathname === '/') {
-        send(response, 200, projectsPage(projects.list()));
+        send(response, 200, projectsPage(store.list()));
       } else if (request.method === 'POST' && pathname === '/projects') {
         const form = await readForm(request);
         const name = form.get('name') ?? '';
-        const project = projects.create(name);
+        const project = store.create(name);
         if (project.error) {
-          send(response, 400, projectsPage(projects.list(), project.error, name));
+          send(response, 400, projectsPage(store.list(), project.error, name));
         } else {
-          response.writeHead(303, { Location: '/' });
-          response.end();
+          redirect(response, '/');
         }
-      } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(pathname)) {
-        const id = Number(pathname.split('/')[2]);
-        const project = Number.isSafeInteger(id) ? projects.find(id) : undefined;
-        send(response, project ? 200 : 404, project ? projectPage(project) : notFoundPage());
+      } else if (/^\/projects\/[1-9]\d*(?:\/tasks(?:\/[1-9]\d*\/completion)?)?$/.test(pathname)) {
+        const parts = pathname.split('/');
+        const id = Number(parts[2]);
+        const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
+        if (!project) {
+          send(response, 404, notFoundPage());
+        } else if (request.method === 'GET' && parts.length === 3) {
+          const filter = taskFilter(searchParams.get('filter'));
+          send(response, 200, projectPage(project, store.tasks.list(id, filter), filter));
+        } else if (request.method === 'POST' && parts[3] === 'tasks') {
+          const form = await readForm(request);
+          const filter = taskFilter(form.get('filter'));
+          if (parts.length === 4) {
+            const title = form.get('title') ?? '';
+            const task = store.tasks.create(id, title);
+            if (task.error) {
+              send(response, 400, projectPage(project, store.tasks.list(id, filter), filter, task.error, title));
+              return;
+            }
+          } else {
+            const taskId = Number(parts[4]);
+            if (!Number.isSafeInteger(taskId) || !store.tasks.setCompleted(id, taskId, form.get('completed') === 'on')) {
+              send(response, 404, notFoundPage());
+              return;
+            }
+          }
+          redirect(response, `/projects/${id}?filter=${filter}`);
+        } else {
+          send(response, 404, notFoundPage());
+        }
       } else {
         send(response, 404, notFoundPage());
       }
@@ -62,6 +99,6 @@ export function createWorkboardServer(databasePath) {
       }
     }
   });
-  server.on('close', () => projects.close());
+  server.on('close', () => store.close());
   return server;
 }
