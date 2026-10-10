@@ -6,9 +6,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks validate, retain order and ownership, and persist across restart', async () => {
+test('projects, tasks, archives and summaries persist; older databases migrate', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
+  const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
+  legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  legacy.close();
   const socket = createServer();
   socket.listen(0, '127.0.0.1');
   await once(socket, 'listening');
@@ -60,6 +64,9 @@ test('projects and tasks validate, retain order and ownership, and persist acros
     const first = await firstResponse.json();
     const second = await (await create('Second project')).json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, 0);
+    assert.equal(first.total, 0);
+    assert.equal(first.completed, 0);
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await list(), [first, second]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
@@ -102,17 +109,33 @@ test('projects and tasks validate, retain order and ownership, and persist acros
     assert.equal((await complete(task, true)).status, 200);
     assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
     assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
+    async function archive(archived) {
+      return fetch(`${base}/api/projects/${first.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
+      });
+    }
+    assert.equal((await archive('true')).status, 400);
+    const archived = await (await archive(true)).json();
+    assert.deepEqual(archived, { ...first, archived: 1, total: 2, completed: 1 });
+    assert.deepEqual(await list(), [archived, second]);
+    assert.equal((await createTask('Not allowed')).status, 403);
+    assert.equal((await complete(task, false)).status, 403);
     await stop();
     await start();
+    assert.deepEqual(await list(), [archived, second]);
     assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
     assert.deepEqual(await tasks(second), []);
+    assert.equal((await complete(task, false)).status, 403);
+    const restored = await (await archive(false)).json();
+    assert.deepEqual(restored, { ...first, total: 2, completed: 1 });
     assert.equal((await complete(task, false)).status, 200);
     assert.deepEqual(await tasks(), [task, next]);
     await stop();
     await start();
     assert.deepEqual(await tasks(), [task, next]);
-    assert.deepEqual(await list(), [first, second]);
-    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    const finalProject = { ...first, total: 2 };
+    assert.deepEqual(await list(), [finalProject, second]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), finalProject);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
