@@ -13,6 +13,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0
+)`);
 
 const page = await readFile(join(root, 'public', 'index.html'));
 const script = await readFile(join(root, 'public', 'app.js'));
@@ -50,6 +56,32 @@ const server = createServer(async (req, res) => {
     return project
       ? send(res, 200, JSON.stringify(project))
       : send(res, 404, JSON.stringify({ error: 'Project not found' }));
+  }
+  const tasksRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksRoute) {
+    const projectId = Number(tasksRoute[1]);
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (req.method === 'GET') {
+      return send(res, 200, JSON.stringify(db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)));
+    }
+    if (req.method === 'POST') {
+      const input = await readJson(req);
+      const title = typeof input?.title === 'string' ? input.title.trim() : '';
+      if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: 0 }));
+    }
+  }
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  if (req.method === 'PATCH' && taskRoute) {
+    const [projectId, taskId] = taskRoute.slice(1).map(Number);
+    const input = await readJson(req);
+    if (typeof input?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Completion state is required' }));
+    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(input.completed ? 1 : 0, taskId, projectId);
+    return result.changes
+      ? send(res, 200, JSON.stringify({ id: taskId, projectId, completed: input.completed ? 1 : 0 }))
+      : send(res, 404, JSON.stringify({ error: 'Task not found' }));
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
     return send(res, 200, script, 'text/javascript; charset=utf-8');
