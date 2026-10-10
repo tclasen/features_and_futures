@@ -184,14 +184,27 @@ async function showProject(id) {
     option.textContent = value;
     filter.append(option);
   }
+  const priorityFilterLabel = document.createElement('label');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  priorityFilterLabel.textContent = 'Priority filter';
+  const priorityFilter = document.createElement('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = document.createElement('option');
+    option.value = value.toLowerCase();
+    option.textContent = value;
+    priorityFilter.append(option);
+  }
   const list = document.createElement('section');
   list.className = 'task-list';
   list.setAttribute('aria-label', 'Tasks');
-  view.append(back, renameForm, form, filterLabel, filter, list);
+  view.append(back, renameForm, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
 
   async function refresh() {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
-    const visible = tasks.filter((task) => filter.value === 'all' || (filter.value === 'completed') === task.completed);
+    const visible = tasks.filter((task) =>
+      (filter.value === 'all' || (filter.value === 'completed') === task.completed)
+      && (priorityFilter.value === 'all' || priorityFilter.value === task.priority.toLowerCase()));
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('article');
       row.className = 'task-row';
@@ -266,6 +279,7 @@ async function showProject(id) {
   }
 
   filter.addEventListener('change', () => refresh().catch(showTaskError));
+  priorityFilter.addEventListener('change', () => refresh().catch(showTaskError));
   function showTaskError(error) {
     alert.textContent = error.message;
     alert.hidden = false;
