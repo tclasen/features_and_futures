@@ -75,11 +75,21 @@ export function renderProjects(projects, error = '', filter = 'Active') {
   `);
 }
 
-export function renderProject(project, tasks = [], filter = 'All', error = '') {
+export function renderProject(project, tasks = [], filter = 'All', error = '', renameError = '') {
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <section class="panel" aria-label="Rename a project">
+      <form method="post" action="/projects/${project.id}/rename?filter=${filter}">
+        <label for="new-project-name">New project name</label>
+        <div class="create">
+          <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}${renameError ? ' aria-invalid="true" aria-describedby="rename-error"' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+        </div>
+        ${renameError ? `<p id="rename-error" role="alert">${escapeHtml(renameError)}</p>` : ''}
+      </form>
+    </section>
     <section class="panel" aria-label="Create a task">
       <form method="post" action="/projects/${project.id}/tasks?filter=${filter}">
         <label for="task-title">Task title</label>

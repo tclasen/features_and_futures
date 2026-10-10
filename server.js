@@ -34,6 +34,7 @@ const listProjects = db.prepare(`
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -52,10 +53,10 @@ function taskFilter(url) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter, error = '') {
+function projectPage(project, filter, error = '', renameError = '') {
   const tasks = listTasks.all(project.id).filter(task =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
-  return renderProject(project, tasks, filter, error);
+  return renderProject(project, tasks, filter, error, renameError);
 }
 
 async function formData(req) {
@@ -111,6 +112,26 @@ const server = http.createServer(async (req, res) => {
       const project = findProject.get(match[1]);
       if (project) {
         html(res, 200, projectPage(project, taskFilter(url)));
+        return;
+      }
+    }
+    const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(url.pathname);
+    if (req.method === 'POST' && renameMatch) {
+      const project = findProject.get(renameMatch[1]);
+      if (project) {
+        const filter = taskFilter(url);
+        if (project.archived) {
+          html(res, 403, projectPage(project, filter, '', 'Archived project is read-only'));
+          return;
+        }
+        const name = ((await formData(req)).get('name') || '').trim();
+        if (!name) {
+          html(res, 400, projectPage(project, filter, '', 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.end();
         return;
       }
     }
