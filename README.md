@@ -17,6 +17,9 @@ Active project pages also support renaming. Names are trimmed and required;
 renaming preserves the project's URL, position, tasks, and completion state.
 Archived projects cannot be renamed until restored. Renamed project names
 persist in the same SQLite database.
+Each active task row supports renaming with a trimmed, required title. Task
+renaming preserves ownership, creation order, completion, and filter membership.
+Archived task rename controls are disabled until the project is restored.
 `GET /health` returns
 `{"status":"ok"}`.
 

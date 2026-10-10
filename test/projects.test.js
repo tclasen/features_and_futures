@@ -252,6 +252,70 @@ test('projects and tasks: validation, ownership, filters, archive, rename, and r
     base = await start();
     assert.equal(await taskPage(), restoredRenamedPage);
     assert.equal(await projectList(), restoredListing);
+    const renameTask = (title, taskId = taskIds[1], projectId = ids[0], filter = 'All') =>
+      fetch(`${base}/projects/${projectId}/tasks/${taskId}/rename`, {
+        method: 'POST', body: new URLSearchParams({ title, filter }), redirect: 'manual',
+      });
+    for (const row of rows(await taskPage())) {
+      assert.match(row, /<label for="new-task-title-\d+">New task title<\/label>/);
+      assert.match(row, /<button type="submit">Rename task<\/button>/);
+    }
+    assert.equal((await renameTask('Wrong project', taskIds[1], ids[1])).status, 404);
+    assert.equal((await renameTask('Missing task', '999999')).status, 404);
+    assert.equal((await renameTask('Missing project', taskIds[1], '999999')).status, 404);
+    for (const title of ['', ' \t\n ']) {
+      const response = await renameTask(title, taskIds[1], ids[0], 'Completed');
+      assert.equal(response.status, 422);
+      const html = await response.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(rows(html).length, 1);
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.equal(await taskPage(), restoredRenamedPage);
+      assert.equal(await projectList(), restoredListing);
+    }
+    const taskRename = await renameTask('  Renamed <task & "title">  ', taskIds[1], ids[0], 'Completed');
+    assert.equal(taskRename.status, 303);
+    assert.equal(taskRename.headers.get('location'), `/projects/${ids[0]}?filter=Completed`);
+    const taskRenamedPage = await taskPage();
+    const taskRenamedRows = rows(taskRenamedPage);
+    assert.equal(taskRenamedRows[0], rows(restoredRenamedPage)[0]);
+    assert.match(taskRenamedRows[1], /<span>Renamed &lt;task &amp; &quot;title&quot;&gt;<\/span>/);
+    assert.match(taskRenamedRows[1], /aria-label="Complete Renamed &lt;task &amp; &quot;title&quot;&gt;" checked/);
+    assert.match(taskRenamedRows[1], /value="Renamed &lt;task &amp; &quot;title&quot;&gt;"/);
+    assert.match(taskRenamedRows[1], new RegExp(`/tasks/${taskIds[1]}/rename`));
+    assert.deepEqual(rows(await taskPage(ids[0], 'Completed')), [taskRenamedRows[1].replace('value="All"', 'value="Completed"').replace('value="All"', 'value="Completed"')]);
+    assert.equal(rows(await taskPage(ids[0], 'Open')).length, 1);
+    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(await projectList(), restoredListing);
+    assert.equal((await renameTask(' Renamed open task ', taskIds[0])).status, 303);
+    assert.match(rows(await taskPage(ids[0], 'Open'))[0], /aria-label="Complete Renamed open task"/);
+    assert.doesNotMatch(rows(await taskPage())[0], / checked/);
+    const bothRenamedPage = await taskPage();
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), bothRenamedPage);
+    assert.equal(await projectList(), restoredListing);
+    assert.equal((await archive('archive')).status, 303);
+    const archivedTasksPage = await taskPage();
+    for (const row of rows(archivedTasksPage)) {
+      assert.match(row, /id="new-task-title-\d+"[^>]* disabled/);
+      assert.match(row, /<button type="submit" disabled>Rename task<\/button>/);
+    }
+    assert.equal((await renameTask('Forbidden')).status, 403);
+    assert.equal(await taskPage(), archivedTasksPage);
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), archivedTasksPage);
+    assert.equal((await archive('restore')).status, 303);
+    assert.equal(await taskPage(), bothRenamedPage);
+    assert.equal(await projectList(), restoredListing);
+    assert.equal((await renameTask(' Restored task ')).status, 303);
+    assert.match(rows(await taskPage())[1], /aria-label="Complete Restored task" checked/);
+    const finalPage = await taskPage();
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), finalPage);
+    assert.equal(await projectList(), restoredListing);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
