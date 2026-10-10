@@ -144,9 +144,10 @@ const server = http.createServer(async (req, res) => {
         if (payload.dueDate !== null && typeof payload.dueDate !== 'string') return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
         const dueDate = typeof payload.dueDate === 'string' ? payload.dueDate.trim() || null : null;
         if (dueDate !== null && !isValidDueDate(dueDate)) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
-        updateTaskDueDate.run(dueDate, taskMatch[2], taskMatch[1]);
         const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], taskMatch[1]);
-        return task ? json(res, 200, { dueDate }) : json(res, 404, { error: 'Task not found' });
+        if (!task) return json(res, 404, { error: 'Task not found' });
+        updateTaskDueDate.run(dueDate, taskMatch[2], taskMatch[1]);
+        return json(res, 200, { dueDate });
       }
       if (typeof payload.priority === 'string') {
         if (!['Low', 'Normal', 'High'].includes(payload.priority)) return json(res, 400, { error: 'Invalid task priority' });
