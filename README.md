@@ -19,7 +19,10 @@ with New project name and Rename project without changing their URL or tasks.
 Each task row has New task title and Rename task controls; renaming preserves
 its order, ownership and completion state. Each task also has a Task priority
 selector (Low, Normal, High), defaulting to Normal. Priorities persist independently
-and survive renaming. Archived task rename and priority controls are disabled.
+and survive renaming. Priority filter (All, Low, Normal, High) combines with
+Task filter; both selections are retained through task edits. Matching tasks stay
+in creation order. Archived task rename and priority controls are disabled,
+but both filters remain usable.
 Project rows show completed/total task counts. Existing
 SQLite databases are migrated automatically to preserve projects and tasks.
 
@@ -33,5 +36,6 @@ Tests use a temporary SQLite database outside the repository and check health,
 validation, ordering, safe rendering, navigation, task ownership, completion,
 filtering, archive/restore, completion summaries, database migration, read-only
 archived pages, project and task rename validation and identity preservation,
-task priority defaults, migration, independence and validation, and persistence
+task priority defaults, migration, independence and validation, combined filters
+and selection preservation through edits, and persistence
 across restarts.
