@@ -15,6 +15,28 @@ function validDate(value) {
   return day >= 1 && day <= days[month - 1];
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
+function searchForm(kind, apply) {
+  const form = element('form');
+  const label = element('label', `${kind} search`);
+  label.htmlFor = `${kind.toLowerCase()}-search`;
+  const input = element('input');
+  input.id = label.htmlFor;
+  input.type = 'text';
+  const button = element('button', kind === 'Project' ? 'Search projects' : 'Search tasks');
+  button.type = 'submit';
+  form.append(label, input, button);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    input.value = input.value.trim();
+    apply(asciiLower(input.value));
+  });
+  return form;
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
@@ -53,7 +75,12 @@ async function showProjects() {
     option.value = name;
     filter.append(option);
   }
-  app.append(filterLabel, filter);
+  let query = '';
+  const search = searchForm('Project', value => {
+    query = value;
+    render();
+  });
+  app.append(filterLabel, filter, search);
   let projects = [];
   const list = element('section');
   list.setAttribute('aria-label', 'Projects');
@@ -63,6 +90,7 @@ async function showProjects() {
     list.replaceChildren();
     for (const project of projects) {
       if (Boolean(project.archived) !== (filter.value === 'Archived')) continue;
+      if (!asciiLower(project.name).includes(query)) continue;
       const row = element('div');
       row.className = 'project-row';
       row.dataset.testid = 'project-row';
@@ -260,7 +288,12 @@ async function showProject(id) {
     });
     const list = element('section');
     list.setAttribute('aria-label', 'Tasks');
-    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, rangeForm, list);
+    let query = '';
+    const search = searchForm('Task', value => {
+      query = value;
+      render();
+    });
+    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, rangeForm, search, list);
     let tasks = [];
     function showError(error) {
       alert.textContent = error.message;
@@ -269,6 +302,7 @@ async function showProject(id) {
     function render() {
       list.replaceChildren();
       for (const task of tasks) {
+        if (!asciiLower(task.title).includes(query)) continue;
         if (filter.value === 'Open' && task.completed) continue;
         if (filter.value === 'Completed' && !task.completed) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -329,6 +363,7 @@ async function showProject(id) {
             checkbox.setAttribute('aria-label', `Complete ${saved.title}`);
             taskRenameInput.value = '';
             taskRenameInput.focus();
+            render();
           } catch (error) { showError(error); }
           finally { taskRename.disabled = Boolean(project.archived); }
         });
