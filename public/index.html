@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #202938; background: #f4f6f9; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 64px auto; padding: 32px; background: white; border-radius: 12px; box-shadow: 0 4px 18px #16243a12; }
+    h1 { margin-top: 0; }
+    form { display: flex; gap: 12px; align-items: end; margin: 24px 0; }
+    label { display: grid; gap: 6px; flex: 1; font-weight: 600; }
+    input, button { font: inherit; padding: 10px 12px; border-radius: 6px; }
+    input { border: 1px solid #aab4c2; }
+    button { border: 0; background: #2459c4; color: white; cursor: pointer; }
+    button:hover { background: #19479f; }
+    .project-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid #e3e7ed; }
+    .alert { color: #a32626; margin: 12px 0; }
+    @media (max-width: 600px) { main { margin: 20px; padding: 22px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapePath = id => `/projects/${encodeURIComponent(id)}`;
+    async function projects() {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error('Unable to load projects');
+      return response.json();
+    }
+    async function renderList() {
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Workboard';
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.textContent = 'Project name';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Project name');
+      label.append(input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create project';
+      form.append(label, submit);
+      const alert = document.createElement('div');
+      alert.className = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+          alert.textContent = 'Project name is required';
+          alert.hidden = false;
+          return;
+        }
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (response.ok) renderList();
+      });
+      app.append(heading, form, alert);
+      for (const project of await projects()) {
+        const row = document.createElement('div');
+        row.className = 'project-row';
+        row.dataset.testid = 'project-row';
+        const name = document.createElement('span');
+        name.textContent = project.name;
+        const open = document.createElement('button');
+        open.textContent = 'Open project';
+        open.addEventListener('click', () => { location.href = escapePath(project.id); });
+        row.append(name, open);
+        app.append(row);
+      }
+    }
+    async function renderProject(id) {
+      const project = (await projects()).find(item => String(item.id) === id);
+      if (!project) { location.replace('/'); return; }
+      app.replaceChildren();
+      const back = document.createElement('button');
+      back.textContent = 'Projects';
+      back.addEventListener('click', () => { location.href = '/'; });
+      const heading = document.createElement('h1');
+      heading.textContent = project.name;
+      app.append(back, heading);
+    }
+    const match = location.pathname.match(/^\/projects\/(\d+)$/);
+    (match ? renderProject(match[1]) : renderList()).catch(error => {
+      app.textContent = error.message;
+    });
+  </script>
+</body>
+</html>
