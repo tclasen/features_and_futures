@@ -102,6 +102,7 @@
     let activeProjectArchived = false;
     let taskLoadVersion = 0;
     let loadedTasks = [];
+    let activeProjects = [];
     let appliedDueFrom = '';
     let appliedDueThrough = '';
 
@@ -199,6 +200,9 @@
       // the rows produced by the newest selection.
       if (loadVersion !== taskLoadVersion) return;
       loadedTasks = allTasks;
+      const projectsResponse = await fetch('/api/projects?archived=false');
+      if (loadVersion !== taskLoadVersion) return;
+      activeProjects = await projectsResponse.json();
       renderTasks();
     }
 
@@ -308,7 +312,33 @@
           });
           await loadTasks();
         });
-        row.append(checkbox, title, priority, renameForm, dueForm);
+        const destinationForm = document.createElement('form');
+        destinationForm.className = 'task-due-form';
+        const destination = document.createElement('select');
+        destination.setAttribute('aria-label', 'Destination project');
+        const eligible = activeProjects.filter(project => String(project.id) !== String(activeProjectId));
+        for (const project of eligible) {
+          const option = document.createElement('option');
+          option.value = project.id;
+          option.textContent = project.name;
+          destination.append(option);
+        }
+        destination.disabled = activeProjectArchived || eligible.length === 0;
+        const moveButton = document.createElement('button');
+        moveButton.type = 'submit';
+        moveButton.textContent = 'Move task';
+        moveButton.disabled = activeProjectArchived || eligible.length === 0;
+        destinationForm.append(destination, moveButton);
+        destinationForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (!destination.value) return;
+          const result = await fetch(`/api/tasks/${task.id}/move`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) })
+          });
+          if (result.ok) await loadTasks();
+        });
+        row.append(checkbox, title, priority, renameForm, dueForm, destinationForm);
         return row;
       }));
     }

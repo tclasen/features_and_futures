@@ -122,8 +122,24 @@ const server = createServer(async (req, res) => {
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const taskMoveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
   const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
   const taskDueDateMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
+  if (req.method === 'POST' && taskMoveMatch) {
+    let data;
+    try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    const destinationId = Number(data.destination_project_id);
+    if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return sendJson(res, 400, { error: 'Invalid destination project' });
+    const taskId = Number(taskMoveMatch[1]);
+    const task = db.prepare('SELECT t.id, t.project_id, p.archived FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(taskId);
+    if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    if (task.archived) return sendJson(res, 409, { error: 'Archived project' });
+    if (Number(task.project_id) === destinationId) return sendJson(res, 400, { error: 'Destination must be another project' });
+    const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+    if (!destination) return sendJson(res, 400, { error: 'Invalid destination project' });
+    db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?').run(destinationId, taskId);
+    return sendJson(res, 200, { ok: true });
+  }
   if (req.method === 'POST' && taskDueDateMatch) {
     let data;
     try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
