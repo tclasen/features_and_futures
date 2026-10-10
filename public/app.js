@@ -168,10 +168,14 @@ async function render() {
   list.className = 'project-list';
   root.append(list);
 
+  let projectLoad = 0;
   async function loadProjects() {
+    const loadId = ++projectLoad;
     list.replaceChildren();
     const response = await fetch('/api/projects');
     const projects = await response.json();
+    // Ignore stale responses when multiple renders are requested in quick succession.
+    if (loadId !== projectLoad) return;
     // Repeated test fixtures can leave prior runs in the shared database. Present
     // the newest project for a name so the current fixture remains actionable.
     const newestByName = new Map();
