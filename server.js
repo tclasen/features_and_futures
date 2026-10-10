@@ -30,6 +30,7 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -81,6 +82,18 @@ const server = createServer(async (request, response) => {
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
     const result = updateTask.run(body.completed ? 1 : 0, Number(taskUpdateMatch[2]), Number(taskUpdateMatch[1]));
     return result.changes ? sendJson(response, 200, getTask.get(Number(taskUpdateMatch[2]))) : sendJson(response, 404, { error: 'Task not found' });
+  }
+  const taskRenameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename$/);
+  if (taskRenameMatch && request.method === 'PATCH') {
+    const projectId = Number(taskRenameMatch[1]);
+    const taskId = Number(taskRenameMatch[2]);
+    const project = getProject.get(projectId);
+    if (!project || project.archived) return sendJson(response, 404, { error: 'Active project not found' });
+    const body = await readBody(request);
+    const title = typeof body?.title === 'string' ? body.title.trim() : '';
+    if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+    const result = renameTask.run(title, taskId, projectId);
+    return result.changes ? sendJson(response, 200, getTask.get(taskId)) : sendJson(response, 404, { error: 'Task not found' });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && request.method === 'GET') {
