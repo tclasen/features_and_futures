@@ -35,10 +35,19 @@ function renderProject(project) {
     <p id="rename-alert" class="alert" role="alert" hidden></p>
     <form id="task-form"><label for="task-title">Task title</label><div class="create-line"><input id="task-title" type="text"><button type="submit">Create task</button></div></form>
     <p id="task-alert" class="alert" role="alert" hidden></p>
+    <label for="default-priority">Default task priority</label><select id="default-priority"><option>Low</option><option>Normal</option><option>High</option></select>
     <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
     <label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
     <section id="tasks" aria-label="Tasks"></section>`;
   document.querySelector('#task-form button').disabled = project.archived;
+  const defaultPriority = document.querySelector('#default-priority');
+  defaultPriority.value = project.default_priority || 'Normal';
+  defaultPriority.disabled = project.archived;
+  defaultPriority.addEventListener('change', async () => {
+    try {
+      await request(`/api/projects/${encodeURIComponent(project.id)}/default-priority`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
+    } catch (error) { alert(error.message); }
+  });
   document.querySelector('#rename-form input').disabled = project.archived;
   document.querySelector('#rename-form button').disabled = project.archived;
   document.querySelector('#rename-form').addEventListener('submit', event => renameProject(event, project.id));

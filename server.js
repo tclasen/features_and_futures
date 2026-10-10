@@ -11,7 +11,7 @@ const dbPath = resolve(process.env.DB_PATH || join(root, 'workboard.sqlite'));
 await mkdir(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
-  CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High')));
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -23,6 +23,7 @@ db.exec(`
 `);
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!projectColumns.some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 
@@ -31,7 +32,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok' });
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return json(res, 200, db.prepare('SELECT p.id, p.name, p.archived, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count FROM projects p ORDER BY p.created_at, p.rowid').all().map(project => ({ ...project, archived: Boolean(project.archived) })));
+    return json(res, 200, db.prepare('SELECT p.id, p.name, p.archived, p.default_priority, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count FROM projects p ORDER BY p.created_at, p.rowid').all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/?$/);
   if (tasksMatch && req.method === 'GET') {
@@ -49,7 +50,7 @@ const server = http.createServer(async (req, res) => {
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) return json(res, 400, { error: 'Task title is required' });
       const id = randomUUID();
-      db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)').run(id, projectId, title, Date.now());
+      db.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, (SELECT default_priority FROM projects WHERE id = ?), ?)').run(id, projectId, title, projectId, Date.now());
       return json(res, 201, { id, title, completed: false });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
@@ -94,6 +95,16 @@ const server = http.createServer(async (req, res) => {
       const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, id);
       if (!result.changes) return json(res, 404, { error: 'Active project not found' });
       return json(res, 200, { id, name });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority\/?$/);
+  if (defaultPriorityMatch && req.method === 'PATCH') {
+    try {
+      const body = await readBody(req);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(res, 400, { error: 'Invalid task priority' });
+      const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(body.priority, decodeURIComponent(defaultPriorityMatch[1]));
+      if (!result.changes) return json(res, 404, { error: 'Active project not found' });
+      return json(res, 200, { default_priority: body.priority });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)\/?$/);
