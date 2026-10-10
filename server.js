@@ -128,17 +128,35 @@ function validDueDate(value) {
   return day >= 1 && day <= days[month - 1];
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
+function matchesSearch(value, query) {
+  return asciiLower(value).includes(asciiLower(query));
+}
+
+function projectsLocation(filter, search) {
+  const params = new URLSearchParams();
+  if (filter === 'Archived') params.set('filter', filter);
+  if (search) params.set('search', search);
+  return params.size ? `/?${params}` : '/';
+}
+
+// Carry the applied search alongside the range through every task-page action.
 function dueRange(params) {
   const from = (params.get('dueFrom') || '').trim();
   const through = (params.get('dueThrough') || '').trim();
   return validDueDate(from) && validDueDate(through) && (!from || !through || from <= through)
-    ? { from, through } : { from: '', through: '' };
+    ? { from, through, search: (params.get('search') || '').trim() }
+    : { from: '', through: '', search: (params.get('search') || '').trim() };
 }
 
 function rangeQuery(range) {
   const params = new URLSearchParams();
   if (range.from) params.set('dueFrom', range.from);
   if (range.through) params.set('dueThrough', range.through);
+  if (range.search) params.set('search', range.search);
   return params.size ? `&${params}` : '';
 }
 
@@ -186,29 +204,39 @@ function page(title, content) {
 </html>`;
 }
 
-function projectsPage(error = '', filter = 'Active') {
-  const projects = listProjects.all(filter === 'Archived' ? 1 : 0);
+function projectsPage(error = '', filter = 'Active', search = '') {
+  const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
+    .filter(project => matchesSearch(project.name, search));
+  const searchField = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
   return page('Projects', `
     <h1>Workboard</h1>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create" method="post" action="/projects">
       <input type="hidden" name="filter" value="${filter}">
+      ${searchField}
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text">
       <button type="submit">Create project</button>
     </form>
     <form class="filter" method="get" action="/">
+      ${searchField}
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['Active', 'Archived'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form class="filter" method="get" action="/">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-search">Project search</label>
+      <input id="project-search" name="search" type="text" value="${escapeHtml(search)}">
+      <button type="submit">Search projects</button>
     </form>
     <section class="projects" aria-label="Projects">
       ${projects.map(project => `<div class="project" data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form method="get" action="/projects/${project.id}"><button type="submit">Open project</button></form>
-        <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}"><button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button></form>
+        <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}">${searchField}<button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button></form>
       </div>`).join('')}
     </section>`);
 }
@@ -217,10 +245,12 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
   const eligibleDestinations = destinations.all(project.id);
   const moveDisabled = project.archived || eligibleDestinations.length === 0;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${range.from}">
-      <input type="hidden" name="dueThrough" value="${range.through}">`;
+      <input type="hidden" name="dueThrough" value="${range.through}">
+      <input type="hidden" name="search" value="${escapeHtml(range.search || '')}">`;
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priority}">${rangeFields}`;
   const tasks = listTasks.all(project.id).filter(task =>
+    matchesSearch(task.title, range.search || '') &&
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) &&
     ((!range.from && !range.through) || (task.due_date &&
@@ -268,6 +298,15 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
       <label for="due-through">Due through</label>
       <input id="due-through" name="through" type="text" value="${range.through}">
       <button type="submit">Apply due range</button>
+    </form>
+    <form class="filter" method="get" action="/projects/${project.id}">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priority}">
+      <input type="hidden" name="dueFrom" value="${range.from}">
+      <input type="hidden" name="dueThrough" value="${range.through}">
+      <label for="task-search">Task search</label>
+      <input id="task-search" name="search" type="text" value="${escapeHtml(range.search || '')}">
+      <button type="submit">Search tasks</button>
     </form>
     <section class="tasks" aria-label="Tasks">
       ${tasks.map(task => `<div class="task" data-testid="task-row">
@@ -333,16 +372,16 @@ const server = http.createServer(async (request, response) => {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
     } else if (request.method === 'GET' && url.pathname === '/') {
-      sendHtml(response, 200, projectsPage('', projectFilter(url.searchParams.get('filter'))));
+      sendHtml(response, 200, projectsPage('', projectFilter(url.searchParams.get('filter')), (url.searchParams.get('search') || '').trim()));
     } else if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
       const name = (form.get('name') || '').trim();
       if (!name) {
-        sendHtml(response, 200, projectsPage('Project name is required', projectFilter(form.get('filter'))));
+        sendHtml(response, 200, projectsPage('Project name is required', projectFilter(form.get('filter')), (form.get('search') || '').trim()));
         return;
       }
       createProject.run(name);
-      response.writeHead(303, { Location: '/' });
+      response.writeHead(303, { Location: projectsLocation(projectFilter(form.get('filter')), (form.get('search') || '').trim()) });
       response.end();
     } else if (request.method === 'POST' && /^\/projects\/\d+\/due-range$/.test(url.pathname)) {
       const projectId = Number(url.pathname.split('/')[2]);
@@ -363,7 +402,7 @@ const server = http.createServer(async (request, response) => {
         sendHtml(response, 200, projectPage(project, filter, error, priority, dueRange(form)));
         return;
       }
-      response.writeHead(303, { Location: `/projects/${projectId}?filter=${filter}&priorityFilter=${priority}${rangeQuery({ from, through })}` });
+      response.writeHead(303, { Location: `/projects/${projectId}?filter=${filter}&priorityFilter=${priority}${rangeQuery({ from, through, search: (form.get('search') || '').trim() })}` });
       response.end();
     } else if (request.method === 'POST' && /^\/projects\/\d+\/default-priority$/.test(url.pathname)) {
       const projectId = Number(url.pathname.split('/')[2]);
@@ -417,8 +456,9 @@ const server = http.createServer(async (request, response) => {
         sendHtml(response, 404, page('Not found', '<h1>Project not found</h1>'));
         return;
       }
+      const form = await readForm(request);
       setArchived.run(action === 'archive' ? 1 : 0, projectId);
-      response.writeHead(303, { Location: action === 'archive' ? '/' : '/?filter=Archived' });
+      response.writeHead(303, { Location: projectsLocation(action === 'archive' ? 'Active' : 'Archived', (form.get('search') || '').trim()) });
       response.end();
     } else if (request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
