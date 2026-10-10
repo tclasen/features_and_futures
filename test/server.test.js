@@ -7,7 +7,55 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('project and task renames preserve identity, ownership, completion and summaries across archives and restarts', async () => {
+test('pre-priority databases migrate existing open and completed tasks without data loss', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const dbPath = join(directory, 'legacy.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name, archived) VALUES ('Existing project', 1);
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing open task', 0), (1, 'Existing completed task', 1);
+  `);
+  legacy.close();
+  try {
+    for (let restart = 0; restart < 2; restart++) {
+      const child = spawn(process.execPath, ['server.js'], {
+        env: { ...process.env, PORT: '0', DB_PATH: dbPath }, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      try {
+        const port = await new Promise((resolve, reject) => {
+          let output = '';
+          const timer = setTimeout(() => reject(new Error('Server startup timed out')), 5000);
+          child.once('error', (error) => { clearTimeout(timer); reject(error); });
+          child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`Server exited: ${code}`)); });
+          child.stdout.on('data', (chunk) => {
+            output += chunk;
+            const match = output.match(/listening on port (\d+)/);
+            if (match) { clearTimeout(timer); resolve(match[1]); }
+          });
+        });
+        const base = `http://127.0.0.1:${port}`;
+        assert.deepEqual(await (await fetch(`${base}/api/projects/1/tasks`)).json(), [
+          { id: 1, title: 'Existing open task', completed: false, priority: 'Normal' },
+          { id: 2, title: 'Existing completed task', completed: true, priority: 'Normal' },
+        ]);
+        assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [
+          { id: 1, name: 'Existing project', archived: 1, total: 2, completed: 1 },
+        ]);
+      } finally {
+        if (child.exitCode === null) {
+          const done = once(child, 'exit');
+          child.kill('SIGTERM');
+          await done;
+        }
+      }
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('priorities and renames preserve identity, ownership, completion and summaries across archives and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
   legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
@@ -74,6 +122,9 @@ test('project and task renames preserve identity, ownership, completion and summ
     const renameTask = (project, task, title) => fetch(taskUrl(project, task.id), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
+    const prioritizeTask = (project, task, priority) => fetch(taskUrl(project, task.id), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+    });
     const readTasks = async (project) => (await fetch(taskUrl(project))).json();
     for (const title of ['', '  \t\n']) {
       const invalid = await createTask(first, title);
@@ -86,8 +137,23 @@ test('project and task renames preserve identity, ownership, completion and summ
     let task = await taskResponse.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
+    assert.equal(task.priority, 'Normal');
     const nextTask = await (await createTask(first, '<Another & task>')).json();
     const otherTask = await (await createTask(second, 'Other project task')).json();
+    assert.equal(nextTask.priority, 'Normal');
+    assert.equal(otherTask.priority, 'Normal');
+    for (const priority of ['', 'Urgent', 'high', null, 1]) {
+      assert.equal((await prioritizeTask(first, task, priority)).status, 400);
+      assert.deepEqual(await readTasks(first), [task, nextTask]);
+    }
+    assert.equal((await prioritizeTask(second, task, 'High')).status, 404);
+    assert.equal((await prioritizeTask(first, { id: 99999 }, 'High')).status, 404);
+    const high = await prioritizeTask(first, task, 'High');
+    assert.equal(high.status, 200);
+    assert.deepEqual(await high.json(), { ...task, priority: 'High' });
+    task = { ...task, priority: 'High' };
+    assert.deepEqual(await (await prioritizeTask(first, nextTask, 'Low')).json(), { ...nextTask, priority: 'Low' });
+    nextTask.priority = 'Low';
     assert.deepEqual(await readTasks(first), [task, nextTask]);
     assert.deepEqual(await readTasks(second), [otherTask]);
     assert.equal((await completeTask(second, task, true)).status, 404);
@@ -145,6 +211,7 @@ test('project and task renames preserve identity, ownership, completion and summ
     assert.equal((await createTask(first, 'Cannot create while archived')).status, 409);
     assert.equal((await completeTask(first, task, false)).status, 409);
     assert.equal((await renameTask(first, task, 'Cannot rename while archived')).status, 409);
+    assert.equal((await prioritizeTask(first, task, 'Normal')).status, 409);
     assert.deepEqual(await readTasks(first), [completed, nextTask]);
     await stop();
     base = await start();
@@ -161,6 +228,9 @@ test('project and task renames preserve identity, ownership, completion and summ
     assert.deepEqual(await (await archive(first, false)).json(), first);
     assert.deepEqual(await readTasks(first), [completed, nextTask]);
     const restoredTitle = 'Restored task';
+    assert.deepEqual(await (await prioritizeTask(first, task, 'Normal')).json(), { ...completed, priority: 'Normal' });
+    completed = { ...completed, priority: 'Normal' };
+    task = { ...task, priority: 'Normal' };
     assert.deepEqual(await (await renameTask(first, task, `  ${restoredTitle}  `)).json(), {
       ...completed, title: restoredTitle,
     });

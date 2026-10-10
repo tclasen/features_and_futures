@@ -16,6 +16,8 @@ Active project pages provide New project name and Rename project controls. Renam
 
 Each task row provides New task title and Rename task controls. Renaming trims whitespace and preserves the task's project, position, completion and summary counts. Blank titles show an alert. Archived projects disable these controls until restored. Task titles persist across reloads and restarts.
 
+Each task row has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Each priority persists independently across reloads and restarts, including task renames and project archive/restoration. Archived projects disable priority edits.
+
 Health check:
 
 ```sh

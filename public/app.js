@@ -171,6 +171,42 @@ function renderTasks() {
     const information = document.createElement('div');
     information.className = 'task-information';
     information.append(checkbox, title);
+    const priorityControls = document.createElement('div');
+    const priorityLabel = document.createElement('label');
+    priorityLabel.htmlFor = `task-priority-${task.id}`;
+    priorityLabel.textContent = 'Task priority';
+    const priority = document.createElement('select');
+    priority.id = priorityLabel.htmlFor;
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority;
+    priority.disabled = archivedProject;
+    priority.addEventListener('change', async () => {
+      if (archivedProject || activeProjectId === null) return;
+      const projectId = activeProjectId;
+      const version = renderVersion;
+      priority.disabled = true;
+      showError(detailError, '');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority: priority.value }),
+        });
+        if (version !== renderVersion) return;
+        tasks = tasks.map((item) => item.id === saved.id ? saved : item);
+        renderTasks();
+      } catch (err) {
+        if (version !== renderVersion) return;
+        priority.value = task.priority;
+        showError(detailError, err.message);
+      } finally { priority.disabled = archivedProject; }
+    });
+    priorityControls.append(priorityLabel, priority);
     const taskRenameForm = document.createElement('form');
     taskRenameForm.className = 'task-rename-form';
     const label = document.createElement('label');
@@ -214,7 +250,7 @@ function renderTasks() {
       } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
       finally { rename.disabled = archivedProject; }
     });
-    row.append(information, taskRenameForm);
+    row.append(information, priorityControls, taskRenameForm);
     taskList.append(row);
   }
 }
