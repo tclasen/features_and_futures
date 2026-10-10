@@ -17,6 +17,9 @@ and creation order. Each task has an independent Low/Normal/High priority saved 
 restarts. Each project has a saved Default task priority, initially Normal, which
 applies only to subsequently created tasks. Archived projects disable this setting.
 The project list provides Active/Archived filters and completion summaries.
+Each task has an optional saved due date. Enter a real Gregorian date in
+`YYYY-MM-DD` format (years 0001–9999), or leave it blank to clear it. Due dates
+persist across restarts and are read-only while the project is archived.
 Archive projects to make their names and tasks read-only; restore them to resume editing.
 Existing databases are upgraded automatically. `GET /health` returns `{"status":"ok"}`.
 

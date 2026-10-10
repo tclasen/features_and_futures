@@ -601,6 +601,7 @@ test('existing databases gain archive state and Normal priority without changing
     const detail = await (await fetch(`${server.url}/projects/7`)).text();
     assert.match(detail, /Complete Existing task" checked/);
     assert.match(detail, /\/tasks\/9\/completion/);
+    assert.match(detail, /<input id="task-due-date-9" name="dueDate" type="text" value=""/);
     assert.match(detail, /<select id="default-task-priority"[^>]*>\s*<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     assert.match(detail, /<select id="task-priority-9"[^>]*>\s*<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     await server.stop();
@@ -737,6 +738,94 @@ test('combined filters retain selections and re-evaluate edits across archives a
     // Open-project forms use the plain URL, so a fresh opening resets both filters.
     assert.match(await get('/'), /<form action="\/projects\/1" method="get">/);
     assertFilters(await get('/projects/1'), 'All', 'All');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('due dates validate Gregorian days, preserve task data, and survive archives and restarts', async () => {
+  const directory = await mkdtemp(resolve('.workboard-test-'));
+  const databasePath = resolve(directory, 'due-dates.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const dateInput = (html, id) => new RegExp(`<input id="task-due-date-${id}"[^>]*>`).exec(html)[0];
+    await post('/projects', { name: 'Dates' });
+    await post('/projects', { name: 'Other' });
+    await post('/projects/1/tasks', { title: 'First' });
+    await post('/projects/1/tasks', { title: 'Second' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    await post('/projects/1/tasks/1/completion', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    const selection = { filter: 'Completed', priorityFilter: 'High' };
+    const selectedPath = '/projects/1?filter=Completed&priorityFilter=High';
+    const initial = await get(selectedPath);
+    const list = await get('/');
+    const other = await get('/projects/2');
+    assert.match(initial, /<label for="task-due-date-1">Task due date<\/label>/);
+    assert.match(initial, />Save due date<\/button>/);
+    assert.match(dateInput(initial, 1), /type="text" value=""/);
+    const save = async value => {
+      const response = await post('/projects/1/tasks/1/due-date', { ...selection, dueDate: value });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), selectedPath);
+      const html = await get(selectedPath);
+      // A date edit changes only the saved textbox value, including both filters and row membership.
+      assert.equal(html.replace(/(id="task-due-date-1"[^>]*value=")[^"]*/, '$1'), initial);
+      assert.equal(await get('/'), list);
+      assert.equal(await get('/projects/2'), other);
+      assert.match(dateInput(await get('/projects/1'), 2), /value=""/);
+      return html;
+    };
+    for (const value of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '  2026-10-10 \t']) {
+      assert.ok(dateInput(await save(value), 1).includes(`value="${value.trim()}"`));
+    }
+    const saved = await get(selectedPath);
+    for (const value of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29',
+      '2024-02-30', '2026-04-31', '2026-13-01', '2026-00-01', '2026-01-00', '2026-01-32',
+      '2026-1-01', '26-01-01', '2026-10-10T00:00:00Z', 'not a date']) {
+      const response = await post('/projects/1/tasks/1/due-date', { ...selection, dueDate: value });
+      assert.equal(response.status, 400, value);
+      const html = await response.text();
+      assert.match(html, /role="alert"[^>]*>Due date must be a valid YYYY-MM-DD date/);
+      assert.equal(dateInput(html, 1), dateInput(saved, 1));
+      assert.equal(await get(selectedPath), saved);
+    }
+    assert.equal((await post('/projects/2/tasks/1/due-date', { dueDate: '2026-01-01' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/due-date', { dueDate: '2026-01-01' })).status, 404);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(selectedPath), saved);
+    await save('');
+    await save('2024-02-29');
+    assert.match(dateInput(await save(' \t\n '), 1), /value=""/);
+    await save('0001-01-01');
+    await post('/projects/1/tasks/1/rename', { ...selection, title: 'Renamed' });
+    assert.match(dateInput(await get(selectedPath), 1), /value="0001-01-01"/);
+    const beforeArchive = await get(selectedPath);
+    await post('/projects/1/archive');
+    const archived = await get(selectedPath);
+    assert.match(dateInput(archived, 1), /value="0001-01-01"[^>]* disabled/);
+    assert.match(archived, /<button type="submit" disabled>Save due date/);
+    for (const id of [1, 2]) assert.match(dateInput(await get('/projects/1'), id), / disabled/);
+    assert.equal((await post('/projects/1/tasks/1/due-date', { dueDate: '' })).status, 403);
+    assert.equal(await get(selectedPath), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(selectedPath), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get(selectedPath), beforeArchive);
+    assert.equal(await get('/projects/2'), other);
+    assert.equal((await post('/projects/1/tasks/1/due-date', { ...selection, dueDate: '9999-12-31' })).status, 303);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.match(dateInput(await get(selectedPath), 1), /value="9999-12-31"/);
+    assert.equal(await get('/'), list);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
