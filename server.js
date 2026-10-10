@@ -41,6 +41,7 @@ const insertProject = database.prepare('INSERT INTO projects (id, name, created_
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 
@@ -123,6 +124,13 @@ const server = createServer(async (req, res) => {
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
     const body = await readJson(req);
+    if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      const result = renameTask.run(title, taskMatch[2], taskMatch[1]);
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: taskMatch[2], projectId: taskMatch[1], title });
+    }
     if (typeof body?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     const result = updateTaskCompletion.run(body.completed ? 1 : 0, taskMatch[2], taskMatch[1]);
     if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });

@@ -217,7 +217,26 @@ async function showProject(id) {
       });
       const title = document.createElement('span');
       title.textContent = task.title;
-      row.append(checkbox, title);
+      const renameInput = document.createElement('input');
+      renameInput.type = 'text';
+      renameInput.setAttribute('aria-label', 'New task title');
+      renameInput.autocomplete = 'off';
+      renameInput.disabled = project.archived;
+      const renameButton = document.createElement('button');
+      renameButton.type = 'button';
+      renameButton.textContent = 'Rename task';
+      renameButton.disabled = project.archived;
+      renameButton.addEventListener('click', async () => {
+        alert.hidden = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ title: renameInput.value }),
+          });
+          await refresh();
+        } catch (error) { showTaskError(error); }
+      });
+      row.append(checkbox, title, renameInput, renameButton);
       return row;
     }));
   }
