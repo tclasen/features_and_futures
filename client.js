@@ -28,6 +28,10 @@ function asciiLower(value) {
   return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
+function normalizeSearchText(value) {
+  return asciiLower(value.replace(/[ \t]+/g, ' '));
+}
+
 function navigate(path) {
   history.pushState({}, '', path);
   render();
@@ -65,8 +69,8 @@ async function showProjects() {
     const archived = filter.value === 'Archived';
     const projects = await request(`/api/projects?archived=${archived}`);
     list.replaceChildren();
-    const query = asciiLower(appliedSearch);
-    for (const project of projects.filter(item => asciiLower(item.name).includes(query))) {
+    const query = normalizeSearchText(appliedSearch);
+    for (const project of projects.filter(item => normalizeSearchText(item.name).includes(query))) {
       const row = element('article', { className: 'project-row' });
       row.dataset.testid = 'project-row';
       const details = element('div', { className: 'project-details' });
@@ -278,7 +282,7 @@ async function showProject(id) {
         if (filter.value === 'Open' && completed) continue;
         if (filter.value === 'Completed' && !completed) continue;
         if (priorityFilter.value !== 'All' && (task.priority || 'Normal') !== priorityFilter.value) continue;
-        if (!asciiLower(task.title).includes(asciiLower(appliedTaskSearch))) continue;
+        if (!normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskSearch))) continue;
         if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
         if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
         if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
