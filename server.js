@@ -23,6 +23,7 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT,
     created_at INTEGER NOT NULL
   )
 `);
@@ -38,6 +39,9 @@ const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 
 const listProjects = database.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
@@ -50,12 +54,27 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, ?, ?)');
-const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function canonicalDueDate(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return null;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1] ? trimmed : null;
+}
 
 async function readJson(request) {
   let body = '';
@@ -234,7 +253,22 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, { ...existing, priority: body.priority });
       return;
     }
-    sendJson(response, 400, { error: 'Task update must include a title, completion state, or priority' });
+    if (typeof body?.dueDate === 'string') {
+      const project = getProject.get(projectId);
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      const dueDate = canonicalDueDate(body.dueDate);
+      if (dueDate === null) {
+        sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        return;
+      }
+      updateTaskDueDate.run(dueDate || null, taskId, projectId);
+      sendJson(response, 200, { ...existing, dueDate: dueDate || null });
+      return;
+    }
+    sendJson(response, 400, { error: 'Task update must include a title, completion state, priority, or due date' });
     return;
   }
 

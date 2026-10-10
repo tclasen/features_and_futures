@@ -238,7 +238,33 @@ async function renderProject(id) {
             alert.hidden = false;
           }
         });
-        row.append(title, checkbox, priority, renameForm);
+        const dueDateForm = element('form');
+        const dueDateInput = element('input', undefined, {
+          type: 'text',
+          value: task.dueDate || '',
+          'aria-label': 'Task due date',
+        });
+        const saveDueDate = element('button', 'Save due date', { type: 'submit' });
+        dueDateInput.disabled = archived;
+        saveDueDate.disabled = archived;
+        dueDateForm.append(dueDateInput, saveDueDate);
+        dueDateForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          alert.hidden = true;
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ dueDate: dueDateInput.value }),
+            });
+            task.dueDate = updated.dueDate;
+            dueDateInput.value = updated.dueDate || '';
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
+        row.append(title, checkbox, priority, renameForm, dueDateForm);
         list.append(row);
       }
     };
