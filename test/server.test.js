@@ -38,8 +38,8 @@ test('pre-priority databases migrate existing open and completed tasks without d
         });
         const base = `http://127.0.0.1:${port}`;
         assert.deepEqual(await (await fetch(`${base}/api/projects/1/tasks`)).json(), [
-          { id: 1, title: 'Existing open task', completed: false, priority: 'Normal' },
-          { id: 2, title: 'Existing completed task', completed: true, priority: 'Normal' },
+          { id: 1, title: 'Existing open task', completed: false, priority: 'Normal', due_date: '' },
+          { id: 2, title: 'Existing completed task', completed: true, priority: 'Normal', due_date: '' },
         ]);
         assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [
           { id: 1, name: 'Existing project', archived: 1, default_priority: 'Normal', total: 2, completed: 1 },

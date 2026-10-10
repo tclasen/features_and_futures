@@ -22,6 +22,8 @@ Project pages also provide a Priority filter with All, Low, Normal, and High opt
 
 Each project has a Default task priority selector, initially Normal. Saving Low, Normal, or High applies only to tasks created afterward in that project. Existing tasks and both task filters are unchanged. Defaults persist across reloads, restarts, renaming, archival, and restoration; archived projects display the saved default with the selector disabled.
 
+Every task has a Task due date textbox and Save due date button. Dates are optional: an empty or whitespace-only value clears the date. Nonempty values are trimmed and must be real Gregorian dates in YYYY-MM-DD format, with years 0001–9999. Invalid values show an alert and leave saved data unchanged. Dates persist independently across reloads, restarts, renames, archival, and restoration without changing task filters or summaries. Archived projects disable due-date editing.
+
 Health check:
 
 ```sh

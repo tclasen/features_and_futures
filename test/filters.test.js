@@ -50,7 +50,7 @@ async function page(archived = false) {
   const savedTasks = [];
   for (const priority of ['Low', 'Normal', 'High']) {
     for (const completed of [false, true]) {
-      savedTasks.push({ id: savedTasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, priority, completed });
+      savedTasks.push({ id: savedTasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, priority, completed, due_date: '' });
     }
   }
   const writes = [];
@@ -66,6 +66,10 @@ async function page(archived = false) {
       if (options) {
         assert.equal(project.archived, 0, 'archived projects must not edit tasks');
         const patch = JSON.parse(options.body);
+        if (patch.due_date === 'invalid') {
+          return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+        }
+        if (Object.hasOwn(patch, 'due_date')) patch.due_date = patch.due_date.trim();
         if (path === '/api/projects/1') {
           writes.push(patch);
           Object.assign(project, patch);
@@ -151,6 +155,55 @@ test('combined filters retain order and selections and re-evaluate after saved t
   assert.equal(ui.get('task-filter').value, 'All');
   assert.equal(ui.get('priority-filter').value, 'All');
   assert.equal(ui.rows().length, 6);
+});
+
+test('due-date controls save and clear without changing filters, and respect archived state', async () => {
+  const ui = await page();
+  await ui.select('task-filter', 'Completed');
+  await ui.select('priority-filter', 'High');
+  const before = structuredClone(ui.savedTasks);
+  let form = ui.rows()[0].children[3];
+  assert.equal(form.children[0].textContent, 'Task due date');
+  assert.equal(form.querySelector('input').type, 'text');
+  assert.equal(form.querySelector('input').value, '');
+  assert.equal(form.querySelector('button').textContent, 'Save due date');
+  form.querySelector('input').value = '  2000-02-29  ';
+  await form.dispatch('submit');
+  assert.deepEqual(ui.savedTasks, before.map((task) => task.id === 6 ? { ...task, due_date: '2000-02-29' } : task));
+  assert.equal(ui.get('task-filter').value, 'Completed');
+  assert.equal(ui.get('priority-filter').value, 'High');
+  assert.deepEqual(ui.titles(), ['High done']);
+  form = ui.rows()[0].children[3];
+  assert.equal(form.querySelector('input').value, '2000-02-29');
+  form.querySelector('input').value = 'invalid';
+  await form.dispatch('submit');
+  assert.equal(ui.get('detail-error').hidden, false);
+  assert.equal(ui.get('detail-error').textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.equal(ui.savedTasks[5].due_date, '2000-02-29');
+  const rename = ui.rows()[0].children[2];
+  rename.querySelector('input').value = 'New title';
+  await rename.dispatch('submit');
+  assert.equal(ui.rows()[0].children[3].querySelector('input').value, '2000-02-29');
+  assert.equal(ui.get('task-filter').value, 'Completed');
+  assert.equal(ui.get('priority-filter').value, 'High');
+  ui.project.archived = 1;
+  await vm.runInContext('render()', ui.context);
+  for (const row of ui.rows()) {
+    assert.equal(row.children[3].querySelector('input').disabled, true);
+    assert.equal(row.children[3].querySelector('button').disabled, true);
+  }
+  ui.project.archived = 0;
+  await vm.runInContext('render()', ui.context);
+  form = ui.rows()[5].children[3];
+  assert.equal(form.querySelector('input').disabled, false);
+  assert.equal(form.querySelector('button').disabled, false);
+  assert.equal(form.querySelector('input').value, '2000-02-29');
+  form.querySelector('input').value = ' \t ';
+  await form.dispatch('submit');
+  assert.equal(ui.rows()[5].children[3].querySelector('input').value, '');
+  ui.location.pathname = '/';
+  await vm.runInContext('render()', ui.context);
+  assert.equal(ui.get('project-list').children[0].children[0].children[1].textContent, '3/6 completed');
 });
 
 test('archived projects retain usable combined filters while editing stays disabled', async () => {

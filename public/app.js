@@ -259,7 +259,45 @@ function renderTasks() {
       } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
       finally { rename.disabled = archivedProject; }
     });
-    row.append(information, priorityControls, taskRenameForm);
+    const dueDateForm = document.createElement('form');
+    dueDateForm.className = 'task-due-date-form';
+    const dueDateLabel = document.createElement('label');
+    dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+    dueDateLabel.textContent = 'Task due date';
+    const dueDate = document.createElement('input');
+    dueDate.id = dueDateLabel.htmlFor;
+    dueDate.type = 'text';
+    dueDate.placeholder = 'YYYY-MM-DD';
+    dueDate.value = task.due_date || '';
+    dueDate.disabled = archivedProject;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'submit';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = archivedProject;
+    const dueDateControls = document.createElement('div');
+    dueDateControls.className = 'form-controls';
+    dueDateControls.append(dueDate, saveDueDate);
+    dueDateForm.append(dueDateLabel, dueDateControls);
+    dueDateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (archivedProject || activeProjectId === null) return;
+      const projectId = activeProjectId;
+      const version = renderVersion;
+      saveDueDate.disabled = true;
+      showError(detailError, '');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ due_date: dueDate.value }),
+        });
+        if (version !== renderVersion) return;
+        tasks = tasks.map((item) => item.id === saved.id ? saved : item);
+        renderTasks();
+      } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
+      finally { saveDueDate.disabled = archivedProject; }
+    });
+    row.append(information, priorityControls, taskRenameForm, dueDateForm);
     taskList.append(row);
   }
 }
