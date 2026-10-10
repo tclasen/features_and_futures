@@ -30,17 +30,21 @@ const projectColumns = database.prepare("PRAGMA table_info(projects)").all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!projectColumns.some((column) => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
 
-const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const addTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -90,6 +94,10 @@ const server = createServer(async (request, response) => {
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
     const data = await readJson(request);
+    if (['Low', 'Normal', 'High'].includes(data?.defaultPriority)) {
+      updateProjectDefaultPriority.run(data.defaultPriority, projectId);
+      return sendJson(response, 200, { id: projectId, defaultPriority: data.defaultPriority });
+    }
     const name = typeof data?.name === 'string' ? data.name.trim() : '';
     if (!name) return sendJson(response, 400, { error: 'Project name is required' });
     renameProject.run(name, projectId);
@@ -117,8 +125,8 @@ const server = createServer(async (request, response) => {
     const data = await readJson(request);
     const title = typeof data?.title === 'string' ? data.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-    const result = addTask.run(projectId, title);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
+    const result = addTask.run(projectId, title, project.defaultPriority);
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {

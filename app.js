@@ -123,6 +123,29 @@ async function showProject(id) {
       }
     });
     app.append(renameForm, renameAlert);
+    let savedDefaultPriority = project.defaultPriority;
+    const defaultPriorityLabel = element('label', { for: 'default-task-priority' }, 'Default task priority');
+    const defaultPriority = element('select', { id: 'default-task-priority' });
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = element('option', { value }, value);
+      option.selected = project.defaultPriority === value;
+      defaultPriority.append(option);
+    }
+    defaultPriority.disabled = project.archived;
+    defaultPriority.addEventListener('change', async () => {
+      const selectedPriority = defaultPriority.value;
+      try {
+        await request(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ defaultPriority: selectedPriority }),
+        });
+        savedDefaultPriority = selectedPriority;
+      } catch (error) {
+        console.error(error);
+        defaultPriority.value = savedDefaultPriority;
+      }
+    });
+    app.append(defaultPriorityLabel, defaultPriority);
     const form = element('form', { class: 'task-form' });
     const label = element('label', { for: 'task-title' }, 'Task title');
     const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
