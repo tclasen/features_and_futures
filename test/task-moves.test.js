@@ -8,17 +8,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 
-test('moves append persistently, preserve task data, update summaries, and reject invalid ownership', async () => {
+test('moves remember per-project order persistently, preserve task data and summaries, and reject invalid ownership', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const databasePath = join(directory, 'workboard.sqlite');
   const legacy = new DatabaseSync(databasePath);
   legacy.exec(`
     CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
     CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
-      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL);
     INSERT INTO projects (name) VALUES ('Source'), ('Destination'), ('Archived');
-    INSERT INTO tasks (project_id, title, completed) VALUES
-      (1, 'Oldest', 1), (2, 'Destination first', 0), (1, 'Source remaining', 0);
+    INSERT INTO tasks (project_id, title, completed, position) VALUES
+      (1, 'Oldest', 1, 20), (2, 'Destination first', 0, 10), (1, 'Source remaining', 0, 30);
   `);
   legacy.close();
   const socket = createServer();
@@ -92,17 +92,53 @@ test('moves append persistently, preserve task data, update summaries, and rejec
     assert.equal((await move(2, 1, 1)).status, 409);
     await request('/2', 'PATCH', { archived: false });
     assert.equal((await move(2, 1, 1)).status, 200);
-    assert.deepEqual(await tasks(1), [remaining, original]);
-    assert.deepEqual((await tasks(1)).map((task) => task.id), [3, 1]);
+    assert.deepEqual(await tasks(1), [original, remaining]);
+    assert.deepEqual((await tasks(1)).map((task) => task.id), [1, 3]);
     // Blank dates and open completion state also survive a subsequent move.
     const blank = (await tasks(2))[0];
     assert.equal((await move(2, blank.id, 1)).status, 200);
     assert.deepEqual((await tasks(1))[2], blank);
     await stop();
     await start();
-    assert.deepEqual((await tasks(1)).map((task) => task.id), [3, 1, 2]);
-    assert.deepEqual((await tasks(1))[1], original);
+    assert.deepEqual((await tasks(1)).map((task) => task.id), [1, 3, 2]);
+    assert.deepEqual((await tasks(1))[0], original);
     assert.deepEqual((await tasks(1))[2], blank);
+
+    // Vacated positions stay reserved, even when all tasks leave a project.
+    for (const id of [1, 3, 2]) assert.equal((await move(1, id, 2)).status, 200);
+    assert.deepEqual(await tasks(1), []);
+    assert.deepEqual((await tasks(2)).map((task) => task.id), [2, 1, created.id, 3]);
+    const newSourceTask = await (await request('/1/tasks', 'POST', { title: 'Created while away' })).json();
+    const firstArrival = await (await request('/2/tasks', 'POST', { title: 'First visit' })).json();
+    assert.equal((await move(2, firstArrival.id, 1)).status, 200);
+    await request('/2/tasks/1', 'PATCH', { title: 'Current title' });
+    await request('/2/tasks/1', 'PATCH', { completed: false });
+    await request('/2/tasks/1', 'PATCH', { priority: 'Low' });
+    await request('/2/tasks/1', 'PATCH', { due_date: '9999-12-31' });
+    const current = (await tasks(2)).find((task) => task.id === 1);
+    await request('/1', 'PATCH', { name: 'Renamed source' });
+    await request('/1', 'PATCH', { archived: true });
+    assert.equal((await move(2, 1, 1)).status, 409);
+    await stop();
+    await start();
+    await request('/1', 'PATCH', { archived: false });
+    // Return in reverse order across a restart; original relative order wins.
+    assert.equal((await move(2, 2, 1)).status, 200);
+    assert.equal((await move(2, 3, 1)).status, 200);
+    await stop();
+    await start();
+    assert.equal((await move(2, 1, 1)).status, 200);
+    assert.deepEqual((await tasks(1)).map((task) => task.id), [1, 3, 2, newSourceTask.id, firstArrival.id]);
+    assert.deepEqual((await tasks(1))[0], current);
+    assert.deepEqual((await tasks(2)).map((task) => task.id), [created.id]);
+    const summaries = await (await request('', 'GET')).json();
+    assert.deepEqual(summaries.map(({ completed, total }) => [completed, total]), [[0, 5], [0, 1], [0, 0]]);
+    // A second return restores the destination's independent remembered slots.
+    for (const id of [3, 1, 2]) assert.equal((await move(1, id, 2)).status, 200);
+    await stop();
+    await start();
+    assert.deepEqual((await tasks(2)).map((task) => task.id), [2, 1, created.id, 3]);
+    assert.deepEqual((await tasks(2))[1], current);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
