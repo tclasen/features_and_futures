@@ -88,10 +88,22 @@ export function createApplication(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  // Preserve existing creation order; subsequent inserts and moves append locally.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+    database.exec(`BEGIN;
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id;
+      COMMIT;`);
+  }
   const priorities = ['Low', 'Normal', 'High'];
-  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+  const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+  const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE id = ? AND project_id = ?`);
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
   const setTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -167,6 +179,8 @@ export function createApplication(databasePath) {
 
   function projectPage(project, filter, error = '', priority = 'All', range = { from: '', through: '' }) {
     const path = `/projects/${project.id}`;
+    const destinations = listDestinations.all(project.id);
+    const movingDisabled = project.archived || destinations.length === 0;
     const filterFields = `<input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priority}">
       ${rangeFields(range)}`;
@@ -203,6 +217,14 @@ export function createApplication(databasePath) {
           <label for="task-due-date-${task.id}">Task due date</label>
           <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
+        <form action="${path}/tasks/${task.id}/move" method="post">
+          ${filterFields}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <select id="destination-project-${task.id}" name="destination"${movingDisabled ? ' disabled' : ''}>
+            ${destinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${movingDisabled ? ' disabled' : ''}>Move task</button>
         </form>
       </div>`).join('');
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -362,7 +384,7 @@ export function createApplication(databasePath) {
           return;
         }
         html(response, 200, projectPage(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter')), dueRange(searchParams)));
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date))?)?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?$/.test(pathname)) {
         const [, , projectId, , taskId, action] = pathname.split('/');
         const id = Number(projectId);
         const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
@@ -384,7 +406,7 @@ export function createApplication(databasePath) {
             html(response, 422, projectPage(project, filter, 'Task title is required', selectedPriority, range));
             return;
           }
-          insertTask.run(id, title, project.default_priority);
+          insertTask.run(id, title, project.default_priority, id);
         } else {
           const taskNumber = Number(taskId);
           const title = (form.get('title') ?? '').trim();
@@ -402,6 +424,15 @@ export function createApplication(databasePath) {
             html(response, 422, projectPage(project, filter, 'Due date must be a valid YYYY-MM-DD date', selectedPriority, range));
             return;
           }
+          let destinationId;
+          if (action === 'move') {
+            destinationId = Number(form.get('destination'));
+            const destination = Number.isSafeInteger(destinationId) ? getProject.get(destinationId) : undefined;
+            if (!destination || destination.archived || destinationId === id) {
+              html(response, 422, projectPage(project, filter, 'Destination must be another active project', selectedPriority, range));
+              return;
+            }
+          }
           let result;
           if (Number.isSafeInteger(taskNumber)) {
             if (action === 'rename') {
@@ -410,6 +441,8 @@ export function createApplication(databasePath) {
               result = setTaskPriority.run(priority, taskNumber, id);
             } else if (action === 'due-date') {
               result = setTaskDueDate.run(dueDate, taskNumber, id);
+            } else if (action === 'move') {
+              result = moveTask.run(destinationId, destinationId, taskNumber, id);
             } else {
               result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskNumber, id);
             }
