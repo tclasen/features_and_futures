@@ -17,9 +17,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0
+  completed INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
@@ -30,11 +34,12 @@ const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const page = await readFile(path.join(here, 'index.html'));
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -134,6 +139,9 @@ const server = http.createServer(async (req, res) => {
         const title = String(payload.title ?? '').trim();
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
         renameTask.run(title, taskId, projectId);
+      } else if (Object.hasOwn(payload, 'priority')) {
+        if (!['Low', 'Normal', 'High'].includes(payload.priority)) return send(res, 400, JSON.stringify({ error: 'Invalid task priority' }));
+        updatePriority.run(payload.priority, taskId, projectId);
       } else {
         if (typeof payload.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
         updateTask.run(payload.completed ? 1 : 0, taskId, projectId);
