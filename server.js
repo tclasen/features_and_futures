@@ -37,7 +37,18 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Preserve legacy creation order while allowing moved tasks to append independently of ID.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+  database.exec(`
+    BEGIN;
+    ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE tasks SET position = id;
+    COMMIT;
+  `);
+}
+database.exec('CREATE INDEX IF NOT EXISTS tasks_project_position ON tasks(project_id, position, id)');
 const taskPriorities = ['Low', 'Normal', 'High'];
+const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id <> ? ORDER BY id');
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
@@ -50,8 +61,16 @@ const updateDefaultPriority = database.prepare('UPDATE projects SET default_prio
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const insertTask = database.prepare(`
+  INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))
+`);
+const moveTask = database.prepare(`
+  UPDATE tasks SET project_id = ?,
+    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE id = ? AND project_id = ?
+`);
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -134,7 +153,7 @@ function page(title, content) {
     .task-row { padding: 18px 0; border-top: 1px solid #dce2eb; }
     .task-completion label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
     .task-completion input { width: 20px; height: 20px; flex-shrink: 0; }
-    .task-rename, .task-priority, .task-due-date { margin-top: 16px; }
+    .task-rename, .task-priority, .task-due-date, .task-move { margin-top: 16px; }
     button { padding: 11px 16px; border: 0; border-radius: 6px; background: #244fba; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:disabled { opacity: 0.5; cursor: default; }
     button:hover { background: #193b91; }
@@ -193,6 +212,8 @@ function projectsPage(error = '', filter = 'active') {
 }
 
 function projectPage(project, filters = { completion: 'all', priority: 'All', dueFrom: '', dueThrough: '' }, error = '', renameError = '', taskError = null, rangeError = '') {
+  const destinations = listDestinations.all(project.id);
+  const movingDisabled = project.archived || destinations.length === 0;
   const { completion: filter, priority: priorityFilter, dueFrom = '', dueThrough = '' } = filters;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${dueFrom}">
       <input type="hidden" name="dueThrough" value="${dueThrough}">`;
@@ -292,6 +313,16 @@ function projectPage(project, filters = { completion: 'all', priority: 'All', du
           </div>
         </form>
         ${taskError?.id === task.id && taskError.field === 'dueDate' ? `<p id="task-due-date-error-${task.id}" role="alert">${escapeHtml(taskError.message)}</p>` : ''}
+        <form class="task-move" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
+          ${filterFields}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <div class="create-controls">
+            <select id="destination-project-${task.id}" name="destinationProject"${movingDisabled ? ' disabled' : ''}>
+              ${destinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+            </select>
+            <button type="submit"${movingDisabled ? ' disabled' : ''}>Move task</button>
+          </div>
+        </form>
       </li>`).join('')}</ul>` : '<p class="empty">No matching tasks.</p>'}
   `);
 }
@@ -385,6 +416,34 @@ const server = createServer(async (request, response) => {
         redirect(response, projectUrl(id, filters));
         return;
       }
+    }
+    const taskMoveMatch = /^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/move$/.exec(pathname);
+    if (request.method === 'POST' && taskMoveMatch) {
+      const projectId = Number(taskMoveMatch[1]);
+      const taskId = Number(taskMoveMatch[2]);
+      const form = await readForm(request);
+      const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
+      if (!project || !Number.isSafeInteger(taskId) || !findTask.get(taskId, projectId)) {
+        sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
+        return;
+      }
+      const filters = taskFilters(form);
+      if (project.archived) {
+        sendHtml(response, 403, projectPage(project, filters, 'Archived project cannot be changed'));
+        return;
+      }
+      const destinationValue = form.get('destinationProject') ?? '';
+      const destinationId = Number(destinationValue);
+      const destination = /^[1-9]\d*$/.test(destinationValue) && Number.isSafeInteger(destinationId)
+        ? findProject.get(destinationId) : undefined;
+      if (!destination || destination.archived || destinationId === projectId) {
+        sendHtml(response, 400, projectPage(project, filters, 'Destination must be another active project'));
+        return;
+      }
+      // Validation and this atomic update run synchronously after reading the request body.
+      moveTask.run(destinationId, destinationId, taskId, projectId);
+      redirect(response, projectUrl(projectId, filters));
+      return;
     }
     const taskRenameMatch = /^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/rename$/.exec(pathname);
     if (request.method === 'POST' && taskRenameMatch) {
@@ -508,7 +567,7 @@ const server = createServer(async (request, response) => {
             sendHtml(response, 400, projectPage(project, filters, 'Task title is required'));
             return;
           }
-          insertTask.run(id, title, currentProject.default_priority);
+          insertTask.run(id, title, currentProject.default_priority, id);
         } else {
           const taskId = Number(match[2]);
           if (!Number.isSafeInteger(taskId)) {
