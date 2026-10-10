@@ -39,6 +39,8 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -70,9 +72,11 @@ function page(title, content) {
     .project { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border-top: 1px solid #dce1ea; }
     .project span { overflow-wrap: anywhere; min-width: 0; }
     .project form { flex-shrink: 0; }
-    .task { display: flex; align-items: center; gap: 12px; padding: 18px 0; border-top: 1px solid #dce1ea; overflow-wrap: anywhere; }
+    .task { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 0; border-top: 1px solid #dce1ea; overflow-wrap: anywhere; }
     .task input { width: auto; flex-shrink: 0; }
     .task label { margin: 0; min-width: 0; }
+    .task .rename-task { flex-basis: 100%; }
+    .task .rename-task input { width: 100%; margin: 8px 0; }
     .filter { margin-top: 24px; }
     select { padding: 10px; font: inherit; }
     .back { margin-bottom: 24px; }
@@ -111,6 +115,12 @@ function projectPage(project, filter = 'All', error = '') {
         <input type="checkbox" id="task-${task.id}" data-task-id="${task.id}"
           aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
         <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+        <form class="rename-task" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
       </div>`).join('')}${tasks.length ? '' : '<p>No tasks to show.</p>'}</div>
     <script>
       document.getElementById('task-filter').addEventListener('change', (event) => {
@@ -219,7 +229,7 @@ const server = http.createServer(async (request, response) => {
       response.end();
       return;
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*))?|archive|restore|rename))?$/.exec(pathname);
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*)(\/rename)?)?|archive|restore|rename))?$/.exec(pathname);
     if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -266,6 +276,29 @@ const server = http.createServer(async (request, response) => {
           }
           createTask.run(id, title);
           response.writeHead(303, { Location: `/projects/${id}` });
+          response.end();
+          return;
+        }
+        if (request.method === 'POST' && projectRoute[2] && projectRoute[3]) {
+          const taskId = Number(projectRoute[2]);
+          if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, id)) {
+            sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
+          const form = await readForm(request);
+          const currentProject = findProject.get(id);
+          const filter = ['Open', 'Completed'].includes(form.get('filter')) ? form.get('filter') : 'All';
+          if (currentProject.archived) {
+            sendHtml(response, 403, projectPage(currentProject, filter, 'Archived project'));
+            return;
+          }
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            sendHtml(response, 400, projectPage(currentProject, filter, 'Task title is required'));
+            return;
+          }
+          renameTask.run(title, taskId, id);
+          response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
           response.end();
           return;
         }
