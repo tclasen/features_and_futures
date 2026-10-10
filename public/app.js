@@ -29,7 +29,8 @@ let appliedTaskQuery = '';
 
 function matchesSearch(value, query) {
   const foldAscii = text => text.replace(/[A-Z]/g, character => character.toLowerCase());
-  return foldAscii(value).includes(foldAscii(query));
+  const normalizeWhitespace = text => text.replace(/[ \t]+/g, ' ');
+  return foldAscii(normalizeWhitespace(value)).includes(foldAscii(normalizeWhitespace(query)));
 }
 
 function isValidDate(value) {
