@@ -39,6 +39,22 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
     UPDATE tasks SET position = id;
     COMMIT;`);
 }
+// Keep positions even while tasks are away. Seed current ownership when upgrading
+// an existing database; its current order is the starting remembered order.
+db.exec(`BEGIN;
+  CREATE TABLE IF NOT EXISTS task_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+  COMMIT;`);
+const rememberPosition = db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
+  VALUES (?, ?, ?)`);
+const getPosition = db.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?');
+const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
 const listDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
@@ -46,10 +62,38 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-  WHERE id = ? AND project_id = ?`);
+  VALUES (?, ?, ?, ?)`);
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
+
+function transaction(work) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    work();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function createTask(project, title) {
+  transaction(() => {
+    const position = nextPosition.get(project.id).position;
+    const task = insertTask.run(project.id, title, project.default_priority, position);
+    rememberPosition.run(task.lastInsertRowid, project.id, position);
+  });
+}
+
+function moveTaskToProject(taskId, sourceId, destinationId) {
+  transaction(() => {
+    let remembered = getPosition.get(taskId, destinationId);
+    if (!remembered) {
+      remembered = nextPosition.get(destinationId);
+      rememberPosition.run(taskId, destinationId, remembered.position);
+    }
+    moveTask.run(destinationId, remembered.position, taskId, sourceId);
+  });
+}
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -401,7 +445,7 @@ const server = http.createServer(async (request, response) => {
           sendHtml(response, 400, projectPage(project, filter, 'Task title is required', priority, range));
           return;
         }
-        insertTask.run(projectId, title, project.default_priority, projectId);
+        createTask(project, title);
       } else {
         const taskId = Number(parts[4]);
         if (!Number.isSafeInteger(taskId) || !getTask.get(taskId, projectId)) {
@@ -415,7 +459,7 @@ const server = http.createServer(async (request, response) => {
             sendHtml(response, 400, projectPage(project, filter, 'Choose an active destination project', priority, range));
             return;
           }
-          moveTask.run(destinationId, destinationId, taskId, projectId);
+          moveTaskToProject(taskId, projectId, destinationId);
         } else if (parts[5] === 'rename') {
           const title = (form.get('title') || '').trim();
           if (!title) {
