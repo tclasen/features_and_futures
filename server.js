@@ -24,7 +24,8 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
-    priority TEXT NOT NULL DEFAULT 'Normal'
+    priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT
   )
 `);
 // Upgrade databases created by earlier checkpoints without disturbing their data.
@@ -39,6 +40,9 @@ const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 const listProjects = database.prepare(`
   SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS totalCount,
     COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
@@ -47,11 +51,12 @@ const listProjects = database.prepare(`
 `);
 const findProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
@@ -62,6 +67,20 @@ const sendJson = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 };
+
+function canonicalDueDate(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return null;
+  const daysInMonth = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1] ? trimmed : null;
+}
 
 async function readJson(req) {
   let raw = '';
@@ -152,6 +171,13 @@ const server = createServer(async (req, res) => {
       const result = updateTaskPriority.run(body.priority, taskMatch[2], taskMatch[1]);
       if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
       return sendJson(res, 200, { id: taskMatch[2], projectId: taskMatch[1], priority: body.priority });
+    }
+    if (typeof body?.dueDate === 'string') {
+      const dueDate = canonicalDueDate(body.dueDate);
+      if (dueDate === null) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const result = updateTaskDueDate.run(dueDate || null, taskMatch[2], taskMatch[1]);
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: taskMatch[2], projectId: taskMatch[1], dueDate: dueDate || null });
     }
     if (typeof body?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     const result = updateTaskCompletion.run(body.completed ? 1 : 0, taskMatch[2], taskMatch[1]);
