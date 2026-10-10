@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { background: #fff; border-bottom: 1px solid #e3e8f0; }
+    .wrap { max-width: 850px; margin: auto; padding: 28px 24px; }
+    header .wrap { padding-top: 20px; padding-bottom: 20px; }
+    h1 { margin: 0; font-size: 1.65rem; }
+    main { padding-top: 36px; }
+    form, .project-row, .project-detail { background: #fff; border: 1px solid #e2e7ef; border-radius: 10px; }
+    form { padding: 20px; display: flex; gap: 12px; align-items: end; }
+    label { display: grid; gap: 7px; flex: 1; font-weight: 600; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid #bec8d6; border-radius: 6px; font: inherit; }
+    button { border: 0; border-radius: 6px; background: #315bd6; color: white; padding: 11px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #2348ba; }
+    .project-row { margin-top: 12px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .project-name { font-weight: 600; overflow-wrap: anywhere; }
+    .project-detail { padding: 22px; }
+    .project-detail h2 { margin: 0; }
+    .back { margin-bottom: 16px; }
+    [role="alert"] { color: #b42318; margin: 10px 0 0; }
+    @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header><div class="wrap"><h1>Workboard</h1></div></header>
+  <main class="wrap" id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/([^/]+)$/);
+      if (match) {
+        const projects = await fetch('/api/projects').then(response => response.json());
+        const project = projects.find(item => item.id === decodeURIComponent(match[1]));
+        app.innerHTML = `<button class="back" type="button">Projects</button>${project ? `<section class="project-detail"><h2>${escapeHtml(project.name)}</h2></section>` : '<p>Project not found.</p>'}`;
+        app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        return;
+      }
+      const projects = await fetch('/api/projects').then(response => response.json());
+      app.innerHTML = `<form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"><button type="submit">Create project</button></form><p id="error" role="alert" hidden></p><section id="projects" aria-label="Projects">${projects.map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(project.name)}</span><button type="button" data-project-id="${escapeHtml(project.id)}">Open project</button></div>`).join('')}</section>`;
+      app.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = app.querySelector('#project-name');
+        const error = app.querySelector('#error');
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+        if (!response.ok) { error.textContent = 'Project name is required'; error.hidden = false; return; }
+        render();
+      });
+      app.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
+        history.pushState({}, '', `/projects/${encodeURIComponent(button.dataset.projectId)}`); render();
+      }));
+    }
+    addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
