@@ -106,6 +106,14 @@ const server = createServer(async (request, response) => {
     const taskId = Number(taskMatch[2]);
     const body = await readBody(request);
     if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId)?.archived) { json(response, 403, { error: 'Archived project' }); return; }
+    if (Object.hasOwn(body || {}, 'title')) {
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) { json(response, 400, { error: 'Task title is required' }); return; }
+      const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+      if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }
+      json(response, 200, { id: taskId, title });
+      return;
+    }
     if (typeof body?.completed !== 'boolean') { json(response, 400, { error: 'Completion state is required' }); return; }
     const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(body.completed ? 1 : 0, taskId, projectId);
     if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }
