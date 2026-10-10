@@ -26,10 +26,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
-const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
@@ -121,6 +125,9 @@ const server = http.createServer(async (req, res) => {
         if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Not found' }));
       } else if (typeof data.completed === 'boolean') {
         const result = updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Not found' }));
+      } else if (typeof data.priority === 'string' && ['Low', 'Normal', 'High'].includes(data.priority)) {
+        const result = updatePriority.run(data.priority, taskId, projectId);
         if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Not found' }));
       } else return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
       return send(res, 200, JSON.stringify(getTask.get(taskId, projectId)));
