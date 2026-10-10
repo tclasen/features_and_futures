@@ -98,6 +98,19 @@ async function render() {
     }
     filterLabel.append(filter);
     root.append(filterLabel);
+    const priorityFilterLabel = document.createElement('label');
+    priorityFilterLabel.className = 'filter-field';
+    priorityFilterLabel.textContent = 'Priority filter';
+    const priorityFilter = document.createElement('select');
+    priorityFilter.setAttribute('aria-label', 'Priority filter');
+    for (const value of ['All', 'Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priorityFilter.append(option);
+    }
+    priorityFilterLabel.append(priorityFilter);
+    root.append(priorityFilterLabel);
     const list = document.createElement('div');
     list.className = 'task-list';
     root.append(list);
@@ -106,11 +119,13 @@ async function render() {
       const tasksResponse = await fetch(`/api/projects/${match[1]}/tasks`);
       const tasks = await tasksResponse.json();
       list.replaceChildren();
-      const matching = tasks.filter(task => filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed));
+      const matching = tasks.filter(task =>
+        (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed)) &&
+        (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
       if (!matching.length) {
         const empty = document.createElement('p');
         empty.className = 'empty';
-        empty.textContent = tasks.length ? 'No tasks match this filter.' : 'No tasks yet.';
+        empty.textContent = tasks.length ? 'No tasks match these filters.' : 'No tasks yet.';
         list.append(empty);
         return;
       }
@@ -150,7 +165,8 @@ async function render() {
           const saved = await fetch(`/api/tasks/${task.id}/priority`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
           });
-          if (!saved.ok) priority.value = task.priority || 'Normal';
+          if (saved.ok) await loadTasks();
+          else priority.value = task.priority || 'Normal';
         });
         row.append(priority);
         const renameInput = document.createElement('input');
@@ -180,6 +196,7 @@ async function render() {
       }
     }
     filter.addEventListener('change', loadTasks);
+    priorityFilter.addEventListener('change', loadTasks);
     form.addEventListener('submit', async event => {
       event.preventDefault();
       alertBox.hidden = true;
