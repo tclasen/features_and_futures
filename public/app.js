@@ -249,6 +249,7 @@ async function renderProject(id) {
           });
           if (!response.ok) { priority.value = task.priority || 'Normal'; showError('Could not update task priority'); return; }
           task.priority = priority.value;
+          drawTasks();
         });
         const renameForm = document.createElement('form');
         renameForm.className = 'task-rename-form';
