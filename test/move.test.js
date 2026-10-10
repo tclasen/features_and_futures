@@ -75,10 +75,10 @@ test('moves append, preserve data and filters, enforce active ownership, and per
     assert.match(page, /id="task-due-date-2" name="dueDate" value="2024-02-29"/);
     assert.match(await get('/'), /project-summary">0\/2 completed/);
     assert.match(await get('/'), /project-summary">1\/2 completed/);
-    // A move back and subsequent creation must both append, even for older IDs.
+    // Returning recovers the original position; subsequent creation still appends.
     await post('/projects/2/tasks/2/move', { destination: '1' });
     await post('/projects/1/tasks', { title: 'New' });
-    assert.deepEqual(titles(await get('/projects/1')), ['First', 'Last', 'Moving', 'New']);
+    assert.deepEqual(titles(await get('/projects/1')), ['First', 'Moving', 'Last', 'New']);
     await post('/projects/1/tasks/1/move', { destination: '2' });
     assert.deepEqual(titles(await get('/projects/2')), ['Existing', 'First']);
     await post('/projects/1/archive');
@@ -94,14 +94,14 @@ test('moves append, preserve data and filters, enforce active ownership, and per
     assert.deepEqual(destinations(await get('/projects/2')), Array(2).fill('<option value="1">Source</option><option value="3">Archived</option>'));
     await stop();
     await start();
-    assert.deepEqual(titles(await get('/projects/1')), ['Last', 'Moving', 'New']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Moving', 'Last', 'New']);
     assert.deepEqual(titles(await get('/projects/2')), ['Existing', 'First']);
     page = await get('/projects/1');
     assert.match(page, /aria-label="Complete Moving" checked/);
     assert.match(page, /id="task-due-date-2" name="dueDate" value="2024-02-29"/);
     assert.match(await get('/projects/2'), /id="task-due-date-1" name="dueDate" value=""/);
     assert.equal((await post('/projects/1/tasks/2/move', { destination: '2' })).status, 303);
-    assert.deepEqual(titles(await get('/projects/2')), ['Existing', 'First', 'Moving']);
+    assert.deepEqual(titles(await get('/projects/2')), ['Existing', 'Moving', 'First']);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
