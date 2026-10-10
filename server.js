@@ -90,6 +90,18 @@ const server = http.createServer(async (req, res) => {
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
       return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
     }
+    const taskRenamePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+    if (taskRenamePath && req.method === 'PATCH') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      let payload;
+      try { payload = JSON.parse(body); } catch { return sendJson(400, { error: 'Invalid request' }); }
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return sendJson(400, { error: 'Task title is required' });
+      const result = db.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND EXISTS
+        (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`).run(title, Number(taskRenamePath[1]));
+      return result.changes ? sendJson(200, { ok: true }) : sendJson(404, { error: 'Task not found or project archived' });
+    }
     const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
     if (taskPath && req.method === 'PATCH') {
       let body = '';

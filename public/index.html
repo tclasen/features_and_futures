@@ -25,6 +25,8 @@
     .task-list { display: grid; gap: 10px; margin-top: 16px; }
     .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border: 1px solid #e0e6ef; border-radius: 8px; }
     .task-row input { flex: initial; }
+    .task-row .task-name { flex: 1; }
+    .task-row form { padding: 0; border: 0; background: transparent; }
     .task-filter { margin-top: 18px; }
     select { margin-left: 8px; padding: 8px; font: inherit; }
     @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
@@ -58,7 +60,18 @@
         const filter = app.querySelector('#task-filter');
         const drawTasks = () => {
           const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
-          list.innerHTML = shown.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-id="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('');
+          list.innerHTML = shown.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-id="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><form class="task-rename" data-id="${task.id}"><label for="new-task-title-${task.id}">New task title</label><input id="new-task-title-${task.id}" type="text" aria-label="New task title" value="${escapeHtml(task.title)}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form></div>`).join('');
+          list.querySelectorAll('.task-rename').forEach(form => form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const input = form.querySelector('input');
+            const title = input.value.trim();
+            let error = app.querySelector('.task-rename-error');
+            if (!error) { error = document.createElement('p'); error.className = 'error task-rename-error'; error.setAttribute('role', 'alert'); list.before(error); }
+            if (!title) { error.textContent = 'Task title is required'; input.focus(); return; }
+            const task = tasks.find(item => item.id === Number(form.dataset.id));
+            const response = await fetch(`/api/tasks/${task.id}/rename`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+            if (response.ok) { task.title = title; error.textContent = ''; drawTasks(); }
+          }));
           list.querySelectorAll('input').forEach(box => box.addEventListener('change', async () => {
             const task = tasks.find(item => item.id === Number(box.dataset.id));
             task.completed = box.checked;
