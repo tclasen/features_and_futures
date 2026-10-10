@@ -14,3 +14,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
 `GET /health` returns `{"status":"ok"}`. Run the integration checks with `npm test`.
+
+Project and task search match substrings with ASCII case ignored and surrounding
+query whitespace trimmed. Searches combine with the existing filters and reset
+when opening the corresponding page through its navigation button.
