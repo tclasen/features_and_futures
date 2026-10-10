@@ -6,6 +6,15 @@ function element(tag, text) {
   return node;
 }
 
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
@@ -215,9 +224,42 @@ async function showProject(id) {
       option.value = name;
       priorityFilter.append(option);
     }
+    const rangeForm = element('form');
+    const fromLabel = element('label', 'Due from');
+    fromLabel.htmlFor = 'due-from';
+    const fromInput = element('input');
+    fromInput.id = fromLabel.htmlFor;
+    fromInput.type = 'text';
+    const throughLabel = element('label', 'Due through');
+    throughLabel.htmlFor = 'due-through';
+    const throughInput = element('input');
+    throughInput.id = throughLabel.htmlFor;
+    throughInput.type = 'text';
+    const applyRange = element('button', 'Apply due range');
+    applyRange.type = 'submit';
+    rangeForm.append(fromLabel, fromInput, throughLabel, throughInput, applyRange);
+    let dueFrom = '';
+    let dueThrough = '';
+    rangeForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const from = fromInput.value.trim();
+      const through = throughInput.value.trim();
+      if ((from && !validDate(from)) || (through && !validDate(through))) {
+        return showError(new Error('Due range must use valid YYYY-MM-DD dates'));
+      }
+      if (from && through && from > through) {
+        return showError(new Error('Due from must not be after Due through'));
+      }
+      dueFrom = from;
+      dueThrough = through;
+      fromInput.value = from;
+      throughInput.value = through;
+      alert.hidden = true;
+      render();
+    });
     const list = element('section');
     list.setAttribute('aria-label', 'Tasks');
-    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, rangeForm, list);
     let tasks = [];
     function showError(error) {
       alert.textContent = error.message;
@@ -229,6 +271,9 @@ async function showProject(id) {
         if (filter.value === 'Open' && task.completed) continue;
         if (filter.value === 'Completed' && !task.completed) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+        if ((dueFrom || dueThrough) && (!task.due_date ||
+            (dueFrom && task.due_date < dueFrom) ||
+            (dueThrough && task.due_date > dueThrough))) continue;
         const row = element('div');
         row.className = 'task-row';
         row.dataset.testid = 'task-row';
@@ -339,6 +384,7 @@ async function showProject(id) {
             });
             task.due_date = saved.due_date;
             dueInput.value = saved.due_date;
+            render();
           } catch (error) {
             dueInput.value = task.due_date;
             showError(error);

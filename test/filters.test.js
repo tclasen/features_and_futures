@@ -26,7 +26,7 @@ class Element {
 }
 const descendants = node => [node, ...node.children.flatMap(descendants)];
 
-async function page(archived = false) {
+async function page(archived = false, dates = []) {
   const app = new Element('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'Low' },
@@ -34,7 +34,7 @@ async function page(archived = false) {
     { id: 3, title: 'Third', completed: false, priority: 'High' },
     { id: 4, title: 'Fourth', completed: true, priority: 'Normal' },
   ];
-  for (const task of tasks) task.due_date = '';
+  for (const task of tasks) task.due_date = dates[task.id - 1] || '';
   const project = { id: 1, name: 'Project', archived, default_priority: 'Normal' };
   const context = vm.createContext({
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
@@ -179,6 +179,135 @@ test('due date saves and clears preserve both filters and other task data', asyn
   assert.equal(tasks[2].due_date, '');
   assert.equal(completion.value, 'Open');
   assert.equal(priority.value, 'High');
+});
+
+test('due ranges are inclusive, intersect filters, and preserve applied membership on errors', async () => {
+  const { app, tasks, byId, titles } = await page(false, ['2024-02-28', '2024-02-29', '2024-03-01']);
+  const from = byId('due-from');
+  const through = byId('due-through');
+  const range = descendants(app).find(node => node.tag === 'form' && node.children.includes(from));
+  const completion = byId('task-filter');
+  const priority = byId('priority-filter');
+  assert.equal(from.value, '');
+  assert.equal(through.value, '');
+  const original = structuredClone(tasks);
+  for (const [start, end, expected] of [
+    ['', '', ['First', 'Second', 'Third', 'Fourth']],
+    ['', '2024-02-29', ['First', 'Second']],
+    ['2024-02-29', '', ['Second', 'Third']],
+    [' 2024-02-29 ', ' 2024-03-01 ', ['Second', 'Third']],
+    ['2024-02-29', '2024-02-29', ['Second']],
+  ]) {
+    from.value = start;
+    through.value = end;
+    await range.fire('submit');
+    assert.deepEqual(titles(), expected);
+  }
+  for (const invalid of ['2023-02-29', '1900-02-29', '0000-01-01', '10000-01-01', '2024-04-31', '2024-13-01', '2024-00-01', '2024-01-00', '2024-1-01', 'junk']) {
+    from.value = invalid;
+    await range.fire('submit');
+    assert.deepEqual(titles(), ['Second']);
+    const alert = descendants(app).find(node => node.attributes.role === 'alert');
+    assert.equal(alert.hidden, false);
+    assert.equal(alert.textContent, 'Due range must use valid YYYY-MM-DD dates');
+  }
+  from.value = '2024-03-01';
+  through.value = '2024-02-29';
+  await range.fire('submit');
+  assert.deepEqual(titles(), ['Second']);
+  assert.equal(descendants(app).find(node => node.attributes.role === 'alert').textContent,
+    'Due from must not be after Due through');
+  // Editing draft boundaries does not change the previously applied range.
+  priority.value = 'High';
+  await priority.fire('change');
+  completion.value = 'Open';
+  await completion.fire('change');
+  assert.deepEqual(titles(), []);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.deepEqual(titles(), ['Second']);
+  assert.equal(priority.value, 'High');
+  assert.deepEqual(tasks, original);
+  from.value = '0001-01-01';
+  through.value = '9999-12-31';
+  await range.fire('submit');
+  assert.deepEqual(titles(), ['Second']);
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'High');
+});
+
+test('due range re-evaluates saved edits and survives creation, renames, and defaults', async () => {
+  const { app, tasks, byId, rows, titles } = await page(false, ['', '2024-02-29', '2024-02-29']);
+  const from = byId('due-from');
+  const through = byId('due-through');
+  const range = descendants(app).find(node => node.tag === 'form' && node.children.includes(from));
+  from.value = '2024-02-29';
+  through.value = '2024-02-29';
+  await range.fire('submit');
+  const completion = byId('task-filter');
+  const priority = byId('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.deepEqual(titles(), ['Third']);
+  const rename = rows()[0].children.find(node => node.tag === 'form');
+  rename.children[1].value = 'Renamed';
+  await rename.fire('submit');
+  assert.deepEqual(titles(), ['Renamed']);
+  const projectRename = descendants(app).find(node => node.tag === 'form' && node.children.includes(byId('new-project-name')));
+  byId('new-project-name').value = 'New project';
+  await projectRename.fire('submit');
+  byId('default-task-priority').value = 'High';
+  await byId('default-task-priority').fire('change');
+  byId('task-title').value = 'Undated new task';
+  const create = descendants(app).find(node => node.tag === 'form' && node.children.includes(byId('task-title')));
+  await create.fire('submit');
+  assert.deepEqual(titles(), ['Renamed']);
+  let input = byId('task-due-date-3');
+  let dueForm = rows()[0].children.find(node => node.children.includes(input));
+  input.value = '2024-03-01';
+  await dueForm.fire('submit');
+  assert.deepEqual(titles(), []);
+  through.value = '';
+  await range.fire('submit');
+  assert.deepEqual(titles(), ['Renamed']);
+  byId('task-priority-3').value = 'Low';
+  await byId('task-priority-3').fire('change');
+  assert.deepEqual(titles(), []);
+  priority.value = 'Low';
+  await priority.fire('change');
+  const checkbox = rows()[0].children[1];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(titles(), []);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  input = byId('task-due-date-3');
+  dueForm = rows()[0].children.find(node => node.children.includes(input));
+  input.value = '';
+  await dueForm.fire('submit');
+  assert.deepEqual(titles(), []);
+  assert.equal(tasks[2].due_date, '');
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'Low');
+  assert.equal(from.value, '2024-02-29');
+  assert.equal(through.value, '');
+});
+
+test('archived due ranges remain usable and reopening resets boundaries', async () => {
+  const { app, byId, titles } = await page(true, ['2024-01-01', '', '2024-03-01']);
+  const from = byId('due-from');
+  const through = byId('due-through');
+  const range = descendants(app).find(node => node.tag === 'form' && node.children.includes(from));
+  assert.ok(range.children.every(node => !node.disabled));
+  from.value = '2024-02-01';
+  await range.fire('submit');
+  assert.deepEqual(titles(), ['Third']);
+  const reopened = await page(false, ['2024-01-01', '', '2024-03-01']);
+  assert.equal(reopened.byId('due-from').value, '');
+  assert.equal(reopened.byId('due-through').value, '');
+  assert.deepEqual(reopened.titles(), ['First', 'Second', 'Third', 'Fourth']);
 });
 
 test('archived projects keep both filters usable and all task edits disabled', async () => {
