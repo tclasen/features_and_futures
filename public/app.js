@@ -129,7 +129,7 @@ async function render() {
       dueFromLabel, dueThroughLabel, applyDueRange, dueRangeAlert, list);
 
     function validDate(value) {
-      const m = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!m) return false;
       const year = Number(m[1]), month = Number(m[2]), day = Number(m[3]);
       const date = new Date(0);
