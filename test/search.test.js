@@ -8,9 +8,14 @@ import { join } from 'node:path';
 import { matchesSearch } from '../search.js';
 import { openProjectStore } from '../projects.js';
 
-test('search trims boundaries, folds only ASCII and preserves internal whitespace', () => {
+test('search trims query boundaries, folds only ASCII and collapses spaces and tabs', () => {
   assert.equal(matchesSearch('Alpha  BETA', '  HA  be  '), true);
-  assert.equal(matchesSearch('Alpha  BETA', 'alpha beta'), false);
+  assert.equal(matchesSearch('Alpha  BETA', 'alpha beta'), true);
+  assert.equal(matchesSearch('Alpha \t \tBETA', '\t alpha\t\t beta  '), true);
+  assert.equal(matchesSearch('Alpha BETA', 'alpha \t  beta'), true);
+  assert.equal(matchesSearch('Alpha\nBETA', 'alpha beta'), false);
+  assert.equal(matchesSearch('Alpha\u00a0BETA', 'alpha beta'), false);
+  assert.equal(matchesSearch('Alpha BETA', 'alpha\nbeta'), false);
   assert.equal(matchesSearch('ÄBC', 'äbc'), false);
   assert.equal(matchesSearch('ÄBC', 'Äbc'), true);
   assert.equal(matchesSearch('Anything', ' \t '), true);
@@ -26,19 +31,20 @@ test('HTTP searches intersect filters, survive edits and reset on navigation', a
   const directory = await mkdtemp(join(tmpdir(), 'workboard-search-'));
   const db = join(directory, 'app.sqlite');
   const store = openProjectStore(db);
-  const first = store.create('Alpha  Team');
+  const first = store.create('Alpha \t Team');
   const second = store.create('ALPHA other');
   store.setArchived(second, true);
-  const task = store.createTask(first, 'Build  API');
+  const task = store.createTask(first, 'Build \t API');
   store.setTaskPriority(first, task, 'High');
   store.setTaskDueDate(first, task, '2025-01-02');
   store.createTask(first, 'Build UI');
   store.createTask(first, 'Other API');
   store.close();
-  const child = spawn(process.execPath, ['server.js'], {
-    env: { ...process.env, PORT: '0', DB_PATH: db }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  try {
+  let child;
+  async function start() {
+    child = spawn(process.execPath, ['server.js'], {
+      env: { ...process.env, PORT: '0', DB_PATH: db }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
     const port = await new Promise((resolve, reject) => {
       let output = '';
       const timer = setTimeout(() => reject(new Error('Startup timed out')), 5000);
@@ -49,19 +55,34 @@ test('HTTP searches intersect filters, survive edits and reset on navigation', a
       });
       child.once('error', reject);
     });
-    const base = `http://127.0.0.1:${port}`;
+    return `http://127.0.0.1:${port}`;
+  }
+  try {
+    let base = await start();
     const get = async (path) => (await fetch(base + path)).text();
     const post = (path, fields) => fetch(base + path, {
       method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
     });
-    assert.deepEqual(titles(await get('/?search=+alpha+'), 'project'), ['Alpha  Team']);
+    assert.deepEqual(titles(await get('/?search=+alpha+'), 'project'), ['Alpha \t Team']);
     assert.deepEqual(titles(await get('/?search=alpha&filter=Archived'), 'project'), ['ALPHA other']);
-    assert.deepEqual(titles(await get('/?search=alpha+team'), 'project'), []);
+    assert.deepEqual(titles(await get('/?search=alpha+team'), 'project'), ['Alpha \t Team']);
+    assert.deepEqual(titles(await get('/?search=alpha%09%09+TEAM'), 'project'), ['Alpha \t Team']);
+    assert.deepEqual(titles(await get('/'), 'project'), ['Alpha \t Team']);
     const path = `/projects/${first}`;
     const state = { search: '  BUILD  ', filter: 'Open', priorityFilter: 'High', dueFrom: '2025-01-02', dueThrough: '2025-01-02' };
     const query = new URLSearchParams(state);
     let html = await get(`${path}?${query}`);
-    assert.deepEqual(titles(html, 'task'), ['Build  API']);
+    assert.deepEqual(titles(html, 'task'), ['Build \t API']);
+    const normalizedQuery = new URLSearchParams({ ...state, search: '  build \t api  ' });
+    assert.deepEqual(titles(await get(`${path}?${normalizedQuery}`), 'task'), ['Build \t API']);
+    assert.deepEqual(titles(await get(path), 'task'), ['Build \t API', 'Build UI', 'Other API']);
+    const exited = once(child, 'exit');
+    child.kill('SIGTERM');
+    await exited;
+    base = await start();
+    assert.deepEqual(titles(await get('/?search=alpha+team'), 'project'), ['Alpha \t Team']);
+    assert.deepEqual(titles(await get(`${path}?${normalizedQuery}`), 'task'), ['Build \t API']);
+    assert.deepEqual(titles(await get(path), 'task'), ['Build \t API', 'Build UI', 'Other API']);
     assert.match(html, /name="search" value="BUILD"/);
     assert.match(html, /<label for="task-search">Task search<\/label>/);
     let response = await post(`${path}/tasks/${task}/rename`, { ...state, title: '  BUILD service  ' });
