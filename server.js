@@ -37,7 +37,7 @@ const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ? WHERE project_id = ? AND id = ?');
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
 }
@@ -104,12 +104,17 @@ const server = http.createServer(async (request, response) => {
         return json(response, 201, taskValue(findTask.get(projectId, result.lastInsertRowid)));
       }
       if (taskId && request.method === 'PATCH') {
-        if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+        const task = findTask.get(projectId, taskId);
+        if (!task) return json(response, 404, { error: 'Task not found' });
         const body = await readJson(request);
-        if (typeof body?.completed !== 'boolean') {
+        const renaming = Object.hasOwn(body ?? {}, 'title');
+        const changingCompletion = Object.hasOwn(body ?? {}, 'completed');
+        if ((changingCompletion || !renaming) && typeof body?.completed !== 'boolean') {
           return json(response, 400, { error: 'Completed must be a boolean' });
         }
-        updateTask.run(Number(body.completed), projectId, taskId);
+        const title = renaming ? (typeof body.title === 'string' ? body.title.trim() : '') : task.title;
+        if (!title) return json(response, 400, { error: 'Task title is required' });
+        updateTask.run(changingCompletion ? Number(body.completed) : task.completed, title, projectId, taskId);
         return json(response, 200, taskValue(findTask.get(projectId, taskId)));
       }
     }

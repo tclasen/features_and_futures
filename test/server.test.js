@@ -214,6 +214,76 @@ test('renaming preserves identity, order, tasks, summaries, and archive protecti
   }
 });
 
+test('task renaming preserves completion, ownership, order, and summaries across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
+  const databasePath = join(directory, 'test.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.base + path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const first = await (await request('/api/projects', 'POST', { name: 'First' })).json();
+    const second = await (await request('/api/projects', 'POST', { name: 'Second' })).json();
+    const projectPath = `/api/projects/${first.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const otherPath = `/api/projects/${second.id}/tasks`;
+    const open = await (await request(tasksPath, 'POST', { title: 'Open' })).json();
+    const done = await (await request(tasksPath, 'POST', { title: 'Done' })).json();
+    await request(`${tasksPath}/${done.id}`, 'PATCH', { completed: true });
+    const summary = await (await request(projectPath)).json();
+    const original = [open, { ...done, completed: true }];
+    for (const title of ['', ' \t\n ', null, 42]) {
+      const response = await request(`${tasksPath}/${done.id}`, 'PATCH', { title, completed: false });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+      assert.deepEqual(await (await request(tasksPath)).json(), original);
+    }
+    assert.equal((await request(`${otherPath}/${done.id}`, 'PATCH', { title: 'Wrong owner' })).status, 404);
+    assert.equal((await request(`${tasksPath}/99999`, 'PATCH', { title: 'Missing' })).status, 404);
+    assert.equal((await request(`${tasksPath}/${done.id}`, 'PATCH', { title: 'Invalid', completed: 'true' })).status, 400);
+    const renamed = [
+      { ...open, title: 'Renamed open' },
+      { ...done, title: '<b>Renamed done</b>', completed: true },
+    ];
+    for (const task of renamed) {
+      const response = await request(`${tasksPath}/${task.id}`, 'PATCH', { title: `  ${task.title}\t ` });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), task);
+    }
+    assert.deepEqual(await (await request(tasksPath)).json(), renamed);
+    assert.deepEqual(await (await request(otherPath)).json(), []);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), renamed);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+    await request(projectPath, 'PATCH', { archived: true });
+    assert.equal((await request(`${tasksPath}/${done.id}`, 'PATCH', { title: 'Blocked' })).status, 409);
+    assert.deepEqual(await (await request(tasksPath)).json(), renamed);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.equal((await request(`${tasksPath}/${done.id}`, 'PATCH', { title: 'Still blocked' })).status, 409);
+    await request(projectPath, 'PATCH', { archived: false });
+    const restored = { ...renamed[1], title: 'Restored title' };
+    assert.deepEqual(await (await request(`${tasksPath}/${done.id}`, 'PATCH', { title: restored.title })).json(), restored);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [renamed[0], restored]);
+    assert.deepEqual(await (await request(otherPath)).json(), []);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task validation, project isolation, completion updates, and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
   const databasePath = join(directory, 'test.sqlite');
