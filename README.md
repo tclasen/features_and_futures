@@ -48,8 +48,13 @@ order before replacing the applied range. Invalid applications keep the previous
 visible membership. Edits re-evaluate the applied range without resetting filters.
 Range controls remain usable in archived projects and reset to empty on reopening.
 Each task row offers Destination project and Move task. Destinations are other
-active projects in project creation order. Moving appends the task to its destination
-and preserves its identity, title, completion, priority, and due date. The source
+active projects in project creation order. A first-time arrival appends after all
+positions established in its destination.
+Returning tasks recover their remembered position relative to other tasks, even
+when several tasks return in a different order. Positions remain reserved while
+tasks are away and survive restarts, project renaming, archival, and restoration.
+Existing databases retain their current order during migration. Moving preserves
+the task's identity, title, completion, priority, and due date. The source
 page stays open with its selected filters and applied due range. Both project
 summaries reflect their current tasks. Archived projects cannot send or receive
 tasks; moving controls are disabled when archived or no destinations are available.

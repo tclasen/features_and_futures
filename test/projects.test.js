@@ -547,7 +547,7 @@ test('project defaults affect only future owned tasks and survive rename, archiv
   }
 });
 
-test('moves append tasks, preserve saved data and summaries, reject invalid destinations, and persist', async () => {
+test('moves append first arrivals, restore returning tasks, preserve saved data and summaries, and persist', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
   const dbPath = join(directory, 'projects.sqlite');
   let server;
@@ -606,20 +606,113 @@ test('moves append tasks, preserve saved data and summaries, reject invalid dest
     assert.deepEqual(await list(destinationTasks), [existing, moved, appended]);
     const returned = await send(`${destinationTasks}/${moved.id}/move`, 'POST', { destinationProjectId: source.id });
     assert.deepEqual(await returned.json(), moved);
-    assert.deepEqual(await list(sourceTasks), [remaining, moved]);
+    assert.deepEqual(await list(sourceTasks), [moved, remaining]);
     // Blank due dates and open completion survive moves as well.
     assert.deepEqual(await (await send(`${destinationTasks}/${existing.id}/move`, 'POST', {
       destinationProjectId: source.id,
     })).json(), existing);
-    assert.deepEqual(await list(sourceTasks), [remaining, moved, existing]);
+    assert.deepEqual(await list(sourceTasks), [moved, remaining, existing]);
     assert.deepEqual(await list(destinationTasks), [appended]);
     await server.stop();
     server = undefined;
     server = await start(dbPath);
-    assert.deepEqual(await list(sourceTasks), [remaining, moved, existing]);
+    assert.deepEqual(await list(sourceTasks), [moved, remaining, existing]);
     assert.deepEqual(await list(destinationTasks), [appended]);
     assert.deepEqual(await list(sourcePath), { ...source, totalCount: 3, completedCount: 1 });
     assert.deepEqual(await list(destinationPath), { ...destination, defaultTaskPriority: 'Low', totalCount: 1 });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('migration and reversed returns preserve reserved positions and current fields across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-return-order-'));
+  const dbPath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    // Task 011 order can differ from IDs after moves; migrate that actual order.
+    const database = new DatabaseSync(dbPath);
+    database.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (id, name) VALUES (7, 'Source'), (8, 'Destination'), (9, 'Third');
+      INSERT INTO tasks (id, project_id, title, position) VALUES
+        (11, 7, 'Last', 30), (12, 7, 'First', 10), (13, 7, 'Middle', 20),
+        (14, 8, 'Destination original', 1);`);
+    database.close();
+    server = await start(dbPath);
+    const projectPath = (id) => `/api/projects/${id}`;
+    const tasksPath = (id) => `${projectPath(id)}/tasks`;
+    async function send(path, method, body) {
+      const response = await fetch(`${server.url}${path}`, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      assert.ok(response.ok, `${method} ${path}: ${response.status}`);
+      return response.json();
+    }
+    const list = async (path) => (await fetch(`${server.url}${path}`)).json();
+    const order = async (project, ids) => {
+      assert.deepEqual((await list(tasksPath(project))).map((task) => task.id), ids);
+    };
+    const move = (task, source, destination) => send(`${tasksPath(source)}/${task}/move`, 'POST', {
+      destinationProjectId: destination,
+    });
+    await order(7, [12, 13, 11]);
+    await move(12, 7, 8);
+    await move(13, 7, 8);
+    await move(11, 7, 8);
+    await order(7, []);
+    await order(8, [14, 12, 13, 11]);
+    // New tasks and first arrivals follow even the positions of absent tasks.
+    const created = await send(tasksPath(7), 'POST', { title: 'Created while all originals away' });
+    await move(14, 8, 7);
+    await order(7, [created.id, 14]);
+    await send(projectPath(7), 'PATCH', { name: 'Renamed source' });
+    await send(projectPath(7), 'PATCH', { archived: true });
+    const rejected = await fetch(`${server.url}${tasksPath(8)}/13/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destinationProjectId: 7 }),
+    });
+    assert.equal(rejected.status, 409);
+    await send(`${tasksPath(8)}/13`, 'PATCH', { title: ' Current middle ' });
+    await send(`${tasksPath(8)}/13`, 'PATCH', { completed: true });
+    await send(`${tasksPath(8)}/13`, 'PATCH', { priority: 'High' });
+    const currentMiddle = await send(`${tasksPath(8)}/13`, 'PATCH', { dueDate: '2024-02-29' });
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    await order(8, [12, 13, 11]);
+    await send(projectPath(7), 'PATCH', { archived: false });
+    await send(projectPath(7), 'PATCH', { defaultTaskPriority: 'Low' });
+    // Return in reverse order, including a visit to a third project.
+    await move(11, 8, 7);
+    await move(13, 8, 9);
+    assert.deepEqual(await move(13, 9, 7), currentMiddle);
+    await move(12, 8, 7);
+    await order(7, [12, 13, 11, created.id, 14]);
+    await order(8, []);
+    await order(9, []);
+    const summary = await list(projectPath(7));
+    assert.equal(summary.name, 'Renamed source');
+    assert.equal(summary.totalCount, 5);
+    assert.equal(summary.completedCount, 1);
+    for (const id of [8, 9]) assert.equal((await list(projectPath(id))).totalCount, 0);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    await order(7, [12, 13, 11, created.id, 14]);
+    assert.deepEqual((await list(tasksPath(7)))[1], currentMiddle);
+    // Destination history also survives an empty project and reversed arrivals.
+    const newDestinationTask = await send(tasksPath(8), 'POST', { title: 'After reserved positions' });
+    await move(11, 7, 8);
+    await move(12, 7, 8);
+    await move(14, 7, 8);
+    await move(13, 7, 8);
+    await order(8, [14, 12, 13, 11, newDestinationTask.id]);
+    await order(7, [created.id]);
+    assert.deepEqual((await list(tasksPath(8)))[2], currentMiddle);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
