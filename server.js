@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { openProjectStore } from './projects.js';
 import { normalizeDueRange, matchesDueRange } from './dates.js';
+import { matchesSearch } from './search.js';
 
 const store = openProjectStore(process.env.DB_PATH || 'data/workboard.sqlite');
 
@@ -50,11 +51,14 @@ function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
 
-function projectList(error = '', filter = 'Active') {
+function projectList(error = '', filter = 'Active', query = '') {
+  const searchField = `<input type="hidden" name="search" value="${escapeHtml(query)}">`;
   return page('Projects', `
     <h1>Workboard</h1>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form method="post" action="/projects">
+      ${searchField}
+      <input type="hidden" name="filter" value="${filter}">
       <label for="project-name">Project name</label>
       <div class="create">
         <input id="project-name" name="name" type="text" autocomplete="off">
@@ -62,13 +66,20 @@ function projectList(error = '', filter = 'Active') {
       </div>
     </form>
     <form class="task-filter" method="get" action="/">
+      ${searchField}
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['Active', 'Archived'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <noscript><button type="submit">Apply filter</button></noscript>
     </form>
-    <ul aria-label="Projects">${store.list(filter === 'Archived').map((project) => `
+    <form class="task-filter" method="get" action="/">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-search">Project search</label>
+      <input id="project-search" name="search" type="text" value="${escapeHtml(query)}" autocomplete="off">
+      <button type="submit">Search projects</button>
+    </form>
+    <ul aria-label="Projects">${store.list(filter === 'Archived').filter((project) => matchesSearch(project.name, query)).map((project) => `
       <li data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
@@ -76,6 +87,7 @@ function projectList(error = '', filter = 'Active') {
           <button type="submit">Open project</button>
         </form>
         <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+          ${searchField}
           <button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button>
         </form>
       </li>`).join('')}</ul>`);
@@ -103,16 +115,17 @@ function dueRangeFields(range) {
     <input type="hidden" name="dueThrough" value="${range.through}">`;
 }
 
-function projectPage(project, filter = 'All', priority = 'All', error = '', range = { from: '', through: '' }) {
+function projectPage(project, filter = 'All', priority = 'All', error = '', range = { from: '', through: '' }, query = '') {
   const destinations = store.list().filter((destination) => destination.id !== project.id);
   const moveDisabled = project.archived || destinations.length === 0;
   const tasks = store.listTasks(project.id).filter((task) =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) &&
-    matchesDueRange(task.due_date, range));
+    matchesDueRange(task.due_date, range) && matchesSearch(task.title, query));
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priority}">
-    ${dueRangeFields(range)}`;
+    ${dueRangeFields(range)}
+    <input type="hidden" name="search" value="${escapeHtml(query)}">`;
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
@@ -143,6 +156,7 @@ function projectPage(project, filter = 'All', priority = 'All', error = '', rang
       </div>
     </form>
     <form class="task-filter" method="get" action="/projects/${project.id}">
+      <input type="hidden" name="search" value="${escapeHtml(query)}">
       ${dueRangeFields(range)}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
@@ -162,6 +176,14 @@ function projectPage(project, filter = 'All', priority = 'All', error = '', rang
       <label for="due-through">Due through</label>
       <input id="due-through" name="rangeThrough" type="text" value="${range.through}" autocomplete="off">
       <button type="submit">Apply due range</button>
+    </form>
+    <form class="task-filter" method="get" action="/projects/${project.id}">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priority}">
+      ${dueRangeFields(range)}
+      <label for="task-search">Task search</label>
+      <input id="task-search" name="search" type="text" value="${escapeHtml(query)}" autocomplete="off">
+      <button type="submit">Search tasks</button>
     </form>
     <ul aria-label="Tasks">${tasks.map((task) => `
       <li data-testid="task-row">
@@ -208,11 +230,12 @@ function projectPage(project, filter = 'All', priority = 'All', error = '', rang
       </li>`).join('')}</ul>`);
 }
 
-function redirectToProject(response, projectId, filter, priority, range) {
+function redirectToProject(response, projectId, filter, priority, range, search) {
   const query = new URLSearchParams({ filter });
   if (priority !== 'All') query.set('priorityFilter', priority);
   if (range.from) query.set('dueFrom', range.from);
   if (range.through) query.set('dueThrough', range.through);
+  if (search) query.set('search', search);
   response.writeHead(303, { Location: `/projects/${projectId}?${query}` });
   response.end();
 }
@@ -241,30 +264,43 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
     const path = url.pathname;
-    // Range state is local to this request; all responses retain its applied view.
+    // Applied filters and search are request-local view state, not saved data.
     let range = { from: '', through: '' };
+    let search = (url.searchParams.get('search') || '').trim();
+    const projectListLocation = (filter) => {
+      const params = new URLSearchParams();
+      if (filter !== 'Active') params.set('filter', filter);
+      if (search) params.set('search', search);
+      return params.size ? `/?${params}` : '/';
+    };
+    const readViewForm = async () => {
+      const form = await readForm(request);
+      search = (form.get('search') || '').trim();
+      return form;
+    };
     const renderProject = (project, filter, priority, error = '') =>
-      projectPage(project, filter, priority, error, range);
+      projectPage(project, filter, priority, error, range, search);
     const redirectProject = (id, filter, priority) =>
-      redirectToProject(response, id, filter, priority, range);
+      redirectToProject(response, id, filter, priority, range, search);
     if (request.method === 'GET' && path === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
       return;
     }
     if (request.method === 'GET' && path === '/') {
-      sendHtml(response, 200, projectList('', projectFilter(url.searchParams.get('filter'))));
+      sendHtml(response, 200, projectList('', projectFilter(url.searchParams.get('filter')), search));
       return;
     }
     if (request.method === 'POST' && path === '/projects') {
-      const form = await readForm(request);
+      const form = await readViewForm();
+      const filter = projectFilter(form.get('filter'));
       const name = (form.get('name') || '').trim();
       if (!name) {
-        sendHtml(response, 400, projectList('Project name is required'));
+        sendHtml(response, 400, projectList('Project name is required', filter, search));
         return;
       }
       store.create(name);
-      response.writeHead(303, { Location: '/' });
+      response.writeHead(303, { Location: projectListLocation(filter) });
       response.end();
       return;
     }
@@ -273,7 +309,7 @@ const server = createServer(async (request, response) => {
       const id = Number(defaultPriorityMatch[1]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
       if (project) {
-        const form = await readForm(request);
+        const form = await readViewForm();
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
         range = appliedDueRange(form);
@@ -296,7 +332,7 @@ const server = createServer(async (request, response) => {
       const id = Number(renameMatch[1]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
       if (project) {
-        const form = await readForm(request);
+        const form = await readViewForm();
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
         range = appliedDueRange(form);
@@ -317,8 +353,9 @@ const server = createServer(async (request, response) => {
     const archiveMatch = /^\/projects\/([1-9]\d*)\/(archive|restore)$/.exec(path);
     if (request.method === 'POST' && archiveMatch) {
       const id = Number(archiveMatch[1]);
+      await readViewForm();
       if (Number.isSafeInteger(id) && store.setArchived(id, archiveMatch[2] === 'archive')) {
-        response.writeHead(303, { Location: archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived' });
+        response.writeHead(303, { Location: projectListLocation(archiveMatch[2] === 'archive' ? 'Active' : 'Archived') });
         response.end();
         return;
       }
@@ -350,7 +387,7 @@ const server = createServer(async (request, response) => {
       const projectId = Number(taskMatch[1]);
       const project = Number.isSafeInteger(projectId) ? store.find(projectId) : undefined;
       if (project) {
-        const form = await readForm(request);
+        const form = await readViewForm();
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
         range = appliedDueRange(form);
