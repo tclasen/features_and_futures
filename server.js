@@ -38,7 +38,7 @@ try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
 const html = await readFile(path.join(root, 'public', 'index.html'));
 
 function validDate(value) {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
   const [, year, month, day] = match.map(Number);
   if (year < 1 || month < 1 || month > 12) return false;
