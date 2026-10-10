@@ -26,9 +26,16 @@ db.exec(`
   )
 `);
 
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(column => column.name);
+if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
+  FROM projects p WHERE p.archived = ? ORDER BY p.created_at, p.rowid`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+const updateProjectArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
@@ -70,7 +77,17 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(response, 200, listProjects.all());
+    return sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive\/?$/);
+  if (archiveMatch && request.method === 'PATCH') {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
+    const project = getProject.get(decodeURIComponent(archiveMatch[1]));
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    updateProjectArchive.run(body.archived ? 1 : 0, project.id);
+    return sendJson(response, 200, { ...project, archived: body.archived ? 1 : 0 });
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body;
@@ -91,6 +108,7 @@ const server = createServer(async (request, response) => {
     if (!getProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') return sendJson(response, 200, listTasks.all(projectId));
     if (request.method === 'POST') {
+      if (getProject.get(projectId).archived) return sendJson(response, 409, { error: 'Archived project' });
       let body;
       try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
@@ -107,6 +125,7 @@ const server = createServer(async (request, response) => {
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
     const task = getTask.get(decodeURIComponent(taskMatch[1]));
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (getProject.get(task.project_id).archived) return sendJson(response, 409, { error: 'Archived project' });
     updateTaskCompletion.run(body.completed ? 1 : 0, task.id);
     return sendJson(response, 200, { ...task, completed: body.completed ? 1 : 0 });
   }

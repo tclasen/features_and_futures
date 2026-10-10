@@ -8,10 +8,13 @@ const taskContainer = document.querySelector('#tasks');
 const taskForm = document.querySelector('#create-task');
 const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
+const projectFilter = document.querySelector('#project-filter');
+const archivedNotice = document.querySelector('#archived-notice');
 let activeProjectId;
+let activeProjectArchived = false;
 
 async function loadProjects() {
-  const response = await fetch('/api/projects');
+  const response = await fetch(`/api/projects?filter=${encodeURIComponent(projectFilter.value)}`);
   if (!response.ok) throw new Error('Unable to load projects');
   const projects = await response.json();
   projectContainer.replaceChildren();
@@ -21,11 +24,25 @@ async function loadProjects() {
     row.className = 'project-row';
     const name = document.createElement('span');
     name.textContent = project.name;
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completed_count}/${project.total_count} completed`;
     const open = document.createElement('button');
     open.type = 'button';
     open.textContent = 'Open project';
     open.addEventListener('click', () => { window.location.href = `/projects/${encodeURIComponent(project.id)}`; });
-    row.append(name, open);
+    const archive = document.createElement('button');
+    archive.type = 'button';
+    archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+    archive.addEventListener('click', async () => {
+      const update = await fetch(`/api/projects/${encodeURIComponent(project.id)}/archive`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived })
+      });
+      if (!update.ok) { showError('Unable to update project'); return; }
+      await loadProjects();
+    });
+    row.append(name, summary, open, archive);
     projectContainer.append(row);
   }
 }
@@ -45,7 +62,10 @@ async function showRoute() {
   }
   const project = await response.json();
   activeProjectId = project.id;
+  activeProjectArchived = Boolean(project.archived);
   document.querySelector('#project-title').textContent = project.name;
+  archivedNotice.hidden = !activeProjectArchived;
+  taskForm.querySelector('button').disabled = activeProjectArchived;
   listView.hidden = true;
   detailView.hidden = false;
   await loadTasks();
@@ -69,6 +89,7 @@ async function loadTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(task.completed);
+    checkbox.disabled = activeProjectArchived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       const update = await fetch(`/api/tasks/${encodeURIComponent(task.id)}`, {
@@ -109,6 +130,8 @@ form.addEventListener('submit', async event => {
 });
 
 document.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
+function showError(message) { error.textContent = message; error.hidden = false; }
+projectFilter.addEventListener('change', () => loadProjects().catch(() => showError('Unable to load projects')));
 taskForm.addEventListener('submit', async event => {
   event.preventDefault();
   error.hidden = true;
