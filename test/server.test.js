@@ -442,6 +442,71 @@ test('project defaults affect only future owned tasks and survive rename, archiv
   }
 });
 
+test('due dates persist independently and preserve other task data through edits and restoration', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  const base = `http://127.0.0.1:${port}`;
+  let child;
+  const send = (path, method, body) => fetch(`${base}${path}`, {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const get = async (path) => (await fetch(`${base}${path}`)).json();
+  try {
+    child = await start(port, databasePath);
+    const project = await (await send('/api/projects', 'POST', { name: 'Dates' })).json();
+    const other = await (await send('/api/projects', 'POST', { name: 'Other' })).json();
+    const path = `/api/projects/${project.id}`;
+    const tasksPath = `${path}/tasks`;
+    const first = await (await send(tasksPath, 'POST', { title: 'First' })).json();
+    const second = await (await send(tasksPath, 'POST', { title: 'Second' })).json();
+    assert.equal(first.dueDate, '');
+    assert.equal(second.dueDate, '');
+    const taskPath = `${tasksPath}/${first.id}`;
+    await send(taskPath, 'PATCH', { completed: true });
+    await send(taskPath, 'PATCH', { priority: 'High' });
+    const expected = { ...first, completed: true, priority: 'High', dueDate: '2000-02-29' };
+    const summary = { ...project, totalCount: 2, completedCount: 1 };
+    const saved = await send(taskPath, 'PATCH', { dueDate: ' \t2000-02-29  ' });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), expected);
+    for (const dueDate of ['1900-02-29', '2025-04-31', '0000-01-01', '2025-1-01', null, 42]) {
+      const response = await send(taskPath, 'PATCH', { dueDate });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await get(tasksPath), [expected, second]);
+    }
+    for (const field of [{ title: 'Mixed' }, { priority: 'Low' }, { completed: false }]) {
+      assert.equal((await send(taskPath, 'PATCH', { dueDate: '', ...field })).status, 400);
+    }
+    assert.equal((await send(`/api/projects/${other.id}/tasks/${first.id}`, 'PATCH', { dueDate: '' })).status, 404);
+    expected.title = 'Renamed';
+    assert.deepEqual(await (await send(taskPath, 'PATCH', { title: ' Renamed ' })).json(), expected);
+    assert.deepEqual(await get(path), summary);
+    assert.deepEqual(await get(`/api/projects/${other.id}/tasks`), []);
+    await send(path, 'PATCH', { archived: true });
+    assert.equal((await send(taskPath, 'PATCH', { dueDate: '' })).status, 409);
+    await stop(child);
+    child = undefined;
+    child = await start(port, databasePath);
+    assert.deepEqual(await get(tasksPath), [expected, second]);
+    await send(path, 'PATCH', { archived: false });
+    for (const dueDate of ['0001-01-01', '9999-12-31', ' \t ']) {
+      expected.dueDate = dueDate.trim();
+      assert.deepEqual(await (await send(taskPath, 'PATCH', { dueDate })).json(), expected);
+      assert.deepEqual(await get(tasksPath), [expected, second]);
+      assert.deepEqual(await get(path), summary);
+      await stop(child);
+      child = undefined;
+      child = await start(port, databasePath);
+      assert.deepEqual(await get(tasksPath), [expected, second]);
+    }
+  } finally {
+    if (child) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('existing project databases migrate without losing IDs or names', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
@@ -463,7 +528,7 @@ test('existing project databases migrate without losing IDs or names', async () 
       { id: 7, name: 'Legacy project', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 },
     ]);
     const tasksUrl = `http://127.0.0.1:${port}/api/projects/7/tasks`;
-    const expected = [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];
+    const expected = [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '' }];
     assert.deepEqual(await (await fetch(tasksUrl)).json(), expected);
     await stop(child);
     child = undefined;

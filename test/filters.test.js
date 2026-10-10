@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
+import { normalizeDueDate } from '../due-date.js';
 
 // Minimal DOM adapter runs the actual browser event handlers without dependencies.
 class Element {
@@ -39,7 +40,7 @@ async function page(archived = false) {
   const tasks = [];
   for (const priority of ['Low', 'Normal', 'High']) {
     for (const completed of [false, true]) {
-      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed}`, priority, completed });
+      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed}`, priority, completed, dueDate: '' });
     }
   }
   const writes = [];
@@ -52,7 +53,14 @@ async function page(archived = false) {
       if (options) {
         writes.push({ path, ...options });
         const item = path === '/api/projects/1' ? project : tasks.find((item) => item.id === Number(path.split('/').at(-1)));
-        Object.assign(item, JSON.parse(options.body));
+        const input = JSON.parse(options.body);
+        if (Object.hasOwn(input, 'dueDate')) {
+          input.dueDate = normalizeDueDate(input.dueDate);
+          if (input.dueDate === null) {
+            return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+          }
+        }
+        Object.assign(item, input);
         result = item;
       } else if (path.endsWith('/tasks')) {
         result = tasks;
@@ -133,7 +141,7 @@ test('archived projects allow both filters while all row edits remain disabled',
   await view.filter('priority-filter', 'Normal');
   assert.deepEqual(view.titles(), ['Normal true']);
   const row = view.rows()[0];
-  for (const control of [row.children[0], row.children[2].children[1], row.children[2].children[2], row.children[4]]) {
+  for (const control of [row.children[0], row.children[2].children[1], row.children[2].children[2], row.children[4], row.children[5].children[1], row.children[5].children[2]]) {
     assert.equal(control.disabled, true);
   }
   assert.equal(view.writes.length, 0);
@@ -160,6 +168,60 @@ test('changing project defaults preserves selected filters and existing rows', a
     assert.equal(JSON.stringify(view.tasks), before);
     assert.deepEqual(JSON.parse(view.writes.at(-1).body), { defaultTaskPriority: priority });
   }
+});
+
+test('due-date controls save and clear without changing filters, matching rows or other task data', async () => {
+  const view = await page();
+  await view.filter('task-filter', 'completed');
+  await view.filter('priority-filter', 'High');
+  const row = view.rows()[0];
+  const form = row.children[5];
+  const [label, input, button] = form.children;
+  assert.equal(label.textContent, 'Task due date');
+  assert.equal(label.htmlFor, input.id);
+  assert.equal(input.type, 'text');
+  assert.equal(input.value, '');
+  assert.equal(button.textContent, 'Save due date');
+  assert.equal(input.disabled, false);
+  assert.equal(button.disabled, false);
+  const before = JSON.stringify(view.tasks.slice(0, 5));
+  for (const dueDate of ['2024-02-29', '']) {
+    input.value = dueDate;
+    await form.fire('submit');
+    assert.equal(view.tasks[5].dueDate, dueDate);
+    assert.equal(input.value, dueDate);
+    assert.equal(view.rows()[0], row);
+    assert.equal(view.get('task-filter').value, 'completed');
+    assert.equal(view.get('priority-filter').value, 'High');
+    assert.deepEqual(view.titles(), ['High true']);
+    assert.equal(view.tasks[5].completed, true);
+    assert.equal(view.tasks[5].priority, 'High');
+    assert.equal(JSON.stringify(view.tasks.slice(0, 5)), before);
+    assert.deepEqual(JSON.parse(view.writes.at(-1).body), { dueDate });
+  }
+});
+
+test('invalid due dates show an alert and preserve saved data and filters', async () => {
+  const view = await page();
+  await view.filter('task-filter', 'open');
+  await view.filter('priority-filter', 'Normal');
+  const form = view.rows()[0].children[5];
+  const input = form.children[1];
+  input.value = ' 2024-02-29 ';
+  await form.fire('submit');
+  assert.equal(input.value, '2024-02-29');
+  const before = JSON.stringify(view.tasks);
+  input.value = '2025-02-29';
+  await form.fire('submit');
+  assert.equal(view.get('alert').hidden, false);
+  assert.equal(view.get('alert').textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.equal(JSON.stringify(view.tasks), before);
+  assert.equal(view.get('task-filter').value, 'open');
+  assert.equal(view.get('priority-filter').value, 'Normal');
+  assert.equal(form.children[2].disabled, false);
+  await view.filter('priority-filter', 'all');
+  await view.filter('priority-filter', 'Normal');
+  assert.equal(view.rows()[0].children[5].children[1].value, '2024-02-29');
 });
 
 test('default priority has an accessible label and exact ordered options', async () => {
