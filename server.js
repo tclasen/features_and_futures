@@ -25,6 +25,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Preserve legacy creation order while allowing moved tasks to append to a project.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
@@ -40,7 +43,7 @@ CREATE INDEX IF NOT EXISTS task_positions_project ON task_positions(project_id, 
 INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
   SELECT id, project_id, position FROM tasks`);
 const priorities = ['Low', 'Normal', 'High'];
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const rememberDestination = db.prepare(`INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
   SELECT id, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?)
   FROM tasks WHERE id = ? AND project_id = ?`);
@@ -58,6 +61,7 @@ function transaction(action) {
     throw error;
   }
 }
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
@@ -107,6 +111,7 @@ function page(title, content) {
     .task-filter { margin-top: 24px; }
     input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
     input { min-width: 0; flex: 1; padding: 10px; border: 1px solid #8b98aa; border-radius: 6px; font: inherit; }
+    textarea { width: 100%; padding: 10px; border: 1px solid #8b98aa; border-radius: 6px; font: inherit; }
     button { background: #224fc0; color: white; border: 0; border-radius: 6px; padding: 11px 16px; font: inherit; cursor: pointer; }
     button:hover { background: #193c94; }
     button:disabled { background: #8b98aa; cursor: not-allowed; }
@@ -288,6 +293,13 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
           </div>
         </form>
+        <form action="/projects/${project.id}/tasks/${task.id}/notes" method="post">
+          <label for="task-notes-${task.id}">Task notes</label>
+          ${filterFields}
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes).replace(/\r/g, '&#13;')}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+        </form>
         <form action="/projects/${project.id}/tasks/${task.id}/move" method="post">
           <label for="destination-project-${task.id}">Destination project</label>
           ${filterFields}
@@ -313,16 +325,18 @@ function sendHtml(response, status, html) {
 }
 
 async function readForm(request) {
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
-    body += chunk.toString();
-    if (Buffer.byteLength(body) > 1_000_000) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size > 1_000_000) {
       const error = new Error('Request too large');
       error.status = 413;
       throw error;
     }
   }
-  return new URLSearchParams(body);
+  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
 const server = http.createServer(async (request, response) => {
@@ -426,7 +440,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       sendHtml(response, 200, projectPage(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter')), dueRange(searchParams), undefined, searchQuery(searchParams)));
-    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?$/.test(pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move|notes))?)?$/.test(pathname)) {
       const [, , projectId, , taskId, action] = pathname.split('/');
       const project = getProject.get(projectId);
       if (!project) {
@@ -460,6 +474,8 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           result = renameTask.run(title, taskId, project.id);
+        } else if (action === 'notes') {
+          result = setTaskNotes.run(form.get('notes') || '', taskId, project.id);
         } else if (action === 'due-date') {
           const dueDate = (form.get('dueDate') || '').trim();
           if (dueDate && !validDueDate(dueDate)) {
