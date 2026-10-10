@@ -136,7 +136,27 @@ async function renderTasks(project) {
         } catch (error) { alertMessage(error.message); }
         finally { rename.disabled = archived; }
       });
-      row.append(checkbox, title, renameForm);
+      const priority = element('select', '', { id: `task-priority-${task.id}` });
+      for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', value, { value }));
+      priority.value = task.priority;
+      priority.disabled = archived;
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        try {
+          const saved = await request(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          task.priority = saved.priority;
+          app.querySelector('[role="alert"]')?.remove();
+        } catch (error) { alertMessage(error.message); }
+        finally {
+          priority.value = task.priority;
+          priority.disabled = archived;
+        }
+      });
+      row.append(checkbox, title, renameForm,
+        element('label', 'Task priority', { for: priority.id }), priority);
       list.append(row);
     }
   }

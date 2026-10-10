@@ -26,4 +26,6 @@ Active project pages also support renaming. Names are trimmed and required; rena
 
 Each task row supports renaming its title. Titles are trimmed and required; renaming preserves ownership, order, completion, and summary counts. Archived projects disable task renaming until restored. Task titles persist across restarts.
 
-The built-in Node test verifies health, validation and trimming, creation order, project isolation, completion summaries, archive/restore, renaming, read-only enforcement, migration from the prior schema, and SQLite persistence across server restarts. Tests use a temporary database outside the repository.
+Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priorities persist independently across renaming and restarts; archived projects disable priority editing until restored.
+
+The built-in Node tests verify health, validation and trimming, creation order, project isolation, completion summaries, archive/restore, renaming, priorities, read-only enforcement, migration from the prior schema, and SQLite persistence across server restarts. Tests use temporary databases outside the repository.

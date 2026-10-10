@@ -20,9 +20,13 @@ CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 function taskJSON(task) { return { ...task, completed: Boolean(task.completed) }; }
@@ -103,6 +107,11 @@ const server = http.createServer(async (req, res) => {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(res, 400, { error: 'Task title is required' });
           renameTask.run(title, projectId, taskId);
+          return json(res, 200, taskJSON(getTask.get(projectId, taskId)));
+        }
+        if (input && Object.hasOwn(input, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(input.priority)) return json(res, 400, { error: 'Invalid task priority' });
+          prioritizeTask.run(input.priority, projectId, taskId);
           return json(res, 200, taskJSON(getTask.get(projectId, taskId)));
         }
         if (typeof input?.completed !== 'boolean') return json(res, 400, { error: 'Completion must be a boolean' });

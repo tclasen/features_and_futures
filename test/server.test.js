@@ -79,6 +79,7 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     const task = await taskResponse.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
+    assert.equal(task.priority, 'Normal');
     assert.equal(task.project_id, first.id);
     const secondTask = await (await addTask('Second task')).json();
     assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
@@ -87,6 +88,21 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.equal((await complete(first.id, task.id, 'true')).status, 400);
     assert.equal((await complete(first.id, task.id, true)).status, 200);
     task.completed = true;
+    assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
+    async function prioritize(projectId, taskId, priority) {
+      return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+      });
+    }
+    assert.equal(secondTask.priority, 'Normal');
+    assert.equal((await prioritize(second.id, task.id, 'High')).status, 404);
+    for (const invalid of ['Urgent', 'high', '', null, 1]) {
+      assert.equal((await prioritize(first.id, task.id, invalid)).status, 400);
+    }
+    assert.equal((await prioritize(first.id, task.id, 'High')).status, 200);
+    task.priority = 'High';
+    assert.equal((await prioritize(first.id, secondTask.id, 'Low')).status, 200);
+    secondTask.priority = 'Low';
     assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
     async function renameTask(projectId, taskId, title) {
       return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
@@ -133,6 +149,7 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.equal((await rename('Forbidden rename')).status, 409);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     assert.equal((await renameTask(first.id, task.id, 'Forbidden title')).status, 409);
+    assert.equal((await prioritize(first.id, task.id, 'Normal')).status, 409);
     assert.equal((await addTask('Forbidden')).status, 409);
     assert.equal((await complete(first.id, task.id, false)).status, 409);
     assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
@@ -152,6 +169,9 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     task.title = 'Restored task';
     assert.deepEqual(await restoredRename.json(), task);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.equal((await prioritize(first.id, task.id, 'Normal')).status, 200);
+    task.priority = 'Normal';
+    assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
     const reopened = await complete(first.id, task.id, false);
     assert.equal((await reopened.json()).completed, false);
     task.completed = false;
