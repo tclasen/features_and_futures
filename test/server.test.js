@@ -205,8 +205,8 @@ test('rename preserves identity, order, tasks, summaries, and restart persistenc
       assert.deepEqual(await (await request(path)).json(), original);
     }
     assert.equal((await request('/api/projects/99999', 'PATCH', { name: 'Missing' })).status, 404);
-    const renamed = { ...original, name: 'Renamed project' };
-    const response = await request(path, 'PATCH', { name: '  Renamed project \t' });
+    const renamed = { ...original, name: 'ReNamed  \t project' };
+    const response = await request(path, 'PATCH', { name: '  ReNamed  \t project \t' });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), renamed);
     assert.deepEqual(await (await request('/api/projects')).json(), [renamed, second]);
@@ -222,7 +222,7 @@ test('rename preserves identity, order, tasks, summaries, and restart persistenc
     assert.equal((await request(path, 'PATCH', { name: 'Blocked', archived: false })).status, 400);
     assert.deepEqual(await (await request(path)).json(), { ...renamed, archived: true });
     await request(path, 'PATCH', { archived: false });
-    const restored = { ...renamed, name: 'Renamed after restore' };
+    const restored = { ...renamed, name: 'ReNamed  \t after restore' };
     assert.deepEqual(await (await request(path, 'PATCH', { name: restored.name })).json(), restored);
     await server.stop();
     server = await start(databasePath);
@@ -264,8 +264,8 @@ test('task rename preserves ownership, order, completion, summaries, and persist
     assert.equal((await request(`/api/projects/${other.id}/tasks/${first.id}`, 'PATCH', { title: 'Wrong owner' })).status, 404);
     assert.equal((await request(`${tasksPath}/99999`, 'PATCH', { title: 'Missing' })).status, 404);
     assert.equal((await request(taskPath, 'PATCH', { title: 'Mixed', completed: false })).status, 400);
-    const renamed = { ...first, title: 'Renamed task' };
-    const response = await request(taskPath, 'PATCH', { title: '  Renamed task \t' });
+    const renamed = { ...first, title: 'ReNamed \t\t  task' };
+    const response = await request(taskPath, 'PATCH', { title: '  ReNamed \t\t  task \t' });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), renamed);
     assert.deepEqual(await (await request(tasksPath)).json(), [renamed, second]);
@@ -282,8 +282,8 @@ test('task rename preserves ownership, order, completion, summaries, and persist
     server = await start(databasePath);
     assert.equal((await request(taskPath, 'PATCH', { title: 'Still blocked' })).status, 409);
     await request(path, 'PATCH', { archived: false });
-    const restored = { ...renamed, title: 'After restore' };
-    assert.deepEqual(await (await request(taskPath, 'PATCH', { title: ' After restore ' })).json(), restored);
+    const restored = { ...renamed, title: 'After \t  restore' };
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { title: ` ${restored.title} ` })).json(), restored);
     const renamedOpen = { ...second, title: 'Renamed open task' };
     assert.deepEqual(await (await request(`${tasksPath}/${second.id}`, 'PATCH', { title: renamedOpen.title })).json(), renamedOpen);
     await server.stop();

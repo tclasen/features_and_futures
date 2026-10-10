@@ -491,18 +491,28 @@ test('task search intersects filters and retains applied query through edits', a
   assert.deepEqual(p.titles(), []);
 });
 
-test('search remains applied on creation and movement, preserves whitespace and ASCII semantics', async () => {
+test('search remains applied on creation and movement, normalizes spaces/tabs without rewriting titles', async () => {
   const p = await page();
   await searchTasks(p, 'needle');
   p.byId('task-title').value = 'A NEEDLE  Ä';
   await p.byId('task-title').parent.fire('submit');
   assert.deepEqual(p.titles(), ['A NEEDLE  Ä']);
   await searchTasks(p, 'needle Ä');
-  assert.deepEqual(p.titles(), []); // Internal double space is significant.
+  assert.deepEqual(p.titles(), ['A NEEDLE  Ä']);
+  await searchTasks(p, ' \tNeEdLe \t\t Ä\n');
+  assert.deepEqual(p.titles(), ['A NEEDLE  Ä']);
   await searchTasks(p, 'needle  ä');
   assert.deepEqual(p.titles(), []); // Non-ASCII letters are not case folded.
+  await searchTasks(p, 'needle Ä');
+  p.byId('new-task-title-5').value = 'A NEEDLE\t \tÄ';
+  await p.byId('new-task-title-5').parent.fire('submit');
+  await settle();
+  assert.deepEqual(p.titles(), ['A NEEDLE\t \tÄ']);
   await searchTasks(p, 'needle  Ä');
-  assert.deepEqual(p.titles(), ['A NEEDLE  Ä']);
+  assert.deepEqual(p.titles(), ['A NEEDLE\t \tÄ']);
+  await searchTasks(p, 'needle\u00a0Ä');
+  assert.deepEqual(p.titles(), []); // Non-ASCII whitespace is not collapsed.
+  await searchTasks(p, 'needle Ä');
   await p.byId('destination-project-5').parent.fire('submit');
   await settle();
   assert.deepEqual(p.titles(), []);
@@ -523,7 +533,7 @@ test('project search intersects archive filter, preserves order and summaries, a
     { id: 1, name: 'Alpha  Ä', archived: false, total: 3, completed: 2 },
     { id: 2, name: 'Beta', archived: false, total: 0, completed: 0 },
     { id: 3, name: 'ALPHABET', archived: true, total: 2, completed: 1 },
-    { id: 4, name: 'alpha last', archived: false, total: 1, completed: 1 },
+    { id: 4, name: 'alpha\t \tlast', archived: false, total: 1, completed: 1 },
   ];
   async function listPage() {
     const app = new Node('main');
@@ -549,7 +559,7 @@ test('project search intersects archive filter, preserves order and summaries, a
   assert.equal(p.byId('project-search').value, '');
   p.byId('project-search').value = '  ALPHA  ';
   await p.byId('project-search').parent.fire('submit');
-  assert.deepEqual(p.names(), ['Alpha  Ä', 'alpha last']);
+  assert.deepEqual(p.names(), ['Alpha  Ä', 'alpha\t \tlast']);
   assert.equal(p.rows()[0].children[1].textContent, '2/3 completed');
   p.byId('project-search').value = 'unapplied draft';
   p.byId('project-filter').value = 'Archived';
@@ -559,10 +569,13 @@ test('project search intersects archive filter, preserves order and summaries, a
   assert.deepEqual(p.names(), []);
   p.byId('project-filter').value = 'Active';
   await p.byId('project-filter').fire('change');
-  assert.deepEqual(p.names(), ['Alpha  Ä', 'ALPHABET', 'alpha last']);
+  assert.deepEqual(p.names(), ['Alpha  Ä', 'ALPHABET', 'alpha\t \tlast']);
   p.byId('project-search').value = 'alpha Ä';
   await p.byId('project-search').parent.fire('submit');
-  assert.deepEqual(p.names(), []);
+  assert.deepEqual(p.names(), ['Alpha  Ä']);
+  p.byId('project-search').value = ' \tALPHA\t \tÄ\n';
+  await p.byId('project-search').parent.fire('submit');
+  assert.deepEqual(p.names(), ['Alpha  Ä']);
   p.byId('project-search').value = 'alpha  ä';
   await p.byId('project-search').parent.fire('submit');
   assert.deepEqual(p.names(), []);
@@ -576,5 +589,8 @@ test('project search intersects archive filter, preserves order and summaries, a
   await back.fire('click');
   const reopened = await listPage();
   assert.equal(reopened.byId('project-search').value, '');
-  assert.equal(reopened.names().length, 4);
+  assert.deepEqual(reopened.names(), ['Alpha  Ä', 'Beta', 'ALPHABET', 'alpha\t \tlast']);
+  reopened.byId('project-search').value = 'alpha last';
+  await reopened.byId('project-search').parent.fire('submit');
+  assert.deepEqual(reopened.names(), ['alpha\t \tlast']);
 });

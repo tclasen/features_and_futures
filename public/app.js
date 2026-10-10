@@ -25,9 +25,9 @@ function showAlert(message) {
   alert.textContent = message;
 }
 
-// Fold only ASCII letters: non-ASCII case remains significant.
-function asciiLower(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+// Search-only normalization; stored names and titles remain unchanged.
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 function searchForm(kind, onApply) {
@@ -43,7 +43,7 @@ function searchForm(kind, onApply) {
   form.addEventListener('submit', event => {
     event.preventDefault();
     input.value = input.value.trim();
-    onApply(asciiLower(input.value));
+    onApply(normalizeSearch(input.value));
   });
   return form;
 }
@@ -121,7 +121,7 @@ async function renderList() {
   function renderProjects() {
     list.replaceChildren(...projects
       .filter(project => project.archived === (filter.value === 'Archived') &&
-        asciiLower(project.name).includes(appliedQuery))
+        normalizeSearch(project.name).includes(appliedQuery))
       .map(project => projectRow(project, saved => {
         Object.assign(project, saved);
         renderProjects();
@@ -354,7 +354,7 @@ async function renderProject(id) {
   function renderTasks() {
     list.replaceChildren();
     for (const task of tasks) {
-      if (!asciiLower(task.title).includes(appliedQuery)) continue;
+      if (!normalizeSearch(task.title).includes(appliedQuery)) continue;
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
