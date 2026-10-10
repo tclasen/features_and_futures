@@ -1,1 +1,3 @@
 Native eval005starts at the committed18-round prefix. PM zero-inference browser fixtures for later undeclared rounds may overlap native work on the shared host. Native host load and vm_stat snapshots are retained per attempt. Attribution of contention is unavailable; no elapsed time is subtracted and no idle-host claim is made. Source/harness/image/profile/math stay frozen.
+
+2026-10-10T15:13Z: PM immutable publication scan and synthetic task020/task021 checks overlapped native rounds5–7 on the shared host. The scan snapshot was removed after verification. Native resource/load evidence remains authoritative; no idle-host timing or attribution claim is made.

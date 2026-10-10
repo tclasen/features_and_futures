@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #18212f; background: #f5f7fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(760px, calc(100% - 32px)); margin: 56px auto; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    form { display: flex; gap: 10px; margin-bottom: 16px; }
+    input { min-width: 0; flex: 1; padding: 11px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; }
+    button { padding: 10px 15px; border: 0; border-radius: 6px; background: #2458c6; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1948a9; }
+    .rows { display: grid; gap: 10px; }
+    [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .alert { margin: 0 0 12px; color: #a31f2b; }
+    .back { margin-bottom: 24px; background: #465367; }
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .task-row input { flex: 0 0 auto; width: 18px; height: 18px; }
+    .task-row.completed span { color: #687385; text-decoration: line-through; }
+    .project-details { display: grid; gap: 5px; }
+    [data-testid="project-summary"] { color: #687385; font-size: .9rem; }
+    .project-actions { display: flex; align-items: center; gap: 8px; }
+    .project-actions button:last-child { background: #465367; }
+    .filters { margin: 20px 0 12px; display: flex; align-items: center; gap: 10px; }
+    .due-range { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+    .due-range input { flex: 0 1 170px; }
+    select { padding: 9px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; background: white; }
+    #rename-form { margin: 0 0 16px; }
+    .task-row .task-rename-form { display: flex; flex: 1; gap: 8px; margin: 0; }
+    .task-row .task-rename-form input { flex: 1; width: auto; padding: 7px 9px; }
+    .task-row .task-rename-form button { padding: 7px 10px; }
+    .task-priority { flex: 0 0 auto; }
+    .task-due-form { display: flex; gap: 6px; margin: 0; }
+    .task-due-form input { width: 145px; padding: 7px 9px; }
+    .task-due-form button { padding: 7px 10px; }
+    @media (max-width: 480px) { form { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    const asciiLower = (value) => String(value).replace(/[A-Z]/g, (char) => char.toLowerCase());
+
+    async function loadProjects() {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error('Could not load projects');
+      return response.json();
+    }
+
+    async function showList(error = '', selectedFilter = 'Active') {
+      app.innerHTML = `<h1>Workboard</h1>
+        ${error ? `<p class="alert" role="alert">${esc(error)}</p>` : ''}
+        <form id="create-form">
+          <input id="project-name" name="name" aria-label="Project name" placeholder="Project name">
+          <button type="submit">Create project</button>
+        </form>
+        <form id="project-search-form">
+          <input id="project-search" aria-label="Project search" placeholder="Project search">
+          <button type="submit">Search projects</button>
+        </form>
+        <div class="filters"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
+        <section class="rows" aria-label="Projects" id="project-list"></section>`;
+      const list = app.querySelector('#project-list');
+      const filter = app.querySelector('#project-filter');
+      const searchInput = app.querySelector('#project-search');
+      let appliedQuery = '';
+      filter.value = selectedFilter;
+      let renderVersion = 0;
+      async function renderProjects() {
+        const version = ++renderVersion;
+        const projects = await loadProjects();
+        if (version !== renderVersion) return;
+        const rows = document.createDocumentFragment();
+        for (const project of projects) {
+          if ((filter.value === 'Archived') !== project.archived) continue;
+          if (!asciiLower(project.name).includes(asciiLower(appliedQuery))) continue;
+          const row = document.createElement('div');
+          row.dataset.testid = 'project-row';
+          const details = document.createElement('div');
+          details.className = 'project-details';
+          const name = document.createElement('span');
+          name.textContent = project.name;
+          const summary = document.createElement('span');
+          summary.dataset.testid = 'project-summary';
+          summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+          details.append(name, summary);
+          const actions = document.createElement('div');
+          actions.className = 'project-actions';
+          const open = document.createElement('button');
+          open.type = 'button'; open.textContent = 'Open project';
+          open.addEventListener('click', () => navigate(`/projects/${project.id}`));
+          const stateButton = document.createElement('button');
+          stateButton.type = 'button';
+          stateButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+          stateButton.addEventListener('click', async () => {
+            await fetch(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+            await renderProjects();
+          });
+          actions.append(open, stateButton);
+          row.append(details, actions);
+          rows.append(row);
+        }
+        list.replaceChildren(rows);
+      }
+      filter.addEventListener('change', renderProjects);
+      app.querySelector('#project-search-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        appliedQuery = searchInput.value.trim();
+        await renderProjects();
+      });
+      await renderProjects();
+      app.querySelector('#create-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = app.querySelector('#project-name').value.trim();
+        if (!name) return showList('Project name is required', filter.value);
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!response.ok) return showList('Could not create project');
+        showList('', filter.value);
+      });
+    }
+
+    async function showProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) { history.replaceState({}, '', '/'); return showList(); }
+      const project = await response.json();
+      app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>
+        ${project.archived ? '<p>Archived project</p>' : ''}
+        <p id="rename-alert" class="alert" role="alert" hidden></p>
+        <form id="rename-form"><input id="new-project-name" aria-label="New project name" placeholder="New project name" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form>
+        <p id="task-alert" class="alert" role="alert" hidden></p>
+        <form id="task-form"><input id="task-title" aria-label="Task title" placeholder="Task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
+        <form id="task-search-form"><input id="task-search" aria-label="Task search" placeholder="Task search"><button type="submit">Search tasks</button></form>
+        <div class="filters"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
+        <div class="filters"><label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></div>
+        <form id="due-range-form" class="due-range">
+          <label for="due-from">Due from</label><input id="due-from" type="text" placeholder="YYYY-MM-DD">
+          <label for="due-through">Due through</label><input id="due-through" type="text" placeholder="YYYY-MM-DD">
+          <button type="submit">Apply due range</button>
+        </form>
+        <div class="filters"><label for="default-task-priority">Default task priority</label><select id="default-task-priority" ${project.archived ? 'disabled' : ''}><option>Low</option><option>Normal</option><option>High</option></select></div>
+        <section class="rows" id="task-list" aria-label="Tasks"></section>`;
+      app.querySelector('.back').addEventListener('click', () => navigate('/'));
+      const list = app.querySelector('#task-list');
+      const filter = app.querySelector('#task-filter');
+      const priorityFilter = app.querySelector('#priority-filter');
+      const dueFrom = app.querySelector('#due-from');
+      const dueThrough = app.querySelector('#due-through');
+      const taskSearchInput = app.querySelector('#task-search');
+      let appliedTaskQuery = '';
+      let appliedDueFrom = '';
+      let appliedDueThrough = '';
+      const defaultPriority = app.querySelector('#default-task-priority');
+      defaultPriority.value = project.defaultPriority || 'Normal';
+      const alert = app.querySelector('#task-alert');
+      const renameAlert = app.querySelector('#rename-alert');
+      defaultPriority.addEventListener('change', async () => {
+        const saved = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultPriority: defaultPriority.value }) });
+        if (!saved.ok) {
+          const result = await saved.json();
+          alert.textContent = result.error || 'Could not update default task priority';
+          alert.hidden = false;
+          return;
+        }
+        project.defaultPriority = defaultPriority.value;
+      });
+      app.querySelector('#rename-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = app.querySelector('#new-project-name').value.trim();
+        if (!name) { renameAlert.textContent = 'Project name is required'; renameAlert.hidden = false; return; }
+        const renamed = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!renamed.ok) {
+          const result = await renamed.json();
+          renameAlert.textContent = result.error || 'Could not rename project';
+          renameAlert.hidden = false;
+          return;
+        }
+        project.name = name;
+        app.querySelector('h1').textContent = name;
+        app.querySelector('#new-project-name').value = '';
+        renameAlert.hidden = true;
+      });
+      async function renderTasks() {
+        const tasksResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+        const tasks = await tasksResponse.json();
+        const projects = await loadProjects();
+        const destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== Number(id));
+        list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed) continue;
+          if (filter.value === 'Completed' && !task.completed) continue;
+          if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if (!asciiLower(task.title).includes(asciiLower(appliedTaskQuery))) continue;
+          if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
+          if (task.dueDate && appliedDueFrom && task.dueDate < appliedDueFrom) continue;
+          if (task.dueDate && appliedDueThrough && task.dueDate > appliedDueThrough) continue;
+          const row = document.createElement('div');
+          row.className = `task-row${task.completed ? ' completed' : ''}`;
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.disabled = project.archived;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            renderTasks();
+          });
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          const priority = document.createElement('select');
+          priority.setAttribute('aria-label', 'Task priority');
+          priority.className = 'task-priority';
+          for (const optionName of ['Low', 'Normal', 'High']) {
+            const option = document.createElement('option');
+            option.value = optionName;
+            option.textContent = optionName;
+            priority.append(option);
+          }
+          priority.value = task.priority || 'Normal';
+          priority.disabled = project.archived;
+          priority.addEventListener('change', async () => {
+            const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+            if (!response.ok) { alert.textContent = 'Could not update task priority'; alert.hidden = false; return; }
+            await renderTasks();
+          });
+          const renameForm = document.createElement('form');
+          renameForm.className = 'task-rename-form';
+          const renameInput = document.createElement('input');
+          renameInput.type = 'text';
+          renameInput.setAttribute('aria-label', 'New task title');
+          renameInput.placeholder = 'New task title';
+          renameInput.disabled = project.archived;
+          const renameButton = document.createElement('button');
+          renameButton.type = 'submit';
+          renameButton.textContent = 'Rename task';
+          renameButton.disabled = project.archived;
+          renameForm.append(renameInput, renameButton);
+          renameForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+            const renamed = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+            if (!renamed.ok) {
+              const result = await renamed.json();
+              alert.textContent = result.error || 'Could not rename task';
+              alert.hidden = false;
+              return;
+            }
+            alert.hidden = true;
+            await renderTasks();
+          });
+          const dueForm = document.createElement('form');
+          dueForm.className = 'task-due-form';
+          const dueInput = document.createElement('input');
+          dueInput.type = 'text';
+          dueInput.setAttribute('aria-label', 'Task due date');
+          dueInput.placeholder = 'YYYY-MM-DD';
+          dueInput.value = task.dueDate || '';
+          dueInput.disabled = project.archived;
+          const dueButton = document.createElement('button');
+          dueButton.type = 'submit';
+          dueButton.textContent = 'Save due date';
+          dueButton.disabled = project.archived;
+          dueForm.append(dueInput, dueButton);
+          dueForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const saved = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: dueInput.value }) });
+            const result = await saved.json();
+            if (!saved.ok) { alert.textContent = result.error || 'Could not save due date'; alert.hidden = false; return; }
+            alert.hidden = true;
+            await renderTasks();
+          });
+          const moveSelect = document.createElement('select');
+          moveSelect.setAttribute('aria-label', 'Destination project');
+          for (const destination of destinations) {
+            const option = document.createElement('option');
+            option.value = destination.id;
+            option.textContent = destination.name;
+            moveSelect.append(option);
+          }
+          const moveButton = document.createElement('button');
+          moveButton.type = 'button';
+          moveButton.textContent = 'Move task';
+          moveSelect.disabled = project.archived || destinations.length === 0;
+          moveButton.disabled = project.archived || destinations.length === 0;
+          moveButton.addEventListener('click', async () => {
+            const moved = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(moveSelect.value) }) });
+            if (!moved.ok) { alert.textContent = 'Could not move task'; alert.hidden = false; return; }
+            await renderTasks();
+          });
+          row.append(checkbox, title, priority, renameForm, dueForm, moveSelect, moveButton);
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', renderTasks);
+      priorityFilter.addEventListener('change', renderTasks);
+      app.querySelector('#task-search-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        appliedTaskQuery = taskSearchInput.value.trim();
+        await renderTasks();
+      });
+      app.querySelector('#due-range-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        const validDate = (value) => {
+          if (!value) return true;
+          const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!match) return false;
+          const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+          const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+          const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+          return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+        };
+        if (!validDate(from) || !validDate(through)) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return;
+        }
+        appliedDueFrom = from;
+        appliedDueThrough = through;
+        dueFrom.value = from;
+        dueThrough.value = through;
+        alert.hidden = true;
+        await renderTasks();
+      });
+      app.querySelector('#task-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = app.querySelector('#task-title').value.trim();
+        if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+        const created = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
+        alert.hidden = true;
+        app.querySelector('#task-title').value = '';
+        await renderTasks();
+      });
+      await renderTasks();
+    }
+
+    function navigate(path) {
+      history.pushState({}, '', path);
+      render();
+    }
+    function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      return match ? showProject(match[1]) : showList();
+    }
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
