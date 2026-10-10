@@ -26,7 +26,7 @@ const projectQuery = `SELECT projects.id, projects.name, projects.archived,
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
 const listProjects = db.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = db.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
-const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProject = db.prepare('UPDATE projects SET name = ?, archived = ? WHERE id = ?');
 const projectJson = (project) => ({ ...project, archived: Boolean(project.archived) });
 const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
@@ -77,10 +77,21 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'PATCH' && match) {
       if (!findProject.get(match[1])) return json(response, 404, { error: 'Project not found' });
       const input = await readJson(request);
-      if (typeof input?.archived !== 'boolean') {
+      const project = findProject.get(match[1]);
+      const renaming = Object.hasOwn(input ?? {}, 'name');
+      const archiving = Object.hasOwn(input ?? {}, 'archived');
+      if (renaming && project.archived) {
+        return json(response, 409, { error: 'Archived project' });
+      }
+      const name = renaming && typeof input.name === 'string' ? input.name.trim() : '';
+      if (renaming && !name) {
+        return json(response, 400, { error: 'Project name is required' });
+      }
+      if ((!renaming && !archiving) || (archiving && typeof input.archived !== 'boolean')) {
         return json(response, 400, { error: 'Archive state must be a boolean' });
       }
-      archiveProject.run(Number(input.archived), match[1]);
+      updateProject.run(renaming ? name : project.name,
+        archiving ? Number(input.archived) : project.archived, match[1]);
       return json(response, 200, projectJson(findProject.get(match[1])));
     }
     const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);

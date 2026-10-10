@@ -42,6 +42,51 @@ function projectRow(project, onArchive, showError) {
   return row;
 }
 
+function renderRename(project, heading) {
+  const form = element('form', undefined, { class: 'rename-form' });
+  const input = element('input', undefined, {
+    id: 'new-project-name', name: 'name', type: 'text', autocomplete: 'off',
+  });
+  input.value = project.name;
+  input.disabled = project.archived;
+  const rename = element('button', 'Rename project', { type: 'submit' });
+  rename.disabled = project.archived;
+  const controls = element('div', undefined, { class: 'controls' });
+  controls.append(input, rename);
+  const alert = element('p', '', { role: 'alert', class: 'alert' });
+  alert.hidden = true;
+  form.append(element('label', 'New project name', { for: 'new-project-name' }), controls, alert);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    alert.hidden = true;
+    const name = input.value.trim();
+    if (!name) {
+      alert.textContent = 'Project name is required';
+      alert.hidden = false;
+      input.focus();
+      return;
+    }
+    rename.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      Object.assign(project, saved);
+      heading.textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = project.name;
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+    } finally {
+      rename.disabled = project.archived;
+    }
+  });
+  app.append(form);
+}
+
 async function renderTasks(projectId, archived) {
   const form = element('form');
   const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text', autocomplete: 'off' });
@@ -139,8 +184,10 @@ async function render() {
     app.append(back);
     const project = await api(`/api/projects/${projectId}`);
     document.title = `${project.name} · Workboard`;
-    app.append(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.append(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
+    renderRename(project, heading);
     await renderTasks(projectId, project.archived);
     return;
   }
