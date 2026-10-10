@@ -101,12 +101,29 @@ test('projects, tasks, archives, renames and summaries persist; older databases 
     const task = await created.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
+    assert.equal(task.priority, 'Normal');
     const next = await (await createTask('Second task')).json();
     assert.deepEqual(await tasks(), [task, next]);
     assert.deepEqual(await tasks(second), []);
     assert.equal((await complete(task, true, second)).status, 404);
     assert.equal((await complete(task, 'true')).status, 400);
     assert.equal((await complete(task, true)).status, 200);
+    assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
+    async function priority(item, value, project = first) {
+      return fetch(`${base}/api/projects/${project.id}/tasks/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: value }),
+      });
+    }
+    for (const value of ['', 'high', null, 123]) {
+      assert.equal((await priority(task, value)).status, 400);
+    }
+    assert.equal((await priority(task, 'High', second)).status, 404);
+    assert.equal((await priority({ id: 999999 }, 'High')).status, 404);
+    assert.equal((await priority(task, 'High')).status, 200);
+    task.priority = 'High';
+    assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
+    assert.equal((await priority(next, 'Low')).status, 200);
+    next.priority = 'Low';
     assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
     async function renameTask(item, title, project = first) {
       return fetch(`${base}/api/projects/${project.id}/tasks/${item.id}`, {
@@ -162,6 +179,7 @@ test('projects, tasks, archives, renames and summaries persist; older databases 
     assert.equal((await rename('Not allowed')).status, 403);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), archived);
     assert.equal((await renameTask(task, 'Not allowed')).status, 403);
+    assert.equal((await priority(task, 'Normal')).status, 403);
     assert.equal((await createTask('Not allowed')).status, 403);
     assert.equal((await complete(task, false)).status, 403);
     await stop();
@@ -172,6 +190,9 @@ test('projects, tasks, archives, renames and summaries persist; older databases 
     assert.equal((await complete(task, false)).status, 403);
     const restored = await (await archive(false)).json();
     assert.deepEqual(restored, { ...first, total: 2, completed: 1 });
+    assert.equal((await priority(next, 'Normal')).status, 200);
+    next.priority = 'Normal';
+    assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
     const restoredTaskRename = await renameTask(task, '  Renamed after restore  ');
     assert.equal(restoredTaskRename.status, 200);
     task.title = 'Renamed after restore';
