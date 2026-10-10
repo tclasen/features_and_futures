@@ -46,6 +46,17 @@ if (!taskColumns.some(column => column.name === 'task_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET task_order = id');
 }
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_order INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, task_order)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, task_order)
+    SELECT id, project_id, task_order FROM tasks ORDER BY project_id, task_order, id;
+`);
 
 function isValidDueDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -139,8 +150,9 @@ const server = createServer(async (request, response) => {
             return;
           }
           const priority = project.defaultTaskPriority;
-          const order = database.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(id).next;
+          const order = database.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(id).next;
           const result = database.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, ?)').run(id, title, priority, order);
+          database.prepare('INSERT INTO task_project_positions (task_id, project_id, task_order) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), id, order);
           sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId: id, title, completed: 0, priority });
         } catch (error) {
           if (error instanceof SyntaxError) {
@@ -171,8 +183,16 @@ const server = createServer(async (request, response) => {
           sendJson(response, 400, { error: 'Invalid destination project' });
           return;
         }
-        const order = database.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next;
-        database.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ? AND project_id = ?').run(destinationId, order, taskId, id);
+        const remembered = database.prepare('SELECT task_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+        let order = remembered?.task_order;
+        const move = database.transaction(() => {
+          if (order === undefined) {
+            order = database.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(destinationId).next;
+            database.prepare('INSERT INTO task_project_positions (task_id, project_id, task_order) VALUES (?, ?, ?)').run(taskId, destinationId, order);
+          }
+          database.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ? AND project_id = ?').run(destinationId, order, taskId, id);
+        });
+        move();
         sendJson(response, 200, { id: taskId, projectId: destinationId });
       } catch (error) {
         if (error instanceof SyntaxError) { sendJson(response, 400, { error: 'Invalid JSON' }); return; }
