@@ -346,6 +346,96 @@ test('projects and tasks: validation, rename, archive, priorities, summaries, is
     await stop();
     base = await start();
     assert.equal(await (await fetch(base + paths[0])).text(), finalDetail);
+    // Task 007: exercise every intersection and preserve selections through edits.
+    const filteredUrl = (completion, priority) =>
+      `${base}${paths[0]}?filter=${completion}&priorityFilter=${priority}`;
+    const rowTitles = body => [...body.matchAll(/<span>(.*?)<\/span>/g)].map(match => match[1]);
+    const assertFilters = (body, completion, priority) => {
+      for (const [id, selected] of [['task-filter', completion], ['priority-filter', priority]]) {
+        const select = body.match(new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`));
+        assert.ok(select, `${id} exists`);
+        assert.match(select[1], new RegExp(`<option selected>${selected}</option>`));
+      }
+    };
+    const records = [
+      { title: 'Restored task', completed: false, priority: 'Low' },
+      { title: 'Priority preserved', completed: true, priority: 'High' },
+      { title: 'Third task', completed: false, priority: 'High' },
+    ];
+    const summaryBeforeFilters = await (await fetch(base)).text();
+    for (const completion of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const body = await (await fetch(filteredUrl(completion, priority))).text();
+        assertFilters(body, completion, priority);
+        assert.deepEqual(rowTitles(body), records.filter(task =>
+          (completion === 'All' || task.completed === (completion === 'Completed')) &&
+          (priority === 'All' || task.priority === priority)).map(task => task.title));
+      }
+    }
+    assert.equal(await (await fetch(base)).text(), summaryBeforeFilters);
+    assertFilters(finalDetail, 'All', 'All');
+    const priorityOptions = finalDetail.match(/<select id="priority-filter"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.equal(priorityOptions.trim(), '<option selected>All</option><option>Low</option><option>Normal</option><option>High</option>');
+    const openHigh = await (await fetch(filteredUrl('Open', 'High'))).text();
+    const filterForm = openHigh.match(/<form action="\/projects\/\d+" method="get">([\s\S]*?)<\/form>/)[1];
+    assert.match(filterForm, /name="filter"/);
+    assert.match(filterForm, /name="priorityFilter"/);
+    for (const form of openHigh.matchAll(/<form[^>]*method="post">([\s\S]*?)<\/form>/g)) {
+      assert.match(form[1], /name="filter" value="Open"/);
+      assert.match(form[1], /name="priorityFilter" value="High"/);
+    }
+    const mutateFiltered = (path, fields, completion = 'Open', priority = 'High') => fetch(base + path, {
+      method: 'POST', redirect: 'manual',
+      body: new URLSearchParams({ ...fields, filter: completion, priorityFilter: priority }),
+    });
+    const blankRename = await mutateFiltered(`${taskPaths[2]}/rename`, { title: '  ' });
+    assert.equal(blankRename.status, 200);
+    const invalidBody = await blankRename.text();
+    assertFilters(invalidBody, 'Open', 'High');
+    assert.match(invalidBody, /role="alert">Task title is required/);
+    assert.deepEqual(rowTitles(invalidBody), ['Third task']);
+    const filteredRename = await mutateFiltered(`${taskPaths[2]}/rename`, { title: '  Filtered task  ' });
+    assert.equal(filteredRename.headers.get('location'), `${paths[0]}?filter=Open&priorityFilter=High`);
+    const renamedFiltered = await (await fetch(base + filteredRename.headers.get('location'))).text();
+    assertFilters(renamedFiltered, 'Open', 'High');
+    assert.deepEqual(rowTitles(renamedFiltered), ['Filtered task']);
+    assert.deepEqual(selectedPriorities(renamedFiltered), ['High']);
+    assert.equal(await (await fetch(base)).text(), summaryBeforeFilters);
+    const filteredComplete = await mutateFiltered(taskPaths[2], { completed: '1' });
+    const afterComplete = await (await fetch(base + filteredComplete.headers.get('location'))).text();
+    assertFilters(afterComplete, 'Open', 'High');
+    assert.deepEqual(rowTitles(afterComplete), []);
+    const summaryAfterCompletion = await (await fetch(base)).text();
+    assert.match(summaryAfterCompletion, /data-testid="project-summary">2\/3 completed/);
+    const filteredPriority = await mutateFiltered(`${taskPaths[2]}/priority`, { priority: 'Normal' }, 'Completed');
+    const afterPriority = await (await fetch(base + filteredPriority.headers.get('location'))).text();
+    assertFilters(afterPriority, 'Completed', 'High');
+    assert.deepEqual(rowTitles(afterPriority), ['Priority preserved']);
+    assert.equal(await (await fetch(base)).text(), summaryAfterCompletion);
+    const completedNormal = await (await fetch(filteredUrl('Completed', 'Normal'))).text();
+    assert.deepEqual(rowTitles(completedNormal), ['Filtered task']);
+    assert.match(completedNormal, /aria-label="Complete Filtered task" checked/);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(filteredUrl('Completed', 'Normal'))).text(), completedNormal);
+    assert.equal(await (await fetch(base)).text(), summaryAfterCompletion);
+    await fetch(`${base}${paths[0]}/archive`, { method: 'POST' });
+    const archivedFiltered = await (await fetch(filteredUrl('Completed', 'Normal'))).text();
+    assertFilters(archivedFiltered, 'Completed', 'Normal');
+    assert.deepEqual(rowTitles(archivedFiltered), ['Filtered task']);
+    assert.match(archivedFiltered, /aria-label="Complete Filtered task" checked disabled/);
+    assert.match(archivedFiltered, /name="priority" disabled/);
+    assert.match(archivedFiltered, /name="title" type="text" disabled/);
+    assert.doesNotMatch(archivedFiltered, /id="(?:task|priority)-filter"[^>]*disabled/);
+    const blocked = await mutateFiltered(`${taskPaths[2]}/priority`, { priority: 'Low' }, 'Completed', 'Normal');
+    assert.equal(blocked.status, 403);
+    assertFilters(await blocked.text(), 'Completed', 'Normal');
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(filteredUrl('Completed', 'Normal'))).text(), archivedFiltered);
+    await fetch(`${base}${paths[0]}/restore`, { method: 'POST' });
+    assert.equal(await (await fetch(filteredUrl('Completed', 'Normal'))).text(), completedNormal);
+    assertFilters(await (await fetch(base + paths[0])).text(), 'All', 'All');
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
