@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 
-test('moves append persistently, preserve task data and summaries, and reject archived projects', async () => {
+test('moves remember return order, preserve task data and summaries, and reject archived projects', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const port = 20000 + Math.floor(Math.random() * 30000);
   const base = `http://127.0.0.1:${port}`;
@@ -68,12 +68,12 @@ test('moves append persistently, preserve task data and summaries, and reject ar
     assert.equal((await send(movedPath, { destination_project_id: a.id })).status, 409);
     await send(`/api/projects/${b.id}`, { archived: false });
     assert.equal((await send(movedPath, { destination_project_id: a.id })).status, 200);
-    assert.deepEqual(await get(tasks(a.id)), [newTask, { ...moved, project_id: a.id }]);
+    assert.deepEqual(await get(tasks(a.id)), [{ ...moved, project_id: a.id }, newTask]);
     const blank = await (await send(`${tasks(b.id)}/${existing.id}`, { destination_project_id: a.id })).json();
     assert.equal(blank.due_date, '');
     await stop();
     await start();
-    assert.deepEqual((await get(tasks(a.id))).map(task => task.id), [newTask.id, older.id, existing.id]);
+    assert.deepEqual((await get(tasks(a.id))).map(task => task.id), [older.id, newTask.id, existing.id]);
     assert.deepEqual(await get(tasks(b.id)), []);
   } finally {
     await stop();
