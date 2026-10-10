@@ -149,6 +149,50 @@ test('projects validate, navigate, and persist across restarts', async () => {
     await stop();
     await start();
     assert.doesNotMatch(await detailPage(), /aria-label="Complete First task" checked/);
+
+    // Rename keeps the same URL, ordering, tasks, and completion summary.
+    assert.equal((await post(completion, { completed: '1' })).status, 303);
+    const beforeRename = await detailPage();
+    assert.match(beforeRename, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(beforeRename, />Rename project<\/button>/);
+    for (const name of ['', '   ']) {
+      const response = await post(`${path}/rename`, { name });
+      assert.equal(response.status, 400);
+      const body = await response.text();
+      assert.match(body, /role="alert">Project name is required/);
+      assert.match(body, /<h1>First project<\/h1>/);
+      assert.equal(await detailPage(), beforeRename);
+    }
+    assert.equal((await post('/projects/999999/rename', { name: 'Missing' })).status, 404);
+    const renamed = await post(`${path}/rename`, { name: '  Renamed <project>  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), `${path}?filter=Completed`);
+    const renamedPage = await detailPage();
+    assert.match(renamedPage, /<h1>Renamed &lt;project&gt;<\/h1>/);
+    assert.match(renamedPage, /aria-label="Complete First task" checked/);
+    assert.match(renamedPage, /<span>Second &lt;task&gt;<\/span>/);
+    const renamedList = await (await fetch(base)).text();
+    assert.ok(renamedList.indexOf('<span>Renamed &lt;project&gt;') < renamedList.indexOf('<span>Second &lt;project&gt;'));
+    assert.match(renamedList, /data-testid="project-summary">1\/2 completed/);
+    assert.match(renamedList, new RegExp(`action="${path}" method="get"`));
+    await stop();
+    await start();
+    assert.equal(await detailPage(), renamedPage);
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    await post(`${path}/archive`, {});
+    const archivedRenamedPage = await detailPage();
+    assert.match(archivedRenamedPage, /id="new-project-name" name="name" disabled/);
+    assert.match(archivedRenamedPage, /disabled>Rename project/);
+    assert.equal((await post(`${path}/rename`, { name: 'Forbidden' })).status, 403);
+    assert.equal(await detailPage(), archivedRenamedPage);
+    await post(`${path}/restore`, {});
+    assert.doesNotMatch(await detailPage(), / disabled/);
+    assert.equal((await post(`${path}/rename`, { name: 'Restored name' })).status, 303);
+    await stop();
+    await start();
+    assert.match(await detailPage(), /<h1>Restored name<\/h1>/);
+    assert.match(await detailPage(), /aria-label="Complete First task" checked/);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

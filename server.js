@@ -28,6 +28,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS
   LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const escape = (text) => String(text).replace(/[&<>"']/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -82,8 +83,12 @@ function projectPage(project, filter = 'All', error = '') {
   return page(project.name, `<h1>${escape(project.name)}</h1>
 <form action="/" method="get"><button type="submit">Projects</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
-<h2>Tasks</h2>
 ${error ? `<p role="alert">${escape(error)}</p>` : ''}
+<form class="create" method="post" action="/projects/${project.id}/rename">
+<input type="hidden" name="filter" value="${filter}">
+<div class="field"><label for="new-project-name">New project name</label><input id="new-project-name" name="name"${project.archived ? ' disabled' : ''}></div>
+<button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></form>
+<h2>Tasks</h2>
 <form class="create" method="post" action="/projects/${project.id}/tasks">
 <input type="hidden" name="filter" value="${filter}">
 <div class="field"><label for="task-title">Task title</label><input id="task-title" name="title"></div>
@@ -153,6 +158,26 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       html(res, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/rename$/.test(url.pathname)) {
+      const project = findProject.get(url.pathname.split('/')[2]);
+      if (!project) {
+        html(res, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const body = await formData(req);
+      const filter = taskFilter(body.get('filter'));
+      if (project.archived) {
+        html(res, 403, projectPage(project, filter, 'Archived project cannot be changed'));
+        return;
+      }
+      const name = (body.get('name') || '').trim();
+      if (!name) {
+        html(res, 400, projectPage(project, filter, 'Project name is required'));
+        return;
+      }
+      renameProject.run(name, project.id);
+      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+      res.end();
     } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/completion)?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(parts[2]);
