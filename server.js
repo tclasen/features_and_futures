@@ -10,6 +10,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT 
 const listProjects = db.prepare('SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid');
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -33,6 +34,21 @@ async function handleRequest(req, res) {
   };
   if (req.method === 'GET' && url.pathname === '/health') return send(200, JSON.stringify({ status: 'ok' }));
   if (req.method === 'GET' && url.pathname === '/api/projects') return send(200, JSON.stringify(listProjects.all()));
+  const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/rename$/);
+  if (req.method === 'PATCH' && renameMatch) {
+    let data = '';
+    for await (const chunk of req) data += chunk;
+    let input;
+    try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+    const projectId = decodeURIComponent(renameMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+    renameProject.run(name, projectId);
+    return send(200, JSON.stringify({ ok: true }));
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (req.method === 'PATCH' && archiveMatch) {
     let data = '';
