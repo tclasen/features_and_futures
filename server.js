@@ -35,6 +35,13 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Preserve legacy creation order, then append new and moved tasks per project.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+  database.exec(`BEGIN;
+    ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE tasks SET position = id;
+    COMMIT;`);
+}
 const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.default_task_priority,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -45,9 +52,13 @@ function projectValue(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?`);
 const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ?, priority = ?, due_date = ? WHERE project_id = ? AND id = ?');
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -98,6 +109,25 @@ const server = http.createServer(async (request, response) => {
       const result = insertProject.run(name);
       return json(response, 201, projectValue(findProject.get(result.lastInsertRowid)));
     }
+    const moveMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/move$/);
+    if (moveMatch && request.method === 'POST') {
+      const [, projectId, taskId] = moveMatch;
+      const project = findProject.get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      if (project.archived) return json(response, 409, { error: 'Archived project cannot be changed' });
+      if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+      const body = await readJson(request);
+      const destinationId = body?.destination_project_id;
+      if (!Number.isSafeInteger(destinationId) || destinationId < 1 || destinationId === project.id) {
+        return json(response, 400, { error: 'Choose another active destination project' });
+      }
+      const destination = findProject.get(destinationId);
+      if (!destination) return json(response, 404, { error: 'Destination project not found' });
+      if (destination.archived) return json(response, 409, { error: 'Destination project is archived' });
+      // One statement changes ownership and order atomically, leaving task data intact.
+      moveTask.run(destinationId, destinationId, projectId, taskId);
+      return json(response, 200, taskValue(findTask.get(destinationId, taskId)));
+    }
     const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
     if (tasksMatch) {
       const [, projectId, taskId] = tasksMatch;
@@ -113,7 +143,7 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const title = typeof body?.title === 'string' ? body.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, project.default_task_priority);
+        const result = insertTask.run(projectId, title, project.default_task_priority, projectId);
         return json(response, 201, taskValue(findTask.get(projectId, result.lastInsertRowid)));
       }
       if (taskId && request.method === 'PATCH') {

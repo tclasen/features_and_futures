@@ -126,6 +126,7 @@ async function showProject(id) {
   back.addEventListener('click', () => location.assign('/'));
   app.append(back);
   const project = await api(`/api/projects/${id}`);
+  const destinations = (await api('/api/projects')).filter((candidate) => !candidate.archived && candidate.id !== project.id);
   const heading = document.createElement('h1');
   heading.textContent = project.name;
   app.prepend(heading);
@@ -396,7 +397,43 @@ async function showProject(id) {
           dueDateButton.disabled = project.archived;
         }
       });
-      row.append(title, checkbox, taskRenameForm, priorityLabel, prioritySelect, dueDateForm);
+      const moveForm = document.createElement('form');
+      const destinationLabel = document.createElement('label');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      destinationLabel.textContent = 'Destination project';
+      const destinationSelect = document.createElement('select');
+      destinationSelect.id = destinationLabel.htmlFor;
+      for (const destination of destinations) {
+        const option = document.createElement('option');
+        option.value = destination.id;
+        option.textContent = destination.name;
+        destinationSelect.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      destinationSelect.disabled = moveButton.disabled = project.archived || destinations.length === 0;
+      moveForm.append(destinationLabel, destinationSelect, moveButton);
+      moveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (moveButton.disabled) return;
+        destinationSelect.disabled = moveButton.disabled = true;
+        showAlert('');
+        try {
+          await api(`${tasksPath}/${task.id}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destinationSelect.value) }),
+          });
+          tasks = tasks.filter((candidate) => candidate.id !== task.id);
+          renderTasks();
+        } catch (error) {
+          showAlert(error.message);
+        } finally {
+          destinationSelect.disabled = moveButton.disabled = project.archived || destinations.length === 0;
+        }
+      });
+      row.append(title, checkbox, taskRenameForm, priorityLabel, prioritySelect, dueDateForm, moveForm);
       return row;
     }));
   }

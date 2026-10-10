@@ -587,3 +587,75 @@ test('task validation, project isolation, completion updates, and restart persis
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('moves append persistently, preserve task data, update summaries, and reject ineligible projects', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
+  const databasePath = join(directory, 'test.sqlite');
+  // Ordering migrates from IDs without losing existing tasks.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination'), ('Archived');
+    INSERT INTO tasks (project_id, title, completed) VALUES
+      (1, 'First', 1), (1, 'Second', 0), (2, 'Destination existing', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.base + path, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const value = async (path, method = 'GET', body) => {
+      const response = await request(path, method, body);
+      assert.ok(response.ok, await response.clone().text());
+      return response.json();
+    };
+    const tasks = (id) => value(`/api/projects/${id}/tasks`);
+    const move = (source, task, destination) => request(`/api/projects/${source}/tasks/${task}/move`, 'POST', {
+      destination_project_id: destination,
+    });
+    await value('/api/projects/2', 'PATCH', { default_task_priority: 'Low', name: 'Renamed destination' });
+    await value('/api/projects/3', 'PATCH', { archived: true });
+    const first = await value('/api/projects/1/tasks/1', 'PATCH', { priority: 'High', due_date: '0001-01-01', title: 'Renamed task' });
+    const second = (await tasks(1))[1];
+    const existing = (await tasks(2))[0];
+    for (const [destination, status] of [[1, 400], [3, 409], [9999, 404], [null, 400], ['2', 400]]) {
+      assert.equal((await move(1, first.id, destination)).status, status);
+      assert.deepEqual(await tasks(1), [first, second]);
+      assert.deepEqual(await tasks(2), [existing]);
+    }
+    assert.equal((await move(1, 9999, 2)).status, 404);
+    assert.equal((await move(9999, first.id, 2)).status, 404);
+    assert.deepEqual(await (await move(1, first.id, 2)).json(), first);
+    assert.deepEqual(await tasks(1), [second]);
+    assert.deepEqual(await tasks(2), [existing, first]);
+    assert.equal((await move(1, first.id, 2)).status, 404);
+    const summaries = await value('/api/projects');
+    assert.deepEqual(summaries.map((project) => [project.completed_count, project.total_count]), [[0, 1], [1, 2], [0, 0]]);
+    const appended = await value('/api/projects/2/tasks', 'POST', { title: 'New after move' });
+    assert.equal(appended.priority, 'Low');
+    assert.deepEqual(await tasks(2), [existing, first, appended]);
+    await value('/api/projects/2', 'PATCH', { archived: true });
+    assert.equal((await move(2, first.id, 1)).status, 409);
+    await value('/api/projects/2', 'PATCH', { archived: false });
+    assert.deepEqual(await (await move(2, first.id, 1)).json(), first);
+    assert.deepEqual(await tasks(1), [second, first]);
+    assert.deepEqual(await (await move(1, second.id, 2)).json(), second); // Blank due date preserved.
+    assert.deepEqual(await tasks(2), [existing, appended, second]);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await tasks(1), [first]);
+    assert.deepEqual(await tasks(2), [existing, appended, second]);
+    assert.deepEqual(await (await move(2, second.id, 1)).json(), second);
+    assert.deepEqual(await tasks(1), [first, second]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
