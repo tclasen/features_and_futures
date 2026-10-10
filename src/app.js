@@ -63,6 +63,9 @@ async function readForm(request) {
 
 export function createWorkboardServer(databasePath) {
   const store = openWorkboardStore(databasePath);
+  const renderProject = (project, tasks, options) => projectPage(project, tasks, {
+    ...options, destinations: store.list().filter((destination) => destination.id !== project.id),
+  });
   const server = createServer(async (request, response) => {
     try {
       const { pathname, searchParams } = new URL(request.url, 'http://localhost');
@@ -84,7 +87,7 @@ export function createWorkboardServer(databasePath) {
         } else {
           redirect(response, '/');
         }
-      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|default-task-priority|tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date))?))?$/.test(pathname)) {
+      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|default-task-priority|tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date|move))?))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const id = Number(parts[2]);
         const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -103,7 +106,7 @@ export function createWorkboardServer(databasePath) {
             }
             dueRangeState = { error: range.error, from, through };
           }
-          send(response, dueRangeState.error ? 400 : 200, projectPage(project,
+          send(response, dueRangeState.error ? 400 : 200, renderProject(project,
             store.tasks.list(id, selection.filter, selection.priorityFilter, selection),
             { ...selection, dueRangeState }));
         } else if (request.method === 'POST' && ['archive', 'restore'].includes(parts[3])) {
@@ -125,7 +128,7 @@ export function createWorkboardServer(databasePath) {
           const name = form.get('name') ?? '';
           const result = store.rename(id, name);
           if (result.error) {
-            send(response, result.status, projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+            send(response, result.status, renderProject(project, store.tasks.list(id, filter, priorityFilter, selection), {
               ...selection, renameState: { error: result.error, submittedName: name },
             }));
           } else {
@@ -143,7 +146,7 @@ export function createWorkboardServer(databasePath) {
             const title = form.get('title') ?? '';
             const task = store.tasks.create(id, title);
             if (task.error) {
-              send(response, 400, projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+              send(response, 400, renderProject(project, store.tasks.list(id, filter, priorityFilter, selection), {
                 ...selection, error: task.error, submittedTitle: title,
               }));
               return;
@@ -159,17 +162,23 @@ export function createWorkboardServer(databasePath) {
               const result = store.tasks.rename(id, taskId, title);
               if (result.error) {
                 send(response, result.status, result.status === 404 ? notFoundPage() :
-                  projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+                  renderProject(project, store.tasks.list(id, filter, priorityFilter, selection), {
                     ...selection,
                     taskRenameState: { taskId, error: result.error, submittedTitle: title },
                   }));
+                return;
+              }
+            } else if (parts[5] === 'move') {
+              const result = store.tasks.move(id, taskId, Number(form.get('destinationId')));
+              if (result.error) {
+                send(response, result.status, result.error, 'text/plain; charset=utf-8');
                 return;
               }
             } else if (parts[5] === 'due-date') {
               const result = store.tasks.setDueDate(id, taskId, form.get('dueDate') ?? '');
               if (result.error) {
                 send(response, result.status, result.status === 404 ? notFoundPage() :
-                  projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+                  renderProject(project, store.tasks.list(id, filter, priorityFilter, selection), {
                     ...selection, taskDueDateState: { taskId, error: result.error },
                   }));
                 return;

@@ -148,7 +148,7 @@ test('inclusive due ranges intersect filters and preserve data through edits, va
     await edit('/projects/1/tasks/4/completion', {}, []);
     await edit('/projects/1/tasks/4/completion', { completed: 'on' }, ['Renamed']);
     assert.match(await get('/'), /3\/7 completed/);
-    assert.equal(await get('/projects/2'), other);
+    assert.equal(await get('/projects/2'), other.replace('<option value="1">First</option>', '<option value="1">Renamed project</option>'));
     const saved = await get('/projects/1');
     const filtered = await get(path);
     await post('/projects/1/archive');

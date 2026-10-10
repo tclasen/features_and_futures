@@ -133,7 +133,9 @@ test('existing project and task databases migrate without changing saved IDs or 
     assert.match(detail, /<h1>Existing project<\/h1>/);
     assert.match(detail, /action="\/projects\/7\/tasks\/9\/completion"/);
     assert.match(detail, /aria-label="Complete Saved task" checked/);
-    assert.doesNotMatch(detail, / disabled/);
+    assert.doesNotMatch(detail.match(/<input type="checkbox"[^>]*>/)[0], / disabled/);
+    assert.match(detail, /name="destinationId" disabled/);
+    assert.match(detail, /disabled>Move task<\/button>/);
     await running.stop();
     running = await launch(databasePath);
     assert.equal(await (await fetch(`${running.baseUrl}/projects/7`)).text(), detail);

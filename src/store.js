@@ -36,6 +36,14 @@ export function openWorkboardStore(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT DEFAULT NULL');
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+    database.exec(`
+      BEGIN;
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id;
+      COMMIT;
+    `);
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -48,8 +56,18 @@ export function openWorkboardStore(databasePath) {
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const rename = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
-  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+  const insertTask = database.prepare(`
+    INSERT INTO tasks (project_id, title, priority, position)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))
+  `);
+  const moveTask = database.prepare(`
+    UPDATE tasks SET project_id = ?,
+      position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE id = ? AND project_id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+      AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)
+  `);
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare(`
     UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
@@ -112,7 +130,7 @@ export function openWorkboardStore(databasePath) {
         if (project.archived) return { error: 'Archived project cannot be changed' };
         const trimmedTitle = title.trim();
         if (!trimmedTitle) return { error: 'Task title is required' };
-        const result = insertTask.run(projectId, trimmedTitle, project.default_task_priority);
+        const result = insertTask.run(projectId, trimmedTitle, project.default_task_priority, projectId);
         return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority: project.default_task_priority, due_date: null };
       },
       rename(projectId, taskId, title) {
@@ -125,6 +143,21 @@ export function openWorkboardStore(databasePath) {
         if (!trimmedTitle) return { error: 'Task title is required', status: 400 };
         renameTask.run(trimmedTitle, taskId, projectId);
         return { id: taskId, title: trimmedTitle };
+      },
+      move(projectId, taskId, destinationId) {
+        const project = find.get(projectId);
+        if (!project || !findTask.get(taskId, projectId)) {
+          return { error: 'Task not found', status: 404 };
+        }
+        if (project.archived) return { error: 'Archived project cannot be changed', status: 409 };
+        if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === projectId) {
+          return { error: 'Choose another active project', status: 400 };
+        }
+        const destination = find.get(destinationId);
+        if (!destination) return { error: 'Destination project not found', status: 404 };
+        if (destination.archived) return { error: 'Destination project is archived', status: 409 };
+        moveTask.run(destinationId, destinationId, taskId, projectId, destinationId);
+        return { id: taskId, project_id: destinationId };
       },
       setCompleted(projectId, taskId, completed) {
         return updateTask.run(completed ? 1 : 0, taskId, projectId).changes > 0;

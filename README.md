@@ -82,3 +82,12 @@ and preserve the previously applied range. Edits retain all selected filters and
 immediately update matching rows. Range controls remain usable when archived.
 The applied range is carried in the page URL and forms, not stored in SQLite;
 opening a project from the list starts with empty boundaries.
+
+Each task row offers Destination project and Move task. Destinations are other
+active projects in project creation order, using their current names. Moving
+appends the task after the destination's current tasks while keeping its ID,
+title, completion, priority, and due date. The source remains open with its
+filters and due range retained; both project summaries reflect current ownership.
+Move controls are disabled when no destination is available or the source is
+archived. The server rejects archived sources and destinations. Task ownership
+and order persist across restarts; existing databases retain their prior order.
