@@ -24,9 +24,11 @@ Active project pages support renaming with a trimmed, required name. Renaming pr
 
 Each task row supports renaming with a trimmed, required title. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries, while updating the completion checkbox label. Archived projects disable task rename controls and reject rename requests. Restoring a project enables task renaming again. Task titles persist across reloads and process restarts.
 
-Each task row has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority changes persist independently without changing task titles, completion, ownership, order, filters, or project summaries. Renaming preserves priority. Archived projects disable priority selectors and reject priority changes; restoration enables them with their saved values. Invalid priority values are rejected without modifying data.
+Each task row has a Task priority selector with Low, Normal, and High options. Existing tasks default to Normal when migrated; new tasks inherit their project's saved default. Priority changes persist independently without changing task titles, completion, ownership, order, filters, or project summaries. Renaming preserves priority. Archived projects disable priority selectors and reject priority changes; restoration enables them with their saved values. Invalid priority values are rejected without modifying data.
 
 Each project page also has a Priority filter with All, Low, Normal, and High options. Both task filters start at All when opening a project from the list. Tasks must match both selected filters and retain creation order. Changing either filter preserves the other selection. Completion and priority edits immediately re-evaluate the rows after submission; renaming retains filter selections. Filters remain enabled in archived projects. Filtering never changes saved tasks or project summaries.
+
+Each project page has a Default task priority selector with Low, Normal, and High options, initially Normal. Changes affect only subsequent task creation in that project and preserve existing tasks, both selected filters, and completion summaries. Defaults persist independently across reloads, restarts, project renaming, archive, and restore. Archived projects display a disabled selector and reject default changes on the server. Existing databases are migrated without changing task priorities or project identity.
 
 Run syntax checks and integration tests:
 
