@@ -23,7 +23,8 @@ const page = `<!doctype html>
     h1 { font-size: 2rem; margin: 0 0 24px; }
     form, .project-row { display: flex; gap: 12px; align-items: center; }
     form { margin-bottom: 16px; }
-    input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #aab3c2; border-radius: 6px; font: inherit; }
+    form label { flex: 1; min-width: 0; }
+    input { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid #aab3c2; border-radius: 6px; font: inherit; }
     button { padding: 10px 14px; border: 0; border-radius: 6px; background: #2457c5; color: white; font: inherit; cursor: pointer; }
     button:hover { background: #19449e; }
     .project-row { justify-content: space-between; padding: 14px 16px; margin: 10px 0; background: white; border: 1px solid #dce1ea; border-radius: 8px; }
@@ -48,11 +49,13 @@ function heading(text) {
 async function renderList() {
   app.replaceChildren(heading('Workboard'));
   const form = document.createElement('form');
+  const label = document.createElement('label'); label.textContent = 'Project name';
   const input = document.createElement('input');
-  input.type = 'text'; input.setAttribute('aria-label', 'Project name');
+  input.type = 'text'; input.name = 'projectName'; input.setAttribute('aria-label', 'Project name');
+  label.append(input);
   const button = document.createElement('button'); button.type = 'submit'; button.textContent = 'Create project';
   const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.hidden = true;
-  form.append(input, button); app.append(form, alert);
+  form.append(label, button); app.append(form, alert);
   const list = document.createElement('section'); list.setAttribute('aria-label', 'Projects'); app.append(list);
   async function refresh() {
     const projects = await request('/api/projects');
