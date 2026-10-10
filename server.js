@@ -12,11 +12,34 @@ database.exec(`
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )
+  ;
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )
 `);
 
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
 const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const createTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+
+async function readJson(request) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => { data += chunk; });
+    request.on('end', () => {
+      try { resolve(JSON.parse(data || '{}')); } catch (error) { reject(error); }
+    });
+    request.on('error', reject);
+  });
+}
 
 function json(response, status, value) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -34,15 +57,7 @@ async function handle(request, response) {
   if (url.pathname === '/api/projects' && request.method === 'POST') {
     let body;
     try {
-      body = await new Promise((resolve, reject) => {
-        let data = '';
-        request.setEncoding('utf8');
-        request.on('data', (chunk) => { data += chunk; });
-        request.on('end', () => {
-          try { resolve(JSON.parse(data || '{}')); } catch (error) { reject(error); }
-        });
-        request.on('error', reject);
-      });
+      body = await readJson(request);
     } catch {
       return json(response, 400, { error: 'Invalid JSON' });
     }
@@ -57,8 +72,31 @@ async function handle(request, response) {
     const project = findProject.get(decodeURIComponent(projectMatch[1]));
     return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
   }
+  const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+  if (taskMatch) {
+    const projectId = decodeURIComponent(taskMatch[1]);
+    if (!findProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
+    if (request.method === 'GET') return json(response, 200, listTasks.all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
+    if (request.method === 'POST') {
+      let body;
+      try { body = await readJson(request); } catch { return json(response, 400, { error: 'Invalid JSON' }); }
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) return json(response, 400, { error: 'Task title is required' });
+      const task = { id: randomUUID(), projectId, title, completed: false };
+      createTask.run(task.id, projectId, title, Date.now());
+      return json(response, 201, task);
+    }
+  }
+  const completionMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  if (completionMatch && request.method === 'PATCH') {
+    let body;
+    try { body = await readJson(request); } catch { return json(response, 400, { error: 'Invalid JSON' }); }
+    if (typeof body.completed !== 'boolean') return json(response, 400, { error: 'Completion state is required' });
+    const result = updateTask.run(body.completed ? 1 : 0, decodeURIComponent(completionMatch[2]), decodeURIComponent(completionMatch[1]));
+    return result.changes ? json(response, 200, { completed: body.completed }) : json(response, 404, { error: 'Task not found' });
+  }
 
-  const assetPath = url.pathname === '/' ? 'index.html' : normalize(url.pathname).replace(/^([/\\]|\.\.(?:[/\\]|$))+/, '');
+  const assetPath = url.pathname === '/' || /^\/projects\/[^/]+\/?$/.test(url.pathname) ? 'index.html' : normalize(url.pathname).replace(/^([/\\]|\.\.(?:[/\\]|$))+/, '');
   const filePath = join(process.cwd(), 'public', assetPath);
   try {
     const content = await readFile(filePath);
