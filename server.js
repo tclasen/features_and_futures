@@ -85,6 +85,13 @@ const server = http.createServer(async (req, res) => {
     if (taskRoute[2] && req.method === 'PATCH') {
       if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
       const body = await requestBody(req);
+      if (typeof body?.title === 'string') {
+        const title = body.title.trim();
+        if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, Number(taskRoute[2]), projectId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ ok: true, title }));
+      }
       if (typeof body?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), Number(taskRoute[2]), projectId);
       if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
