@@ -503,3 +503,144 @@ test('move controls disable without destinations or when archived, then enable a
     assert.equal(row.children[4].querySelector('button').disabled, false);
   }
 });
+
+async function search(ui, kind, query) {
+  ui.get(`${kind}-search`).value = query;
+  await ui.get(`${kind}-search-form`).dispatch('submit');
+}
+
+const projectNames = (ui) => ui.get('project-list').children.map((row) => row.children[0].children[0].textContent);
+
+test('project search applies ASCII substring matching, intersects archive filter, and clears on returning', async () => {
+  const ui = await page(false, [
+    { id: 2, name: 'ALPHA  Plan', archived: 0, completed: 2, total: 3 },
+    { id: 3, name: 'Alpha Plan', archived: 0, completed: 0, total: 0 },
+    { id: 4, name: 'Old alpha  plan', archived: 1, completed: 1, total: 2 },
+    { id: 5, name: 'Équipe', archived: 0, completed: 0, total: 0 },
+  ]);
+  ui.location.pathname = '/';
+  await vm.runInContext('render()', ui.context);
+  await search(ui, 'project', '  aLpHa  pL  ');
+  assert.deepEqual(projectNames(ui), ['ALPHA  Plan']);
+  assert.equal(ui.get('project-search').value, 'aLpHa  pL');
+  assert.equal(ui.get('project-list').children[0].children[0].children[1].textContent, '2/3 completed');
+  ui.get('project-search').value = 'unapplied draft';
+  await ui.select('project-filter', 'Archived');
+  assert.deepEqual(projectNames(ui), ['Old alpha  plan']);
+  await ui.select('project-filter', 'Active');
+  assert.deepEqual(projectNames(ui), ['ALPHA  Plan']);
+  await search(ui, 'project', 'é');
+  assert.deepEqual(projectNames(ui), [], 'non-ASCII characters remain case sensitive');
+  await search(ui, 'project', 'É');
+  assert.deepEqual(projectNames(ui), ['Équipe']);
+  await search(ui, 'project', '  \t ');
+  assert.deepEqual(projectNames(ui), ['Project', 'ALPHA  Plan', 'Alpha Plan', 'Équipe']);
+  await search(ui, 'project', 'project');
+  ui.location.pathname = '/projects/1';
+  await vm.runInContext('render()', ui.context);
+  await ui.get('back').dispatch('click');
+  await vm.runInContext('render()', ui.context);
+  assert.equal(ui.get('project-search').value, '');
+  assert.deepEqual(projectNames(ui), ['Project', 'ALPHA  Plan', 'Alpha Plan', 'Équipe']);
+  assert.deepEqual(ui.writes, []);
+});
+
+test('task search intersects every filter, distinguishes internal whitespace, and stays usable when archived', async () => {
+  const ui = await page(true);
+  await dateFixture(ui);
+  ui.savedTasks[4].title = 'High  OPEN';
+  ui.savedTasks[5].title = 'É High done';
+  await vm.runInContext('render()', ui.context);
+  const original = structuredClone(ui.savedTasks);
+  await search(ui, 'task', '  hIgH  ');
+  assert.deepEqual(ui.titles(), ['High  OPEN', 'É High done']);
+  await ui.select('task-filter', 'Open');
+  await ui.select('priority-filter', 'High');
+  await applyRange(ui, '2026-01-15', '2026-01-15');
+  assert.deepEqual(ui.titles(), ['High  OPEN']);
+  await search(ui, 'task', 'high open');
+  assert.deepEqual(ui.titles(), []);
+  await search(ui, 'task', 'high  open');
+  assert.deepEqual(ui.titles(), ['High  OPEN']);
+  ui.get('task-search').value = 'unapplied draft';
+  await ui.select('priority-filter', 'All');
+  assert.deepEqual(ui.titles(), ['High  OPEN']);
+  await search(ui, 'task', '  ');
+  assert.deepEqual(ui.titles(), ['High  OPEN']);
+  await ui.select('task-filter', 'All');
+  await applyRange(ui, '', '');
+  await search(ui, 'task', 'é');
+  assert.deepEqual(ui.titles(), []);
+  await search(ui, 'task', 'É');
+  assert.deepEqual(ui.titles(), ['É High done']);
+  assert.equal(ui.rows()[0].querySelector('input').disabled, true);
+  assert.deepEqual(ui.savedTasks, original);
+  assert.deepEqual(ui.writes, []);
+  await vm.runInContext('render()', ui.context);
+  assert.equal(ui.get('task-search').value, '');
+  assert.equal(ui.titles().length, 6);
+});
+
+test('task search remains applied through renames, edits, creation, defaults and movement', async () => {
+  const ui = await page(false, [{ id: 2, name: 'Destination', archived: 0 }]);
+  await dateFixture(ui);
+  await ui.select('task-filter', 'Open');
+  await ui.select('priority-filter', 'High');
+  await applyRange(ui, '2026-01-15', '2026-01-15');
+  await search(ui, 'task', '  HIGH  ');
+  const assertFilters = () => {
+    assert.equal(ui.get('task-search').value, 'HIGH');
+    assert.equal(ui.get('task-filter').value, 'Open');
+    assert.equal(ui.get('priority-filter').value, 'High');
+    assert.equal(ui.get('due-from').value, '2026-01-15');
+    assert.equal(ui.get('due-through').value, '2026-01-15');
+  };
+  let rename = ui.rows()[0].children[2];
+  rename.querySelector('input').value = 'High revised';
+  await rename.dispatch('submit');
+  assert.deepEqual(ui.titles(), ['High revised']);
+  assert.equal(ui.rows()[0].querySelector('input').attributes['aria-label'], 'Complete High revised');
+  ui.get('new-project-name').value = 'Renamed project';
+  await ui.get('rename-form').dispatch('submit');
+  await ui.select('default-task-priority', 'High');
+  ui.get('task-title').value = 'High new';
+  await ui.get('task-form').dispatch('submit');
+  assert.deepEqual(ui.titles(), ['High revised']);
+  let due = ui.rows()[0].children[3];
+  due.querySelector('input').value = '2026-01-16';
+  await due.dispatch('submit');
+  assert.deepEqual(ui.titles(), []);
+  assertFilters();
+  await applyRange(ui, '', '');
+  due = ui.rows()[0].children[3];
+  due.querySelector('input').value = '2026-01-15';
+  await due.dispatch('submit');
+  await applyRange(ui, '2026-01-15', '2026-01-15');
+  let priority = ui.rows()[0].querySelector('select');
+  priority.value = 'Low';
+  await priority.dispatch('change');
+  assert.deepEqual(ui.titles(), []);
+  assertFilters();
+  await ui.select('priority-filter', 'Low');
+  const checkbox = ui.rows()[0].querySelector('input');
+  checkbox.checked = true;
+  await checkbox.dispatch('change');
+  assert.deepEqual(ui.titles(), []);
+  await ui.select('task-filter', 'Completed');
+  rename = ui.rows()[0].children[2];
+  rename.querySelector('input').value = 'No longer matching';
+  await rename.dispatch('submit');
+  assert.deepEqual(ui.titles(), []);
+  await search(ui, 'task', 'no longer');
+  await ui.rows()[0].children[4].dispatch('submit');
+  assert.deepEqual(ui.titles(), []);
+  assert.equal(ui.location.pathname, '/projects/1');
+  assert.equal(ui.get('task-search').value, 'no longer');
+  assert.equal(ui.get('task-filter').value, 'Completed');
+  assert.equal(ui.get('priority-filter').value, 'Low');
+  assert.equal(ui.get('due-from').value, '2026-01-15');
+  assert.equal(ui.get('due-through').value, '2026-01-15');
+  ui.location.pathname = '/';
+  await vm.runInContext('render()', ui.context);
+  assert.equal(ui.get('project-list').children[0].children[0].children[1].textContent, '3/6 completed');
+});

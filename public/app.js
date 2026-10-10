@@ -5,6 +5,12 @@ const error = document.querySelector('#error');
 const form = document.querySelector('#project-form');
 const input = document.querySelector('#project-name');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#project-search-form');
+const projectSearch = document.querySelector('#project-search');
+let appliedProjectQuery = '';
+const taskSearchForm = document.querySelector('#task-search-form');
+const taskSearch = document.querySelector('#task-search');
+let appliedTaskQuery = '';
 const archivedNotice = document.querySelector('#archived-notice');
 const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
@@ -41,8 +47,19 @@ function showError(element, message) {
 }
 
 function navigate(path) {
+  if (path === '/') resetProjectSearch();
   history.pushState({}, '', path);
   render();
+}
+
+function resetProjectSearch() {
+  projectSearch.value = '';
+  appliedProjectQuery = '';
+}
+
+function matchesSearch(value, query) {
+  const asciiLower = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return asciiLower(value).includes(asciiLower(query));
 }
 
 async function render() {
@@ -70,6 +87,8 @@ async function render() {
   dueThrough.value = '';
   appliedDueFrom = '';
   appliedDueThrough = '';
+  taskSearch.value = '';
+  appliedTaskQuery = '';
   document.querySelector('#task-controls').hidden = true;
   if (match) {
     const title = document.querySelector('#project-title');
@@ -106,7 +125,9 @@ async function render() {
     const projects = await request('/api/projects');
     if (version !== renderVersion) return;
     list.replaceChildren();
-    const visibleProjects = projects.filter((project) => Boolean(project.archived) === (projectFilter.value === 'Archived'));
+    const visibleProjects = projects.filter((project) =>
+      Boolean(project.archived) === (projectFilter.value === 'Archived') &&
+      matchesSearch(project.name, appliedProjectQuery));
     for (const project of visibleProjects) {
       const row = document.createElement('div');
       row.className = 'project-row';
@@ -150,13 +171,15 @@ async function render() {
     }
     const empty = document.querySelector('#empty');
     empty.hidden = visibleProjects.length > 0;
-    empty.textContent = projectFilter.value === 'Archived' ? 'No archived projects.' : 'No active projects. Create a project above.';
+    empty.textContent = appliedProjectQuery ? 'No matching projects.' :
+      projectFilter.value === 'Archived' ? 'No archived projects.' : 'No active projects. Create a project above.';
   } catch (err) { showError(error, err.message); }
 }
 
 function renderTasks() {
   taskList.replaceChildren();
   for (const task of tasks) {
+    if (!matchesSearch(task.title, appliedTaskQuery)) continue;
     if (taskFilter.value === 'Open' && task.completed) continue;
     if (taskFilter.value === 'Completed' && !task.completed) continue;
     if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -363,6 +386,19 @@ function renderTasks() {
 
 taskFilter.addEventListener('change', renderTasks);
 priorityFilter.addEventListener('change', renderTasks);
+projectSearchForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  appliedProjectQuery = projectSearch.value.trim();
+  projectSearch.value = appliedProjectQuery;
+  await render();
+});
+taskSearchForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  appliedTaskQuery = taskSearch.value.trim();
+  taskSearch.value = appliedTaskQuery;
+  showError(detailError, '');
+  renderTasks();
+});
 function validRangeDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -496,5 +532,8 @@ form.addEventListener('submit', async (event) => {
   finally { button.disabled = false; }
 });
 document.querySelector('#back').addEventListener('click', () => navigate('/'));
-window.addEventListener('popstate', render);
+window.addEventListener('popstate', () => {
+  if (location.pathname === '/') resetProjectSearch();
+  render();
+});
 render();

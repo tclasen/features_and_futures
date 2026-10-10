@@ -28,6 +28,8 @@ Project pages provide Due from and Due through textboxes and Apply due range. Bo
 
 Each task row provides Destination project and Move task controls. Eligible destinations are other active projects in project creation order. A first arrival appends after all positions established in the destination; a returning task resumes its remembered position there. Positions are saved separately for every project a task has belonged to, including while tasks are away. Existing databases keep their current task order on upgrade. Moves preserve the task's current title, completion, priority, and due date. The source stays open with all filters retained, and both summaries reflect current ownership. Moves and remembered positions persist across restarts. Archived projects cannot send or receive tasks; controls are also disabled when no destination is available.
 
+Project search and Search projects match names by substring and combine with the Active/Archived filter. Task search and Search tasks combine with completion, priority, and the applied due range. Searches ignore ASCII letter case, trim surrounding query whitespace, and preserve internal whitespace. Applied task searches stay selected during edits and moves, including in archived projects. Opening a project or returning through Projects clears the respective search; summaries always count all tasks.
+
 Health check:
 
 ```sh
