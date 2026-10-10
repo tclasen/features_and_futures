@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #202938; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 56px auto; padding: 0 24px; }
+    h1 { margin: 0 0 28px; font-size: 2rem; }
+    form, .project-row { background: white; border: 1px solid #dce2ea; border-radius: 8px; padding: 20px; }
+    form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+    label { display: grid; gap: 7px; font-weight: 600; flex: 1; min-width: 200px; }
+    input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #aab5c4; border-radius: 5px; font: inherit; }
+    button { border: 0; border-radius: 5px; background: #2459a6; color: white; padding: 11px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #194780; }
+    #error { color: #a4262c; margin: 12px 0 0; }
+    #projects { display: grid; gap: 10px; margin-top: 24px; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .project-name { font-weight: 600; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+
+    async function showProjects() {
+      const projects = await fetch('/api/projects').then((response) => response.json());
+      app.innerHTML = `
+        <h1>Workboard</h1>
+        <form id="create-project">
+          <label for="project-name">Project name<input id="project-name" name="name" type="text" autocomplete="off"></label>
+          <button type="submit">Create project</button>
+        </form>
+        <p id="error" role="alert" hidden></p>
+        <section id="projects" aria-label="Projects">${projects.map((project) => `
+          <div class="project-row" data-testid="project-row">
+            <span class="project-name">${escapeHtml(project.name)}</span>
+            <button type="button" data-project-id="${project.id}">Open project</button>
+          </div>`).join('')}</section>`;
+      app.querySelector('#create-project').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = app.querySelector('#project-name').value.trim();
+        if (!name) {
+          const error = app.querySelector('#error');
+          error.textContent = 'Project name is required';
+          error.hidden = false;
+          return;
+        }
+        const response = await fetch('/api/projects', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (response.ok) showProjects();
+      });
+      app.querySelectorAll('[data-project-id]').forEach((button) => button.addEventListener('click', () => {
+        window.history.pushState({}, '', `/projects/${button.dataset.projectId}`);
+        showProject(button.dataset.projectId);
+      }));
+    }
+
+    async function showProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) { window.history.replaceState({}, '', '/'); return showProjects(); }
+      const project = await response.json();
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      app.querySelector('#back').addEventListener('click', () => {
+        window.history.pushState({}, '', '/');
+        showProjects();
+      });
+    }
+
+    function renderRoute() {
+      const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+      if (match) showProject(decodeURIComponent(match[1])); else showProjects();
+    }
+    window.addEventListener('popstate', renderRoute);
+    renderRoute();
+  </script>
+</body>
+</html>
