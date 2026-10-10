@@ -80,3 +80,13 @@ immediately update matching rows. Completion summaries still count every task.
 Range state is carried in the page URL (`rangeFrom` and `rangeThrough`) and form
 submissions; opening a project from the list starts with empty boundaries.
 Range controls remain available in archived projects while task edits are disabled.
+
+Task rows provide Destination project and Move task controls. Destinations include
+only other active projects, in project creation order using their current names.
+Moving appends the task after the destination's existing tasks while preserving
+its ID, title, completion, priority and due date. The source page stays open with
+all applied filters retained. Both project summaries reflect the new ownership.
+Moves persist across restarts, and moved tasks can be moved again. Archived
+projects cannot send or receive tasks; controls are also disabled when there are
+no eligible destinations. Existing databases gain saved task positions without
+changing their original order. Task creation appends after any moved tasks.
