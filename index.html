@@ -36,11 +36,24 @@
       return response.json();
     }
 
-    function renderList(projects, alertMessage = '') {
+    function renderList(projects, alertMessage = '', selectedFilter = 'Active') {
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
       app.append(heading);
+
+      const filterLabel = document.createElement('label');
+      filterLabel.htmlFor = 'project-filter';
+      filterLabel.textContent = 'Project filter';
+      const filter = document.createElement('select');
+      filter.id = 'project-filter';
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      filter.value = selectedFilter;
 
       const form = document.createElement('form');
       const label = document.createElement('label');
@@ -78,7 +91,7 @@
 
       const list = document.createElement('section');
       list.className = 'project-list';
-      for (const project of projects) {
+      for (const project of projects.filter((item) => item.archived === (filter.value === 'Archived'))) {
         const row = document.createElement('div');
         row.className = 'project-row';
         row.dataset.testid = 'project-row';
@@ -89,9 +102,25 @@
         open.type = 'button';
         open.textContent = 'Open project';
         open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-        row.append(name, open);
+        const summary = document.createElement('span');
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          const update = await fetch(`/api/projects/${project.id}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ archived: !project.archived }),
+          });
+          if (update.ok) renderList(await getProjects());
+        });
+        row.append(name, summary, open, archive);
         list.append(row);
       }
+      filter.addEventListener('change', () => renderList(projects, '', filter.value));
+      app.insertBefore(filter, form);
+      app.insertBefore(filterLabel, filter);
       app.append(list);
     }
 
@@ -111,6 +140,8 @@
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
+      const archivedNotice = document.createElement('p');
+      if (project.archived) archivedNotice.textContent = 'Archived project';
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.htmlFor = 'task-title';
@@ -121,6 +152,7 @@
       const create = document.createElement('button');
       create.type = 'submit';
       create.textContent = 'Create task';
+      create.disabled = project.archived;
       form.append(label, input, create);
 
       const filterLabel = document.createElement('label');
@@ -152,6 +184,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = project.archived;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
@@ -187,7 +220,7 @@
           await refreshTasks();
         }
       });
-      app.append(back, heading, form, pageAlert, filterLabel, filter, list);
+      app.append(back, heading, archivedNotice, form, pageAlert, filterLabel, filter, list);
       refreshTasks();
     }
 
