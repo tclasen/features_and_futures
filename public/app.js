@@ -52,8 +52,10 @@ function renderTasks() {
     priority.disabled = Boolean(window.currentProjectArchived);
     priority.addEventListener('change', async () => {
       const response = await fetch(`/api/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
-      if (response.ok) task.priority = priority.value;
-      else showTaskError('Unable to update task priority');
+      if (response.ok) {
+        task.priority = priority.value;
+        renderTasks();
+      } else showTaskError('Unable to update task priority');
     });
     const renameInput = document.createElement('input');
     renameInput.type = 'text';
