@@ -6,13 +6,13 @@ Requires Node.js 22.22.1. No application dependencies or installation steps.
 npm start
 ```
 
-The HTTP server binds to `0.0.0.0`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. Parent directories are created automatically. Keep the configured SQLite file to preserve projects, tasks, and completion state across restarts.
+The HTTP server binds to `0.0.0.0`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. Parent directories are created automatically. Keep the configured SQLite file to preserve projects, tasks, completion state, and archive state across restarts. Existing databases are upgraded automatically without losing data.
 
 ```sh
 PORT=8080 DB_PATH=/tmp/workboard.sqlite npm start
 npm test
 ```
 
-Open `/` to create and open projects. Each project page supports task creation, completion checkboxes, and All/Open/Completed filtering. Filters initially show All and do not change stored tasks. `GET /health` returns `{"status":"ok"}`.
+Open `/` to create and open projects. The Project filter initially shows Active; switch to Archived to open or restore archived projects. Rows summarize all tasks as completed/total counts. Archiving preserves tasks but prevents task creation and completion changes, including through the API. Each project page supports task creation, completion checkboxes, and All/Open/Completed filtering. Task filters initially show All and do not change stored tasks. `GET /health` returns `{"status":"ok"}`.
 
-Tests use temporary SQLite files outside the repository and cover validation, creation order, routes, project isolation, completion updates, and persistence after a server restart.
+Tests use temporary SQLite files outside the repository and cover validation, creation order, routes, project isolation, completion updates, schema migration, archive/restore write protection, summaries, and persistence after server restarts.

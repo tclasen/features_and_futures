@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -79,6 +80,71 @@ test('health, project validation, creation order, detail, and restart persistenc
     server = await start(databasePath);
     assert.deepEqual(await (await get('/api/projects')).json(), expected);
     assert.deepEqual(await (await get(`/api/projects/${second.id}`)).json(), second);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive migration, summaries, write protection, restore, and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'test.sqlite');
+  // Simulate the schema and saved data from the previous checkpoint.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Open', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.base + path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const projectPath = '/api/projects/1';
+    const tasksPath = `${projectPath}/tasks`;
+    const original = await (await request(projectPath)).json();
+    assert.deepEqual(original, {
+      id: 1, name: 'Existing', archived: false, total_count: 2, completed_count: 1,
+    });
+    const tasks = await (await request(tasksPath)).json();
+    const empty = await (await request('/api/projects', 'POST', { name: 'Empty' })).json();
+    assert.equal(empty.total_count, 0);
+    assert.equal(empty.completed_count, 0);
+    for (const archived of [1, 'true', null]) {
+      assert.equal((await request(projectPath, 'PATCH', { archived })).status, 400);
+    }
+    assert.equal((await request('/api/projects/9999', 'PATCH', { archived: true })).status, 404);
+    const archived = { ...original, archived: true };
+    assert.deepEqual(await (await request(projectPath, 'PATCH', { archived: true })).json(), archived);
+    assert.deepEqual(await (await request('/api/projects')).json(), [archived, empty]);
+    assert.equal((await request(tasksPath, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await request(`${tasksPath}/1`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(projectPath)).json(), archived);
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    assert.deepEqual(await (await request(projectPath, 'PATCH', { archived: false })).json(), original);
+    assert.equal((await request(`${tasksPath}/2`, 'PATCH', { completed: true })).status, 200);
+    assert.equal((await request(tasksPath, 'POST', { title: 'After restore' })).status, 201);
+    const restored = { ...original, total_count: 3, completed_count: 2 };
+    assert.deepEqual(await (await request(projectPath)).json(), restored);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request('/api/projects')).json(), [restored, empty]);
+    const savedTasks = await (await request(tasksPath)).json();
+    assert.equal(savedTasks.length, 3);
+    assert.deepEqual(savedTasks.map((task) => task.completed), [true, true, false]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
