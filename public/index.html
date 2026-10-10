@@ -165,7 +165,18 @@
         filter.append(option);
       }
       filterLabel.append(filter);
-      app.append(form, alert, filterLabel);
+      const priorityFilterLabel = document.createElement('label');
+      priorityFilterLabel.textContent = 'Priority filter';
+      const priorityFilter = document.createElement('select');
+      priorityFilter.setAttribute('aria-label', 'Priority filter');
+      for (const value of ['All', 'Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priorityFilter.append(option);
+      }
+      priorityFilterLabel.append(priorityFilter);
+      app.append(form, alert, filterLabel, priorityFilterLabel);
       let taskRenderVersion = 0;
       async function renderTasks() {
         const version = ++taskRenderVersion;
@@ -175,6 +186,7 @@
         app.querySelectorAll('[data-testid="task-row"]').forEach(row => row.remove());
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
           const row = document.createElement('div');
           row.className = 'task-row';
           row.dataset.testid = 'task-row';
@@ -221,13 +233,14 @@
           priority.disabled = project.archived;
           priority.addEventListener('change', async () => {
             const priorityResponse = await fetch(`/api/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
-            if (!priorityResponse.ok) await renderTasks();
+            await renderTasks();
           });
           row.append(priority);
           app.append(row);
         }
       }
       filter.addEventListener('change', renderTasks);
+      priorityFilter.addEventListener('change', renderTasks);
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const title = input.value.trim();
