@@ -16,7 +16,7 @@ async function availablePort() {
   return port;
 }
 
-test('projects validate, render safely, navigate, and persist across restarts', async () => {
+test('projects and tasks validate, isolate, filter, and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = await availablePort();
   const base = `http://127.0.0.1:${port}`;
@@ -82,6 +82,53 @@ test('projects validate, render safely, navigate, and persist across restarts', 
     assert.equal(await (await fetch(base)).text(), listing);
     assert.equal(await (await fetch(base + paths[0])).text(), detail);
     assert.equal((await fetch(`${base}/projects/99999`)).status, 404);
+
+    const post = (path, values) => fetch(base + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const projectPath = paths[0];
+    const tasksPath = `${projectPath}/tasks`;
+    for (const title of ['', '  \t ']) {
+      const invalid = await post(tasksPath, { title });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.doesNotMatch(html, /data-testid="task-row"/);
+    }
+    for (const title of ['  First task  ', '<Second & task>']) {
+      assert.equal((await post(tasksPath, { title })).status, 303);
+    }
+    const tasks = await (await fetch(base + projectPath)).text();
+    assert.match(tasks, /<label for="task-title">Task title<\/label>/);
+    assert.match(tasks, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(tasks, /<option selected>All<\/option>/);
+    assert.match(tasks, /aria-label="Complete First task"/);
+    assert.match(tasks, /aria-label="Complete &lt;Second &amp; task&gt;"/);
+    assert.doesNotMatch(tasks, / checked/);
+    assert.equal((tasks.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.ok(tasks.indexOf('<span>First task') < tasks.indexOf('<span>&lt;Second'));
+    assert.doesNotMatch(await (await fetch(base + paths[1])).text(), /data-testid="task-row"/);
+    const taskPath = tasks.match(/action="(\/projects\/\d+\/tasks\/\d+)"/)[1];
+    const taskId = taskPath.split('/').at(-1);
+    assert.equal((await post(`${paths[1]}/tasks/${taskId}`, { completed: '1' })).status, 404);
+    assert.equal((await post(taskPath, { completed: '1' })).status, 303);
+    const completed = await (await fetch(`${base}${projectPath}?filter=Completed`)).text();
+    assert.match(completed, /<span>First task<\/span>/);
+    assert.match(completed, / checked/);
+    assert.doesNotMatch(completed, /<span>&lt;Second/);
+    const open = await (await fetch(`${base}${projectPath}?filter=Open`)).text();
+    assert.doesNotMatch(open, /<span>First task/);
+    assert.match(open, /<span>&lt;Second/);
+    const saved = await (await fetch(base + projectPath)).text();
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + projectPath)).text(), saved);
+    assert.equal(await (await fetch(`${base}${projectPath}?filter=Completed`)).text(), completed);
+    assert.equal((await post(taskPath, {})).status, 303);
+    assert.equal(await (await fetch(base + projectPath)).text(), tasks);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + projectPath)).text(), tasks);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
