@@ -9,6 +9,16 @@ taskMessage.hidden = true;
 document.querySelector('#project-detail').append(taskMessage);
 let activeProjectId = null;
 let projectTasks = [];
+let appliedDueRange = { from: '', through: '' };
+
+function validDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+}
 
 async function loadTasks() {
   const response = await fetch(`/api/projects/${activeProjectId}/tasks`);
@@ -25,6 +35,10 @@ function renderTasks() {
   for (const task of projectTasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+    const date = task.dueDate || '';
+    if ((appliedDueRange.from || appliedDueRange.through) && !date) continue;
+    if (date && appliedDueRange.from && date < appliedDueRange.from) continue;
+    if (date && appliedDueRange.through && date > appliedDueRange.through) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'task-row';
@@ -94,6 +108,7 @@ function renderTasks() {
       task.dueDate = dueDate || null;
       dueDateInput.value = task.dueDate || '';
       taskMessage.hidden = true;
+      renderTasks();
     });
     row.append(title, renameInput, renameButton, priority, checkbox, dueDateInput, dueDateButton);
     container.append(row);
@@ -168,6 +183,9 @@ async function renderRoute() {
   taskMessage.hidden = true;
   document.querySelector('#task-filter').value = 'All';
   document.querySelector('#priority-filter').value = 'All';
+  appliedDueRange = { from: '', through: '' };
+  document.querySelector('#due-from').value = '';
+  document.querySelector('#due-through').value = '';
   await loadTasks();
 }
 
@@ -235,6 +253,21 @@ document.querySelector('#default-task-priority').addEventListener('change', asyn
 });
 document.querySelector('#task-filter').addEventListener('change', renderTasks);
 document.querySelector('#priority-filter').addEventListener('change', renderTasks);
+document.querySelector('#apply-due-range').addEventListener('click', () => {
+  const from = document.querySelector('#due-from').value.trim();
+  const through = document.querySelector('#due-through').value.trim();
+  if ((from && !validDate(from)) || (through && !validDate(through))) {
+    showTaskError('Due range must use valid YYYY-MM-DD dates');
+    return;
+  }
+  if (from && through && from > through) {
+    showTaskError('Due from must not be after Due through');
+    return;
+  }
+  appliedDueRange = { from, through };
+  taskMessage.hidden = true;
+  renderTasks();
+});
 document.querySelector('#project-filter').addEventListener('change', () => loadProjects().catch(showLoadError));
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 window.addEventListener('popstate', () => renderRoute().catch(showLoadError));
