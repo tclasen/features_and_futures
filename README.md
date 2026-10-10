@@ -19,4 +19,6 @@ The project list defaults to Active; select Archived to open or restore archived
 
 Active project pages also support renaming. Names are trimmed and must be nonblank; renaming keeps the URL, creation order, tasks, and summary unchanged. Archived projects cannot be renamed until restored. Renamed names persist in the same SQLite database.
 
+Each task row also supports renaming with a trimmed, nonblank title. Renaming preserves task identity, project ownership, order, completion, and filter membership, and updates the completion label. Archived projects disable and reject task renaming until restored.
+
 The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, and migration from the previous schema.

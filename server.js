@@ -125,6 +125,14 @@ function projectPage(project, filter = 'All', error = '') {
           </label>
           <noscript><button type="submit">Save completion</button></noscript>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="create">
+            <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </div>
+        </form>
       </li>`).join('')}</ul>`);
 }
 
@@ -217,7 +225,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/completion)?$/.exec(path);
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/.exec(path);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const project = Number.isSafeInteger(projectId) ? store.find(projectId) : undefined;
@@ -237,7 +245,20 @@ const server = createServer(async (request, response) => {
           store.createTask(projectId, title);
         } else {
           const taskId = Number(taskMatch[2]);
-          if (!Number.isSafeInteger(taskId) || !store.setTaskCompleted(projectId, taskId, form.get('completed') === '1')) {
+          let updated = false;
+          if (Number.isSafeInteger(taskId)) {
+            if (taskMatch[3] === 'rename') {
+              const title = (form.get('title') || '').trim();
+              if (!title) {
+                sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+                return;
+              }
+              updated = store.renameTask(projectId, taskId, title);
+            } else {
+              updated = store.setTaskCompleted(projectId, taskId, form.get('completed') === '1');
+            }
+          }
+          if (!updated) {
             sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
             return;
           }
