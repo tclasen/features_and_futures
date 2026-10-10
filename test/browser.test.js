@@ -437,3 +437,144 @@ test('failed due date saves show an alert and restore the saved date', async () 
   assert.equal(p.app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
   assert.deepEqual(p.writes, []);
 });
+
+async function searchTasks(p, query) {
+  p.byId('task-search').value = query;
+  await p.byId('task-search').parent.fire('submit');
+}
+
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('task search intersects filters and retains applied query through edits', async () => {
+  const p = await page();
+  assert.equal(p.byId('task-search').value, '');
+  await searchTasks(p, '  IR  ');
+  assert.deepEqual(p.titles(), ['First', 'Third']);
+  p.byId('task-search').value = 'draft not applied';
+  await p.choose('priority-filter', 'High');
+  assert.deepEqual(p.titles(), ['First']);
+  await p.choose('task-filter', 'Open');
+  p.byId('task-due-date-1').value = '2024-02-29';
+  await p.byId('task-due-date-1').parent.fire('submit');
+  await settle();
+  p.byId('due-from').value = '2024-02-29';
+  p.byId('due-through').value = '2024-02-29';
+  await p.byId('due-from').parent.fire('submit');
+  assert.deepEqual(p.titles(), ['First']);
+  await p.choose('default-task-priority', 'Low');
+  p.byId('new-project-name').value = 'New project';
+  await p.byId('new-project-name').parent.fire('submit');
+  assert.deepEqual(p.titles(), ['First']);
+  p.byId('new-task-title-1').value = 'No match';
+  await p.byId('new-task-title-1').parent.fire('submit');
+  await settle();
+  assert.deepEqual(p.titles(), []);
+  await searchTasks(p, '  ');
+  assert.deepEqual(p.titles(), ['No match']);
+  assert.equal(p.byId('task-filter').value, 'Open');
+  assert.equal(p.byId('priority-filter').value, 'High');
+  assert.equal(p.byId('due-from').value, '2024-02-29');
+  await searchTasks(p, 'MATCH');
+  await p.choose('task-priority-1', 'Low');
+  assert.deepEqual(p.titles(), []);
+  await p.choose('priority-filter', 'Low');
+  assert.deepEqual(p.titles(), ['No match']);
+  const checkbox = p.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  await settle();
+  assert.deepEqual(p.titles(), []);
+  await p.choose('task-filter', 'Completed');
+  p.byId('task-due-date-1').value = '';
+  await p.byId('task-due-date-1').parent.fire('submit');
+  await settle();
+  assert.deepEqual(p.titles(), []);
+});
+
+test('search remains applied on creation and movement, preserves whitespace and ASCII semantics', async () => {
+  const p = await page();
+  await searchTasks(p, 'needle');
+  p.byId('task-title').value = 'A NEEDLE  Ä';
+  await p.byId('task-title').parent.fire('submit');
+  assert.deepEqual(p.titles(), ['A NEEDLE  Ä']);
+  await searchTasks(p, 'needle Ä');
+  assert.deepEqual(p.titles(), []); // Internal double space is significant.
+  await searchTasks(p, 'needle  ä');
+  assert.deepEqual(p.titles(), []); // Non-ASCII letters are not case folded.
+  await searchTasks(p, 'needle  Ä');
+  assert.deepEqual(p.titles(), ['A NEEDLE  Ä']);
+  await p.byId('destination-project-5').parent.fire('submit');
+  await settle();
+  assert.deepEqual(p.titles(), []);
+  await p.choose('task-filter', 'Open');
+  assert.deepEqual(p.titles(), []);
+  await searchTasks(p, '');
+  assert.deepEqual(p.titles(), ['First', 'Third']);
+  const archived = await page(true);
+  assert.ok(!archived.byId('task-search').disabled);
+  await searchTasks(archived, 'SECOND');
+  assert.deepEqual(archived.titles(), ['Second']);
+  assert.ok(archived.rows()[0].querySelectorAll('input, button, select').every(control => control.disabled));
+  assert.equal((await page()).byId('task-search').value, '');
+});
+
+test('project search intersects archive filter, preserves order and summaries, and resets on navigation', async () => {
+  const projects = [
+    { id: 1, name: 'Alpha  Ä', archived: false, total: 3, completed: 2 },
+    { id: 2, name: 'Beta', archived: false, total: 0, completed: 0 },
+    { id: 3, name: 'ALPHABET', archived: true, total: 2, completed: 1 },
+    { id: 4, name: 'alpha last', archived: false, total: 1, completed: 1 },
+  ];
+  async function listPage() {
+    const app = new Node('main');
+    const window = { location: { pathname: '/' } };
+    const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+    await runInNewContext(`(async () => { ${source.replace("import { normalizeDueDate } from '/due-date.js';", '')} })()`, {
+      normalizeDueDate, window,
+      document: { querySelector: () => app, createElement: tag => new Node(tag) },
+      fetch: async (path, options) => {
+        let data = projects;
+        if (options?.method === 'PATCH') {
+          data = projects.find(project => project.id === Number(path.split('/').at(-1)));
+          Object.assign(data, JSON.parse(options.body));
+        }
+        return { ok: true, json: async () => structuredClone(data) };
+      },
+    });
+    const byId = id => app.all().find(node => node.id === id);
+    const rows = () => app.all().filter(node => node.dataset.testid === 'project-row');
+    return { app, window, byId, rows, names: () => rows().map(row => row.children[0].textContent) };
+  }
+  const p = await listPage();
+  assert.equal(p.byId('project-search').value, '');
+  p.byId('project-search').value = '  ALPHA  ';
+  await p.byId('project-search').parent.fire('submit');
+  assert.deepEqual(p.names(), ['Alpha  Ä', 'alpha last']);
+  assert.equal(p.rows()[0].children[1].textContent, '2/3 completed');
+  p.byId('project-search').value = 'unapplied draft';
+  p.byId('project-filter').value = 'Archived';
+  await p.byId('project-filter').fire('change');
+  assert.deepEqual(p.names(), ['ALPHABET']);
+  await p.rows()[0].children.at(-1).fire('click'); // Restore matching project.
+  assert.deepEqual(p.names(), []);
+  p.byId('project-filter').value = 'Active';
+  await p.byId('project-filter').fire('change');
+  assert.deepEqual(p.names(), ['Alpha  Ä', 'ALPHABET', 'alpha last']);
+  p.byId('project-search').value = 'alpha Ä';
+  await p.byId('project-search').parent.fire('submit');
+  assert.deepEqual(p.names(), []);
+  p.byId('project-search').value = 'alpha  ä';
+  await p.byId('project-search').parent.fire('submit');
+  assert.deepEqual(p.names(), []);
+  p.byId('project-search').value = 'alpha  Ä';
+  await p.byId('project-search').parent.fire('submit');
+  assert.deepEqual(p.names(), ['Alpha  Ä']);
+  await p.rows()[0].children[2].fire('click');
+  assert.equal(p.window.location.href, '/projects/1');
+  const detail = await page();
+  const back = detail.app.all().find(node => node.tag === 'button' && node.textContent === 'Projects');
+  await back.fire('click');
+  const reopened = await listPage();
+  assert.equal(reopened.byId('project-search').value, '');
+  assert.equal(reopened.names().length, 4);
+});
