@@ -22,4 +22,4 @@ Verify:
 npm test
 ```
 
-The integration tests start the actual server with temporary databases, check project and task validation, ordering, navigation, completion, filtering, and project isolation, and restart the process to verify persistence. Temporary files are removed after the tests.
+The integration tests start the actual server with temporary databases, check project and task validation, ordering, navigation, completion, filtering, project isolation, archive/restore, read-only archived tasks, and completion summaries. They also verify migration from the earlier schema and restart the process to check persistence. Temporary files are removed after the tests.
