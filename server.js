@@ -30,13 +30,32 @@ db.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT
   )
 `);
 // Add priority to task databases created by earlier checkpoints.
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+function parseDueDate(value) {
+  if (typeof value !== 'string') return null;
+  const date = value.trim();
+  if (!date) return '';
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return null;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthLengths = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= monthLengths[month - 1] ? date : null;
 }
 
 const contentTypes = {
@@ -132,7 +151,7 @@ const server = createServer(async (request, response) => {
     const project = db.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (!taskId && request.method === 'GET') {
-      const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+      const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
         .map((task) => ({ ...task, id: Number(task.id), completed: Boolean(task.completed) }));
       return sendJson(response, 200, tasks);
     }
@@ -155,6 +174,14 @@ const server = createServer(async (request, response) => {
           .run(body.priority, taskId, projectId);
         if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
         return sendJson(response, 200, { id: taskId, priority: body.priority });
+      }
+      if (Object.hasOwn(body || {}, 'due_date')) {
+        const dueDate = parseDueDate(body.due_date);
+        if (dueDate === null) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?')
+          .run(dueDate || null, taskId, projectId);
+        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+        return sendJson(response, 200, { id: taskId, due_date: dueDate || null });
       }
       if (Object.hasOwn(body || {}, 'title')) {
         const title = typeof body.title === 'string' ? body.title.trim() : '';

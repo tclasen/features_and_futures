@@ -384,7 +384,38 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
         }
       });
       priorityField.append(priorityLabel, prioritySelect);
-      row.append(title, checkboxLabel, renameForm, priorityField);
+      const dueDateForm = document.createElement('form');
+      dueDateForm.className = 'task-due-date-form';
+      const dueDateInput = document.createElement('input');
+      dueDateInput.type = 'text';
+      dueDateInput.value = task.due_date || '';
+      dueDateInput.setAttribute('aria-label', 'Task due date');
+      dueDateInput.disabled = project.archived;
+      const dueDateButton = document.createElement('button');
+      dueDateButton.type = 'submit';
+      dueDateButton.textContent = 'Save due date';
+      dueDateButton.disabled = project.archived;
+      dueDateForm.append(dueDateInput, dueDateButton);
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ due_date: dueDateInput.value }),
+        });
+        if (response.ok) {
+          const updated = await response.json();
+          task.due_date = updated.due_date;
+          dueDateInput.value = task.due_date || '';
+        } else {
+          let message = 'Unable to save due date';
+          try {
+            const result = await response.json();
+            if (result.error === 'Due date must be a valid YYYY-MM-DD date') message = result.error;
+          } catch { /* Keep the generic message for non-JSON failures. */ }
+          renderProjectWithAlert(id, message, filter.value, priorityFilter.value);
+        }
+      });
+      row.append(title, checkboxLabel, renameForm, priorityField, dueDateForm);
       taskList.append(row);
     }
   };
