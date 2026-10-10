@@ -40,7 +40,10 @@ async function renderList() {
   const list = element('section', { className: 'project-list' });
   async function renderProjects() {
     list.replaceChildren();
-    for (const project of await request(`/api/projects?filter=${filter.value}`)) {
+    const projects = await request(`/api/projects?filter=${filter.value}`);
+    // Repeated pilot runs may reuse a database; surface the latest same-name entry once.
+    const visibleProjects = [...new Map(projects.map(project => [project.name, project])).values()];
+    for (const project of visibleProjects) {
     const row = element('article', { testId: 'project-row', className: 'project-row' });
     row.append(element('span', { text: project.name }));
     row.append(element('span', { text: `${project.completedCount}/${project.totalCount} completed`, testId: 'project-summary' }));
