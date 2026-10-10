@@ -47,6 +47,41 @@ function projectRow(project, refresh) {
   return row;
 }
 
+function renderRename(project) {
+  const form = document.createElement('form');
+  form.innerHTML = `
+    <label for="new-project-name">New project name</label>
+    <div class="create-controls">
+      <input id="new-project-name" type="text" autocomplete="off">
+      <button type="submit">Rename project</button>
+    </div>`;
+  const input = form.querySelector('input');
+  const submit = form.querySelector('button');
+  input.value = project.name;
+  input.disabled = submit.disabled = Boolean(project.archived);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (submit.disabled) return;
+    const name = input.value.trim();
+    if (!name) { showAlert('Project name is required'); return; }
+    showAlert('');
+    submit.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      Object.assign(project, saved);
+      document.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} — Workboard`;
+      input.value = project.name;
+    } catch (error) { showAlert(error.message); }
+    finally { submit.disabled = Boolean(project.archived); }
+  });
+  app.append(form);
+}
+
 async function renderTasks(project) {
   const section = document.createElement('section');
   section.innerHTML = `
@@ -144,6 +179,7 @@ async function render() {
         notice.textContent = 'Archived project';
         app.append(notice);
       }
+      renderRename(project);
       await renderTasks(project);
     } catch (error) { showAlert(error.message); }
     return;
