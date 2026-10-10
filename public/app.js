@@ -67,7 +67,7 @@ async function renderProject(id) {
   if (project.archived) app.append(element('p', { text: 'Archived project' }));
   const renameForm = element('form', { className: 'create-form' });
   const renameLabel = element('label', { text: 'New project name' }); renameLabel.htmlFor = 'new-project-name';
-  const renameInput = element('input'); renameInput.type = 'text'; renameInput.id = 'new-project-name'; renameInput.value = project.name;
+  const renameInput = element('input'); renameInput.type = 'text'; renameInput.id = 'new-project-name'; renameInput.value = project.name; renameInput.disabled = Boolean(project.archived);
   const renameButton = element('button', { text: 'Rename project' }); renameButton.type = 'submit'; renameButton.disabled = Boolean(project.archived);
   const renameAlert = element('p', { className: 'alert' }); renameAlert.setAttribute('role', 'alert'); renameAlert.hidden = true;
   renameForm.append(renameLabel, renameInput, renameButton, renameAlert);
