@@ -26,6 +26,12 @@ db.exec(`
     project_order INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
 `);
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
@@ -37,6 +43,9 @@ if (!taskColumns.some(column => column.name === 'project_order')) {
   db.exec('ALTER TABLE tasks ADD COLUMN project_order INTEGER');
   db.exec('UPDATE tasks SET project_order = id');
 }
+// Preserve the established order for every task in its current project.
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, COALESCE(project_order, id) FROM tasks`);
 
 // Older runs could create the same project repeatedly. Keep the first project
 // ID and move any tasks from duplicates onto it before removing duplicate rows.
@@ -103,7 +112,9 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY project_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return json(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+      FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+      WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.project_order), t.id`).all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -118,6 +129,7 @@ const server = http.createServer(async (req, res) => {
     if (!title) return json(res, 400, { error: 'Task title is required' });
     const projectOrder = db.prepare('SELECT COALESCE(MAX(project_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(projectId).nextOrder;
     const result = db.prepare('INSERT INTO tasks (project_id, title, priority, project_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, projectOrder);
+    db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, projectOrder);
     return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -160,8 +172,13 @@ const server = http.createServer(async (req, res) => {
       const destinationId = Number(input.destinationProjectId);
       const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
       if (!destination || destinationId === Number(task.project_id)) return json(res, 400, { error: 'Invalid destination project' });
-      const nextOrder = db.prepare('SELECT COALESCE(MAX(project_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(destinationId).nextOrder;
-      db.prepare('UPDATE tasks SET project_id = ?, project_order = ? WHERE id = ?').run(destinationId, nextOrder, Number(taskMatch[1]));
+      const taskId = Number(taskMatch[1]);
+      let destinationOrder = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId)?.position;
+      if (destinationOrder === undefined) {
+        destinationOrder = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS nextOrder FROM task_project_positions WHERE project_id = ?').get(destinationId).nextOrder;
+        db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, destinationOrder);
+      }
+      db.prepare('UPDATE tasks SET project_id = ?, project_order = ? WHERE id = ?').run(destinationId, destinationOrder, taskId);
       return json(res, 200, { ok: true, projectId: destinationId });
     }
     if (typeof input.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
