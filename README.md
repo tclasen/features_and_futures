@@ -83,10 +83,16 @@ Range controls remain available in archived projects while task edits are disabl
 
 Task rows provide Destination project and Move task controls. Destinations include
 only other active projects, in project creation order using their current names.
-Moving appends the task after the destination's existing tasks while preserving
+Moving to a project for the first time appends the task after its established positions while preserving
 its ID, title, completion, priority and due date. The source page stays open with
 all applied filters retained. Both project summaries reflect the new ownership.
 Moves persist across restarts, and moved tasks can be moved again. Archived
 projects cannot send or receive tasks; controls are also disabled when there are
 no eligible destinations. Existing databases gain saved task positions without
-changing their original order. Task creation appends after any moved tasks.
+changing their current order. Each task remembers a separate position in every
+project it has belonged to. Returning tasks reclaim those positions even when
+they return in a different order, retaining their current field values. Vacated
+positions remain reserved; newly created tasks and first-time arrivals follow
+all established positions, including those of absent tasks. Position history
+survives project renaming, archival, restoration and server restarts. Ownership
+changes and position records are saved together in SQLite transactions.
