@@ -84,6 +84,15 @@ const server = createServer(async (request, response) => {
   const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectRoute && request.method === 'PATCH') {
     const body = await readJson(request);
+    if (Object.hasOwn(body || {}, 'name')) {
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(projectRoute[1]));
+      if (!project) return sendJson(response, 404, { error: 'Project not found' });
+      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+      db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, Number(projectRoute[1]));
+      return sendJson(response, 200, { id: Number(projectRoute[1]), name });
+    }
     if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
     const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, Number(projectRoute[1]));
     if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });

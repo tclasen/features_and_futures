@@ -150,6 +150,38 @@ async function renderProject(id) {
     app.append(status);
   }
 
+  const renameForm = document.createElement('form');
+  renameForm.className = 'project-form';
+  const renameField = document.createElement('div');
+  renameField.className = 'field';
+  const renameLabel = document.createElement('label');
+  renameLabel.htmlFor = 'new-project-name';
+  renameLabel.textContent = 'New project name';
+  const renameInput = document.createElement('input');
+  renameInput.id = 'new-project-name';
+  renameInput.name = 'name';
+  renameInput.type = 'text';
+  renameInput.value = project.name;
+  renameInput.disabled = project.archived;
+  renameField.append(renameLabel, renameInput);
+  const renameButton = document.createElement('button');
+  renameButton.type = 'submit';
+  renameButton.textContent = 'Rename project';
+  renameButton.disabled = project.archived;
+  renameForm.append(renameField, renameButton);
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = renameInput.value.trim();
+    if (!name) return renderProjectWithAlert(id, 'Project name is required');
+    const response = await fetch(`/api/projects/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename project');
+    renderProject(id);
+  });
+  app.append(renameForm);
+
   const form = document.createElement('form');
   form.className = 'task-form';
   const field = document.createElement('div');
