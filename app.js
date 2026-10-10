@@ -41,7 +41,7 @@ async function showProjects() {
       });
       input.value = '';
       alert.hidden = true;
-      await renderProjects();
+      await renderProjects(filter.value, list);
     } catch (error) {
       alert.textContent = error.message;
       alert.hidden = false;
