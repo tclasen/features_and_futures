@@ -16,10 +16,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0
+  completed INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))
 )`);
 // Upgrade databases created by earlier checkpoints.
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) throw error;
+}
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column')) throw error;
 }
 
@@ -83,7 +87,7 @@ const server = http.createServer(async (req, res) => {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, JSON.stringify({ error: 'Project not found' }));
     if (req.method === 'GET') {
-      const tasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
       return send(200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
     }
     if (req.method === 'POST') {
@@ -94,7 +98,7 @@ const server = http.createServer(async (req, res) => {
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
         const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-        return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
+        return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' }));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
   }
@@ -120,7 +124,14 @@ const server = http.createServer(async (req, res) => {
       const task = db.prepare('SELECT project_id FROM tasks WHERE id = ?').get(Number(taskUpdate[1]));
       if (!task) return send(404, JSON.stringify({ error: 'Task not found' }));
       if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) return send(400, JSON.stringify({ error: 'Archived project' }));
-      const completed = Boolean(JSON.parse(body).completed);
+      const payload = JSON.parse(body);
+      if (Object.hasOwn(payload, 'priority')) {
+        if (!['Low', 'Normal', 'High'].includes(payload.priority)) return send(400, JSON.stringify({ error: 'Invalid task priority' }));
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(payload.priority, Number(taskUpdate[1]));
+        if (!result.changes) return send(404, JSON.stringify({ error: 'Task not found' }));
+        return send(200, JSON.stringify({ ok: true }));
+      }
+      const completed = Boolean(payload.completed);
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(taskUpdate[1]));
       if (!result.changes) return send(404, JSON.stringify({ error: 'Task not found' }));
       return send(200, JSON.stringify({ ok: true }));
