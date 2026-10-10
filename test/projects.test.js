@@ -4,11 +4,21 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 test('launch contract, project and task validation, ownership, completion, and restart persistence', { timeout: 15000 }, async () => {
   await mkdir(resolve('data'), { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
   const databasePath = resolve(directory, 'projects.sqlite');
+  // Start from the Task 002 schema to exercise the archive migration.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));
+  `);
+  legacy.close();
   let child;
   let base;
 
@@ -69,6 +79,9 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, 0);
+    assert.equal(first.total_count, 0);
+    assert.equal(first.completed_count, 0);
     const second = await (await create('<script> & Second')).json();
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await list(), [first, second]);
@@ -114,6 +127,24 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal(checked.status, 200);
     assert.deepEqual(await checked.json(), { ...firstTask, completed: true });
     assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
+    first.total_count = 2;
+    first.completed_count = 1;
+    second.total_count = 1;
+    assert.deepEqual(await list(), [first, second]);
+    const archiveProject = (id, archived) => fetch(`${base}/api/projects/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived }),
+    });
+    assert.equal((await archiveProject(999999, true)).status, 404);
+    assert.equal((await archiveProject(first.id, 'true')).status, 400);
+    const archived = await archiveProject(first.id, true);
+    assert.equal(archived.status, 200);
+    first.archived = 1;
+    assert.deepEqual(await archived.json(), first);
+    assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
+    assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
+    assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
     await stop();
     await start();
     assert.deepEqual(await list(), [first, second]);
@@ -121,15 +152,22 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
     assert.deepEqual(await taskList(second.id), [otherTask]);
+    const restored = await archiveProject(first.id, false);
+    assert.equal(restored.status, 200);
+    first.archived = 0;
+    assert.deepEqual(await restored.json(), first);
     const unchecked = await completeTask(first.id, firstTask.id, false);
     assert.equal(unchecked.status, 200);
     assert.deepEqual(await unchecked.json(), firstTask);
+    first.completed_count = 0;
     await stop();
     await start();
+    assert.deepEqual(await list(), [first, second]);
     assert.deepEqual(await taskList(first.id), [firstTask, secondTask]);
     const thirdTask = await (await createTask(first.id, 'Third task')).json();
     assert.ok(thirdTask.id > otherTask.id);
     assert.deepEqual(await taskList(first.id), [firstTask, secondTask, thirdTask]);
+    first.total_count = 3;
     const third = await (await create('Third')).json();
     assert.ok(third.id > second.id);
     assert.deepEqual(await list(), [first, second, third]);

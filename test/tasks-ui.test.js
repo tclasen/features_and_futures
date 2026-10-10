@@ -129,3 +129,112 @@ test('task UI validation, labels, filtering, creation order, and completion chan
   assert.deepEqual(visibleTitles(), ['Open task', 'Done task', 'New task']);
   assert.equal(requests.filter(({ options }) => options.method === 'PATCH').length, 2);
 });
+
+async function renderUI(pathname, fetch) {
+  const app = new Element('main');
+  const window = { location: { pathname } };
+  await vm.runInNewContext(source, {
+    document: {
+      querySelector: () => app,
+      createElement: (tag) => new Element(tag),
+    },
+    window,
+    fetch,
+  });
+  return { app, window };
+}
+
+const jsonResponse = (body) => ({ ok: true, json: async () => JSON.parse(JSON.stringify(body)) });
+
+test('project UI archive/restore, summaries, filtering, creation, and navigation', async () => {
+  const projects = [
+    { id: 1, name: 'First', archived: 0, completed_count: 1, total_count: 2 },
+    { id: 2, name: 'Second', archived: 0, completed_count: 0, total_count: 0 },
+    { id: 3, name: 'Third', archived: 1, completed_count: 2, total_count: 2 },
+  ];
+  const { app, window } = await renderUI('/', async (path, options = {}) => {
+    if (options.method === 'PATCH') {
+      const project = projects.find((project) => path === `/api/projects/${project.id}`);
+      project.archived = Number(JSON.parse(options.body).archived);
+      return jsonResponse(project);
+    }
+    if (options.method === 'POST') {
+      const project = { id: 4, name: JSON.parse(options.body).name, archived: 0, completed_count: 0, total_count: 0 };
+      projects.push(project);
+      return jsonResponse(project);
+    }
+    return jsonResponse(projects);
+  });
+  const filter = app.find((node) => node.id === 'project-filter');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Projects');
+  const names = () => list.children.map((row) => row.children[0].textContent);
+  const button = (row, text) => row.find((node) => node.tag === 'button' && node.textContent === text);
+  assert.equal(app.find((node) => node.htmlFor === filter.id).textContent, 'Project filter');
+  assert.deepEqual(filter.children.map((option) => option.textContent), ['Active', 'Archived']);
+  assert.equal(filter.value, 'Active');
+  assert.deepEqual(names(), ['First', 'Second']);
+  assert.ok(list.children.every((row) => row.dataset.testid === 'project-row'));
+  assert.equal(list.children[0].children[1].dataset.testid, 'project-summary');
+  assert.equal(list.children[0].children[1].textContent, '1/2 completed');
+  assert.equal(list.children[1].children[1].textContent, '0/0 completed');
+  await button(list.children[0], 'Archive project').fire('click');
+  assert.deepEqual(names(), ['Second']);
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['First', 'Third']);
+  assert.equal(list.children[0].children[1].textContent, '1/2 completed');
+  assert.equal(list.children[1].children[1].textContent, '2/2 completed');
+  await button(list.children[0], 'Open project').fire('click');
+  assert.equal(window.location.href, '/projects/1');
+  await button(list.children[0], 'Restore project').fire('click');
+  assert.deepEqual(names(), ['Third']);
+  filter.value = 'Active';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['First', 'Second']);
+  const form = app.find((node) => node.tag === 'form');
+  const input = app.find((node) => node.id === 'project-name');
+  input.value = ' \t ';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  assert.equal(projects.length, 3);
+  input.value = '  Fourth  ';
+  await form.fire('submit');
+  assert.deepEqual(names(), ['First', 'Second', 'Fourth']);
+  assert.equal(list.children[2].children[1].textContent, '0/0 completed');
+  assert.equal(app.querySelector('[role="alert"]'), null);
+});
+
+test('archived project UI keeps tasks filterable and disables all task mutations', async () => {
+  const requests = [];
+  const { app, window } = await renderUI('/projects/7', async (path, options = {}) => {
+    requests.push({ path, options });
+    return jsonResponse(path === '/api/projects/7'
+      ? { id: 7, name: 'Archived seven', archived: 1 }
+      : [
+        { id: 1, title: 'Open task', completed: false },
+        { id: 2, title: 'Done task', completed: true },
+      ]);
+  });
+  assert.ok(app.find((node) => node.textContent === 'Archived project'));
+  const form = app.find((node) => node.tag === 'form');
+  assert.equal(form.children[2].textContent, 'Create task');
+  assert.equal(form.children[2].disabled, true);
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  const filter = app.find((node) => node.id === 'task-filter');
+  assert.equal(filter.disabled, false);
+  assert.equal(list.children.length, 2);
+  assert.ok(list.children.every((row) => row.children[1].disabled));
+  assert.equal(list.children[1].children[1].checked, true);
+  await list.children[0].children[1].fire('change');
+  await form.fire('submit');
+  assert.equal(requests.length, 2);
+  for (const [value, title] of [['Open', 'Open task'], ['Completed', 'Done task']]) {
+    filter.value = value;
+    await filter.fire('change');
+    assert.equal(list.children.length, 1);
+    assert.equal(list.children[0].children[0].textContent, title);
+    assert.equal(list.children[0].children[1].disabled, true);
+  }
+  await app.find((node) => node.textContent === 'Projects').fire('click');
+  assert.equal(window.location.href, '/');
+});
