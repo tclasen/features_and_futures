@@ -151,6 +151,9 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.doesNotMatch(await taskPage(), /Other project task/);
     const savedTasks = await taskPage();
     const savedOtherTasks = await taskPage(ids[1]);
+    // Other projects' names/archive states now update destination controls.
+    // Compare the task data and all pre-existing controls independently of those options.
+    const withoutMoves = (html) => html.replace(/\s*<form[^>]*class="create-form task-move-form">[\s\S]*?<\/form>/g, '');
     const invalid = await createTask('   ');
     assert.equal(invalid.status, 422);
     assert.equal(rows(await invalid.text()).length, 2);
@@ -164,7 +167,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.match(await (await fetch(`${base}/projects/${ids[0]}`)).text(), /<h1>First project<\/h1>/);
     assert.match(await (await fetch(`${base}/projects/${ids[1]}`)).text(), /<h1>&lt;Second &amp; project&gt;<\/h1>/);
     assert.equal(await taskPage(), savedTasks);
-    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(withoutMoves(await taskPage(ids[1])), withoutMoves(savedOtherTasks));
     assert.equal(rows(await taskPage(ids[0], 'Completed')).length, 1);
     assert.match(rows(await taskPage(ids[0], 'Completed'))[0], /Second/);
     const projectRows = (html) => [...html.matchAll(/<article class="project-row"[\s\S]*?<\/article>/g)].map((match) => match[0]);
@@ -194,7 +197,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.equal((await complete(taskIds[0], true)).status, 403);
     assert.equal((await complete(taskIds[1], false)).status, 403);
     assert.equal(await taskPage(), archivedPage);
-    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(withoutMoves(await taskPage(ids[1])), withoutMoves(savedOtherTasks));
     await stop();
     base = await start();
     assert.equal(await projectList('Archived'), archivedListing);
@@ -233,7 +236,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.match(renamedPage, /<h1>Renamed &lt;project &amp; &quot;name&quot;&gt;<\/h1>/);
     assert.match(renamedPage, /value="Renamed &lt;project &amp; &quot;name&quot;&gt;"/);
     assert.deepEqual(rows(renamedPage), rows(savedTasks));
-    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(withoutMoves(await taskPage(ids[1])), withoutMoves(savedOtherTasks));
     const renamedRows = projectRows(renamedListing);
     assert.match(renamedRows[0], /<h3>Renamed &lt;project &amp; &quot;name&quot;&gt;<\/h3>/);
     assert.match(renamedRows[0], new RegExp(`action="/projects/${ids[0]}"`));
@@ -297,7 +300,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.match(taskRenamedRows[1], new RegExp(`/tasks/${taskIds[1]}/rename`));
     assert.deepEqual(rows(await taskPage(ids[0], 'Completed')), [taskRenamedRows[1].replaceAll('name="filter" value="All"', 'name="filter" value="Completed"')]);
     assert.equal(rows(await taskPage(ids[0], 'Open')).length, 1);
-    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(withoutMoves(await taskPage(ids[1])), withoutMoves(savedOtherTasks));
     assert.equal(await projectList(), restoredListing);
     assert.equal((await renameTask(' Renamed open task ', taskIds[0])).status, 303);
     assert.match(rows(await taskPage(ids[0], 'Open'))[0], /aria-label="Complete Renamed open task"/);
@@ -349,7 +352,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     const highRows = rows(await taskPage());
     assert.equal(highRows[0], rows(finalPage)[0].replace('<option selected>Normal</option><option>High</option>', '<option>Normal</option><option selected>High</option>'));
     assert.equal(highRows[1], rows(finalPage)[1]);
-    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(withoutMoves(await taskPage(ids[1])), withoutMoves(savedOtherTasks));
     assert.equal(await projectList(), restoredListing);
     assert.equal(rows(await taskPage(ids[0], 'Open')).length, 1);
     assert.equal(rows(await taskPage(ids[0], 'Completed')).length, 1);
@@ -510,7 +513,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.deepEqual(rows(defaultChangedPage), beforeDefaultRows);
     assert.deepEqual(rows(await taskPage()), rows(savedCombinedPage));
     assert.equal(await projectList(), summaryBeforeFilters);
-    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.equal(withoutMoves(await taskPage(ids[1])), withoutMoves(savedOtherTasks));
     assert.match(defaultSelect(defaultChangedPage), /<option selected>High/);
     await stop();
     base = await start();

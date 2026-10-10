@@ -43,6 +43,12 @@ blank. The range intersects completion and priority filters and stays applied
 through edits. Invalid dates or reversed ranges leave the applied range intact.
 All filters remain usable while archived. Reopening from the project list clears
 the range and selects All for both comboboxes.
+Each task can move to another active project using Destination project and Move
+task. Moves append after the destination's existing tasks while preserving title,
+completion, priority, and due date. The source page keeps its filters and applied
+range. Archived projects cannot send or receive tasks, and move controls are
+disabled when no eligible destination exists. Moves and task ordering persist
+across restarts; completion summaries reflect each project's current tasks.
 `GET /health` returns
 `{"status":"ok"}`.
 
