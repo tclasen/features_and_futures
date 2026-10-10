@@ -26,8 +26,22 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+// Seed the remembered positions for tasks that predate per-project ordering.
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, id FROM tasks`);
+const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+  FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.id), t.id`);
 const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const addPosition = db.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+  VALUES (?, ?, COALESCE((SELECT MAX(position) + 1 FROM task_project_positions WHERE project_id = ?), 1))`);
+const getPosition = db.prepare('SELECT 1 FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
@@ -96,6 +110,7 @@ const server = createServer(async (req, res) => {
     if (!title) return sendJson(res, 400, { error: 'Task title is required' });
     if (getProject.get(projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
     const result = addTask.run(projectId, title, getProject.get(projectId).defaultPriority);
+    addPosition.run(Number(result.lastInsertRowid), projectId, projectId);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: getProject.get(projectId).defaultPriority });
   }
   const completionMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -111,6 +126,7 @@ const server = createServer(async (req, res) => {
     if (Object.hasOwn(update, 'projectId')) {
       const destination = getProject.get(Number(update.projectId));
       if (!destination || destination.archived || destination.id === existing.projectId) return sendJson(res, 400, { error: 'Invalid destination project' });
+      if (!getPosition.get(id, destination.id)) addPosition.run(id, destination.id, destination.id);
       moveTask.run(destination.id, id);
     } else if (Object.hasOwn(update, 'dueDate')) {
       if (typeof update.dueDate !== 'string') return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
