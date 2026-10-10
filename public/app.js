@@ -322,11 +322,19 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
     event.preventDefault();
     const from = fromInput.value.trim();
     const through = throughInput.value.trim();
+    const showRangeAlert = (message) => {
+      app.querySelectorAll('[role="alert"]').forEach((alert) => alert.remove());
+      const alert = document.createElement('p');
+      alert.className = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.textContent = message;
+      dueRangeForm.after(alert);
+    };
     if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
-      return renderProjectWithAlert(id, 'Due range must use valid YYYY-MM-DD dates', filter.value, priorityFilter.value, dueRange);
+      return showRangeAlert('Due range must use valid YYYY-MM-DD dates');
     }
     if (from && through && from > through) {
-      return renderProjectWithAlert(id, 'Due from must not be after Due through', filter.value, priorityFilter.value, dueRange);
+      return showRangeAlert('Due from must not be after Due through');
     }
     renderProject(id, filter.value, priorityFilter.value, { from, through });
   });
