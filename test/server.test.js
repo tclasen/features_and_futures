@@ -452,6 +452,71 @@ test('archive and priority migrations preserve existing project IDs, tasks, and 
 });
 
 
+test('moves append tasks, preserve data and update summaries across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
+  let server;
+  try {
+    const db = join(directory, 'db.sqlite');
+    server = await start(db);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const a = await (await request('/api/projects', 'POST', { name: 'Source' })).json();
+    const b = await (await request('/api/projects', 'POST', { name: 'Destination' })).json();
+    const path = p => `/api/projects/${p.id}`;
+    const tasks = p => `${path(p)}/tasks`;
+    const create = async (p, title) => (await request(tasks(p), 'POST', { title })).json();
+    const first = await create(a, 'Older ID');
+    const remaining = await create(a, 'Remaining');
+    const existing = await create(b, 'Destination first');
+    const taskPath = (p, t) => `${tasks(p)}/${t.id}`;
+    const move = (p, t, destination) => request(taskPath(p, t), 'PATCH', { destination_project_id: destination });
+    for (const change of [{ completed: true }, { priority: 'High' }, { due_date: '0001-01-01' }]) {
+      Object.assign(first, await (await request(taskPath(a, first), 'PATCH', change)).json());
+    }
+    await request(path(b), 'PATCH', { default_priority: 'Low' });
+    await request(path(b), 'PATCH', { name: 'Renamed destination' });
+    for (const invalid of [a.id, 0, null, String(b.id), 1.5]) {
+      assert.equal((await move(a, first, invalid)).status, 400);
+    }
+    assert.equal((await move(a, first, 99999)).status, 404);
+    assert.equal((await request(taskPath(a, first), 'PATCH', { destination_project_id: b.id, title: 'Mixed' })).status, 400);
+    await request(path(b), 'PATCH', { archived: true });
+    assert.equal((await move(a, first, b.id)).status, 409);
+    await request(path(b), 'PATCH', { archived: false });
+    await request(path(a), 'PATCH', { archived: true });
+    assert.equal((await move(a, first, b.id)).status, 409);
+    await request(path(a), 'PATCH', { archived: false });
+    assert.deepEqual(await (await move(a, first, b.id)).json(), first);
+    assert.deepEqual(await (await request(tasks(a))).json(), [remaining]);
+    assert.deepEqual(await (await request(tasks(b))).json(), [existing, first]);
+    assert.equal((await move(a, first, b.id)).status, 404);
+    const source = await (await request(path(a))).json();
+    const destination = await (await request(path(b))).json();
+    assert.equal(source.total, 1);
+    assert.equal(source.completed, 0);
+    assert.equal(destination.total, 2);
+    assert.equal(destination.completed, 1);
+    const newest = await create(b, 'Created after move');
+    assert.equal(newest.priority, 'Low');
+    await server.stop();
+    server = await start(db);
+    assert.deepEqual(await (await request(tasks(b))).json(), [existing, first, newest]);
+    assert.deepEqual(await (await move(b, first, a.id)).json(), first);
+    assert.deepEqual(await (await request(tasks(a))).json(), [remaining, first]);
+    assert.deepEqual(await (await move(b, existing, a.id)).json(), existing);
+    assert.deepEqual(await (await request(tasks(a))).json(), [remaining, first, existing]);
+    await server.stop();
+    server = await start(db);
+    assert.deepEqual(await (await request(tasks(a))).json(), [remaining, first, existing]);
+    assert.deepEqual(await (await request(tasks(b))).json(), [newest]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('due dates preserve task data, ownership and summaries across restart and archive/restore', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-'));
   const databasePath = join(directory, 'projects.sqlite');

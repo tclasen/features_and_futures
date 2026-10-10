@@ -287,6 +287,8 @@ async function renderProject(id) {
   app.append(form, filters, dueRangeForm, list);
 
   const tasks = await api(`/api/projects/${id}/tasks`);
+  const destinations = (await api('/api/projects'))
+    .filter(candidate => !candidate.archived && candidate.id !== project.id);
   const pendingTasks = new Set();
   async function saveTask(task, changes, row) {
     if (project.archived || pendingTasks.has(task.id)) return;
@@ -303,7 +305,11 @@ async function renderProject(id) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changes),
       });
-      Object.assign(task, saved);
+      if (Object.hasOwn(changes, 'destination_project_id')) {
+        tasks.splice(tasks.indexOf(task), 1);
+      } else {
+        Object.assign(task, saved);
+      }
     } catch (error) {
       showAlert(error.message);
     } finally {
@@ -386,7 +392,27 @@ async function renderProject(id) {
         event.preventDefault();
         saveTask(task, { due_date: dueDateInput.value }, row);
       });
-      row.append(taskRenameForm, priorityLabel, priority, dueDateForm);
+      const moveForm = element('form');
+      const destinationLabel = element('label', 'Destination project');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      const destination = element('select');
+      destination.id = destinationLabel.htmlFor;
+      for (const candidate of destinations) {
+        const option = element('option', candidate.name);
+        option.value = String(candidate.id);
+        destination.append(option);
+      }
+      destination.disabled = checkbox.disabled || destinations.length === 0;
+      const move = element('button', 'Move task');
+      move.type = 'submit';
+      move.disabled = destination.disabled;
+      moveForm.append(destinationLabel, destination, move);
+      moveForm.addEventListener('submit', event => {
+        event.preventDefault();
+        if (destination.disabled) return;
+        saveTask(task, { destination_project_id: Number(destination.value) }, row);
+      });
+      row.append(taskRenameForm, priorityLabel, priority, dueDateForm, moveForm);
       list.append(row);
     }
   }

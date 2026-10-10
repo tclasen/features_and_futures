@@ -37,7 +37,11 @@ class Node {
   all() { return [this, ...this.children.flatMap(node => node.all())]; }
 }
 
-async function page(archived = false, beforeSave = async () => {}) {
+async function page(archived = false, beforeSave = async () => {}, destinations = [
+  { id: 2, name: 'Destination', archived: false },
+  { id: 3, name: 'Archived destination', archived: true },
+  { id: 4, name: 'Other destination', archived: false },
+]) {
   const app = new Node('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
@@ -68,6 +72,7 @@ async function page(archived = false, beforeSave = async () => {}) {
           completed: false, priority: project.default_priority, due_date: '' };
         tasks.push(data);
       } else if (path.endsWith('/tasks')) data = tasks;
+      else if (path === '/api/projects') data = [project, ...destinations];
       else data = project;
       return { ok: true, json: async () => structuredClone(data) };
     },
@@ -84,6 +89,54 @@ async function page(archived = false, beforeSave = async () => {}) {
   }
   return { app, project, tasks, writes, byId, rows, titles, choose };
 }
+
+test('moving uses only eligible destinations and retains all source filters', async () => {
+  const p = await page();
+  const select = p.byId('destination-project-1');
+  assert.deepEqual(select.children.map(node => [node.value, node.textContent]), [
+    ['2', 'Destination'], ['4', 'Other destination'],
+  ]);
+  p.byId('task-due-date-1').value = '2024-02-29';
+  await p.byId('task-due-date-1').parent.fire('submit');
+  await new Promise(resolve => setImmediate(resolve));
+  await p.choose('task-filter', 'Open');
+  await p.choose('priority-filter', 'High');
+  p.byId('due-from').value = '2024-02-01';
+  p.byId('due-through').value = '2024-03-01';
+  await p.byId('due-from').parent.fire('submit');
+  const moveForm = p.byId('destination-project-1').parent;
+  p.byId('destination-project-1').value = '4';
+  await moveForm.fire('submit');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(p.writes, [{ due_date: '2024-02-29' }, { destination_project_id: 4 }]);
+  assert.equal(p.byId('due-from').value, '2024-02-01');
+  assert.equal(p.byId('due-through').value, '2024-03-01');
+  assert.deepEqual(p.titles(), []);
+  assert.equal(p.byId('task-filter').value, 'Open');
+  assert.equal(p.byId('priority-filter').value, 'High');
+  await p.choose('priority-filter', 'All');
+  assert.deepEqual(p.titles(), []); // The applied range still excludes undated rows.
+  p.byId('due-from').value = '';
+  p.byId('due-through').value = '';
+  await p.byId('due-from').parent.fire('submit');
+  assert.deepEqual(p.titles(), ['Third']);
+});
+
+test('move controls disable without destinations or when archived; failures preserve rows', async () => {
+  for (const p of [await page(false, undefined, []), await page(true)]) {
+    for (const row of p.rows()) {
+      const form = row.children.at(-1);
+      assert.equal(form.children[1].disabled, true);
+      assert.equal(form.children[2].disabled, true);
+    }
+  }
+  const p = await page(false, async () => { throw new Error('Move failed'); });
+  await p.byId('destination-project-1').parent.fire('submit');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(p.titles(), ['First', 'Second', 'Third', 'Fourth']);
+  assert.equal(p.byId('destination-project-1').disabled, false);
+  assert.equal(p.app.querySelector('[role="alert"]').textContent, 'Move failed');
+});
 
 test('priority and completion filters intersect in creation order and retain each selection', async () => {
   const p = await page();

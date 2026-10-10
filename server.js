@@ -34,9 +34,20 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+// Separate per-project ordering from identity so moves can append existing tasks.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+  database.exec(`BEGIN;
+    ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE tasks SET position = id;
+    COMMIT`);
+}
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT coalesce(max(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT coalesce(max(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?`);
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -117,7 +128,7 @@ const server = createServer(async (request, response) => {
         }
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, currentProject.default_priority);
+        const result = insertTask.run(projectId, title, currentProject.default_priority, projectId);
         return json(response, 201, taskData(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (request.method === 'PATCH' && taskId !== null) {
@@ -126,11 +137,24 @@ const server = createServer(async (request, response) => {
         if (findProject.get(projectId).archived) {
           return json(response, 409, { error: 'Archived project is read-only' });
         }
-        const changes = ['title', 'completed', 'priority', 'due_date'].filter(key => input && Object.hasOwn(input, key));
+        const changes = ['title', 'completed', 'priority', 'due_date', 'destination_project_id'].filter(key => input && Object.hasOwn(input, key));
         if (changes.length > 1) {
           return json(response, 400, { error: 'Task changes must be separate requests' });
         }
-        if (changes[0] === 'due_date') {
+        if (changes[0] === 'destination_project_id') {
+          const destinationId = input.destination_project_id;
+          if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === projectId) {
+            return json(response, 400, { error: 'Choose another active destination project' });
+          }
+          const destination = findProject.get(destinationId);
+          if (!destination) return json(response, 404, { error: 'Destination project not found' });
+          if (destination.archived) {
+            return json(response, 409, { error: 'Destination project is archived' });
+          }
+          // This single statement atomically changes ownership and appends in order.
+          moveTask.run(destinationId, destinationId, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(destinationId, taskId)));
+        } else if (changes[0] === 'due_date') {
           const dueDate = normalizeDueDate(input.due_date);
           if (dueDate === null) {
             return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
