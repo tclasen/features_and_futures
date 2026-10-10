@@ -31,11 +31,16 @@ async function render() {
 function renderProject(project) {
   app.innerHTML = `<button class="back" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form id="rename-form"><label for="new-project-name">New project name</label><div class="create-line"><input id="new-project-name" type="text"><button type="submit">Rename project</button></div></form>
+    <p id="rename-alert" class="alert" role="alert" hidden></p>
     <form id="task-form"><label for="task-title">Task title</label><div class="create-line"><input id="task-title" type="text"><button type="submit">Create task</button></div></form>
     <p id="task-alert" class="alert" role="alert" hidden></p>
     <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
     <section id="tasks" aria-label="Tasks"></section>`;
   document.querySelector('#task-form button').disabled = project.archived;
+  document.querySelector('#rename-form input').disabled = project.archived;
+  document.querySelector('#rename-form button').disabled = project.archived;
+  document.querySelector('#rename-form').addEventListener('submit', event => renameProject(event, project.id));
   document.querySelector('#back').addEventListener('click', () => navigate('/'));
   document.querySelector('#task-form').addEventListener('submit', event => createTask(event, project.id));
   document.querySelector('#task-filter').addEventListener('change', () => loadTasks(project.id, project.archived));
@@ -61,12 +66,25 @@ async function loadTasks(projectId, archived = false) {
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
-      await loadTasks(projectId);
+      await loadTasks(projectId, archived);
     });
     label.append(checkbox);
     row.append(title, label);
     list.append(row);
   }
+}
+
+async function renameProject(event, projectId) {
+  event.preventDefault();
+  const input = document.querySelector('#new-project-name');
+  const alert = document.querySelector('#rename-alert');
+  const name = input.value.trim();
+  if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+  alert.hidden = true;
+  try {
+    await request(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    await render();
+  } catch (error) { alert.textContent = error.message; alert.hidden = false; }
 }
 
 async function createTask(event, projectId) {

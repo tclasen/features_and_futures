@@ -60,6 +60,18 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { completed: body.completed });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/?$/);
+  if (renameMatch && req.method === 'PATCH') {
+    try {
+      const id = decodeURIComponent(renameMatch[1]);
+      const body = await readBody(req);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return json(res, 400, { error: 'Project name is required' });
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, id);
+      if (!result.changes) return json(res, 404, { error: 'Active project not found' });
+      return json(res, 200, { id, name });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)\/?$/);
   if (archiveMatch && req.method === 'POST') {
     const id = decodeURIComponent(archiveMatch[1]);
