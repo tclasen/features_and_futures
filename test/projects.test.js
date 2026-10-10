@@ -86,7 +86,7 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
-    assert.deepEqual(first, { id: first.id, name: 'First project', archived: 0, total: 0, completed: 0 });
+    assert.deepEqual(first, { id: first.id, name: 'First project', archived: 0, default_priority: 'Normal', total: 0, completed: 0 });
     const second = await (await create('Second <project>')).json();
     assert.notEqual(first.id, second.id);
     const expected = [first, second];

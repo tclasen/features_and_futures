@@ -25,7 +25,7 @@ class Element {
 function pageElements() {
   const ids = ['project-list', 'project-detail', 'projects', 'create-project', 'project-name',
     'error', 'create-task', 'task-title', 'task-filter', 'priority-filter', 'tasks', 'back-to-projects', 'project-heading',
-    'project-filter', 'archived-project', 'rename-project', 'new-project-name'];
+    'project-filter', 'archived-project', 'rename-project', 'new-project-name', 'default-task-priority'];
   const elements = new Map(ids.map((id) => [`#${id}`, new Element()]));
   elements.get('#create-task').append(new Element('button'));
   elements.get('#create-project').append(new Element('button'));
@@ -524,4 +524,93 @@ test('saved edits re-evaluate both filters without resetting selections', async 
   assert.equal(reopened.get('#task-filter').value, 'All');
   assert.deepEqual(reopened.get('#tasks').children.map((row) => row.children[1].textContent),
     ['Renamed', 'Second', 'Third']);
+});
+
+test('project defaults preserve filtered rows, apply to new tasks, and follow archive state', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+  const options = html.match(/<select id="default-task-priority" disabled>([\s\S]*?)<\/select>/)[1];
+  assert.deepEqual([...options.matchAll(/<option(?: selected)?>(.*?)<\/option>/g)].map((match) => match[1]),
+    ['Low', 'Normal', 'High']);
+  let project = { id: 7, name: 'Project', archived: 0, default_priority: 'Normal' };
+  const savedTasks = [
+    { id: 1, title: 'Done', completed: true, priority: 'Low' },
+    { id: 2, title: 'Open', completed: false, priority: 'Normal' },
+  ];
+  const originalTasks = structuredClone(savedTasks);
+  const writes = [];
+  let rejectWrite = false;
+  const fetch = async (path, requestOptions) => {
+    let data;
+    if (!requestOptions) {
+      data = path.endsWith('/tasks') ? savedTasks : project;
+    } else {
+      const body = JSON.parse(requestOptions.body);
+      writes.push({ path, body });
+      if (rejectWrite) return { ok: false, json: async () => ({ error: 'Unable to save default' }) };
+      if (requestOptions.method === 'POST') {
+        data = { id: 3, title: body.title, completed: false, priority: project.default_priority };
+        savedTasks.push(data);
+      } else {
+        project = { ...project, ...body };
+        data = project;
+      }
+    }
+    return { ok: true, json: async () => structuredClone(data) };
+  };
+  const elements = pageElements();
+  await loadPage(elements, '/projects/7', fetch);
+  const selector = elements.get('#default-task-priority');
+  assert.equal(selector.value, 'Normal');
+  assert.equal(selector.disabled, false);
+  const completion = elements.get('#task-filter');
+  const priority = elements.get('#priority-filter');
+  completion.value = 'Completed';
+  await completion.fire('change');
+  priority.value = 'Low';
+  await priority.fire('change');
+  const originalRows = elements.get('#tasks').children;
+  selector.value = 'High';
+  await selector.fire('change');
+  assert.deepEqual(writes, [{ path: '/api/projects/7', body: { default_priority: 'High' } }]);
+  assert.equal(selector.value, 'High');
+  assert.equal(selector.disabled, false);
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'Low');
+  assert.equal(elements.get('#tasks').children, originalRows);
+  assert.deepEqual(savedTasks, originalTasks);
+
+  rejectWrite = true;
+  selector.value = 'Low';
+  await selector.fire('change');
+  assert.equal(selector.value, 'High');
+  assert.equal(selector.disabled, false);
+  assert.equal(elements.get('#error').textContent, 'Unable to save default');
+  assert.equal(elements.get('#tasks').children, originalRows);
+  rejectWrite = false;
+  elements.get('#task-title').value = 'Inherited';
+  await elements.get('#create-task').fire('submit');
+  assert.equal(savedTasks[2].priority, 'High');
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'Low');
+  assert.deepEqual(elements.get('#tasks').children.map((row) => row.children[1].textContent), ['Done']);
+  assert.deepEqual(savedTasks.slice(0, 2), originalTasks);
+
+  for (const archived of [0, 1, 0]) {
+    project.archived = archived;
+    const reloaded = pageElements();
+    await loadPage(reloaded, '/projects/7', fetch);
+    const reloadedDefault = reloaded.get('#default-task-priority');
+    assert.equal(reloadedDefault.value, 'High');
+    assert.equal(reloadedDefault.disabled, Boolean(archived));
+    assert.equal(reloaded.get('#task-filter').value, 'All');
+    assert.equal(reloaded.get('#priority-filter').value, 'All');
+    assert.deepEqual(reloaded.get('#tasks').children.map((row) => row.children[3].children[1].value),
+      ['Low', 'Normal', 'High']);
+    if (archived) {
+      const count = writes.length;
+      await reloadedDefault.fire('change');
+      assert.equal(writes.length, count);
+    }
+  }
 });

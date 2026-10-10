@@ -14,7 +14,9 @@ On an active project page, use New project name and Rename project to update its
 
 Each task row has New task title and Rename task controls. Task renames trim whitespace and reject blank titles, preserving ownership, creation order, completion, filters, and project summaries. The completion checkbox label follows the saved title. Archived projects disable task renaming until restored; titles persist across reloads and restarts.
 
-Each task also has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priorities persist independently across reloads, restarts, and renames; archived projects disable priority edits until restored.
+Each task also has a Task priority selector with Low, Normal, and High options. Existing tasks default to Normal. Priorities persist independently across reloads, restarts, and renames; archived projects disable priority edits until restored.
+
+Default task priority on each project page offers Low, Normal, and High. Existing and new projects start with Normal. Changes save independently for each project and apply only to tasks created afterward, leaving existing tasks and both filters unchanged. Defaults survive reloads, restarts, renaming, archival, and restoration. Archived projects show their saved default with the selector disabled.
 
 The Priority filter offers All, Low, Normal, and High and starts at All when opening a project. It combines with Task filter to show tasks matching both selections in creation order. Editing completion or priority immediately updates the matching rows without resetting either filter. Renames preserve both selections. Filters remain usable in archived projects and do not change saved data or completion summaries.
 
@@ -28,3 +30,4 @@ Tests use a temporary SQLite database and verify schema migration, validation, c
 Tests also cover project and task renaming, unchanged identity and completion state, rejection of archived renames, and renaming after restoration.
 UI event-handler checks use a minimal DOM adapter to verify validation, checkbox names, completion changes, filters, summaries, renaming, and archived controls without external dependencies.
 Priority checks cover migration of existing tasks, independent saved values, invalid input, filters, renames, archived controls, restoration, and server restarts.
+Default-priority checks cover project migration, independent defaults, inheritance by new tasks only, unchanged existing tasks and filters, failed-save recovery, archived controls, restoration, and restart persistence.

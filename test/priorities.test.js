@@ -55,6 +55,8 @@ test('priorities migrate existing tasks and persist independently across archive
   try {
     await start();
     const tasks = await get(tasksPath);
+    assert.equal((await get('/api/projects/1')).default_priority, 'Normal');
+    assert.equal((await get('/api/projects/2')).default_priority, 'Normal');
     assert.deepEqual(tasks, [
       { id: 1, title: 'Existing done', completed: true, priority: 'Normal' },
       { id: 2, title: 'Existing open', completed: false, priority: 'Normal' },
@@ -96,6 +98,61 @@ test('priorities migrate existing tasks and persist independently across archive
     await start();
     assert.deepEqual(await get(tasksPath), tasks);
     assert.deepEqual(await get('/api/projects/2/tasks'), otherTasks);
+    assert.equal((await get('/api/projects/1')).completed, 0);
+
+    // Project defaults affect only future tasks and never alter existing task data.
+    const originalProject = await get('/api/projects/1');
+    const secondProject = await get('/api/projects/2');
+    const newProject = await (await write('/api/projects', { name: 'Third' }, 'POST')).json();
+    assert.equal(newProject.default_priority, 'Normal');
+    for (const default_priority of ['Low', 'High', 'Normal', 'High']) {
+      const response = await write('/api/projects/1', { default_priority });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...originalProject, default_priority });
+      assert.deepEqual(await get(tasksPath), tasks);
+      assert.deepEqual(await get('/api/projects/2'), secondProject);
+    }
+    for (const default_priority of ['', 'Urgent', 'high', null, 1]) {
+      assert.equal((await write('/api/projects/1', { default_priority })).status, 400);
+      assert.equal((await get('/api/projects/1')).default_priority, 'High');
+      assert.deepEqual(await get(tasksPath), tasks);
+    }
+    assert.equal((await write('/api/projects/99999', { default_priority: 'Low' })).status, 404);
+    await write('/api/projects/2', { default_priority: 'Low' });
+    const inheritedHigh = await (await write(tasksPath, { title: 'Inherits High' }, 'POST')).json();
+    assert.equal(inheritedHigh.priority, 'High');
+    assert.equal(inheritedHigh.completed, false);
+    tasks.push(inheritedHigh);
+    const inheritedLow = await (await write('/api/projects/2/tasks', { title: 'Inherits Low' }, 'POST')).json();
+    assert.equal(inheritedLow.priority, 'Low');
+    otherTasks.push(inheritedLow);
+    await write('/api/projects/1', { default_priority: 'Low' });
+    assert.deepEqual(await get(tasksPath), tasks, 'Previously inherited priorities stay unchanged');
+    await write('/api/projects/1', { name: 'Renamed project' });
+    await write(`${tasksPath}/${inheritedHigh.id}`, { title: 'Renamed inherited task' });
+    inheritedHigh.title = 'Renamed inherited task';
+    await write('/api/projects/1', { archived: true });
+    assert.equal((await write('/api/projects/1', { default_priority: 'Normal' })).status, 409);
+    await stop();
+    await start();
+    const archivedProject = await get('/api/projects/1');
+    assert.deepEqual(archivedProject, {
+      ...originalProject, name: 'Renamed project', archived: 1, default_priority: 'Low', total: 4,
+    });
+    assert.equal((await get('/api/projects/2')).default_priority, 'Low');
+    assert.deepEqual(await get(tasksPath), tasks);
+    assert.deepEqual(await get('/api/projects/2/tasks'), otherTasks);
+    await write('/api/projects/1', { archived: false });
+    const restoredTask = await (await write(tasksPath, { title: 'After restoration' }, 'POST')).json();
+    assert.equal(restoredTask.priority, 'Low');
+    tasks.push(restoredTask);
+    await write('/api/projects/1', { default_priority: 'Normal' });
+    await stop();
+    await start();
+    assert.equal((await get('/api/projects/1')).default_priority, 'Normal');
+    assert.deepEqual(await get(tasksPath), tasks);
+    const normalTask = await (await write(tasksPath, { title: 'Normal again' }, 'POST')).json();
+    assert.equal(normalTask.priority, 'Normal');
     assert.equal((await get('/api/projects/1')).completed, 0);
   } finally {
     await stop();

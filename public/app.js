@@ -11,12 +11,14 @@ const taskForm = document.querySelector('#create-task');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultPriority = document.querySelector('#default-task-priority');
 const tasksContainer = document.querySelector('#tasks');
 const projectMatch = window.location.pathname.match(/^\/projects\/(\d+)$/);
 const tasksPath = projectMatch ? `/api/projects/${projectMatch[1]}/tasks` : null;
 let tasks = [];
 let projectData = [];
 let archived = false;
+let savedDefaultPriority = 'Normal';
 
 function showError(message = '') {
   error.textContent = message;
@@ -197,6 +199,25 @@ function renderTasks() {
 
 taskFilter.addEventListener('change', renderTasks);
 priorityFilter.addEventListener('change', renderTasks);
+defaultPriority.addEventListener('change', async () => {
+  if (archived || !projectMatch) return;
+  defaultPriority.disabled = true;
+  showError();
+  try {
+    const project = await request(`/api/projects/${projectMatch[1]}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_priority: defaultPriority.value }),
+    });
+    savedDefaultPriority = project.default_priority;
+    defaultPriority.value = savedDefaultPriority;
+  } catch (failure) {
+    defaultPriority.value = savedDefaultPriority;
+    showError(failure.message);
+  } finally {
+    defaultPriority.disabled = archived;
+  }
+});
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (archived || !projectMatch) return;
@@ -281,6 +302,9 @@ async function load() {
     if (match) {
       const project = await request(`/api/projects/${match[1]}`);
       archived = Boolean(project.archived);
+      savedDefaultPriority = project.default_priority;
+      defaultPriority.value = savedDefaultPriority;
+      defaultPriority.disabled = archived;
       renameInput.value = project.name;
       renameInput.disabled = archived;
       renameForm.querySelector('button').disabled = archived;

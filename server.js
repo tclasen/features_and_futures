@@ -11,7 +11,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
   );
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +29,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
-const projectQuery = `SELECT id, name, archived,
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
+const projectQuery = `SELECT id, name, archived, default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed
   FROM projects`;
@@ -37,9 +41,10 @@ const getProject = database.prepare(`${projectQuery} WHERE id = ?`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -102,7 +107,7 @@ const server = http.createServer(async (request, response) => {
         const input = await readInput(request);
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = createTask.run(projectId, title);
+        const result = createTask.run(projectId, title, project.default_priority);
         return json(response, 201, taskData(getTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (request.method === 'PATCH' && taskId !== null) {
@@ -137,6 +142,14 @@ const server = http.createServer(async (request, response) => {
       const project = getProject.get(projectId);
       if (!project) return json(response, 404, { error: 'Project not found' });
       const input = await readInput(request);
+      if (Object.hasOwn(input ?? {}, 'default_priority')) {
+        if (project.archived) return json(response, 409, { error: 'Archived project' });
+        if (!['Low', 'Normal', 'High'].includes(input.default_priority)) {
+          return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+        }
+        updateDefaultPriority.run(input.default_priority, projectId);
+        return json(response, 200, getProject.get(projectId));
+      }
       if (Object.hasOwn(input ?? {}, 'name')) {
         if (project.archived) return json(response, 409, { error: 'Archived project' });
         const name = typeof input.name === 'string' ? input.name.trim() : '';
