@@ -30,7 +30,7 @@ class Element {
   focus() {}
 }
 
-async function page(archived = false) {
+async function page(archived = false, otherProjects = []) {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const elements = new Map();
   for (const match of html.matchAll(/<(\w+)[^>]*\bid="([^"]+)"[^>]*>/g)) {
@@ -82,12 +82,14 @@ async function page(archived = false) {
           const task = savedTasks.find((item) => path.endsWith(`/tasks/${item.id}`));
           assert.ok(task);
           writes.push(patch);
-          Object.assign(task, patch);
+          if (Object.hasOwn(patch, 'project_id')) {
+            savedTasks.splice(savedTasks.indexOf(task), 1);
+          } else Object.assign(task, patch);
           data = task;
         }
       } else if (path.endsWith('/tasks')) data = savedTasks;
       else if (path === '/api/projects') {
-        data = [{ ...project, total: savedTasks.length, completed: savedTasks.filter((task) => task.completed).length }];
+        data = [{ ...project, total: savedTasks.length, completed: savedTasks.filter((task) => task.completed).length }, ...otherProjects];
       } else data = project;
       return { ok: true, json: async () => JSON.parse(JSON.stringify(data)) };
     },
@@ -436,4 +438,68 @@ test('project defaults save without resetting filters or editing existing rows',
   ui.location.pathname = '/';
   await vm.runInContext('render()', ui.context);
   assert.equal(ui.get('project-list').children[0].children[0].children[1].textContent, '3/8 completed');
+});
+
+test('move controls list eligible destinations and retain source filters and matching row order', async () => {
+  const destinations = [
+    { id: 2, name: 'First destination', archived: 0 },
+    { id: 3, name: 'Archived destination', archived: 1 },
+    { id: 4, name: 'Second destination', archived: 0 },
+  ];
+  const ui = await page(false, destinations);
+  await dateFixture(ui);
+  await ui.select('task-filter', 'Completed');
+  await ui.select('priority-filter', 'All');
+  await applyRange(ui, '0001-01-01', '9999-12-31');
+  assert.deepEqual(ui.titles(), ['Low done', 'Normal done', 'High done']);
+  const moveForm = ui.rows()[1].children[4];
+  assert.equal(moveForm.children[0].textContent, 'Destination project');
+  const destination = moveForm.querySelector('select');
+  assert.deepEqual(destination.children.map((option) => [option.value, option.textContent]),
+    [['2', 'First destination'], ['4', 'Second destination']]);
+  assert.equal(destination.disabled, false);
+  assert.equal(moveForm.querySelector('button').textContent, 'Move task');
+  destination.value = '4';
+  await moveForm.dispatch('submit');
+  assert.deepEqual(ui.writes, [{ project_id: 4 }]);
+  assert.equal(ui.location.pathname, '/projects/1');
+  assert.deepEqual(ui.titles(), ['Low done', 'High done']);
+  assert.equal(ui.get('task-filter').value, 'Completed');
+  assert.equal(ui.get('priority-filter').value, 'All');
+  assert.equal(ui.get('due-from').value, '0001-01-01');
+  assert.equal(ui.get('due-through').value, '9999-12-31');
+  await ui.select('priority-filter', 'Low');
+  assert.deepEqual(ui.titles(), ['Low done']);
+  assert.equal(ui.get('due-from').value, '0001-01-01');
+  destinations[0].name = 'Renamed destination';
+  await vm.runInContext('render()', ui.context);
+  assert.equal(ui.rows()[0].children[4].querySelector('select').children[0].textContent, 'Renamed destination');
+});
+
+test('move controls disable without destinations or when archived, then enable after restoration', async () => {
+  const empty = await page();
+  for (const row of empty.rows()) {
+    const form = row.children[4];
+    assert.equal(form.querySelector('select').children.length, 0);
+    assert.equal(form.querySelector('select').disabled, true);
+    assert.equal(form.querySelector('button').disabled, true);
+    await form.dispatch('submit');
+  }
+  assert.deepEqual(empty.writes, []);
+  const ui = await page(true, [{ id: 2, name: 'Destination', archived: 0 }]);
+  for (const row of ui.rows()) {
+    const form = row.children[4];
+    assert.equal(form.querySelector('select').disabled, true);
+    assert.equal(form.querySelector('button').disabled, true);
+    await form.dispatch('submit');
+  }
+  assert.deepEqual(ui.writes, []);
+  const original = structuredClone(ui.savedTasks);
+  ui.project.archived = 0;
+  await vm.runInContext('render()', ui.context);
+  assert.deepEqual(ui.savedTasks, original);
+  for (const row of ui.rows()) {
+    assert.equal(row.children[4].querySelector('select').disabled, false);
+    assert.equal(row.children[4].querySelector('button').disabled, false);
+  }
 });

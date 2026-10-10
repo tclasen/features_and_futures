@@ -25,6 +25,7 @@ let activeProjectId = null;
 let archivedProject = false;
 let savedDefaultPriority = 'Normal';
 let tasks = [];
+let destinationProjects = [];
 let renderVersion = 0;
 
 async function request(path, options) {
@@ -60,6 +61,7 @@ async function render() {
   renameButton.disabled = true;
   taskForm.querySelector('button').disabled = true;
   tasks = [];
+  destinationProjects = [];
   taskList.replaceChildren();
   taskInput.value = '';
   taskFilter.value = 'All';
@@ -82,7 +84,9 @@ async function render() {
       taskForm.querySelector('button').disabled = archivedProject;
       document.title = `${project.name} · Workboard`;
       const savedTasks = await request(`/api/projects/${project.id}/tasks`);
+      const projects = await request('/api/projects');
       if (version !== renderVersion) return;
+      destinationProjects = projects.filter((item) => !item.archived && item.id !== project.id);
       activeProjectId = project.id;
       savedDefaultPriority = project.default_priority;
       defaultTaskPriority.value = savedDefaultPriority;
@@ -311,7 +315,48 @@ function renderTasks() {
       } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
       finally { saveDueDate.disabled = archivedProject; }
     });
-    row.append(information, priorityControls, taskRenameForm, dueDateForm);
+    const moveForm = document.createElement('form');
+    moveForm.className = 'task-move-form';
+    const destinationLabel = document.createElement('label');
+    destinationLabel.htmlFor = `destination-project-${task.id}`;
+    destinationLabel.textContent = 'Destination project';
+    const destination = document.createElement('select');
+    destination.id = destinationLabel.htmlFor;
+    for (const project of destinationProjects) {
+      const option = document.createElement('option');
+      option.value = String(project.id);
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    if (destinationProjects.length) destination.value = String(destinationProjects[0].id);
+    const move = document.createElement('button');
+    move.type = 'submit';
+    move.textContent = 'Move task';
+    destination.disabled = move.disabled = archivedProject || destinationProjects.length === 0;
+    const moveControls = document.createElement('div');
+    moveControls.className = 'form-controls';
+    moveControls.append(destination, move);
+    moveForm.append(destinationLabel, moveControls);
+    moveForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (archivedProject || activeProjectId === null || !destinationProjects.length) return;
+      const projectId = activeProjectId;
+      const version = renderVersion;
+      destination.disabled = move.disabled = true;
+      showError(detailError, '');
+      try {
+        await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: Number(destination.value) }),
+        });
+        if (version !== renderVersion) return;
+        tasks = tasks.filter((item) => item.id !== task.id);
+        renderTasks();
+      } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
+      finally { destination.disabled = move.disabled = archivedProject || destinationProjects.length === 0; }
+    });
+    row.append(information, priorityControls, taskRenameForm, dueDateForm, moveForm);
     taskList.append(row);
   }
 }

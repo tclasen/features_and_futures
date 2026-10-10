@@ -26,6 +26,8 @@ Every task has a Task due date textbox and Save due date button. Dates are optio
 
 Project pages provide Due from and Due through textboxes and Apply due range. Boundaries are inclusive, use the same calendar-date rules as task dates, and may be blank for an unbounded side. A nonempty range excludes undated tasks and combines with both task filters. Invalid dates or reversed boundaries show an alert and keep the previous applied range. Task edits immediately update matching rows without resetting filters; the summary still counts every task. Range controls remain available in archived projects. Reopening a project resets both boundaries to empty.
 
+Each task row provides Destination project and Move task controls. Eligible destinations are other active projects in project creation order. Moving appends the task to the destination while preserving its title, completion, priority, and due date. The source stays open with all filters retained, and both summaries reflect current ownership. Moves persist across restarts. Archived projects cannot send or receive tasks; controls are also disabled when no destination is available.
+
 Health check:
 
 ```sh
