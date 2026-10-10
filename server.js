@@ -7,14 +7,25 @@ const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
 const database = new DatabaseSync(databasePath);
 database.exec(`
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
 `);
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
 const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = database.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = database.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
@@ -24,6 +35,22 @@ const assets = new Map([
 function sendJson(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
+}
+
+async function readJson(request) {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 65536) {
+      throw Object.assign(new Error('Request is too large'), { status: 413 });
+    }
+  }
+  try { return JSON.parse(body); }
+  catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
+}
+
+function taskJson(task) {
+  return { ...task, completed: Boolean(task.completed) };
 }
 
 const server = http.createServer(async (request, response) => {
@@ -41,20 +68,35 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, project ? 200 : 404, project || { error: 'Project not found' });
     }
     if (request.method === 'POST' && path === '/api/projects') {
-      let body = '';
-      for await (const chunk of request) {
-        body += chunk;
-        if (Buffer.byteLength(body) > 65536) {
-          return sendJson(response, 413, { error: 'Request is too large' });
-        }
-      }
-      let input;
-      try { input = JSON.parse(body); }
-      catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
+      const input = await readJson(request);
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return sendJson(response, 400, { error: 'Project name is required' });
       const result = createProject.run(name);
       return sendJson(response, 201, getProject.get(result.lastInsertRowid));
+    }
+    const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+    if (tasksMatch) {
+      const [, projectId, taskId] = tasksMatch;
+      if (!getProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+      if (!taskId && request.method === 'GET') {
+        return sendJson(response, 200, listTasks.all(projectId).map(taskJson));
+      }
+      if (!taskId && request.method === 'POST') {
+        const input = await readJson(request);
+        const title = typeof input?.title === 'string' ? input.title.trim() : '';
+        if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+        const result = createTask.run(projectId, title);
+        return sendJson(response, 201, taskJson(getTask.get(projectId, result.lastInsertRowid)));
+      }
+      if (taskId && request.method === 'PATCH') {
+        if (!getTask.get(projectId, taskId)) return sendJson(response, 404, { error: 'Task not found' });
+        const input = await readJson(request);
+        if (typeof input?.completed !== 'boolean') {
+          return sendJson(response, 400, { error: 'Completion must be a boolean' });
+        }
+        updateTask.run(Number(input.completed), projectId, taskId);
+        return sendJson(response, 200, taskJson(getTask.get(projectId, taskId)));
+      }
     }
     const asset = assets.get(path) || (/^\/projects\/\d+$/.test(path) ? assets.get('/') : null);
     if (request.method === 'GET' && asset) {
@@ -63,6 +105,7 @@ const server = http.createServer(async (request, response) => {
     }
     sendJson(response, 404, { error: 'Not found' });
   } catch (error) {
+    if (error.status) return sendJson(response, error.status, { error: error.message });
     console.error(error);
     sendJson(response, 500, { error: 'Unable to complete request' });
   }
