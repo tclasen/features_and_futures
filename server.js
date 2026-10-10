@@ -162,12 +162,27 @@ const server = createServer(async (request, response) => {
       for await (const chunk of request) body += chunk;
       try {
         const payload = JSON.parse(body);
-        if (typeof payload.archived !== 'boolean') {
-          sendJson(response, 400, { error: 'Invalid project update' });
+        if (typeof payload.archived === 'boolean') {
+          database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(payload.archived ? 1 : 0, id);
+          sendJson(response, 200, { ...project, archived: payload.archived ? 1 : 0 });
           return;
         }
-        database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(payload.archived ? 1 : 0, id);
-        sendJson(response, 200, { ...project, archived: payload.archived ? 1 : 0 });
+        if (typeof payload.name === 'string') {
+          const name = payload.name.trim();
+          if (!name) {
+            sendJson(response, 400, { error: 'Project name is required' });
+            return;
+          }
+          if (project.archived) {
+            sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+            return;
+          }
+          database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+          sendJson(response, 200, { ...project, name });
+          return;
+        }
+        sendJson(response, 400, { error: 'Invalid project update' });
+        return;
       } catch (error) {
         if (error instanceof SyntaxError) {
           sendJson(response, 400, { error: 'Invalid JSON' });

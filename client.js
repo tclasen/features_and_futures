@@ -110,6 +110,34 @@ async function showProject(id) {
     const heading = element('h1', { text: project.name });
     const back = element('button', { type: 'button', text: 'Projects' });
     back.addEventListener('click', () => navigate('/'));
+    const archived = Boolean(project.archived);
+    const renameForm = element('form', { className: 'create-form' });
+    const renameLabel = element('label', { text: 'New project name' });
+    renameLabel.htmlFor = 'new-project-name';
+    const renameInput = element('input', { type: 'text' });
+    renameInput.id = 'new-project-name';
+    renameInput.name = 'name';
+    renameInput.disabled = archived;
+    const renameButton = element('button', { type: 'submit', text: 'Rename project' });
+    renameButton.disabled = archived;
+    renameForm.append(renameLabel, renameInput, renameButton);
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) {
+        showError('Project name is required');
+        renameInput.focus();
+        return;
+      }
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        heading.textContent = updated.name;
+        renameInput.value = '';
+      } catch (error) { showError(error.message); }
+    });
     const form = element('form', { className: 'create-form' });
     const label = element('label', { text: 'Task title' });
     label.htmlFor = 'task-title';
@@ -117,7 +145,6 @@ async function showProject(id) {
     input.id = 'task-title';
     input.name = 'title';
     const submit = element('button', { type: 'submit', text: 'Create task' });
-    const archived = Boolean(project.archived);
     if (archived) {
       const status = element('p', { text: 'Archived project' });
       status.className = 'archived-status';
@@ -191,7 +218,7 @@ async function showProject(id) {
         showError(error.message);
       }
     });
-    app.replaceChildren(heading, back);
+    app.replaceChildren(heading, back, renameForm);
     if (archived) {
       const status = element('p', { text: 'Archived project' });
       status.className = 'archived-status';
