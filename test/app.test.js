@@ -24,13 +24,14 @@ class Element {
 
 function pageElements() {
   const ids = ['project-list', 'project-detail', 'projects', 'create-project', 'project-name',
-    'error', 'create-task', 'task-title', 'task-filter', 'tasks', 'back-to-projects', 'project-heading',
+    'error', 'create-task', 'task-title', 'task-filter', 'priority-filter', 'tasks', 'back-to-projects', 'project-heading',
     'project-filter', 'archived-project', 'rename-project', 'new-project-name'];
   const elements = new Map(ids.map((id) => [`#${id}`, new Element()]));
   elements.get('#create-task').append(new Element('button'));
   elements.get('#create-project').append(new Element('button'));
   elements.get('#rename-project').append(new Element('button'));
   elements.get('#task-filter').value = 'All';
+  elements.get('#priority-filter').value = 'All';
   elements.get('#project-filter').value = 'Active';
   return elements;
 }
@@ -388,4 +389,139 @@ test('task priorities show saved values, preserve filters and renames, and disab
       assert.equal(writes.length, count);
     }
   }
+});
+
+test('priority and completion filters combine in creation order on active and archived pages', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label for="priority-filter">Priority filter<\/label>/);
+  const options = html.match(/<select id="priority-filter">([\s\S]*?)<\/select>/)[1];
+  assert.deepEqual([...options.matchAll(/<option>(.*?)<\/option>/g)].map((match) => match[1]),
+    ['All', 'Low', 'Normal', 'High']);
+
+  const savedTasks = [
+    { id: 1, title: 'Low open', completed: false, priority: 'Low' },
+    { id: 2, title: 'High done', completed: true, priority: 'High' },
+    { id: 3, title: 'Normal open', completed: false, priority: 'Normal' },
+    { id: 4, title: 'Low done', completed: true, priority: 'Low' },
+    { id: 5, title: 'High open', completed: false, priority: 'High' },
+    { id: 6, title: 'Normal done', completed: true, priority: 'Normal' },
+  ];
+  const expected = {
+    All: { All: [1, 2, 3, 4, 5, 6], Low: [1, 4], Normal: [3, 6], High: [2, 5] },
+    Open: { All: [1, 3, 5], Low: [1], Normal: [3], High: [5] },
+    Completed: { All: [2, 4, 6], Low: [4], Normal: [6], High: [2] },
+  };
+  for (const archived of [false, true]) {
+    const elements = pageElements();
+    await loadPage(elements, '/projects/7', async (path, options) => {
+      assert.equal(options, undefined, 'Filtering must never write saved data');
+      const data = path.endsWith('/tasks') ? savedTasks : { id: 7, name: 'Project', archived };
+      return { ok: true, json: async () => structuredClone(data) };
+    });
+    const completion = elements.get('#task-filter');
+    const priority = elements.get('#priority-filter');
+    assert.equal(priority.value, 'All');
+    assert.ok(!priority.disabled && !completion.disabled);
+    for (const [completionValue, priorities] of Object.entries(expected)) {
+      const previousPriority = priority.value;
+      completion.value = completionValue;
+      await completion.fire('change');
+      assert.equal(priority.value, previousPriority);
+      for (const [priorityValue, ids] of Object.entries(priorities)) {
+        priority.value = priorityValue;
+        await priority.fire('change');
+        assert.equal(completion.value, completionValue);
+        const rows = elements.get('#tasks').children;
+        assert.deepEqual(rows.map((row) => Number(row.children[0].id.slice(5))), ids);
+        for (const row of rows) {
+          assert.equal(row.children[0].disabled, archived);
+          assert.equal(row.children[2].children[1].children[0].disabled, archived);
+          assert.equal(row.children[2].children[1].children[1].disabled, archived);
+          assert.equal(row.children[3].children[1].disabled, archived);
+        }
+      }
+    }
+  }
+});
+
+test('saved edits re-evaluate both filters without resetting selections', async () => {
+  let savedTasks = [
+    { id: 1, title: 'First', completed: false, priority: 'High' },
+    { id: 2, title: 'Second', completed: false, priority: 'High' },
+    { id: 3, title: 'Third', completed: true, priority: 'Low' },
+  ];
+  const writes = [];
+  const fetch = async (path, options) => {
+    if (!options) {
+      const data = path.endsWith('/tasks') ? savedTasks : { id: 7, name: 'Project', archived: false };
+      return { ok: true, json: async () => structuredClone(data) };
+    }
+    const body = JSON.parse(options.body);
+    writes.push(body);
+    const id = Number(path.split('/').at(-1));
+    const saved = { ...savedTasks.find((task) => task.id === id), ...body };
+    savedTasks = savedTasks.map((task) => task.id === id ? saved : task);
+    return { ok: true, json: async () => structuredClone(saved) };
+  };
+  const elements = pageElements();
+  await loadPage(elements, '/projects/7', fetch);
+  const completion = elements.get('#task-filter');
+  const priority = elements.get('#priority-filter');
+  const rows = () => elements.get('#tasks').children;
+  const titles = () => rows().map((row) => row.children[1].textContent);
+  async function filter(completionValue, priorityValue) {
+    completion.value = completionValue;
+    await completion.fire('change');
+    priority.value = priorityValue;
+    await priority.fire('change');
+  }
+  function selections(completionValue, priorityValue) {
+    assert.equal(completion.value, completionValue);
+    assert.equal(priority.value, priorityValue);
+  }
+
+  await filter('Open', 'High');
+  const rename = rows()[0].children[2];
+  rename.children[1].children[0].value = '  Renamed  ';
+  await rename.fire('submit');
+  selections('Open', 'High');
+  assert.deepEqual(titles(), ['Renamed', 'Second']);
+  assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete Renamed');
+  assert.equal(rows()[0].children[3].children[1].value, 'High');
+
+  const priorityEdit = rows()[0].children[3].children[1];
+  priorityEdit.value = 'Low';
+  await priorityEdit.fire('change');
+  selections('Open', 'High');
+  assert.deepEqual(titles(), ['Second']);
+  const checkbox = rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  selections('Open', 'High');
+  assert.deepEqual(titles(), []);
+
+  await filter('Completed', 'High');
+  assert.deepEqual(titles(), ['Second']);
+  const completed = rows()[0].children[0];
+  completed.checked = false;
+  await completed.fire('change');
+  selections('Completed', 'High');
+  assert.deepEqual(titles(), []);
+  await filter('Open', 'Low');
+  assert.deepEqual(titles(), ['Renamed']);
+  assert.deepEqual(writes, [
+    { title: 'Renamed' }, { priority: 'Low' }, { completed: true }, { completed: false },
+  ]);
+  assert.deepEqual(savedTasks, [
+    { id: 1, title: 'Renamed', completed: false, priority: 'Low' },
+    { id: 2, title: 'Second', completed: false, priority: 'High' },
+    { id: 3, title: 'Third', completed: true, priority: 'Low' },
+  ]);
+
+  const reopened = pageElements();
+  await loadPage(reopened, '/projects/7', fetch);
+  assert.equal(reopened.get('#priority-filter').value, 'All');
+  assert.equal(reopened.get('#task-filter').value, 'All');
+  assert.deepEqual(reopened.get('#tasks').children.map((row) => row.children[1].textContent),
+    ['Renamed', 'Second', 'Third']);
 });

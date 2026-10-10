@@ -10,6 +10,7 @@ const renameInput = document.querySelector('#new-project-name');
 const taskForm = document.querySelector('#create-task');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const tasksContainer = document.querySelector('#tasks');
 const projectMatch = window.location.pathname.match(/^\/projects\/(\d+)$/);
 const tasksPath = projectMatch ? `/api/projects/${projectMatch[1]}/tasks` : null;
@@ -185,12 +186,17 @@ function taskRow(task) {
 }
 
 function renderTasks() {
-  const filtered = tasks.filter((task) => taskFilter.value === 'All'
-    || (taskFilter.value === 'Completed' ? task.completed : !task.completed));
+  const filtered = tasks.filter((task) => {
+    const matchesCompletion = taskFilter.value === 'All'
+      || (taskFilter.value === 'Completed' ? task.completed : !task.completed);
+    const matchesPriority = priorityFilter.value === 'All' || task.priority === priorityFilter.value;
+    return matchesCompletion && matchesPriority;
+  });
   tasksContainer.replaceChildren(...filtered.map(taskRow));
 }
 
 taskFilter.addEventListener('change', renderTasks);
+priorityFilter.addEventListener('change', renderTasks);
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (archived || !projectMatch) return;
