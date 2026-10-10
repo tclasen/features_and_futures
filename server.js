@@ -128,9 +128,16 @@ const server = http.createServer(async (req, res) => {
   if (taskMatch && req.method === 'PATCH') {
     try {
       const input = await readJson(req);
-      if (typeof input.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(taskMatch[1]));
       if (project?.archived) return send(res, 409, JSON.stringify({ error: 'Archived projects cannot be changed' }));
+      if (typeof input.title === 'string') {
+        const title = input.title.trim();
+        if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?').run(title, Number(taskMatch[1]), Number(taskMatch[2]));
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), title }));
+      }
+      if (typeof input.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]), Number(taskMatch[2]));
       if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
       return send(res, 200, JSON.stringify({ id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), completed: input.completed }));
