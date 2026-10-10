@@ -22,7 +22,10 @@
     .project-row { margin-top: 12px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .project-name { font-weight: 600; overflow-wrap: anywhere; }
     .project-detail { padding: 22px; }
-    .project-detail h2 { margin: 0; }
+    .project-detail h2 { margin: 0 0 20px; }
+    .project-detail form { padding: 0; border: 0; margin-bottom: 18px; }
+    .task-row { margin-top: 10px; padding: 13px 16px; display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #e2e7ef; border-radius: 8px; }
+    .task-row input { width: auto; }
     .back { margin-bottom: 16px; }
     [role="alert"] { color: #b42318; margin: 10px 0 0; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } }
@@ -39,7 +42,15 @@
       if (match) {
         const projects = await fetch('/api/projects').then(response => response.json());
         const project = projects.find(item => item.id === decodeURIComponent(match[1]));
-        app.innerHTML = `<button class="back" type="button">Projects</button>${project ? `<section class="project-detail"><h2>${escapeHtml(project.name)}</h2></section>` : '<p>Project not found.</p>'}`;
+        if (!project) { app.innerHTML = '<p>Project not found.</p><button class="back" type="button">Projects</button>'; }
+        else {
+          const tasks = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks`).then(response => response.json());
+          app.innerHTML = `<button class="back" type="button">Projects</button><section class="project-detail"><h2>${escapeHtml(project.name)}</h2><form id="task-form"><label for="task-title">Task title</label><input id="task-title" type="text" autocomplete="off"><button type="submit">Create task</button></form><p id="task-error" role="alert" hidden></p><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><div id="tasks">${tasks.map(task => `<div class="task-row" data-testid="task-row" data-completed="${task.completed}"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task-id="${escapeHtml(task.id)}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('')}</div></section>`;
+          const applyFilter = () => { const filter = app.querySelector('#task-filter').value; app.querySelectorAll('.task-row').forEach(row => { row.hidden = filter === 'Open' ? row.dataset.completed === 'true' : filter === 'Completed' ? row.dataset.completed !== 'true' : false; }); };
+          app.querySelector('#task-filter').addEventListener('change', applyFilter);
+          app.querySelectorAll('[data-task-id]').forEach(box => box.addEventListener('change', async () => { await fetch(`/api/tasks/${encodeURIComponent(box.dataset.taskId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) }); render(); }));
+          app.querySelector('#task-form').addEventListener('submit', async event => { event.preventDefault(); const error = app.querySelector('#task-error'); const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: app.querySelector('#task-title').value }) }); if (!response.ok) { error.textContent = 'Task title is required'; error.hidden = false; return; } render(); });
+        }
         app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
         return;
       }
