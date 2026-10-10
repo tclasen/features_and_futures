@@ -165,6 +165,31 @@ async function renderProject(id) {
       renameInput.value = name;
       content.querySelector('[role="alert"]')?.remove();
     });
+    const defaultPriorityLabel = document.createElement('label');
+    defaultPriorityLabel.htmlFor = 'default-task-priority';
+    defaultPriorityLabel.textContent = 'Default task priority';
+    const defaultPriority = document.createElement('select');
+    defaultPriority.id = 'default-task-priority';
+    defaultPriority.disabled = project.archived;
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      defaultPriority.append(option);
+    }
+    defaultPriority.value = project.defaultPriority || 'Normal';
+    defaultPriority.addEventListener('change', async () => {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ defaultPriority: defaultPriority.value }),
+      });
+      if (!response.ok) {
+        defaultPriority.value = project.defaultPriority || 'Normal';
+        showError('Could not update default task priority');
+        return;
+      }
+      project.defaultPriority = defaultPriority.value;
+    });
     const form = document.createElement('form');
     form.className = 'create-form';
     const label = document.createElement('label');
@@ -310,7 +335,7 @@ async function renderProject(id) {
       drawTasks();
       input.focus();
     });
-    content.append(renameForm, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    content.append(renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
     drawTasks();
   } else {
     const alert = document.createElement('p');

@@ -15,6 +15,9 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some((column) => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -45,7 +48,7 @@ const server = createServer(async (request, response) => {
   try {
     if (url.pathname === '/health' && request.method === 'GET') return sendJson(response, 200, { status: 'ok' });
     if (url.pathname === '/api/projects' && request.method === 'GET') {
-      return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
         COUNT(t.id) AS totalCount,
         COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
         FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -58,7 +61,7 @@ const server = createServer(async (request, response) => {
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return sendJson(response, 400, { error: 'Project name is required' });
       const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), name, archived: false, totalCount: 0, completedCount: 0 });
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), name, archived: false, defaultPriority: 'Normal', totalCount: 0, completedCount: 0 });
     }
     const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
     if (projectRoute && request.method === 'PATCH') {
@@ -66,6 +69,11 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id);
       if (!project) return sendJson(response, 404, { error: 'Project not found' });
+      if (Object.hasOwn(body, 'defaultPriority')) {
+        if (!['Low', 'Normal', 'High'].includes(body.defaultPriority)) return sendJson(response, 400, { error: 'Invalid default task priority' });
+        db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(body.defaultPriority, id);
+        return sendJson(response, 200, { id, defaultPriority: body.defaultPriority });
+      }
       if (typeof body.name === 'string') {
         if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
         const name = body.name.trim();
@@ -94,8 +102,9 @@ const server = createServer(async (request, response) => {
         const body = await readJson(request);
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-        const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
+        const defaultPriority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
+        const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
+        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: defaultPriority });
       }
       if (taskRoute[2] && request.method === 'PATCH') {
         if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
