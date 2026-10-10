@@ -7,7 +7,88 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('task moves append, preserve data and source filters, enforce active projects, and persist', async () => {
+test('remembered positions migrate current order and restore reverse returns across projects and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-return-order-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const oldDatabase = new DatabaseSync(databasePath);
+  oldDatabase.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL
+    );
+    INSERT INTO projects VALUES (1, 'Original'), (2, 'Second'), (3, 'Third');
+    INSERT INTO tasks VALUES
+      (1, 1, 'Middle', 0, 20), (2, 1, 'First', 0, 10),
+      (3, 1, 'Last', 0, 30), (4, 2, 'Resident', 0, 5);
+  `);
+  oldDatabase.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async path => (await fetch(server.baseUrl + path)).text();
+    const post = (path, values = {}) => fetch(server.baseUrl + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const titles = async project => [...(await get(`/projects/${project}`)).matchAll(/<span>(.*?)<\/span>/g)].map(match => match[1]);
+    const move = async (task, source, destination) => {
+      assert.equal((await post(`/projects/${source}/tasks/${task}/move`, { destinationProject: String(destination) })).status, 303);
+    };
+    assert.deepEqual(await titles(1), ['First', 'Middle', 'Last']);
+    await move(2, 1, 2);
+    await move(3, 1, 2);
+    await move(1, 1, 2);
+    assert.deepEqual(await titles(2), ['Resident', 'First', 'Last', 'Middle']);
+    // Every original position is vacant, but a new task must come after them.
+    await post('/projects/1/tasks', { title: 'New original' });
+    await post('/projects/2/tasks/3/rename', { title: 'Last updated' });
+    await post('/projects/2/tasks/3', { completed: '1' });
+    await post('/projects/2/tasks/3/priority', { priority: 'High' });
+    await post('/projects/2/tasks/3/due-date', { dueDate: '2028-02-29' });
+    await post('/projects/1/rename', { name: 'Original renamed' });
+    await post('/projects/1/archive');
+    assert.equal((await post('/projects/2/tasks/3/move', { destinationProject: '1' })).status, 400);
+    await server.stop();
+    server = await startServer(databasePath);
+    await post('/projects/1/restore');
+    // Return in a different order from both creation and departure order.
+    await move(3, 2, 1);
+    await move(1, 2, 1);
+    await move(2, 2, 1);
+    assert.deepEqual(await titles(1), ['First', 'Middle', 'Last updated', 'New original']);
+    const updated = await get('/projects/1');
+    assert.match(updated, /aria-label="Complete Last updated" checked/);
+    assert.match(updated, /id="task-priority-3"[^>]*>\s*<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
+    assert.match(updated, /id="task-due-date-3"[^>]*value="2028-02-29"/);
+    assert.match(await get('/'), /Original renamed[\s\S]*?1\/4 completed/);
+    // First-time arrivals also follow vacant remembered positions.
+    await move(5, 1, 2);
+    await post('/projects/2/tasks', { title: 'New second' });
+    await move(1, 1, 3);
+    await move(3, 1, 3);
+    await move(2, 1, 3);
+    assert.deepEqual(await titles(3), ['Middle', 'Last updated', 'First']);
+    await server.stop();
+    server = await startServer(databasePath);
+    await move(1, 3, 2);
+    await move(3, 3, 2);
+    await move(2, 3, 2);
+    assert.deepEqual(await titles(2), ['Resident', 'First', 'Last updated', 'Middle', 'New original', 'New second']);
+    assert.deepEqual(await titles(1), []);
+    assert.deepEqual(await titles(3), []);
+    assert.match(await get('/'), /Original renamed[\s\S]*?0\/0 completed[\s\S]*?Second[\s\S]*?1\/6 completed/);
+    const saved = await get('/projects/2');
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/2'), saved);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task moves preserve data and source filters, enforce active projects, and persist', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const databasePath = join(directory, 'workboard.sqlite');
   const oldDatabase = new DatabaseSync(databasePath);
@@ -89,13 +170,13 @@ test('task moves append, preserve data and source filters, enforce active projec
     assert.deepEqual(titles(await get('/projects/2')), ['Destination first', 'Move dated', 'New destination task', 'Move undated']);
     assert.deepEqual(snapshot()[3], { ...initial[3], project_id: 2, position: 5 });
     await post('/projects/2/tasks/1/move', { destinationProject: '1' });
-    assert.deepEqual(titles(await get('/projects/1')), ['Keep matching', 'Keep hidden', 'Move dated']);
-    assert.deepEqual(titles(await get(filteredPath)), ['Keep matching', 'Move dated']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Move dated', 'Keep matching', 'Keep hidden']);
+    assert.deepEqual(titles(await get(filteredPath)), ['Move dated', 'Keep matching']);
     saved = snapshot();
     await server.stop();
     server = await startServer(databasePath);
     assert.deepEqual(snapshot(), saved);
-    assert.deepEqual(titles(await get('/projects/1')), ['Keep matching', 'Keep hidden', 'Move dated']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Move dated', 'Keep matching', 'Keep hidden']);
     assert.deepEqual(titles(await get('/projects/2')), ['Destination first', 'New destination task', 'Move undated']);
     await post('/projects/1/archive');
     const archived = await get('/projects/1');
@@ -116,8 +197,8 @@ test('task moves append, preserve data and source filters, enforce active projec
     await post('/projects/2/restore');
     assert.doesNotMatch(destinationSelect(await get('/projects/1'), 1), /disabled/);
     await post('/projects/1/tasks/1/move', { destinationProject: '2' });
-    assert.deepEqual(titles(await get('/projects/2')), ['Destination first', 'New destination task', 'Move undated', 'Move dated']);
-    assert.deepEqual(snapshot()[0], { ...initial[0], project_id: 2, position: 6 });
+    assert.deepEqual(titles(await get('/projects/2')), ['Destination first', 'Move dated', 'New destination task', 'Move undated']);
+    assert.deepEqual(snapshot()[0], { ...initial[0], project_id: 2, position: 3 });
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
