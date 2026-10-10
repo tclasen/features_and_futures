@@ -1,85 +1,35 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Workboard</title>
-  <style>
-    :root { font-family: system-ui, sans-serif; color: #192536; background: #f5f7fa; }
-    body { margin: 0; }
-    main { max-width: 760px; margin: 5rem auto; padding: 0 1.5rem; }
-    h1 { font-size: 2rem; margin-bottom: 1.5rem; }
-    form, .project-row, .task-row { display: flex; align-items: center; gap: .75rem; }
-    .task-row { justify-content: flex-start; margin: .6rem 0; padding: .9rem 1rem; background: white; border: 1px solid #dce2ea; border-radius: 6px; }
-    .task-row input[type="checkbox"] { display: inline-block; visibility: visible; opacity: 1; flex: 0 0 1.2rem; width: 1.2rem; height: 1.2rem; margin: 0; padding: 0; accent-color: #245bd5; }
-    form { margin-bottom: 1.5rem; }
-    input { flex: 1; min-width: 0; padding: .7rem; border: 1px solid #aab5c3; border-radius: 5px; font: inherit; }
-    button { padding: .7rem 1rem; border: 0; border-radius: 5px; background: #245bd5; color: white; font: inherit; cursor: pointer; }
-    button:hover { background: #1748b5; }
-    .project-row { justify-content: space-between; margin: .6rem 0; padding: .9rem 1rem; background: white; border: 1px solid #dce2ea; border-radius: 6px; }
-    .alert { color: #a21d2d; min-height: 1.5em; }
-  </style>
-</head>
-<body>
-<main id="app"></main>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Workboard</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#192536;background:#f5f7fa}body{margin:0}main{max-width:760px;margin:5rem auto;padding:0 1.5rem}form,.project-row,.task-row{display:flex;align-items:center;gap:.75rem}form{margin-bottom:1.5rem}input{flex:1;min-width:0;padding:.7rem;border:1px solid #aab5c3;border-radius:5px;font:inherit}input[type=checkbox]{flex:0 0 1.2rem;width:1.2rem;height:1.2rem;margin:0;accent-color:#245bd5}button{padding:.7rem 1rem;border:0;border-radius:5px;background:#245bd5;color:white;font:inherit;cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}.project-row,.task-row{justify-content:space-between;margin:.6rem 0;padding:.9rem 1rem;background:white;border:1px solid #dce2ea;border-radius:6px}.alert{color:#a21d2d;min-height:1.5em}
+</style></head><body><main id="app"></main>
 <script type="module">
-const app = document.querySelector('#app');
-const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-
-async function render() {
-  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
-  if (match) {
-    const projects = await (await fetch('/api/projects')).json();
-    const project = projects.find(item => item.id === Number(match[1]));
-    if (project) {
-      const tasks = await (await fetch(`/api/projects/${project.id}/tasks`)).json();
-      const filter = new URLSearchParams(location.search).get('filter') || 'All';
-      const visibleTasks = tasks.filter(task => filter === 'All' || (filter === 'Open' ? !task.completed : task.completed));
-      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
-        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"><button type="submit">Create task</button></form>
-        <div class="alert" role="alert" aria-live="polite"></div>
-        <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
-        <section aria-label="Tasks">${visibleTasks.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('')}</section>`;
-      app.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
-      const selector = app.querySelector('#task-filter'); selector.value = filter;
-      selector.addEventListener('change', () => { const query = selector.value === 'All' ? '' : `?filter=${selector.value}`; history.replaceState({}, '', `/projects/${project.id}${query}`); render(); });
-      app.querySelector('#task-form').addEventListener('submit', async event => {
-        event.preventDefault();
-        const input = app.querySelector('#task-title');
-        const title = input.value.trim();
-        if (!title) { app.querySelector('.alert').textContent = 'Task title is required'; return; }
-        const response = await fetch(`/api/projects/${project.id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
-        if (response.ok) render(); else app.querySelector('.alert').textContent = 'Unable to create task';
-      });
-      app.querySelectorAll('[data-task-id]').forEach(checkbox => checkbox.addEventListener('change', async () => {
-        const response = await fetch(`/api/projects/${project.id}/tasks/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
-        if (!response.ok) { checkbox.checked = !checkbox.checked; app.querySelector('.alert').textContent = 'Unable to update task'; }
-        else render();
-      }));
-      return;
-    }
+const app=document.querySelector('#app');
+const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const getProjects=async filter=>(await (await fetch(`/api/projects?filter=${filter}`)).json());
+async function render(){
+ const match=location.pathname.match(/^\/projects\/(\d+)\/?$/);
+ if(match){
+  const all=[...await getProjects('Active'),...await getProjects('Archived')],project=all.find(p=>p.id===Number(match[1]));
+  if(project){
+   const tasks=await(await fetch(`/api/projects/${project.id}/tasks`)).json(),filter=new URLSearchParams(location.search).get('filter')||'All';
+   const visible=tasks.filter(t=>filter==='All'||(filter==='Open'?!t.completed:t.completed));
+   app.innerHTML=`<button id="back" type="button">Projects</button><h1>${esc(project.name)}</h1>${project.archived?'<p>Archived project</p>':''}
+    <form id="task-form"><label for="task-title">Task title</label><input id="task-title" type="text"><button type="submit" ${project.archived?'disabled':''}>Create task</button></form><div class="alert" role="alert" aria-live="polite"></div>
+    <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+    <section aria-label="Tasks">${visible.map(t=>`<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${t.id}" aria-label="Complete ${esc(t.title)}" ${t.completed?'checked':''} ${project.archived?'disabled':''}><span>${esc(t.title)}</span></div>`).join('')}</section>`;
+   app.querySelector('#back').onclick=()=>{history.pushState({},'','/');render()};const select=app.querySelector('#task-filter');select.value=filter;select.onchange=()=>{history.replaceState({},'',`/projects/${project.id}${select.value==='All'?'':`?filter=${select.value}`}`);render()};
+   app.querySelector('#task-form').onsubmit=async e=>{e.preventDefault();const title=app.querySelector('#task-title').value.trim(),alert=app.querySelector('.alert');if(!title){alert.textContent='Task title is required';return}const r=await fetch(`/api/projects/${project.id}/tasks`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title})});if(r.ok)render();else alert.textContent='Unable to create task'};
+   app.querySelectorAll('[data-task-id]').forEach(box=>box.onchange=async()=>{const r=await fetch(`/api/projects/${project.id}/tasks/${box.dataset.taskId}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:box.checked})});if(r.ok)render();else{box.checked=!box.checked;app.querySelector('.alert').textContent='Unable to update task'}});return;
   }
-  const projects = await (await fetch('/api/projects')).json();
-  app.innerHTML = `<h1>Workboard</h1>
-    <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form>
-    <div class="alert" role="alert" aria-live="polite"></div>
-    <section aria-label="Projects">${projects.map(project => `<div class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-project-id="${project.id}">Open project</button></div>`).join('')}</section>`;
-  app.querySelector('#create-form').addEventListener('submit', async event => {
-    event.preventDefault();
-    const input = app.querySelector('#project-name');
-    const name = input.value.trim();
-    const alert = app.querySelector('.alert');
-    if (!name) { alert.textContent = 'Project name is required'; return; }
-    const response = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
-    if (!response.ok) { alert.textContent = 'Unable to create project'; return; }
-    render();
-  });
-  app.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
-    history.pushState({}, '', `/projects/${button.dataset.projectId}`); render();
-  }));
+ }
+ const filter=new URLSearchParams(location.search).get('filter')||'Active',projects=await getProjects(filter);
+ app.innerHTML=`<h1>Workboard</h1><form id="create-form"><label for="project-name">Project name</label><input id="project-name" type="text"><button>Create project</button></form><div class="alert" role="alert" aria-live="polite"></div><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select><section aria-label="Projects">${projects.map(p=>`<div class="project-row" data-testid="project-row"><span>${esc(p.name)}</span><span data-testid="project-summary">${p.completedCount}/${p.totalCount} completed</span><button data-open="${p.id}">Open project</button>${p.archived?`<button data-archive="${p.id}" data-state="false">Restore project</button>`:`<button data-archive="${p.id}" data-state="true">Archive project</button>`}</div>`).join('')}</section>`;
+ const selector=app.querySelector('#project-filter');selector.value=filter;selector.onchange=()=>{history.replaceState({},'',selector.value==='Active'?'/':`/?filter=Archived`);render()};
+ app.querySelector('#create-form').onsubmit=async e=>{e.preventDefault();const name=app.querySelector('#project-name').value.trim(),alert=app.querySelector('.alert');if(!name){alert.textContent='Project name is required';return}const r=await fetch('/api/projects',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});if(r.ok)render();else alert.textContent='Unable to create project'};
+ app.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{history.pushState({},'',`/projects/${b.dataset.open}`);render()});app.querySelectorAll('[data-archive]').forEach(b=>b.onclick=async()=>{await fetch(`/api/projects/${b.dataset.archive}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({archived:b.dataset.state==='true'})});render()});
 }
-window.addEventListener('popstate', render);
-render();
-</script>
-</body>
-</html>
+window.addEventListener('popstate',render);render();
+</script></main></body></html>

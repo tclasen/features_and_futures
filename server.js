@@ -8,16 +8,24 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const db = new DatabaseSync(process.env.DB_PATH || path.join(root, 'workboard.sqlite'));
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0
 )`);
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+const getProject = db.prepare('SELECT id, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -41,7 +49,9 @@ const server = http.createServer(async (req, res) => {
       const data = JSON.parse(body);
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-      if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(Number(taskRoute[1]))) return sendJson(res, 404, { error: 'Project not found' });
+      const owner = getProject.get(Number(taskRoute[1]));
+      if (!owner) return sendJson(res, 404, { error: 'Project not found' });
+      if (owner.archived) return sendJson(res, 409, { error: 'Project is archived' });
       const result = createTask.run(Number(taskRoute[1]), title);
       return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId: Number(taskRoute[1]), title, completed: false });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
@@ -52,11 +62,23 @@ const server = http.createServer(async (req, res) => {
       for await (const chunk of req) body += chunk;
       const data = JSON.parse(body);
       if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
+      if (getProject.get(Number(taskRoute[1]))?.archived) return sendJson(res, 409, { error: 'Project is archived' });
       const result = updateTask.run(data.completed ? 1 : 0, Number(taskRoute[2]), Number(taskRoute[1]));
       return result.changes ? sendJson(res, 200, { completed: data.completed }) : sendJson(res, 404, { error: 'Task not found' });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
-  if (url.pathname === '/api/projects' && req.method === 'GET') return sendJson(res, 200, listProjects.all());
+  const projectAction = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectAction && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const data = JSON.parse(body);
+      if (typeof data.archived !== 'boolean') return sendJson(res, 400, { error: 'Invalid archive state' });
+      const result = setArchived.run(data.archived ? 1 : 0, Number(projectAction[1]));
+      return result.changes ? sendJson(res, 200, { archived: data.archived }) : sendJson(res, 404, { error: 'Project not found' });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
+  if (url.pathname === '/api/projects' && req.method === 'GET') return sendJson(res, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0).map(project => ({ ...project, archived: Boolean(project.archived) })));
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     try {
       let body = '';
