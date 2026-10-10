@@ -347,7 +347,7 @@ test('archive migration preserves existing task IDs and completion state', async
     `);
     database.close();
     store = openWorkboard(databasePath);
-    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'normal' });
+    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'normal', due_date: '' });
     assert.equal(store.list()[0].completed_count, 1);
     assert.equal(store.list()[0].total_count, 1);
     assert.equal(store.tasks.setPriority(7, 12, 'high'), true);
@@ -553,7 +553,7 @@ test('task rename storage rejects invalid titles, wrong ownership and archived p
     store.setArchived(project.id, false);
     assert.equal(store.tasks.rename(project.id, task.id, '  Renamed  '), true);
     assert.deepEqual({ ...store.tasks.list(project.id)[0] }, {
-      id: task.id, title: 'Renamed', completed: 1, priority: 'normal',
+      id: task.id, title: 'Renamed', completed: 1, priority: 'normal', due_date: '',
     });
   } finally {
     store.close();
@@ -879,7 +879,7 @@ test('project defaults migrate without altering existing priorities or project d
     database.close();
     store = openWorkboard(databasePath);
     assert.deepEqual({ ...store.find(7) }, { id: 7, name: 'Existing', archived: 1, default_task_priority: 'normal' });
-    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'high' });
+    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'high', due_date: '' });
     store.setArchived(7, false);
     assert.equal(store.tasks.create(7, 'Next').priority, 'normal');
     store.setDefaultPriority(7, 'low');
@@ -977,6 +977,128 @@ test('project defaults persist independently and preserve filters through rename
     server = await startServer(databasePath);
     assert.equal(await getPage('/projects/1'), page);
     assert.match(await getPage('/'), /data-testid="project-summary">1\/4 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('due dates migrate existing tasks without changing their identities or state', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-migration-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let store;
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'normal');
+      INSERT INTO projects VALUES (7, 'Existing', 1, 'low');
+      INSERT INTO tasks VALUES (12, 7, 'Existing task', 1, 'high');
+    `);
+    database.close();
+    store = openWorkboard(databasePath);
+    assert.deepEqual({ ...store.tasks.list(7)[0] }, {
+      id: 12, title: 'Existing task', completed: 1, priority: 'high', due_date: '',
+    });
+    assert.equal(store.find(7).default_task_priority, 'low');
+    store.setArchived(7, false);
+    assert.equal(store.tasks.setDueDate(7, 12, '0001-01-01'), true);
+    store.close();
+    store = openWorkboard(databasePath);
+    assert.equal(store.tasks.list(7)[0].due_date, '0001-01-01');
+    assert.equal(store.tasks.create(7, 'New task').due_date, '');
+  } finally {
+    if (store) store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('due-date forms validate, preserve filters and persist through renames, archive and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-http-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const getPage = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    const dueDate = (html, id) => html.match(new RegExp(`id="task-due-date-${id}"[^>]*value="([^"]*)"`))?.[1];
+    const state = { filter: 'completed', priorityFilter: 'high' };
+    const path = '/projects/1?filter=completed&priorityFilter=high';
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Original' });
+    await post('/projects/1/tasks', { title: 'Independent' });
+    await post('/projects/2/tasks', { title: 'Other project' });
+    await post('/projects/1/tasks/1/completion', { completed: 'true' });
+    await post('/projects/1/tasks/1/priority', { priority: 'high' });
+    const initial = await getPage(path);
+    assert.equal(dueDate(initial, 1), '');
+    assert.match(initial, /<label for="task-due-date-1">Task due date<\/label>/);
+    assert.match(initial, /<button type="submit">Save due date<\/button>/);
+    assert.doesNotMatch(initial, /task-due-date-2/);
+    const summary = await getPage('/');
+    const independent = await getPage('/projects/2');
+    const saved = await post('/projects/1/tasks/1/due-date', { ...state, dueDate: '  2000-02-29  ' });
+    assert.equal(saved.status, 303);
+    assert.equal(saved.headers.get('location'), path);
+    const dated = await getPage(path);
+    assert.equal(dueDate(dated, 1), '2000-02-29');
+    assert.equal(dated.replace('value="2000-02-29"', 'value=""'), initial);
+    assert.equal(await getPage('/'), summary);
+    assert.equal(await getPage('/projects/2'), independent);
+    assert.equal(dueDate(await getPage('/projects/1'), 2), '');
+    for (const dueDate of ['1900-02-29', '2024-04-31', '0000-01-01', '2024-1-01', '<script>']) {
+      const invalid = await post('/projects/1/tasks/1/due-date', { ...state, dueDate });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.match(html, /<option value="completed" selected>/);
+      assert.match(html, /id="priority-filter"[\s\S]*?<option value="high" selected>/);
+      assert.equal(html.match(/id="task-due-date-1"[^>]*value="([^"]*)"/)[1], '2000-02-29');
+      assert.equal(await getPage(path), dated);
+    }
+    for (const action of ['/projects/2/tasks/1/due-date', '/projects/1/tasks/3/due-date',
+      '/projects/1/tasks/999/due-date', '/projects/999/tasks/1/due-date']) {
+      assert.equal((await post(action, { dueDate: '2024-12-31' })).status, 404);
+    }
+    await post('/projects/1/tasks/1/rename', { ...state, title: 'Renamed' });
+    await post('/projects/1/rename', { ...state, name: 'Renamed project' });
+    const renamed = await getPage(path);
+    assert.equal(dueDate(renamed, 1), '2000-02-29');
+    assert.match(renamed, /aria-label="Complete Renamed" checked/);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage(path), renamed);
+    await post('/projects/1/archive');
+    const archived = await getPage(path);
+    assert.match(archived, /id="task-due-date-1"[^>]*value="2000-02-29" disabled/);
+    assert.match(archived, /<button type="submit" disabled>Save due date<\/button>/);
+    assert.equal((await post('/projects/1/tasks/1/due-date', { ...state, dueDate: '' })).status, 409);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage(path), archived);
+    await post('/projects/1/restore');
+    assert.equal(await getPage(path), renamed);
+    for (const value of ['', ' \t\n ']) {
+      await post('/projects/1/tasks/1/due-date', { ...state, dueDate: '9999-12-31' });
+      const cleared = await post('/projects/1/tasks/1/due-date', { ...state, dueDate: value });
+      assert.equal(cleared.status, 303);
+      assert.equal(cleared.headers.get('location'), path);
+      assert.equal(dueDate(await getPage(path), 1), '');
+    }
+    const cleared = await getPage(path);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage(path), cleared);
+    assert.match(await getPage('/'), /data-testid="project-summary">1\/2 completed/);
+    assert.equal(await getPage('/projects/2'), independent);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

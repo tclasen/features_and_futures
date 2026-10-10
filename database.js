@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { normalizeDueDate } from './due-date.js';
 
 export function openWorkboard(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -18,7 +19,8 @@ export function openWorkboard(databasePath) {
       project_id INTEGER NOT NULL REFERENCES projects(id),
       title TEXT NOT NULL CHECK (length(trim(title)) > 0),
       completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-      priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high'))
+      priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
+      due_date TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
   `);
@@ -31,6 +33,9 @@ export function openWorkboard(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
     database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'normal' CHECK (default_task_priority IN ('low', 'normal', 'high'))");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -42,13 +47,15 @@ export function openWorkboard(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare(`UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
   const renameTask = database.prepare(`UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
   const updatePriority = database.prepare(`UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
+  const updateDueDate = database.prepare(`UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
 
   return {
@@ -83,7 +90,7 @@ export function openWorkboard(databasePath) {
         if (!trimmedTitle) return null;
         const priority = project?.default_task_priority ?? 'normal';
         const result = insertTask.run(projectId, trimmedTitle, priority);
-        return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority };
+        return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority, due_date: '' };
       },
       setCompleted(projectId, taskId, completed) {
         return updateTask.run(completed ? 1 : 0, projectId, taskId).changes > 0;
@@ -96,6 +103,11 @@ export function openWorkboard(databasePath) {
       setPriority(projectId, taskId, priority) {
         if (!['low', 'normal', 'high'].includes(priority)) return false;
         return updatePriority.run(priority, projectId, taskId).changes > 0;
+      },
+      setDueDate(projectId, taskId, value) {
+        const date = normalizeDueDate(value);
+        if (date === null) return false;
+        return updateDueDate.run(date, projectId, taskId).changes > 0;
       },
     },
     close: () => database.close(),

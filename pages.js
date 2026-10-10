@@ -113,6 +113,14 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
                 `<option value="${value}"${task.priority === value ? ' selected' : ''}>${label}</option>`).join('')}
             </select>
           </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date" class="task-due-date">
+            ${filterFields}
+            <label for="task-due-date-${task.id}">Task due date</label>
+            <div class="form-controls">
+              <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+            </div>
+          </form>
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename">
             ${filterFields}
             <label for="new-task-title-${task.id}">New task title</label>

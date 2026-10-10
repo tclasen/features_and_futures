@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { openWorkboard } from './database.js';
 import { projectsPage, projectPage, notFoundPage } from './pages.js';
+import { normalizeDueDate } from './due-date.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const projects = openWorkboard(process.env.DB_PATH ?? './data/workboard.sqlite');
@@ -124,7 +125,7 @@ const server = createServer(async (request, response) => {
       const priority = priorityFilter(url.searchParams.get('priorityFilter'));
       send(response, project ? 200 : 404, project
         ? renderProject(project, filter, priority) : notFoundPage());
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename|priority))?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const projectId = Number(parts[2]);
       const taskId = parts[4] ? Number(parts[4]) : null;
@@ -143,6 +144,16 @@ const server = createServer(async (request, response) => {
       if (taskId === null) {
         if (!projects.tasks.create(projectId, form.get('title'))) {
           send(response, 400, renderProject(project, filter, priority, 'Task title is required'));
+          return;
+        }
+      } else if (parts[5] === 'due-date') {
+        const date = normalizeDueDate(form.get('dueDate'));
+        if (date === null) {
+          send(response, 400, renderProject(project, filter, priority, 'Due date must be a valid YYYY-MM-DD date'));
+          return;
+        }
+        if (!projects.tasks.setDueDate(projectId, taskId, date)) {
+          send(response, 404, notFoundPage());
           return;
         }
       } else if (parts[5] === 'priority') {
