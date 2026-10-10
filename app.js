@@ -234,6 +234,31 @@ async function renderProject(id) {
         }
       });
       row.append(renameForm);
+      const priorityLabel = element('label', 'priority-field', 'Task priority');
+      const priority = element('select', 'task-priority');
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', '', value);
+        option.value = value;
+        priority.append(option);
+      }
+      priority.value = task.priority || 'Normal';
+      priority.disabled = project.archived;
+      priorityLabel.append(priority);
+      priority.addEventListener('change', async () => {
+        const previous = task.priority || 'Normal';
+        try {
+          const updated = await request(`/api/projects/${id}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          task.priority = updated.priority;
+        } catch (error) {
+          priority.value = previous;
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      row.append(priorityLabel);
       list.append(row);
     }
   }

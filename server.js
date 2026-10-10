@@ -23,6 +23,7 @@ db.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -30,6 +31,10 @@ db.exec(`
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 db.exec('PRAGMA foreign_keys = ON');
 
@@ -104,7 +109,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId);
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId);
     return send(res, 200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
 
@@ -136,6 +141,13 @@ const server = http.createServer(async (req, res) => {
         const result = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?').run(title, Number(taskMatch[1]), Number(taskMatch[2]));
         if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
         return send(res, 200, JSON.stringify({ id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), title }));
+      }
+      if (typeof input.priority === 'string') {
+        const priority = input.priority;
+        if (!['Low', 'Normal', 'High'].includes(priority)) return send(res, 400, JSON.stringify({ error: 'Invalid task priority' }));
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?').run(priority, Number(taskMatch[1]), Number(taskMatch[2]));
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), priority }));
       }
       if (typeof input.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]), Number(taskMatch[2]));
