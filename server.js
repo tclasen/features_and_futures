@@ -9,7 +9,8 @@ const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,6 +18,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 const html = await readFile(path.join(root, 'public', 'index.html'));
 
 function sendJson(response, status, value) {
@@ -44,7 +48,9 @@ const server = http.createServer((request, response) => {
         const projectId = Number(taskRoute[1]);
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-        if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+        const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+        if (!project) return sendJson(response, 404, { error: 'Project not found' });
+        if (project.archived) return sendJson(response, 409, { error: 'Project is archived' });
         const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
         return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
       } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
@@ -60,14 +66,32 @@ const server = http.createServer((request, response) => {
       try {
         const completed = JSON.parse(body).completed;
         if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
-        const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(completionRoute[1]));
+        const result = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(completed ? 1 : 0, Number(completionRoute[1]));
         return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found' });
       } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
     });
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(response, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p ORDER BY p.id`).all().map(project => ({ ...project, archived: Boolean(project.archived) })));
+  }
+  const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const archived = JSON.parse(body).archived;
+        if (typeof archived !== 'boolean') return sendJson(response, 400, { error: 'Invalid archive state' });
+        const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, Number(archiveRoute[1]));
+        return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Project not found' });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';

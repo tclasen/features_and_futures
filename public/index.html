@@ -32,7 +32,7 @@
       if (!response.ok) throw new Error('Unable to load projects');
       return response.json();
     }
-    async function renderList() {
+    async function renderList(selectedFilter = 'Active') {
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
@@ -62,8 +62,20 @@
         const response = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
         if (response.ok) renderList();
       });
-      app.append(heading, form, alert);
-      for (const project of await projects()) {
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Project filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Project filter');
+      filter.value = selectedFilter;
+      filter.addEventListener('change', () => renderList(filter.value));
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option);
+      }
+      filterLabel.append(filter);
+      app.append(heading, form, alert, filterLabel);
+      const allProjects = await projects();
+      for (const project of allProjects) {
+        if (filter.value === 'Active' && project.archived || filter.value === 'Archived' && !project.archived) continue;
         const row = document.createElement('div');
         row.className = 'project-row';
         row.dataset.testid = 'project-row';
@@ -72,7 +84,16 @@
         const open = document.createElement('button');
         open.textContent = 'Open project';
         open.addEventListener('click', () => { location.href = escapePath(project.id); });
-        row.append(name, open);
+        const summary = document.createElement('span');
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+        const archive = document.createElement('button');
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          await fetch(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+          renderList(filter.value);
+        });
+        row.append(name, summary, open, archive);
         app.append(row);
       }
     }
@@ -86,6 +107,9 @@
       const heading = document.createElement('h1');
       heading.textContent = project.name;
       app.append(back, heading);
+      if (project.archived) {
+        const status = document.createElement('p'); status.textContent = 'Archived project'; app.append(status);
+      }
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.textContent = 'Task title';
@@ -96,6 +120,7 @@
       const submit = document.createElement('button');
       submit.type = 'submit';
       submit.textContent = 'Create task';
+      submit.disabled = project.archived;
       form.append(label, submit);
       const alert = document.createElement('div');
       alert.className = 'alert';
@@ -126,6 +151,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = project.archived;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
