@@ -26,6 +26,7 @@ function page(title, content) {
     select { padding: 10px; font: inherit; margin-bottom: 12px; }
     button { padding: 11px 16px; border: 0; border-radius: 6px; background: #2357bd; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #174398; }
+    button:disabled { background: #788394; cursor: not-allowed; }
     :focus-visible { outline: 3px solid #a36b00; outline-offset: 3px; }
     ul { list-style: none; padding: 0; }
     .project { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 12px; }
@@ -40,11 +41,11 @@ function page(title, content) {
 </html>`;
 }
 
-export function renderProjects(projects, error = '') {
+export function renderProjects(projects, error = '', filter = 'Active') {
   return page('Projects', `
     <h1>Workboard</h1>
     <section class="panel" aria-label="Create a project">
-      <form method="post" action="/projects">
+      <form method="post" action="/projects?filter=${filter}">
         <label for="project-name">Project name</label>
         <div class="create">
           <input id="project-name" name="name" type="text" autocomplete="off"${error ? ' aria-invalid="true" aria-describedby="name-error"' : ''}>
@@ -54,11 +55,21 @@ export function renderProjects(projects, error = '') {
       </form>
     </section>
     <h2>Projects</h2>
+    <form method="get" action="/">
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['Active', 'Archived'].map(value => `<option${filter === value ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+    </form>
     ${projects.length ? `<ul>${projects.map(project => `
       <li class="panel project" data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
+        <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form method="get" action="/projects/${project.id}">
           <button type="submit">Open project</button>
+        </form>
+        <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}">
+          <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
         </form>
       </li>`).join('')}</ul>` : '<p class="empty">No projects yet.</p>'}
   `);
@@ -68,12 +79,13 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     <section class="panel" aria-label="Create a task">
       <form method="post" action="/projects/${project.id}/tasks?filter=${filter}">
         <label for="task-title">Task title</label>
         <div class="create">
           <input id="task-title" name="title" type="text" autocomplete="off"${error ? ' aria-invalid="true" aria-describedby="task-error"' : ''}>
-          <button type="submit">Create task</button>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
         </div>
         ${error ? `<p id="task-error" role="alert">${escapeHtml(error)}</p>` : ''}
       </form>
@@ -89,7 +101,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
       <li class="panel task" data-testid="task-row">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}?filter=${filter}">
           <label>
-            <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+            <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             <span>${escapeHtml(task.title)}</span>
           </label>
         </form>

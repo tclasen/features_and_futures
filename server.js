@@ -21,13 +21,31 @@ db.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
 `);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Upgrade databases created before archive support without changing existing IDs.
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const listProjects = db.prepare(`
+  SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
+         COALESCE(SUM(t.completed), 0) AS completed
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id ASC
+`);
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+
+function projectFilter(url) {
+  return url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active';
+}
+
+function projectsPage(filter, error = '') {
+  return renderProjects(listProjects.all(filter === 'Archived' ? 1 : 0), error, filter);
+}
 
 function taskFilter(url) {
   const value = url.searchParams.get('filter');
@@ -65,19 +83,28 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/') {
-      html(res, 200, renderProjects(listProjects.all()));
+      html(res, 200, projectsPage(projectFilter(url)));
       return;
     }
     if (req.method === 'POST' && url.pathname === '/projects') {
       const name = ((await formData(req)).get('name') || '').trim();
       if (!name) {
-        html(res, 400, renderProjects(listProjects.all(), 'Project name is required'));
+        html(res, 400, projectsPage(projectFilter(url), 'Project name is required'));
         return;
       }
       createProject.run(name);
       res.writeHead(303, { Location: '/' });
       res.end();
       return;
+    }
+    const archiveMatch = /^\/projects\/(\d+)\/(archive|restore)$/.exec(url.pathname);
+    if (req.method === 'POST' && archiveMatch) {
+      const result = archiveProject.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
+      if (result.changes) {
+        res.writeHead(303, { Location: archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived' });
+        res.end();
+        return;
+      }
     }
     const match = /^\/projects\/(\d+)$/.exec(url.pathname);
     if (req.method === 'GET' && match) {
@@ -91,6 +118,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (project) {
+        if (project.archived) {
+          html(res, 403, projectPage(project, taskFilter(url), 'Archived project is read-only'));
+          return;
+        }
         const data = await formData(req);
         const filter = taskFilter(url);
         if (taskMatch[2]) {
