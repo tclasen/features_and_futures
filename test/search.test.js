@@ -73,7 +73,9 @@ test('search intersects filters and stays applied through edits, archive, moves 
     await post('/projects/4/archive');
     assert.deepEqual(names(await get('/?search=%20aLpHa%20')), ['Alpha  plan', 'ALPHA plan', '&lt;Alpha &amp; &quot;quote&quot;&gt;']);
     assert.deepEqual(names(await get('/?search=alpha%20%20')), ['Alpha  plan', 'ALPHA plan', '&lt;Alpha &amp; &quot;quote&quot;&gt;']); // trailing whitespace is trimmed
-    assert.deepEqual(names(await get('/?search=alpha%20%20plan')), ['Alpha  plan']);
+    for (const search of ['alpha plan', 'alpha  plan', '  ALPHA \t \t plan  ']) {
+      assert.deepEqual(names(await get(`/?${new URLSearchParams({ search })}`)), ['Alpha  plan', 'ALPHA plan']);
+    }
     assert.deepEqual(names(await get('/?search=%C3%A4lpha')), []); // Unicode case is significant
     assert.deepEqual(names(await get('/?filter=Archived&search=ALPHA')), ['alpha archived']);
     assert.equal(names(await get('/?search=%20%09%20')).length, 4);
@@ -92,6 +94,7 @@ test('search intersects filters and stays applied through edits, archive, moves 
     assert.deepEqual(titles(await get(path())), ['Alpha first', 'aLPHA  spaced']);
     assertState(await get(path()));
     assert.deepEqual(titles(await get(path({ ...state, search: '  ALPHA  spaced  ' }))), ['aLPHA  spaced']);
+    assert.deepEqual(titles(await get(path({ ...state, search: '  alpha \t spaced  ' }))), ['aLPHA  spaced']);
     assert.deepEqual(titles(await get(path({ ...state, search: '' }))), ['Alpha first', 'beta', 'aLPHA  spaced']);
     assert.deepEqual(titles(await get(path({ ...state, filter: 'Completed' }))), ['alpha completed']);
     assert.deepEqual(titles(await get(path({ ...state, priorityFilter: 'Low' }))), ['alpha low']);
@@ -142,6 +145,31 @@ test('search intersects filters and stays applied through edits, archive, moves 
     assert.match(await get('/'), /id="project-search"[^>]*value=""/);
     assert.match(summary, /1\/6 completed/);
     assert.match(await get('/'), /1\/7 completed/);
+
+    // Mixed spaces and tabs match without changing the original stored text.
+    const originalName = 'MiXeD \t  \t Project';
+    const originalTitle = 'MiXeD\t \t  Task';
+    await post('/projects', { name: originalName });
+    await post('/projects', { name: 'MiXeD\u00a0Project' });
+    await post('/projects/6/tasks', { title: originalTitle });
+    await post('/projects/6/tasks', { title: 'MiXeD\u00a0Task' });
+    const listPath = '/?' + new URLSearchParams({ search: '  mixed\t \tproject  ' });
+    const taskPath = '/projects/6?' + new URLSearchParams({ search: '  mixed  task  ' });
+    assert.deepEqual(names(await get(listPath)), [originalName]);
+    assert.deepEqual(titles(await get(taskPath)), [originalTitle]);
+    assert.deepEqual(titles(await get('/projects/6')), [originalTitle, 'MiXeD\u00a0Task']);
+    await post('/projects/6/archive');
+    assert.deepEqual(names(await get(listPath)), []);
+    assert.deepEqual(names(await get(listPath + '&filter=Archived')), [originalName]);
+    assert.deepEqual(titles(await get(taskPath)), [originalTitle]);
+    await stop();
+    await start();
+    assert.deepEqual(names(await get(listPath + '&filter=Archived')), [originalName]);
+    assert.deepEqual(titles(await get(taskPath)), [originalTitle]);
+    await post('/projects/6/restore');
+    assert.deepEqual(names(await get(listPath)), [originalName]);
+    assert.deepEqual(names(await get('/')).slice(-2), [originalName, 'MiXeD\u00a0Project']);
+    assert.deepEqual(titles(await get('/projects/6')), [originalTitle, 'MiXeD\u00a0Task']);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

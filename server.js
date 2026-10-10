@@ -130,11 +130,12 @@ function page(title, content) {
 
 const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
 
-// Only ASCII letters are folded; all other characters and internal whitespace
-// remain significant in substring matching.
-const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+// Normalize only for matching, leaving saved names/titles and queries intact.
+// Other whitespace and non-ASCII letter case remain significant.
+const normalizeSearch = (value) => value.replace(/[ \t]+/g, ' ')
+  .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 const searchQuery = (params) => (params.get('search') || '').trim();
-const matchesSearch = (value, query) => asciiLower(value).includes(asciiLower(query));
+const matchesSearch = (value, query) => normalizeSearch(value).includes(normalizeSearch(query));
 const searchField = (query) => `<input type="hidden" name="search" value="${escapeHtml(query)}">`;
 
 function listLocation(filter, search) {
