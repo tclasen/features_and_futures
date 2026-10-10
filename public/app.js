@@ -183,8 +183,32 @@ async function renderTasks(project) {
           priority.disabled = archived;
         }
       });
+      const dueForm = element('form');
+      const dueInput = element('input', '', { id: `task-due-date-${task.id}`, type: 'text', autocomplete: 'off' });
+      const saveDue = element('button', 'Save due date', { type: 'submit' });
+      dueInput.value = task.due_date || '';
+      dueInput.disabled = archived;
+      saveDue.disabled = archived;
+      dueForm.append(element('label', 'Task due date', { for: dueInput.id }), dueInput, saveDue);
+      dueForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (archived) return;
+        saveDue.disabled = true;
+        try {
+          const saved = await request(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueInput.value }),
+          });
+          task.due_date = saved.due_date;
+          dueInput.value = saved.due_date;
+          app.querySelector('[role="alert"]')?.remove();
+        } catch (error) {
+          dueInput.value = task.due_date || '';
+          alertMessage(error.message);
+        } finally { saveDue.disabled = archived; }
+      });
       row.append(checkbox, title, renameForm,
-        element('label', 'Task priority', { for: priority.id }), priority);
+        element('label', 'Task priority', { for: priority.id }), priority, dueForm);
       list.append(row);
     }
   }

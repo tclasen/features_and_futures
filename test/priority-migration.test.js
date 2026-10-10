@@ -27,10 +27,10 @@ test('existing tasks migrate to Normal without losing identity or completion', a
       const db = new DatabaseSync(path);
       db.exec('PRAGMA busy_timeout = 5000');
       try {
-        migrated = db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority');
+        migrated = db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date');
         if (migrated) {
           assert.deepEqual({ ...db.prepare('SELECT * FROM tasks').get() }, {
-            id: 12, project_id: 7, title: 'Existing task', completed: 1, priority: 'Normal',
+            id: 12, project_id: 7, title: 'Existing task', completed: 1, priority: 'Normal', due_date: '',
           });
         }
       } finally { db.close(); }

@@ -55,6 +55,10 @@ async function page(archived = false) {
         const task = path === '/api/projects/1' ? project : tasks.find(item => item.id === Number(path.split('/').at(-1)));
         const patch = JSON.parse(options.body);
         writes.push(patch);
+        if (Object.hasOwn(patch, 'due_date')) {
+          patch.due_date = patch.due_date.trim();
+          if (patch.due_date === 'invalid') return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+        }
         Object.assign(task, patch);
         data = task;
       } else data = path.endsWith('/tasks') ? tasks : project;
@@ -146,6 +150,43 @@ test('changing project default preserves both filters and all existing rows', as
   assert.deepEqual(ui.titles(), ['Fourth']);
   assert.deepEqual(ui.tasks, original);
   assert.deepEqual(ui.writes, [{ default_priority: 'Low' }]);
+});
+
+test('due-date controls save and clear without resetting filters or changing matching rows', async () => {
+  const ui = await page();
+  const completion = ui.control('task-filter');
+  const priority = ui.control('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const due = ui.control('task-due-date-1');
+  assert.equal(due.attributes.type, 'text');
+  assert.equal(due.value, '');
+  assert.equal(due.parent.children[0].textContent, 'Task due date');
+  assert.equal(due.parent.children[2].textContent, 'Save due date');
+  due.value = ' 2024-02-29 ';
+  await due.parent.fire('submit');
+  assert.equal(due.value, '2024-02-29');
+  due.value = 'invalid';
+  await due.parent.fire('submit');
+  assert.equal(due.value, '2024-02-29');
+  assert.match(ui.app.querySelector().textContent, /Due date must be a valid YYYY-MM-DD date/);
+  const rename = ui.control('new-task-title-1');
+  rename.value = 'Renamed';
+  await rename.parent.fire('submit');
+  assert.equal(ui.tasks[0].due_date, '2024-02-29');
+  assert.deepEqual(ui.titles(), ['Renamed']);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  due.value = '   ';
+  await due.parent.fire('submit');
+  assert.equal(due.value, '');
+  assert.equal(ui.tasks[0].due_date, '');
+  assert.equal(ui.tasks[1].due_date, undefined);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  assert.deepEqual(ui.titles(), ['Renamed']);
 });
 
 test('archived projects keep both filters usable and editing controls disabled', async () => {

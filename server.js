@@ -26,10 +26,21 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+const saveDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+}
 const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
@@ -113,6 +124,14 @@ const server = http.createServer(async (req, res) => {
           return json(res, 201, taskJSON(getTask.get(projectId, result.lastInsertRowid)));
         }
         if (!getTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
+        if (input && Object.hasOwn(input, 'due_date')) {
+          const date = typeof input.due_date === 'string' ? input.due_date.trim() : null;
+          if (date === null || (date !== '' && !validDate(date))) {
+            return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+          saveDueDate.run(date, projectId, taskId);
+          return json(res, 200, taskJSON(getTask.get(projectId, taskId)));
+        }
         if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(res, 400, { error: 'Task title is required' });
