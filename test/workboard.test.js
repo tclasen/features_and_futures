@@ -28,6 +28,68 @@ async function start(dbPath) {
   };
 }
 
+test('project priority defaults migrate, persist independently, and only affect subsequent tasks', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'workboard.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Alpha');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing', 1);`);
+    legacy.close();
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = (path, values = {}) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual'
+    });
+    const defaultSelect = content => /<select id="default-task-priority"[^>]*>([\s\S]*?)<\/select>/.exec(content)[0];
+    assert.match(defaultSelect(await get('/projects/1')), /<option selected>Normal<\/option>/);
+    await post('/projects', { name: 'Beta' });
+    const before = await get('/projects/1?filter=Completed&priorityFilter=Normal');
+    const summary = await get('/');
+    const response = await post('/projects/1/default-priority', {
+      priority: 'High', filter: 'Completed', priorityFilter: 'Normal'
+    });
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=Normal');
+    const after = await get(response.headers.get('location'));
+    assert.equal(after.replace(defaultSelect(after), ''), before.replace(defaultSelect(before), ''));
+    assert.equal(await get('/'), summary);
+    assert.match(defaultSelect(await get('/projects/2')), /<option selected>Normal<\/option>/);
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/2/tasks', { title: 'Independent normal' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Inherited low' });
+    await post('/projects/1/tasks/2/rename', { title: 'Renamed high' });
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Invalid' })).status, 400);
+    await post('/projects/1/archive');
+    assert.match(defaultSelect(await get('/projects/1')), /disabled>[\s\S]*<option selected>Low<\/option>/);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'High' })).status, 403);
+    await server.stop();
+    server = await start(dbPath);
+    assert.match(defaultSelect(await get('/projects/1')), /<option selected>Low<\/option>/);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(defaultSelect(await get('/projects/1')), /disabled/);
+    await post('/projects/1/tasks', { title: 'After restore' });
+    const saved = new DatabaseSync(dbPath);
+    assert.deepEqual(saved.prepare('SELECT title, completed, priority, project_id FROM tasks ORDER BY id').all().map(row => ({ ...row })), [
+      { title: 'Existing', completed: 1, priority: 'Normal', project_id: 1 },
+      { title: 'Renamed high', completed: 0, priority: 'High', project_id: 1 },
+      { title: 'Independent normal', completed: 0, priority: 'Normal', project_id: 2 },
+      { title: 'Inherited low', completed: 0, priority: 'Low', project_id: 1 },
+      { title: 'After restore', completed: 0, priority: 'Low', project_id: 1 }
+    ]);
+    saved.close();
+    assert.match(await get('/'), /1\/4 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('combined filters preserve selections, re-evaluate edits, and work in archives', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
   let server;
