@@ -32,6 +32,9 @@
     .task-title { overflow-wrap: anywhere; }
     .task-rename-form { display: flex; flex: 1; align-items: center; gap: 8px; margin: 0; }
     .task-due-form { display: flex; align-items: center; gap: 8px; margin: 0; }
+    .due-range { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+    .due-range label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+    .due-range input { display: block; margin-top: 4px; }
     @media (max-width: 480px) { form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -79,6 +82,12 @@
       <select id="priority-filter" aria-label="Priority filter">
         <option>All</option><option>Low</option><option>Normal</option><option>High</option>
       </select>
+      <form id="due-range-form" class="due-range" novalidate>
+        <label for="due-from">Due from<input id="due-from" type="text" aria-label="Due from" placeholder="YYYY-MM-DD"></label>
+        <label for="due-through">Due through<input id="due-through" type="text" aria-label="Due through" placeholder="YYYY-MM-DD"></label>
+        <button type="submit">Apply due range</button>
+      </form>
+      <div id="due-range-alert" role="alert" aria-live="polite"></div>
       <div id="tasks"></div>
     </section>
   </main>
@@ -93,6 +102,17 @@
     let activeProjectArchived = false;
     let taskLoadVersion = 0;
     let loadedTasks = [];
+    let appliedDueFrom = '';
+    let appliedDueThrough = '';
+
+    function validCalendarDate(value) {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return false;
+      const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= monthDays[month - 1];
+    }
 
     async function loadProjects() {
       const archived = document.querySelector('#project-filter').value === 'archived';
@@ -149,6 +169,11 @@
       activeProjectId = id;
       document.querySelector('#task-filter').value = 'All';
       document.querySelector('#priority-filter').value = 'All';
+      appliedDueFrom = '';
+      appliedDueThrough = '';
+      document.querySelector('#due-from').value = '';
+      document.querySelector('#due-through').value = '';
+      document.querySelector('#due-range-alert').textContent = '';
       document.querySelector('#detail-name').textContent = project.name;
       const isArchived = !!project.archived;
       activeProjectArchived = isArchived;
@@ -180,9 +205,14 @@
     function renderTasks() {
       const filter = document.querySelector('#task-filter').value;
       const priorityFilter = document.querySelector('#priority-filter').value;
+      const dueFrom = appliedDueFrom;
+      const dueThrough = appliedDueThrough;
       const visible = loadedTasks.filter(task =>
         (filter === 'All' || (filter === 'Open' ? !task.completed : !!task.completed)) &&
-        (priorityFilter === 'All' || task.priority === priorityFilter)
+        (priorityFilter === 'All' || task.priority === priorityFilter) &&
+        (!dueFrom && !dueThrough || !!task.due_date) &&
+        (!dueFrom || task.due_date >= dueFrom) &&
+        (!dueThrough || task.due_date <= dueThrough)
       );
       tasks.replaceChildren(...visible.map(task => {
         const row = document.createElement('div');
@@ -334,6 +364,24 @@
     });
     document.querySelector('#task-filter').addEventListener('change', renderTasks);
     document.querySelector('#priority-filter').addEventListener('change', renderTasks);
+    document.querySelector('#due-range-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const from = document.querySelector('#due-from').value.trim();
+      const through = document.querySelector('#due-through').value.trim();
+      const message = document.querySelector('#due-range-alert');
+      if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+        message.textContent = 'Due range must use valid YYYY-MM-DD dates';
+        return;
+      }
+      if (from && through && from > through) {
+        message.textContent = 'Due from must not be after Due through';
+        return;
+      }
+      appliedDueFrom = from;
+      appliedDueThrough = through;
+      message.textContent = '';
+      renderTasks();
+    });
     document.querySelector('#default-priority').addEventListener('change', async event => {
       await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/default-priority`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
