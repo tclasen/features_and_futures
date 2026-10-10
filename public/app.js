@@ -15,7 +15,7 @@ async function request(url, options) {
   return data;
 }
 
-async function renderList() {
+async function renderList(archived = false) {
   app.replaceChildren();
   app.append(element('h1', { text: 'Workboard' }));
   const form = element('form', { className: 'create-form' });
@@ -33,13 +33,27 @@ async function renderList() {
     } catch (error) { alert.textContent = error.message; alert.hidden = false; }
   });
   app.append(form);
+  const filterLabel = element('label', { text: 'Project filter' }); filterLabel.htmlFor = 'project-filter';
+  const filter = element('select'); filter.id = 'project-filter';
+  for (const [value, text] of [['false', 'Active'], ['true', 'Archived']]) { const option = element('option', { text }); option.value = value; filter.append(option); }
+  filter.value = String(archived);
+  filter.addEventListener('change', () => renderList(filter.value === 'true'));
+  app.append(filterLabel, filter);
   const list = element('section', { className: 'project-list' });
-  for (const project of await request('/api/projects')) {
+  for (const project of await request(`/api/projects?archived=${archived}`)) {
     const row = element('article', { testId: 'project-row', className: 'project-row' });
     row.append(element('span', { text: project.name }));
+    const summary = element('span', { text: `${project.completedCount}/${project.totalCount} completed`, testId: 'project-summary' });
+    row.append(summary);
     const open = element('button', { text: 'Open project' }); open.type = 'button';
     open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(open); list.append(row);
+    row.append(open);
+    const archive = element('button', { text: archived ? 'Restore project' : 'Archive project' }); archive.type = 'button';
+    archive.addEventListener('click', async () => {
+      await request(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !archived }) });
+      await renderList(archived);
+    });
+    row.append(archive); list.append(row);
   }
   app.append(list);
 }
@@ -50,11 +64,12 @@ async function renderProject(id) {
   const back = element('button', { text: 'Projects' }); back.type = 'button';
   back.addEventListener('click', () => { location.href = '/'; });
   app.append(back, element('h1', { text: project.name }));
+  if (project.archived) app.append(element('p', { text: 'Archived project' }));
 
   const form = element('form', { className: 'create-form' });
   const label = element('label', { text: 'Task title' });
   const input = element('input'); input.type = 'text'; input.id = 'task-title'; input.autocomplete = 'off'; label.htmlFor = input.id;
-  const create = element('button', { text: 'Create task' }); create.type = 'submit';
+  const create = element('button', { text: 'Create task' }); create.type = 'submit'; create.disabled = Boolean(project.archived);
   const alert = element('p', { className: 'alert' }); alert.setAttribute('role', 'alert'); alert.hidden = true;
   form.append(label, input, create, alert);
   const filterLabel = element('label', { text: 'Task filter' }); filterLabel.htmlFor = 'task-filter';
@@ -68,7 +83,7 @@ async function renderProject(id) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
       const row = element('article', { testId: 'task-row', className: 'task-row' });
       const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed);
-      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`); checkbox.disabled = Boolean(project.archived);
       checkbox.addEventListener('change', async () => {
         try {
           await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
