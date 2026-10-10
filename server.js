@@ -32,6 +32,8 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -116,6 +118,11 @@ ${tasks.length ? `<ul>${tasks.map(task => `<li data-testid="task-row"><span>${es
 <form method="post" action="/projects/${project.id}/tasks/${task.id}">
 <input type="hidden" name="filter" value="${filter}">
 <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+</form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+<input type="hidden" name="filter" value="${filter}">
+<label for="new-task-title-${task.id}">New task title</label>
+<div class="create"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
 </form></li>`).join('')}</ul>` : '<p>No tasks to show.</p>'}`);
 }
 
@@ -170,6 +177,21 @@ const server = http.createServer(async (req, res) => {
       const result = setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
       if (!result.changes) return sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
       res.writeHead(303, { Location: archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived' });
+      return res.end();
+    }
+    const taskRenameMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/rename$/);
+    if (req.method === 'POST' && taskRenameMatch) {
+      const project = getProject.get(taskRenameMatch[1]);
+      if (!project || !getTask.get(taskRenameMatch[2], project.id)) {
+        return sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+      }
+      const form = await readForm(req);
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) return sendHtml(res, 403, projectPage(project, filter, 'Archived project is read-only'));
+      const title = (form.get('title') || '').trim();
+      if (!title) return sendHtml(res, 400, projectPage(project, filter, 'Task title is required'));
+      renameTask.run(title, taskRenameMatch[2], project.id);
+      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       return res.end();
     }
     const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
