@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks support validation, filtering, isolation, archiving, renaming, priorities, project defaults, due dates, ranges, summaries, and restart persistence', async (t) => {
+test('projects and tasks support validation, filters, archiving, renaming, priorities, defaults, dates, moves, summaries, and restart persistence', async (t) => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), 'data', 'test-'));
   // Exercise upgrading the original projects schema without resetting its IDs or names.
@@ -536,7 +536,7 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   await stop();
   base = await start();
   assert.equal(await taskPage(), defaultSaved);
-  assert.equal(await taskPage(paths[1]), otherSaved);
+  assert.equal(await taskPage(paths[1]), otherSaved.replaceAll('Restored project', 'Default preserved'));
   assert.equal(await (await fetch(base)).text(), defaultSavedList);
   assert.equal((await postTask(`${paths[0]}/archive`, {})).status, 303);
   const archivedDefault = await taskPage();
@@ -756,5 +756,94 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   assert.equal(await rangePage(rangeState), savedRangePage);
   assert.match(await (await fetch(base)).text(), new RegExp(`action="${rangeProject}"`));
   assert.match(await rangePage(), /id="due-from" name="rangeFrom" type="text" value=""/);
+
+  // Moving preserves identity and saved data, but appends to destination order.
+  const projectId = (path) => path.split('/').at(-1);
+  const movingTaskId = fixtures[0].path.split('/').at(-1);
+  const destination = paths[1];
+  const destinationBefore = visibleTitles(await taskPage(destination));
+  await postTask(`${destination}/default-priority`, { priority: 'Low' });
+  await postTask(fixtures[0].path, { completed: '1' });
+  const movingState = { ...rangeState, filter: 'Completed' };
+  const sourceBefore = await rangePage(movingState);
+  const destinationSelect = (html, id) => new RegExp(`<select id="destination-project-${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html);
+  const expectedDestinations = paths.map((path, index) =>
+    `<option value="${projectId(path)}">${index === 0 ? 'Default preserved' : 'Second &lt;project&gt; &amp; &quot;team&quot;'}</option>`).join('');
+  assert.equal(destinationSelect(sourceBefore, movingTaskId)[1].trim(), expectedDestinations);
+  assert.match(sourceBefore, /<label for="destination-project-\d+">Destination project<\/label>/);
+  const summary = async (path) => {
+    const html = await (await fetch(base)).text();
+    const row = html.split('data-testid="project-row">').slice(1)
+      .find((content) => content.includes(`action="${path}"`));
+    return /data-testid="project-summary">([^<]+)/.exec(row)[1];
+  };
+  assert.equal(await summary(rangeProject), '2/6 completed');
+  assert.equal(await summary(destination), '0/2 completed');
+  const moved = await postTask(`${fixtures[0].path}/move`, { ...movingState, destinationProject: projectId(destination) });
+  assert.equal(moved.status, 303);
+  const movedLocation = new URL(moved.headers.get('location'), base);
+  assert.equal(movedLocation.pathname, rangeProject);
+  for (const [key, value] of Object.entries(movingState)) assert.equal(movedLocation.searchParams.get(key), value);
+  assert.deepEqual(visibleTitles(await (await fetch(movedLocation)).text()), ['At lower']);
+  const movedPath = `${destination}/tasks/${movingTaskId}`;
+  const movedRow = [...(await taskPage(destination)).matchAll(/data-testid="task-row">([\s\S]*?)<\/div>/g)]
+    .find(([html]) => html.includes('Complete Renamed upper'))[0];
+  assert.match(movedRow, /aria-label="Complete Renamed upper" checked/);
+  assert.match(movedRow, /<option selected>High<\/option>/);
+  assert.match(movedRow, /name="dueDate" type="text" value="2024-03-01"/);
+  assert.ok(movedRow.includes(`action="${movedPath}"`));
+  assert.deepEqual(visibleTitles(await taskPage(destination)), [...destinationBefore, 'Renamed upper']);
+  assert.equal(await summary(rangeProject), '1/5 completed');
+  assert.equal(await summary(destination), '1/3 completed');
+  assert.equal((await postTask(fixtures[0].path, {})).status, 404);
+  assert.equal((await postTask(`${fixtures[0].path}/move`, { destinationProject: projectId(destination) })).status, 404);
+  // Creating after a move must append, including after an older task ID.
+  await postTask(`${destination}/tasks`, { title: 'After moved task' });
+  assert.deepEqual(visibleTitles(await taskPage(destination)), [...destinationBefore, 'Renamed upper', 'After moved task']);
+  const savedSource = await rangePage(movingState);
+  const savedDestination = await taskPage(destination);
+  await stop();
+  base = await start();
+  assert.equal(await rangePage(movingState), savedSource);
+  assert.equal(await taskPage(destination), savedDestination);
+
+  for (const destinationProject of ['', '99999', projectId(destination), 'garbage']) {
+    assert.equal((await postTask(`${movedPath}/move`, { destinationProject })).status, 400);
+    assert.equal(await taskPage(destination), savedDestination);
+  }
+  await postTask(`${rangeProject}/archive`, {});
+  assert.ok(!destinationSelect(await taskPage(destination), movingTaskId)[1].includes(`value="${projectId(rangeProject)}"`));
+  assert.equal((await postTask(`${movedPath}/move`, { destinationProject: projectId(rangeProject) })).status, 400);
+  await postTask(`${destination}/archive`, {});
+  const archivedMoves = await taskPage(destination);
+  assert.match(archivedMoves, /id="destination-project-\d+"[^>]* disabled/);
+  assert.equal((archivedMoves.match(/disabled>Move task/g) || []).length, 4);
+  assert.equal((await postTask(`${movedPath}/move`, { destinationProject: projectId(paths[0]) })).status, 403);
+  await postTask(`${destination}/restore`, {});
+  await postTask(`${rangeProject}/restore`, {});
+  await postTask(`${rangeProject}/rename`, { name: 'Move destination renamed' });
+  assert.ok(destinationSelect(await taskPage(destination), movingTaskId)[1].includes('Move destination renamed'));
+  assert.equal((await postTask(`${movedPath}/move`, { destinationProject: projectId(rangeProject) })).status, 303);
+  assert.deepEqual(visibleTitles(await rangePage()), ['Before', 'At lower', 'After', 'Undated', 'Undated new task', 'Renamed upper']);
+  // Blank dates also survive moves; no active alternatives disable both controls.
+  const undatedId = fixtures[4].path.split('/').at(-1);
+  await postTask(`${fixtures[4].path}/move`, { destinationProject: projectId(destination) });
+  assert.match(await taskPage(destination), new RegExp(`id="task-due-date-${undatedId}" name="dueDate" type="text" value=""`));
+  await postTask(`${paths[0]}/archive`, {});
+  await postTask(`${rangeProject}/archive`, {});
+  const noDestinations = await taskPage(destination);
+  const emptySelect = destinationSelect(noDestinations, undatedId);
+  assert.match(emptySelect[0], / disabled/);
+  assert.equal(emptySelect[1].trim(), '');
+  assert.equal((noDestinations.match(/disabled>Move task/g) || []).length, 4);
+  await postTask(`${rangeProject}/restore`, {});
+  assert.doesNotMatch(destinationSelect(await taskPage(destination), undatedId)[0], / disabled/);
+  assert.equal((await postTask(`${destination}/tasks/${undatedId}/move`, { destinationProject: projectId(rangeProject) })).status, 303);
+  const finalSource = await rangePage();
+  const finalDestination = await taskPage(destination);
+  await stop();
+  base = await start();
+  assert.equal(await rangePage(), finalSource);
+  assert.equal(await taskPage(destination), finalDestination);
 
 });
