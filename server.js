@@ -38,6 +38,8 @@ const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -128,6 +130,12 @@ function projectPage(project, filter = 'All', error = '') {
             aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}
             onchange="this.form.requestSubmit()">
           <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+        </form>
+        <form class="create" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
       </div>`).join('');
   return page(project.name, `
@@ -245,7 +253,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/.exec(pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(pathname);
     if (request.method === 'POST' && taskRoute) {
       const projectId = Number(taskRoute[1]);
       const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -265,10 +273,19 @@ const server = createServer(async (request, response) => {
           insertTask.run(projectId, title);
         } else {
           const taskId = Number(taskRoute[2]);
-          if (!Number.isSafeInteger(taskId) ||
-              !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId).changes) {
+          if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, projectId)) {
             sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
             return;
+          }
+          if (taskRoute[3]) {
+            const title = (form.get('title') || '').trim();
+            if (!title) {
+              sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+              return;
+            }
+            updateTaskTitle.run(title, taskId, projectId);
+          } else {
+            updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId);
           }
         }
         redirectToProject(response, projectId, filter);

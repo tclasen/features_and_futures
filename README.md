@@ -39,7 +39,12 @@ preserves project IDs, URLs, creation order, tasks, and completion state. Archiv
 projects disable rename controls and reject rename requests with HTTP 403;
 restoration enables renaming again.
 
+Each task row supports renaming with a trimmed, required title. The task's ID,
+project, creation order, completion state, and filter membership remain unchanged.
+Checkbox labels reflect the new title. Archived projects disable task rename
+controls and reject rename requests; restoration enables them again.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
-completion toggles, archive/restore, renaming, summaries, legacy schema migration, reloads,
+completion toggles, archive/restore, project and task renaming, summaries, legacy schema migration, reloads,
 and persistence across process restarts.
