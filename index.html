@@ -32,6 +32,7 @@
     #task-message { min-height: 24px; color: #a12727; }
     .project-name { overflow-wrap: anywhere; }
     .back { margin-bottom: 20px; background: #465365; }
+    #rename-form { margin: 0 0 20px; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -53,6 +54,11 @@
       <button class="back" id="back-button" type="button">Projects</button>
       <h1 id="project-title"></h1>
       <p id="archived-notice" hidden>Archived project</p>
+      <form id="rename-form">
+        <label for="new-project-name">New project name</label>
+        <input id="new-project-name" name="name" type="text" autocomplete="off">
+        <button type="submit">Rename project</button>
+      </form>
       <form id="task-form">
         <label for="task-title">Task title</label>
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -92,6 +98,8 @@
       activeProjectId = String(id);
       document.querySelector('#project-title').textContent = project.name;
       const isArchived = Boolean(project.archived);
+      document.querySelector('#new-project-name').value = project.name;
+      document.querySelector('#rename-form').querySelectorAll('input, button').forEach(control => { control.disabled = isArchived; });
       document.querySelector('#archived-notice').hidden = !isArchived;
       document.querySelector('#task-form').querySelectorAll('input, button').forEach(control => { control.disabled = isArchived; });
       document.title = `${project.name} · Workboard`;
@@ -219,6 +227,24 @@
       document.querySelector('#task-message').textContent = '';
       input.value = '';
       await loadTasks();
+    });
+    document.querySelector('#rename-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const input = document.querySelector('#new-project-name');
+      const response = await fetch(`/api/projects/${activeProjectId}`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: input.value })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        document.querySelector('#task-message').textContent = result.error || 'Project name is required';
+        return;
+      }
+      const result = await response.json();
+      document.querySelector('#project-title').textContent = result.name;
+      document.title = `${result.name} · Workboard`;
+      document.querySelector('#task-message').textContent = '';
+      await loadProjects();
     });
     taskFilter.addEventListener('change', renderTasks);
     projectFilter.addEventListener('change', loadProjects);
