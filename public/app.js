@@ -191,6 +191,17 @@ async function renderProject(id) {
       option.textContent = value;
       filter.append(option);
     }
+    const priorityFilterLabel = document.createElement('label');
+    priorityFilterLabel.htmlFor = 'priority-filter';
+    priorityFilterLabel.textContent = 'Priority filter';
+    const priorityFilter = document.createElement('select');
+    priorityFilter.id = 'priority-filter';
+    for (const value of ['All', 'Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priorityFilter.append(option);
+    }
     const list = document.createElement('div');
     list.className = 'task-list';
     const tasksResponse = await fetch(`/api/projects/${id}/tasks`);
@@ -201,6 +212,7 @@ async function renderProject(id) {
       for (const task of tasks) {
         if (filter.value === 'Open' && task.completed) continue;
         if (filter.value === 'Completed' && !task.completed) continue;
+        if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
         const row = document.createElement('article');
         row.className = 'task-row';
         row.dataset.testid = 'task-row';
@@ -277,6 +289,7 @@ async function renderProject(id) {
       }
     }
     filter.addEventListener('change', drawTasks);
+    priorityFilter.addEventListener('change', drawTasks);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const title = input.value.trim();
@@ -296,7 +309,7 @@ async function renderProject(id) {
       drawTasks();
       input.focus();
     });
-    content.append(renameForm, form, filterLabel, filter, list);
+    content.append(renameForm, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
     drawTasks();
   } else {
     const alert = document.createElement('p');
