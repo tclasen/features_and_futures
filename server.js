@@ -36,6 +36,8 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -75,7 +77,9 @@ function page(title, content) {
     select { padding: 8px 12px; font: inherit; border: 1px solid #7b879a; border-radius: 6px; }
     .task-row { padding: 16px 0; border-top: 1px solid #dce2ec; }
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
-    .task-row input { flex: none; width: 20px; height: 20px; }
+    .task-row input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+    .task-rename { margin-top: 16px; }
+    .task-rename label { margin-bottom: 8px; }
     @media (max-width: 560px) { main { margin: 20px 12px; padding: 24px 18px; } .create-controls { flex-direction: column; } }
   </style>
 </head>
@@ -130,7 +134,7 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter = 'All', error = '', renameError = '') {
+function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null) {
   const tasks = listTasks.all(project.id).filter(task =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `
@@ -167,6 +171,15 @@ function projectPage(project, filter = 'All', error = '', renameError = '') {
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
             <input type="hidden" name="filter" value="${filter}">
             <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          </form>
+          <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <div class="create-controls">
+              <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}${taskRenameError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-rename-error-${task.id}"` : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+            </div>
+            ${taskRenameError?.id === task.id ? `<p id="task-rename-error-${task.id}" role="alert">Task title is required</p>` : ''}
           </form>
         </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </div>`);
@@ -222,7 +235,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const projectMatch = /^\/projects\/([1-9]\d*)(?:\/(?:(tasks)(?:\/([1-9]\d*)\/completion)?|(rename)))?$/.exec(url.pathname);
+    const projectMatch = /^\/projects\/([1-9]\d*)(?:\/(?:(tasks)(?:\/([1-9]\d*)\/(?:completion|rename))?|(rename)))?$/.exec(url.pathname);
     if (projectMatch) {
       const id = Number(projectMatch[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -251,9 +264,19 @@ const server = http.createServer(async (request, response) => {
           renameProject.run(name, id);
         } else if (projectMatch[3]) {
           const taskId = Number(projectMatch[3]);
-          if (!Number.isSafeInteger(taskId) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id).changes) {
+          if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, project.id)) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;
+          }
+          if (url.pathname.endsWith('/rename')) {
+            const title = (form.get('title') || '').trim();
+            if (!title) {
+              sendHtml(response, 422, projectPage(currentProject, filter, '', '', { id: taskId }));
+              return;
+            }
+            renameTask.run(title, taskId, project.id);
+          } else {
+            updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
           }
         } else {
           const title = (form.get('title') || '').trim();

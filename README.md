@@ -16,6 +16,8 @@ The project list starts with Active projects. Archive a project to move it to th
 
 Use New project name and Rename project on an active project's page to change its name. Renaming preserves its URL, list position, tasks, and completion summary. Archived projects cannot be renamed until restored.
 
+Each task row has New task title and Rename task controls. Renaming trims the title and preserves the task's project, position, completion state, and filter membership. Blank titles display a validation alert. Archived projects disable task renaming until restored.
+
 Health check:
 
 ```sh
