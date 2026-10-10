@@ -1,3 +1,5 @@
+import { matchesTaskFilters } from './task-filters.js';
+
 const app = document.querySelector('#app');
 
 async function request(path, options) {
@@ -73,6 +75,10 @@ async function renderProject(projectId) {
     <select id="task-filter">
       <option>All</option><option>Open</option><option>Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option>All</option><option>Low</option><option>Normal</option><option>High</option>
+    </select>
     <section id="tasks" aria-label="Tasks"></section>`;
   app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
   const project = await request(`/api/projects/${projectId}`);
@@ -114,13 +120,13 @@ async function renderProject(projectId) {
   const tasksPath = `/api/projects/${projectId}/tasks`;
   const tasks = await request(tasksPath);
   const filter = app.querySelector('#task-filter');
+  const priorityFilter = app.querySelector('#priority-filter');
   const rows = app.querySelector('#tasks');
 
   function renderTasks() {
     rows.replaceChildren();
     for (const task of tasks) {
-      if (filter.value === 'Open' && task.completed) continue;
-      if (filter.value === 'Completed' && !task.completed) continue;
+      if (!matchesTaskFilters(task, filter.value, priorityFilter.value)) continue;
       const row = document.createElement('div');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -218,6 +224,7 @@ async function renderProject(projectId) {
             body: JSON.stringify({ priority: priority.value }),
           });
           task.priority = saved.priority;
+          renderTasks();
         } catch (error) {
           showAlert(error.message);
         } finally {
@@ -233,6 +240,7 @@ async function renderProject(projectId) {
   }
 
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   renderTasks();
   const form = app.querySelector('#create-task');
   const input = app.querySelector('#task-title');

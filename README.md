@@ -15,6 +15,11 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
 On a project page, create tasks, toggle completion, and filter by All, Open, or
 Completed. Tasks belong to their project and retain their saved state on restart.
+Priority filter offers All, Low, Normal, and High, and combines with Task filter.
+Both filters start at All when opening a project and remain selected during task
+edits. Completion and priority changes immediately update matching rows; filtering
+preserves creation order and leaves saved data and completion summaries unchanged.
+Both filters remain available in archived projects.
 The project list defaults to Active; switch Project filter to Archived to open or
 restore archived projects. Archiving preserves tasks and makes task creation and
 completion read-only until restoration. Each row summarizes all completed tasks.
