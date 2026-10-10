@@ -12,6 +12,8 @@ Open a project to create tasks and toggle their completion checkboxes. The Task 
 
 The Project filter defaults to Active. Archive projects from their rows, or choose Archived to open or restore them. Archived project pages retain task filtering but cannot create tasks or change completion. Every project row shows completed/total task counts, independent of task filters. Archive state and all tasks survive restarts.
 
+Active project pages also offer New project name and Rename project. Names are trimmed and cannot be blank. Renaming preserves the project's URL, list position, tasks, and summary, and survives restarts. Archived projects cannot be renamed until restored.
+
 `GET /health` returns `{"status":"ok"}`.
 
-Run integration tests with `npm test`. Tests use an isolated temporary database and verify schema migration, project/task validation, ordering, project isolation, completion summaries, archive write protection, restoration, page serving, and persistence across process restarts.
+Run integration tests with `npm test`. Tests use an isolated temporary database and verify schema migration, project/task validation, rename identity and data preservation, ordering, project isolation, completion summaries, archive write protection, restoration, page serving, and persistence across process restarts.

@@ -115,6 +115,42 @@ async function showProject(id) {
   const project = await api(`/api/projects/${id}`);
   app.querySelector('h1').textContent = project.name;
   document.title = `${project.name} — Workboard`;
+  const renameForm = document.createElement('form');
+  renameForm.innerHTML = `
+    <label for="new-project-name">New project name</label>
+    <div class="create-controls">
+      <input id="new-project-name" name="name" type="text" autocomplete="off">
+      <button type="submit">Rename project</button>
+    </div>
+  `;
+  const renameInput = renameForm.querySelector('input');
+  const renameButton = renameForm.querySelector('button');
+  renameInput.disabled = Boolean(project.archived);
+  renameButton.disabled = Boolean(project.archived);
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    const name = renameInput.value.trim();
+    if (!name) return showError('Project name is required');
+    renameButton.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      Object.assign(project, saved);
+      app.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} — Workboard`;
+      renameInput.value = '';
+      app.querySelector('[role="alert"]').hidden = true;
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      renameButton.disabled = Boolean(project.archived);
+    }
+  });
+  app.append(renameForm);
   const section = document.createElement('section');
   section.innerHTML = `
     <form>
