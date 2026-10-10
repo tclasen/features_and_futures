@@ -34,6 +34,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const page = await readFile(path.join(here, 'index.html'));
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -122,13 +123,22 @@ const server = http.createServer(async (req, res) => {
     try {
       let body = '';
       for await (const chunk of req) body += chunk;
-      const completed = JSON.parse(body).completed;
-      if (typeof completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
+      const payload = JSON.parse(body);
       const projectId = Number(taskRoute[1]), taskId = Number(taskRoute[2]);
-      if (findProject.get(projectId)?.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
-      updateTask.run(completed ? 1 : 0, taskId, projectId);
+      const project = findProject.get(projectId);
+      if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
       const task = findTask.get(taskId, projectId);
-      return task ? send(res, 200, JSON.stringify(task)) : send(res, 404, JSON.stringify({ error: 'Task not found' }));
+      if (!task) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+      if (Object.hasOwn(payload, 'title')) {
+        const title = String(payload.title ?? '').trim();
+        if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+        renameTask.run(title, taskId, projectId);
+      } else {
+        if (typeof payload.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
+        updateTask.run(payload.completed ? 1 : 0, taskId, projectId);
+      }
+      return send(res, 200, JSON.stringify(findTask.get(taskId, projectId)));
     } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
   if (req.method === 'GET' && /^\/api\/projects\/\d+$/.test(url.pathname)) {
