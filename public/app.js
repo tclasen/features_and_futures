@@ -168,7 +168,53 @@ function renderTasks() {
         showError(detailError, err.message);
       } finally { checkbox.disabled = archivedProject; }
     });
-    row.append(checkbox, title);
+    const information = document.createElement('div');
+    information.className = 'task-information';
+    information.append(checkbox, title);
+    const taskRenameForm = document.createElement('form');
+    taskRenameForm.className = 'task-rename-form';
+    const label = document.createElement('label');
+    label.htmlFor = `new-task-title-${task.id}`;
+    label.textContent = 'New task title';
+    const newTitle = document.createElement('input');
+    newTitle.id = label.htmlFor;
+    newTitle.type = 'text';
+    newTitle.value = task.title;
+    newTitle.disabled = archivedProject;
+    const rename = document.createElement('button');
+    rename.type = 'submit';
+    rename.textContent = 'Rename task';
+    rename.disabled = archivedProject;
+    const controls = document.createElement('div');
+    controls.className = 'form-controls';
+    controls.append(newTitle, rename);
+    taskRenameForm.append(label, controls);
+    taskRenameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (archivedProject || activeProjectId === null) return;
+      const title = newTitle.value.trim();
+      if (!title) {
+        showError(detailError, 'Task title is required');
+        newTitle.focus();
+        return;
+      }
+      const projectId = activeProjectId;
+      const version = renderVersion;
+      rename.disabled = true;
+      showError(detailError, '');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        if (version !== renderVersion) return;
+        tasks = tasks.map((item) => item.id === saved.id ? saved : item);
+        renderTasks();
+      } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
+      finally { rename.disabled = archivedProject; }
+    });
+    row.append(information, taskRenameForm);
     taskList.append(row);
   }
 }

@@ -14,6 +14,8 @@ The project list initially shows Active projects. Each row includes its complete
 
 Active project pages provide New project name and Rename project controls. Renaming trims whitespace and preserves the project URL, list position, tasks, and completion summary. Blank names show an alert; archived projects disable renaming until restored. Names persist across reloads and restarts.
 
+Each task row provides New task title and Rename task controls. Renaming trims whitespace and preserves the task's project, position, completion and summary counts. Blank titles show an alert. Archived projects disable these controls until restored. Task titles persist across reloads and restarts.
+
 Health check:
 
 ```sh

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects migrate, rename preserves identity, and tasks, archives and summaries persist across restarts', async () => {
+test('project and task renames preserve identity, ownership, completion and summaries across archives and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
   legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
@@ -71,6 +71,9 @@ test('projects migrate, rename preserves identity, and tasks, archives and summa
     const completeTask = (project, task, completed) => fetch(taskUrl(project, task.id), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
     });
+    const renameTask = (project, task, title) => fetch(taskUrl(project, task.id), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    });
     const readTasks = async (project) => (await fetch(taskUrl(project))).json();
     for (const title of ['', '  \t\n']) {
       const invalid = await createTask(first, title);
@@ -80,7 +83,7 @@ test('projects migrate, rename preserves identity, and tasks, archives and summa
     assert.deepEqual(await readTasks(first), []);
     const taskResponse = await createTask(first, '  First task  ');
     assert.equal(taskResponse.status, 201);
-    const task = await taskResponse.json();
+    let task = await taskResponse.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
     const nextTask = await (await createTask(first, '<Another & task>')).json();
@@ -90,10 +93,29 @@ test('projects migrate, rename preserves identity, and tasks, archives and summa
     assert.equal((await completeTask(second, task, true)).status, 404);
     assert.equal((await completeTask(first, task, 'true')).status, 400);
     assert.deepEqual(await readTasks(first), [task, nextTask]);
-    const completed = await (await completeTask(first, task, true)).json();
+    let completed = await (await completeTask(first, task, true)).json();
     assert.deepEqual(completed, { ...task, completed: true });
     assert.deepEqual(await (await completeTask(first, task, false)).json(), task);
     await completeTask(first, task, true);
+    for (const title of ['', '  \t\n', null, 42]) {
+      const invalid = await renameTask(first, task, title);
+      assert.equal(invalid.status, 400);
+      assert.match((await invalid.json()).error, /Task title is required/);
+      assert.deepEqual(await readTasks(first), [completed, nextTask]);
+    }
+    assert.equal((await renameTask(second, task, 'Wrong project')).status, 404);
+    assert.equal((await renameTask(first, { id: 99999 }, 'Missing task')).status, 404);
+    const renamedTask = await renameTask(first, task, '  Renamed <task> & title  ');
+    assert.equal(renamedTask.status, 200);
+    completed = { ...completed, title: 'Renamed <task> & title' };
+    task = { ...task, title: completed.title };
+    assert.deepEqual(await renamedTask.json(), completed);
+    assert.deepEqual(await readTasks(first), [completed, nextTask]);
+    assert.deepEqual(await readTasks(second), [otherTask]);
+    assert.deepEqual(await (await renameTask(first, nextTask, '  Renamed open task  ')).json(), {
+      ...nextTask, title: 'Renamed open task',
+    });
+    nextTask.title = 'Renamed open task';
     const archive = (project, archived) => fetch(`${base}/api/projects/${project.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
     });
@@ -122,6 +144,7 @@ test('projects migrate, rename preserves identity, and tasks, archives and summa
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), { ...first, archived: 1 });
     assert.equal((await createTask(first, 'Cannot create while archived')).status, 409);
     assert.equal((await completeTask(first, task, false)).status, 409);
+    assert.equal((await renameTask(first, task, 'Cannot rename while archived')).status, 409);
     assert.deepEqual(await readTasks(first), [completed, nextTask]);
     await stop();
     base = await start();
@@ -137,6 +160,12 @@ test('projects migrate, rename preserves identity, and tasks, archives and summa
     assert.equal((await fetch(`${base}/api/projects/99999`)).status, 404);
     assert.deepEqual(await (await archive(first, false)).json(), first);
     assert.deepEqual(await readTasks(first), [completed, nextTask]);
+    const restoredTitle = 'Restored task';
+    assert.deepEqual(await (await renameTask(first, task, `  ${restoredTitle}  `)).json(), {
+      ...completed, title: restoredTitle,
+    });
+    completed = { ...completed, title: restoredTitle };
+    task = { ...task, title: restoredTitle };
     assert.deepEqual(await (await rename(first, '  Restored project  ')).json(), { ...first, name: 'Restored project' });
     first = { ...first, name: 'Restored project' };
     assert.deepEqual(await (await completeTask(first, task, false)).json(), task);
