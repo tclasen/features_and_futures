@@ -153,15 +153,38 @@ async function renderProject(id) {
     for (const value of ['All', 'Low', 'Normal', 'High']) {
       priorityFilter.append(element('option', value, { value }));
     }
+    const dueFromLabel = element('label', 'Due from', { for: 'due-from' });
+    const dueFrom = element('input', undefined, { id: 'due-from', type: 'text', 'aria-label': 'Due from' });
+    const dueThroughLabel = element('label', 'Due through', { for: 'due-through' });
+    const dueThrough = element('input', undefined, { id: 'due-through', type: 'text', 'aria-label': 'Due through' });
+    const applyDueRange = element('button', 'Apply due range', { type: 'button' });
+    let appliedDueRange = { from: '', through: '' };
     const list = element('ul');
     let tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const normalizeDateBoundary = (value) => {
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+      if (!match) return null;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (year < 1 || month < 1 || month > 12) return null;
+      const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return day >= 1 && day <= daysInMonth[month - 1] ? trimmed : null;
+    };
     const renderTasks = () => {
       const matching = tasks.filter((task) => {
         const matchesCompletion = filter.value === 'All'
           || (filter.value === 'Completed' ? Boolean(task.completed) : !task.completed);
         const matchesPriority = priorityFilter.value === 'All'
           || (task.priority || 'Normal') === priorityFilter.value;
-        return matchesCompletion && matchesPriority;
+        const matchesDueRange = !appliedDueRange.from && !appliedDueRange.through
+          || Boolean(task.dueDate)
+            && (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
+            && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
+        return matchesCompletion && matchesPriority && matchesDueRange;
       });
       list.replaceChildren();
       for (const task of matching) {
@@ -270,6 +293,25 @@ async function renderProject(id) {
     };
     filter.addEventListener('change', renderTasks);
     priorityFilter.addEventListener('change', renderTasks);
+    applyDueRange.addEventListener('click', () => {
+      const from = normalizeDateBoundary(dueFrom.value);
+      const through = normalizeDateBoundary(dueThrough.value);
+      if (from === null || through === null) {
+        alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+        alert.hidden = false;
+        return;
+      }
+      if (from && through && from > through) {
+        alert.textContent = 'Due from must not be after Due through';
+        alert.hidden = false;
+        return;
+      }
+      alert.hidden = true;
+      appliedDueRange = { from, through };
+      dueFrom.value = from;
+      dueThrough.value = through;
+      renderTasks();
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       alert.hidden = true;
@@ -288,7 +330,8 @@ async function renderProject(id) {
       }
     });
     renderTasks();
-    app.append(renameForm, alert, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    app.append(renameForm, alert, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter,
+      dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
   } catch {
     app.append(element('h1', 'Project not found'));
     const back = element('button', 'Projects', { type: 'button' });
