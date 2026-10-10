@@ -52,14 +52,14 @@ test('priorities migrate, remain independent, persist and respect archived proje
     await start();
     await post('/projects/1/tasks', { title: 'New' });
     const initial = await get('/projects/1');
-    assert.equal(initial.split(options).length - 1, 2);
+    assert.equal(initial.split(options).length - 1, 3);
     assert.match(initial, /<label for="task-priority-1">Task priority<\/label>/);
     const other = await get('/projects/2');
     const summaries = await get('/');
     const result = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
     assert.equal(result.status, 303);
     assert.equal(result.headers.get('location'), '/projects/1?filter=Completed');
-    const high = initial.replace(options, '<option>Low</option><option>Normal</option><option selected>High</option>');
+    const high = initial.replace(/(<select id="task-priority-1"[^>]*>\s*)[^<]*(?:<option[^>]*>[^<]*<\/option>){3}/, '$1<option>Low</option><option>Normal</option><option selected>High</option>');
     assert.equal(await get('/projects/1'), high);
     assert.equal(await get('/projects/2'), other);
     assert.equal(await get('/'), summaries);
@@ -73,7 +73,7 @@ test('priorities migrate, remain independent, persist and respect archived proje
     const renamed = high.replaceAll('Existing', 'Renamed');
     assert.equal(await get('/projects/1'), renamed);
     await post('/projects/1/tasks/3/priority', { priority: 'Low' });
-    const saved = renamed.replace(options, '<option selected>Low</option><option>Normal</option><option>High</option>');
+    const saved = renamed.replace(/(<select id="task-priority-3"[^>]*>\s*)[^<]*(?:<option[^>]*>[^<]*<\/option>){3}/, '$1<option selected>Low</option><option>Normal</option><option>High</option>');
     assert.equal(await get('/projects/1'), saved);
     await stop();
     await start();
