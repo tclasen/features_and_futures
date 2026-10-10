@@ -26,6 +26,30 @@ db.exec(`
   )
 `);
 
+// Keep a task's position for every project it has belonged to. This lets a
+// task return to its earlier place while its current fields remain on tasks.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+`);
+const missingPositions = db.prepare(`
+  SELECT t.id, t.project_id, t.created_at, t.rowid AS task_rowid
+  FROM tasks t
+  LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE p.task_id IS NULL
+  ORDER BY t.project_id, t.created_at, t.rowid
+`).all();
+const insertTaskPosition = db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+const nextProjectPosition = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS position FROM task_project_positions WHERE project_id = ?');
+for (const task of missingPositions) {
+  insertTaskPosition.run(task.id, task.project_id, nextProjectPosition.get(task.project_id).position);
+}
+
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(column => column.name);
 if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name);
@@ -42,14 +66,19 @@ const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const updateProjectArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+  FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position`);
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
 const updateTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
+const getTaskPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const insertPositionAtEnd = db.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+  VALUES (?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM task_project_positions WHERE project_id = ?))`);
 
 function isValidDueDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -158,6 +187,7 @@ const server = createServer(async (request, response) => {
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
       const task = { id: randomUUID(), title, completed: 0, priority: getProject.get(projectId).default_task_priority };
       insertTask.run(task.id, projectId, title, Date.now(), task.priority);
+      insertPositionAtEnd.run(task.id, projectId, projectId);
       return sendJson(response, 201, task);
     }
   }
@@ -222,7 +252,10 @@ const server = createServer(async (request, response) => {
     if (!destination || destination.archived || destination.id === source.id) {
       return sendJson(response, 400, { error: 'Invalid destination project' });
     }
-    moveTask.run(destination.id, Date.now(), task.id);
+    if (!getTaskPosition.get(task.id, destination.id)) {
+      insertPositionAtEnd.run(task.id, destination.id, destination.id);
+    }
+    moveTask.run(destination.id, task.id);
     return sendJson(response, 200, { ...task, project_id: destination.id });
   }
   if (request.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
