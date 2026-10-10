@@ -22,6 +22,7 @@ db.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -30,6 +31,7 @@ if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER T
 if (!projectColumns.some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+if (!taskColumns.some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 
 // Older runs could create the same project repeatedly. Keep the first project
 // ID and move any tasks from duplicates onto it before removing duplicate rows.
@@ -96,7 +98,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -131,6 +133,22 @@ const server = http.createServer(async (req, res) => {
       if (!['Low', 'Normal', 'High'].includes(input.priority)) return json(res, 400, { error: 'Invalid task priority' });
       db.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(input.priority, Number(taskMatch[1]));
       return json(res, 200, { ok: true, priority: input.priority });
+    }
+    if (Object.hasOwn(input, 'dueDate')) {
+      let dueDate = typeof input.dueDate === 'string' ? input.dueDate.trim() : '';
+      if (dueDate) {
+        const match = dueDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const [, yearText, monthText, dayText] = match;
+        const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) {
+          return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        }
+      } else dueDate = null;
+      db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, dueDate });
     }
     if (typeof input.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
     db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]));
