@@ -41,7 +41,7 @@ async function showProjects() {
       });
       input.value = '';
       alert.hidden = true;
-      await renderProjects(filter.value, list);
+      await renderProjects(filter.value, list, renderState);
     } catch (error) {
       alert.textContent = error.message;
       alert.hidden = false;
@@ -51,13 +51,16 @@ async function showProjects() {
   const filter = element('select', { id: 'project-filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', { value }, value));
   const list = element('div', { id: 'project-list', class: 'project-list' });
-  filter.addEventListener('change', () => renderProjects(filter.value, list));
+  const renderState = { version: 0 };
+  filter.addEventListener('change', () => renderProjects(filter.value, list, renderState));
   app.append(form, alert, filterLabel, filter, list);
-  await renderProjects(filter.value, list);
+  await renderProjects(filter.value, list, renderState);
 }
 
-async function renderProjects(filter, list) {
+async function renderProjects(filter, list, renderState) {
+  const version = ++renderState.version;
   const projects = await request('/api/projects');
+  if (version !== renderState.version) return;
   list.replaceChildren();
   for (const project of projects.filter((item) => item.archived === (filter === 'Archived'))) {
     const row = element('div', { 'data-testid': 'project-row', class: 'project-row' });
@@ -72,7 +75,7 @@ async function renderProjects(filter, list) {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ archived: !project.archived }),
       });
-      await renderProjects(filter, list);
+      row.remove();
     });
     row.append(archive);
     list.append(row);
