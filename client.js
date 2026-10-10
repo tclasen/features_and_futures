@@ -24,6 +24,10 @@ function showError(message) {
   app.prepend(alert);
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
 function navigate(path) {
   history.pushState({}, '', path);
   render();
@@ -48,12 +52,21 @@ async function showProjects() {
     option.value = value;
     filter.append(option);
   }
+  const searchForm = element('form', { className: 'create-form' });
+  const searchLabel = element('label', { text: 'Project search' });
+  searchLabel.htmlFor = 'project-search';
+  const searchInput = element('input', { type: 'text' });
+  searchInput.id = 'project-search';
+  const searchButton = element('button', { type: 'submit', text: 'Search projects' });
+  searchForm.append(searchLabel, searchInput, searchButton);
+  let appliedSearch = '';
   const list = element('div', { className: 'project-list' });
   const drawProjects = async () => {
     const archived = filter.value === 'Archived';
     const projects = await request(`/api/projects?archived=${archived}`);
     list.replaceChildren();
-    for (const project of projects) {
+    const query = asciiLower(appliedSearch);
+    for (const project of projects.filter(item => asciiLower(item.name).includes(query))) {
       const row = element('article', { className: 'project-row' });
       row.dataset.testid = 'project-row';
       const details = element('div', { className: 'project-details' });
@@ -81,6 +94,11 @@ async function showProjects() {
     }
   };
   filter.addEventListener('change', drawProjects);
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedSearch = searchInput.value.trim();
+    drawProjects();
+  });
   await drawProjects();
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -101,7 +119,7 @@ async function showProjects() {
       showError(error.message);
     }
   });
-  app.replaceChildren(heading, form, filterLabel, filter, list);
+  app.replaceChildren(heading, form, filterLabel, filter, searchForm, list);
 }
 
 async function showProject(id) {
@@ -209,6 +227,19 @@ async function showProject(id) {
     dueRangeForm.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
     let appliedDueFrom = '';
     let appliedDueThrough = '';
+    const taskSearchForm = element('form', { className: 'create-form' });
+    const taskSearchLabel = element('label', { text: 'Task search' });
+    taskSearchLabel.htmlFor = 'task-search';
+    const taskSearchInput = element('input', { type: 'text' });
+    taskSearchInput.id = 'task-search';
+    const taskSearchButton = element('button', { type: 'submit', text: 'Search tasks' });
+    taskSearchForm.append(taskSearchLabel, taskSearchInput, taskSearchButton);
+    let appliedTaskSearch = '';
+    taskSearchForm.addEventListener('submit', event => {
+      event.preventDefault();
+      appliedTaskSearch = taskSearchInput.value.trim();
+      drawTasks();
+    });
     const isValidCalendarDate = value => {
       const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
       if (!match) return false;
@@ -247,6 +278,7 @@ async function showProject(id) {
         if (filter.value === 'Open' && completed) continue;
         if (filter.value === 'Completed' && !completed) continue;
         if (priorityFilter.value !== 'All' && (task.priority || 'Normal') !== priorityFilter.value) continue;
+        if (!asciiLower(task.title).includes(asciiLower(appliedTaskSearch))) continue;
         if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
         if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
         if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
@@ -396,7 +428,7 @@ async function showProject(id) {
       status.className = 'archived-status';
       app.append(status);
     }
-    app.append(form, defaultPriorityLabel, defaultPriority, filterLabel, filter, priorityFilterLabel, priorityFilter, dueRangeForm, list);
+    app.append(form, defaultPriorityLabel, defaultPriority, filterLabel, filter, priorityFilterLabel, priorityFilter, dueRangeForm, taskSearchForm, list);
   } catch {
     app.replaceChildren(element('h1', { text: 'Project not found' }));
     const back = element('button', { type: 'button', text: 'Projects' });
