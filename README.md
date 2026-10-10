@@ -63,3 +63,12 @@ created afterward in that project. Existing tasks and both selected filters
 remain unchanged. Defaults persist through reloads, restarts, renaming, archival,
 and restoration. Archived projects display the saved default but disable changes;
 the server also rejects edits until restoration.
+
+Each task has an optional Task due date textbox and Save due date button. Blank
+values clear the date. Nonempty values are trimmed and must be real Gregorian
+calendar dates in YYYY-MM-DD format, with years 0001 through 9999. Dates are
+stored as calendar-day strings without timezone conversion. Invalid dates show
+an alert and keep the saved date. Dates persist across restarts and renaming;
+saving them preserves both filters and all other task data. Existing tasks
+start without dates. Archived projects disable date editing in the browser and
+on the server; restoration preserves dates and enables editing.

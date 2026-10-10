@@ -56,7 +56,7 @@ export function projectsPage(projects, error = '', submittedName = '', filter = 
 
 export function projectPage(project, tasks = [], {
   filter = 'All', priorityFilter = 'All', error = '', submittedTitle = '',
-  renameState = {}, taskRenameState = {},
+  renameState = {}, taskRenameState = {}, taskDueDateState = {},
 } = {}) {
   return page(project.name, `
     <form action="/" method="get"><button class="secondary" type="submit">Projects</button></form>
@@ -131,6 +131,16 @@ export function projectPage(project, tasks = [], {
               <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
             </div>
             ${taskRenameState.taskId === task.id && taskRenameState.error ? `<p class="alert" role="alert">${escapeHtml(taskRenameState.error)}</p>` : ''}
+          </form>
+          <form class="task-due-date-form" action="/projects/${project.id}/tasks/${task.id}/due-date" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+            <label for="task-due-date-${task.id}">Task due date</label>
+            <div class="form-controls">
+              <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date ?? '')}"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+            </div>
+            ${taskDueDateState.taskId === task.id && taskDueDateState.error ? `<p class="alert" role="alert">${escapeHtml(taskDueDateState.error)}</p>` : ''}
           </form>
         </article>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </section>`);

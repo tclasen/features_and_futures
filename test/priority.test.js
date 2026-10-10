@@ -45,8 +45,8 @@ test('existing tasks migrate to Normal without changing identity or completion',
     }
     store = openWorkboardStore(databasePath);
     const expected = [
-      { id: 12, title: 'Done', completed: 1, priority: 'Normal' },
-      { id: 15, title: 'Pending', completed: 0, priority: 'Normal' },
+      { id: 12, title: 'Done', completed: 1, priority: 'Normal', due_date: null },
+      { id: 15, title: 'Pending', completed: 0, priority: 'Normal', due_date: null },
     ];
     assert.deepEqual(store.tasks.list(7).map((task) => ({ ...task })), expected);
     assert.equal(store.list('Archived')[0].completed_count, 1);
