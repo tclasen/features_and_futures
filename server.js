@@ -17,7 +17,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+// Existing tasks receive the same default priority as newly created tasks.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -64,7 +69,7 @@ function page(title, content) {
     .task-row form { margin: 0; width: 100%; }
     .task-row form input { max-width: 100%; margin-bottom: 12px; }
     button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #bd7600; outline-offset: 3px; }
-    button:disabled, input:disabled { cursor: not-allowed; opacity: 0.6; }
+    button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: 0.6; }
     .project-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; border-top: 1px solid #dce1e8; }
     .project-row span { overflow-wrap: anywhere; min-width: 0; }
     .project-row form { margin: 0; flex-shrink: 0; }
@@ -126,6 +131,10 @@ function projectPage(project, error = '') {
         <input type="checkbox" aria-label="${escapeHtml(`Complete ${task.title}`)}"
           data-completion-url="/projects/${project.id}/tasks/${task.id}/completion"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
         <span>${escapeHtml(task.title)}</span>
+        <label for="task-priority-${task.id}">Task priority</label>
+        <select id="task-priority-${task.id}" data-priority-url="/projects/${project.id}/tasks/${task.id}/priority" data-saved-priority="${task.priority}"${project.archived ? ' disabled' : ''}>
+          ${['Low', 'Normal', 'High'].map(priority => `<option${priority === task.priority ? ' selected' : ''}>${priority}</option>`).join('')}
+        </select>
         <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post" data-task-rename>
           <label for="new-task-title-${task.id}">New task title</label>
           <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
@@ -188,6 +197,28 @@ function projectPage(project, error = '') {
             alert.textContent = 'Could not rename task. Please try again.';
           } finally {
             button.disabled = false;
+          }
+        });
+      });
+    </script>
+    <script>
+      document.querySelectorAll('[data-priority-url]').forEach(select => {
+        select.addEventListener('change', async () => {
+          const priority = select.value;
+          select.disabled = true;
+          const alert = document.getElementById('task-error');
+          alert.textContent = '';
+          try {
+            const response = await fetch(select.dataset.priorityUrl, {
+              method: 'POST', body: new URLSearchParams({ priority })
+            });
+            if (!response.ok) throw new Error('Priority update failed');
+            select.dataset.savedPriority = priority;
+          } catch {
+            select.value = select.dataset.savedPriority;
+            alert.textContent = 'Could not save task priority. Please try again.';
+          } finally {
+            select.disabled = false;
           }
         });
       });
@@ -264,7 +295,7 @@ const server = http.createServer(async (req, res) => {
       renameProject.run(name, project.id);
       res.writeHead(303, { Location: `/projects/${project.id}` });
       res.end();
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename))?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename|priority))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(Number(parts[2]));
       if (!project) {
@@ -284,6 +315,15 @@ const server = http.createServer(async (req, res) => {
         }
         createTask.run(project.id, title);
         res.writeHead(303, { Location: `/projects/${project.id}` });
+        res.end();
+      } else if (parts[5] === 'priority') {
+        const priority = form.get('priority');
+        if (!['Low', 'Normal', 'High'].includes(priority)) {
+          html(res, 400, page('Invalid priority', '<h1>Invalid task priority</h1>'));
+          return;
+        }
+        const result = setTaskPriority.run(priority, Number(parts[4]), project.id);
+        res.writeHead(result.changes ? 204 : 404);
         res.end();
       } else if (parts[5] === 'rename') {
         const title = (form.get('title') || '').trim();
