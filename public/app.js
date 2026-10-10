@@ -107,6 +107,12 @@ async function renderProject(id) {
     const alert = element('p', '', { role: 'alert', hidden: '' });
     form.append(label, input, submit);
 
+    const defaultPriorityLabel = element('label', 'Default task priority', { for: 'default-task-priority' });
+    const defaultPriority = element('select', undefined, { id: 'default-task-priority' });
+    for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(element('option', value, { value }));
+    defaultPriority.value = project.defaultPriority;
+    defaultPriority.disabled = project.archived;
+
     const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
     const filter = element('select', undefined, { id: 'task-filter' });
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value: value.toLowerCase() }));
@@ -114,7 +120,23 @@ async function renderProject(id) {
     const priorityFilter = element('select', undefined, { id: 'priority-filter' });
     for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value: value.toLowerCase() }));
     const rows = element('section', undefined, { 'aria-label': 'Tasks' });
-    app.append(renameForm, form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
+    app.append(renameForm, defaultPriorityLabel, defaultPriority, form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
+
+    defaultPriority.addEventListener('change', async () => {
+      const previous = project.defaultPriority;
+      defaultPriority.disabled = true;
+      try {
+        const updated = await request(`/api/projects/${id}/default-priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
+        project.defaultPriority = updated.defaultPriority;
+        alert.hidden = true;
+      } catch (error) {
+        defaultPriority.value = previous;
+        alert.textContent = error.message;
+        alert.hidden = false;
+      } finally {
+        defaultPriority.disabled = project.archived;
+      }
+    });
 
     renameForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -229,10 +251,11 @@ async function renderProject(id) {
         return;
       }
       try {
-        await request(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+        const created = await request(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
         input.value = '';
         alert.hidden = true;
-        await loadTasks();
+        tasks.push(created);
+        showTasks();
       } catch (error) {
         alert.textContent = error.message;
         alert.hidden = false;
