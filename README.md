@@ -15,7 +15,7 @@ to preserve projects, archive state, tasks, and completion state across restarts
 Open a project to create tasks, toggle their completion checkboxes, and choose
 All, Open, or Completed in the Task filter. Tasks belong to their project and
 appear in creation order. The Priority filter offers All, Low, Normal, and High;
-only tasks matching both filters appear. Opening a project starts both filters
+only tasks matching both filters and the applied due range appear. Opening a project starts both filters
 at All. Filter selections stay in place when either filter changes or a task is
 edited; changing completion or priority immediately updates the matching rows.
 Both filters work while archived, and project summaries always count all tasks.
@@ -48,6 +48,14 @@ dates show an alert and preserve the saved date. Dates persist without timezone
 conversion and leave other task data, filters, and summaries unchanged. Archived
 projects disable due-date edits until restored.
 
+Use Due from, Due through, and Apply due range for inclusive calendar-date
+filtering. Either boundary can be blank; with any boundary, undated tasks are
+excluded. Clearing both boundaries includes undated tasks again. Invalid dates
+or reversed boundaries show an alert and preserve the previous applied range.
+The range intersects completion and priority filters, stays applied across edits
+and filter changes, and works in archived projects. Reopening a project from the
+list starts with empty boundaries. Summaries continue to count all tasks.
+
 The Project filter starts with Active projects. Archive a project to move it to
 Archived, or restore it to return it to Active. Each project shows its completed
 and total task counts. Archived projects remain readable with working task
@@ -75,4 +83,5 @@ and data preservation, task priorities including migration and persistence, and
 combined completion/priority filtering with edits and archive/restore, and
 project default priorities with migration, inheritance, and persistence, and
 optional due dates with calendar validation, clearing, migration, independence,
-filter preservation, and persistence through archive/restore and restarts.
+filter preservation, and persistence through archive/restore and restarts, plus
+inclusive due-range intersections, validation, and preservation across edits.
