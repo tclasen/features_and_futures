@@ -23,6 +23,17 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
+// Keep each task's position in every project it has belonged to. The migration
+// seeds the current ordering so introducing this feature does not reorder data.
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, sort_order FROM tasks`);
 
 function canonicalDueDate(value) {
   const date = value.trim();
@@ -125,8 +136,12 @@ const server = createServer(async (request, response) => {
     if (source.archived || destination.archived) { json(response, 403, { error: 'Archived projects cannot move tasks' }); return; }
     const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
     if (!task) { json(response, 404, { error: 'Task not found' }); return; }
-    const nextOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
-    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+    let destinationPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId)?.position;
+    if (destinationPosition === undefined) {
+      destinationPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value;
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, destinationPosition);
+    }
+    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, destinationPosition, taskId, sourceId);
     json(response, 200, { id: taskId, project_id: destinationId });
     return;
   }
@@ -140,6 +155,7 @@ const server = createServer(async (request, response) => {
     const defaultPriority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
     const nextOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
     const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, defaultPriority, nextOrder);
+    db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, nextOrder);
     json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: defaultPriority });
     return;
   }
