@@ -11,13 +11,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch {}
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch {}
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -27,12 +30,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch {}
 const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
   FROM projects p ORDER BY p.id`);
@@ -78,7 +81,7 @@ const server = http.createServer(async (req, res) => {
         const data = JSON.parse(body);
         const title = typeof data.title === 'string' ? data.title.trim() : '';
         if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-        const result = createTask.run(projectId, title);
+        const result = createTask.run(projectId, title, project.default_priority);
         return sendJson(res, 201, getTask.get(Number(result.lastInsertRowid), projectId));
       } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
     }
@@ -93,6 +96,10 @@ const server = http.createServer(async (req, res) => {
     try {
       for await (const chunk of req) body += chunk;
       const data = JSON.parse(body);
+      if (['Low', 'Normal', 'High'].includes(data.default_priority)) {
+        updateProjectDefault.run(data.default_priority, projectId);
+        return sendJson(res, 200, getProject.get(projectId));
+      }
       const name = typeof data.name === 'string' ? data.name.trim() : '';
       if (!name) return sendJson(res, 400, { error: 'Project name is required' });
       renameProject.run(name, projectId);
