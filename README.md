@@ -17,12 +17,16 @@ projects can be renamed after restoration.
 Each task row also supports renaming while preserving its completion state,
 project ownership, and creation order. Task renaming is disabled while archived
 and becomes available again after restoration.
-Each task has an independent Low, Normal, or High priority, defaulting to Normal.
+Each task has an independent Low, Normal, or High priority.
 Priority selections persist across restarts and are disabled while archived;
 restoration enables editing with the saved priority intact.
 Project pages combine the completion filter with an All, Low, Normal, or High
 priority filter. Both selections remain in place when editing tasks, and archived
 projects keep both filters available. Completion totals always count all tasks.
+Each project has a saved Default task priority, initially Normal. New tasks inherit
+this value; changing it leaves existing tasks and both filters unchanged. Defaults
+persist across restarts, renaming, archival and restoration, and cannot be edited
+while archived.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
