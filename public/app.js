@@ -353,16 +353,20 @@ async function showProject(id) {
           priority.disabled = project.archived;
         }
       });
+      const renameForm = document.createElement('form');
+      renameForm.className = 'task-rename-form';
       const renameInput = document.createElement('input');
       renameInput.type = 'text';
       renameInput.setAttribute('aria-label', 'New task title');
       renameInput.autocomplete = 'off';
       renameInput.disabled = project.archived;
       const renameButton = document.createElement('button');
-      renameButton.type = 'button';
+      renameButton.type = 'submit';
       renameButton.textContent = 'Rename task';
       renameButton.disabled = project.archived;
-      renameButton.addEventListener('click', async () => {
+      renameForm.append(renameInput, renameButton);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
         alert.hidden = true;
         renameButton.disabled = true;
         try {
@@ -420,7 +424,7 @@ async function showProject(id) {
           await refresh();
         } catch (error) { showTaskError(error); }
       });
-      row.append(checkbox, title, priority, renameInput, renameButton, dueDateInput, saveDueDate, destination, moveButton);
+      row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate, destination, moveButton);
       return row;
     }));
   }
