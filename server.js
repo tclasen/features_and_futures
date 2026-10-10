@@ -12,7 +12,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -24,8 +25,19 @@ database.exec(`
   )
 `);
 
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+
+const listProjects = database.prepare(`
+  SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+    SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid
+`);
+const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
@@ -55,7 +67,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    sendJson(response, 200, listProjects.all());
+    sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
     return;
   }
 
@@ -66,9 +78,27 @@ const server = createServer(async (request, response) => {
       sendJson(response, 400, { error: 'Project name is required' });
       return;
     }
-    const project = { id: randomUUID(), name };
+    const project = { id: randomUUID(), name, archived: 0 };
     insertProject.run(project.id, project.name, Date.now());
     sendJson(response, 201, project);
+    return;
+  }
+
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
+  if (archiveMatch && request.method === 'PATCH') {
+    const projectId = decodeURIComponent(archiveMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    const body = await readJson(request);
+    if (typeof body?.archived !== 'boolean') {
+      sendJson(response, 400, { error: 'Project archive state must be a boolean' });
+      return;
+    }
+    updateProjectArchive.run(body.archived ? 1 : 0, projectId);
+    sendJson(response, 200, { ...project, archived: body.archived ? 1 : 0 });
     return;
   }
 
