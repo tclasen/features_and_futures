@@ -75,7 +75,7 @@ test('combined filters preserve selections, re-evaluate edits, and work archived
     assert.match(html, /aria-label="Complete Renamed"/);
     selected(html, 'task-filter', 'Open');
     selected(html, 'priority-filter', 'High');
-    assert.equal((html.match(/name="priorityFilter" value="High"/g) || []).length, 8);
+    assert.equal((html.match(/name="priorityFilter" value="High"/g) || []).length, 9);
     response = await post('/projects/1/tasks/1/rename', { ...filters, title: ' ' });
     assert.equal(response.status, 400);
     html = await response.text();
@@ -103,7 +103,8 @@ test('combined filters preserve selections, re-evaluate edits, and work archived
     await post('/projects/1/restore');
     html = await get('/projects/1?filter=Completed&priorityFilter=High');
     assert.deepEqual(rows(html), ['Renamed', 'Third']);
-    assert.doesNotMatch(html, /<(?:input|button|select)\b[^>]*\sdisabled/);
+    // Move controls stay disabled when this sole project has no destinations.
+    assert.doesNotMatch(html.replace(/<form[^>]*action="[^"]*\/move"[\s\S]*?<\/form>/g, ''), /<(?:input|button|select)\b[^>]*\sdisabled/);
     selected(await get('/projects/1'), 'priority-filter', 'All');
     assert.match(await get('/'), /2\/4 completed/);
   } finally {

@@ -12,6 +12,8 @@ Open a project to create tasks, toggle completion, and filter by All, Open, or C
 
 Due from and Due through apply an inclusive date range alongside both task filters. Blank boundaries are unbounded; any nonblank boundary excludes undated tasks. Apply due range validates calendar dates and ordering without changing the previous applied range on errors. Edits retain the applied range and other filters, and immediately re-evaluate membership. These filters remain usable while archived, do not change saved data or summaries, and reset when reopening from the project list.
 
+Each task row has Destination project and Move task controls. Destinations are other active projects in project creation order. Moves append after the destination's current tasks while preserving task identity, title, completion, priority, and due date. Source filters stay selected and both summaries update. Archived projects cannot send or receive tasks; controls are disabled while archived or when no destinations exist. Task order and ownership persist across restarts, including repeated moves. Existing databases migrate without reordering tasks.
+
 Health: `curl http://localhost:8080/health`
 
 Verification: `npm test`
