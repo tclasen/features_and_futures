@@ -25,6 +25,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id ASC`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -51,7 +52,14 @@ const server = http.createServer(async (req, res) => {
       let data; try { data = JSON.parse(raw); } catch { data = {}; }
       const project = getProject.get(Number(projectMatch[1]));
       if (!project) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
-      setArchived.run(data.archived ? 1 : 0, project.id);
+      if (Object.hasOwn(data, 'name')) {
+        const name = typeof data.name === 'string' ? data.name.trim() : '';
+        if (!name) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project name is required' }));
+        if (project.archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+        renameProject.run(name, project.id);
+      } else {
+        setArchived.run(data.archived ? 1 : 0, project.id);
+      }
       return send(200, 'application/json; charset=utf-8', JSON.stringify(getProject.get(project.id)));
     }
     if (projectMatch && req.method === 'GET') {
