@@ -9,6 +9,7 @@ taskMessage.hidden = true;
 document.querySelector('#project-detail').append(taskMessage);
 let activeProjectId = null;
 let projectTasks = [];
+let activeProjects = [];
 let appliedDueRange = { from: '', through: '' };
 
 function validDate(value) {
@@ -110,7 +111,26 @@ function renderTasks() {
       taskMessage.hidden = true;
       renderTasks();
     });
-    row.append(title, renameInput, renameButton, priority, checkbox, dueDateInput, dueDateButton);
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    for (const project of activeProjects) {
+      if (project.id === Number(activeProjectId)) continue;
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    const moveButton = document.createElement('button');
+    moveButton.type = 'button';
+    moveButton.textContent = 'Move task';
+    destination.disabled = Boolean(window.currentProjectArchived) || !destination.options.length;
+    moveButton.disabled = destination.disabled;
+    moveButton.addEventListener('click', async () => {
+      const response = await fetch(`/api/tasks/${task.id}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(destination.value) }) });
+      if (response.ok) await loadTasks();
+      else showTaskError('Unable to move task');
+    });
+    row.append(title, renameInput, renameButton, priority, checkbox, dueDateInput, dueDateButton, destination, moveButton);
     container.append(row);
   }
 }
@@ -166,6 +186,9 @@ async function renderRoute() {
     return;
   }
   const project = await response.json();
+  const projectsResponse = await fetch('/api/projects');
+  if (!projectsResponse.ok) throw new Error('Could not load projects');
+  activeProjects = (await projectsResponse.json()).filter(item => !item.archived);
   activeProjectId = project.id;
   document.querySelector('#project-title').textContent = project.name;
   const renameForm = document.querySelector('#rename-form');

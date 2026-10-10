@@ -33,6 +33,10 @@ try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+database.exec('UPDATE tasks SET position = id WHERE position = 0');
 const publicDirectory = join(import.meta.dirname, 'public');
 const mimeTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -79,7 +83,7 @@ const server = http.createServer(async (request, response) => {
   if (tasksMatch && request.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!database.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return sendJson(response, 200, database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && request.method === 'POST') {
     try {
@@ -92,7 +96,8 @@ const server = http.createServer(async (request, response) => {
       const project = database.prepare('SELECT archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!project) return sendJson(response, 404, { error: 'Project not found' });
       if (project.archived) return sendJson(response, 409, { error: 'Archived project' });
-      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      const position = Number(database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next);
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, position);
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority });
     } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
   }
@@ -100,6 +105,24 @@ const server = http.createServer(async (request, response) => {
   if (archiveMatch && request.method === 'POST') {
     const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
     return result.changes ? sendJson(response, 200, { archived: archiveMatch[2] === 'archive' }) : sendJson(response, 404, { error: 'Project not found' });
+  }
+  const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (moveMatch && request.method === 'POST') {
+    try {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const data = JSON.parse(body);
+      const destinationId = Number(data.destinationProjectId);
+      if (!Number.isSafeInteger(destinationId) || destinationId < 1) return sendJson(response, 400, { error: 'Invalid destination project' });
+      const taskId = Number(moveMatch[1]);
+      const task = database.prepare('SELECT tasks.project_id, projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(taskId);
+      if (!task) return sendJson(response, 404, { error: 'Task not found' });
+      const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+      if (task.archived || !destination || destination.archived || task.project_id === destinationId) return sendJson(response, 409, { error: 'Invalid move destination' });
+      const position = Number(database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next);
+      database.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ?').run(destinationId, position, taskId);
+      return sendJson(response, 200, { destinationProjectId: destinationId });
+    } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
