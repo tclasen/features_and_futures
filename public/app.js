@@ -93,6 +93,12 @@ async function renderProject(id) {
     const project = await request(`/api/projects/${id}`);
     app.append(element('h1', project.name));
     if (project.archived) app.append(element('p', 'Archived project'));
+    const renameForm = element('form');
+    const renameLabel = element('label', 'New project name', { for: 'new-project-name' });
+    const renameInput = element('input', undefined, { id: 'new-project-name', name: 'name', type: 'text' });
+    const renameButton = element('button', 'Rename project', { type: 'submit' });
+    if (project.archived) { renameInput.disabled = true; renameButton.disabled = true; }
+    renameForm.append(renameLabel, renameInput, renameButton);
     const form = element('form');
     const label = element('label', 'Task title', { for: 'task-title' });
     const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
@@ -105,7 +111,27 @@ async function renderProject(id) {
     const filter = element('select', undefined, { id: 'task-filter' });
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value: value.toLowerCase() }));
     const rows = element('section', undefined, { 'aria-label': 'Tasks' });
-    app.append(form, alert, filterLabel, filter, rows);
+    app.append(renameForm, form, alert, filterLabel, filter, rows);
+
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) {
+        alert.textContent = 'Project name is required';
+        alert.hidden = false;
+        renameInput.focus();
+        return;
+      }
+      try {
+        const renamed = await request(`/api/projects/${id}/name`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+        app.querySelector('h1').textContent = renamed.name;
+        renameInput.value = '';
+        alert.hidden = true;
+      } catch (error) {
+        alert.textContent = error.message;
+        alert.hidden = false;
+      }
+    });
 
     let tasks = [];
     function showTasks() {
