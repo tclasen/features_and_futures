@@ -20,6 +20,9 @@ persist in the same SQLite database.
 Each active task row supports renaming with a trimmed, required title. Task
 renaming preserves ownership, creation order, completion, and filter membership.
 Archived task rename controls are disabled until the project is restored.
+Each task has a saved Low, Normal, or High priority, defaulting to Normal for
+new and existing tasks. Priority changes preserve task order, ownership, title,
+and completion. Archived priority controls are disabled until restoration.
 `GET /health` returns
 `{"status":"ok"}`.
 

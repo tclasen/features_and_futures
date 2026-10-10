@@ -23,6 +23,9 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const allProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed
@@ -33,11 +36,13 @@ const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const projectTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const projectTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const priorities = ['Low', 'Normal', 'High'];
 const stylesheet = readFileSync(new URL('./styles.css', import.meta.url));
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -154,6 +159,13 @@ function projectPage(project, filter = 'All', error = '', renameError = '') {
               <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}></div>
             <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
+          <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post" class="task-priority-form">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="task-priority-${task.id}">Task priority</label>
+            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+              ${priorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+            </select>
+          </form>
         </article>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </section>`);
 }
@@ -221,7 +233,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       redirect(res, parts[3] === 'archive' ? '/' : '/?filter=Archived');
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename))?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename|priority))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(parts[2]);
       if (!project) {
@@ -246,6 +258,13 @@ const server = createServer(async (req, res) => {
             return;
           }
           renameTask.run(title, parts[4], project.id);
+        } else if (parts[5] === 'priority') {
+          const priority = form.get('priority');
+          if (!priorities.includes(priority)) {
+            send(res, 422, projectPage(project, filter, 'Choose a valid task priority'));
+            return;
+          }
+          updateTaskPriority.run(priority, parts[4], project.id);
         } else {
           updateTask.run(form.get('completed') === '1' ? 1 : 0, parts[4], project.id);
         }
