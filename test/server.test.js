@@ -376,6 +376,68 @@ test('projects and tasks validate, isolate, archive, rename, summarize, and pers
     for (const row of rows(migrated)) assert.match(row, normalOptions);
     assert.match(migrated, /aria-label="Complete Priority preserved" checked/);
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
+
+    // Project defaults affect only subsequent tasks and preserve both filters.
+    const defaultOptions = /id="default-task-priority"[^>]*>\s*<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/;
+    assert.match(migrated, defaultOptions);
+    const defaultPath = `${projectPath}/default-priority`;
+    const beforeDefault = await filtered('Completed', 'Normal');
+    const summaryBefore = await (await fetch(base)).text();
+    const changedDefault = await post(defaultPath, {
+      priority: 'High', filter: 'Completed', priorityFilter: 'Normal',
+    });
+    assert.equal(changedDefault.status, 303);
+    assert.equal(changedDefault.headers.get('location'), `${projectPath}?filter=Completed&priorityFilter=Normal`);
+    const afterDefault = await (await fetch(base + changedDefault.headers.get('location'))).text();
+    assert.deepEqual(rows(afterDefault), rows(beforeDefault));
+    assert.match(afterDefault, /<option selected>Completed/);
+    assert.match(afterDefault, /id="priority-filter"[^>]*>\s*<option>All<\/option><option>Low<\/option><option selected>Normal/);
+    assert.equal(await (await fetch(base)).text(), summaryBefore);
+    assert.match(await (await fetch(base + paths[1])).text(), defaultOptions);
+    assert.equal((await post(defaultPath, { priority: 'Urgent' })).status, 400);
+    await stop();
+    await start();
+    assert.equal(await filtered('Completed', 'Normal'), afterDefault);
+    await post(tasksPath, { title: 'Inherited high' });
+    let defaultRows = rows(await (await fetch(base + projectPath)).text());
+    assert.match(defaultRows[2], /<span>Inherited high<\/span>/);
+    assert.match(defaultRows[2], /<option selected>High/);
+    assert.doesNotMatch(defaultRows[2], / checked/);
+    await post(defaultPath, { priority: 'Low' });
+    await post(tasksPath, { title: 'Inherited low' });
+    defaultRows = rows(await (await fetch(base + projectPath)).text());
+    assert.match(defaultRows[2], /<option selected>High/);
+    assert.match(defaultRows[3], /<option selected>Low/);
+    for (const row of defaultRows.slice(0, 2)) assert.match(row, normalOptions);
+    await post(`${paths[1]}/tasks`, { title: 'Independent normal' });
+    assert.match(rows(await (await fetch(base + paths[1])).text())[0], normalOptions);
+    await post(`${projectPath}/rename`, { name: 'Default preserved' });
+    await post(`${projectPath}/archive`, {});
+    const defaultArchived = await filtered('All', 'Low');
+    assert.match(defaultArchived, /id="default-task-priority"[^>]* disabled[^>]*>\s*<option selected>Low/);
+    assert.equal(rows(defaultArchived).length, 1);
+    assert.equal((await post(defaultPath, { priority: 'High' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await filtered('All', 'Low'), defaultArchived);
+    await post(`${projectPath}/restore`, {});
+    const defaultRestored = await (await fetch(base + projectPath)).text();
+    assert.match(defaultRestored, /id="default-task-priority" name="priority" onchange=[^>]*>\s*<option selected>Low/);
+    assert.deepEqual(rows(defaultRestored), defaultRows);
+    await post(tasksPath, { title: 'Restored low' });
+    assert.match(rows(await (await fetch(base + projectPath)).text())[4], /<option selected>Low/);
+
+    // An existing database without project defaults gains Normal without changing tasks.
+    await stop();
+    const previousDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+    previousDatabase.exec('ALTER TABLE projects DROP COLUMN default_priority');
+    previousDatabase.close();
+    await start();
+    const defaultMigrated = await (await fetch(base + projectPath)).text();
+    assert.match(defaultMigrated, defaultOptions);
+    assert.match(rows(defaultMigrated)[2], /<option selected>High/);
+    assert.match(rows(defaultMigrated)[3], /<option selected>Low/);
+    assert.match(rows(defaultMigrated)[0], /aria-label="Complete Priority preserved" checked/);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
