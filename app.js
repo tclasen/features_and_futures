@@ -86,11 +86,43 @@ async function showProject(id) {
   app.replaceChildren();
   try {
     const project = await request(`/api/projects/${encodeURIComponent(id)}`);
-    app.append(element('h1', {}, project.name));
+    const heading = element('h1', {}, project.name);
+    app.append(heading);
     if (project.archived) app.append(element('p', { class: 'archived-notice' }, 'Archived project'));
     const back = element('button', { type: 'button' }, 'Projects');
     back.addEventListener('click', () => { window.location.href = '/'; });
     app.append(back);
+    const renameForm = element('form', { class: 'rename-form' });
+    const renameLabel = element('label', { for: 'new-project-name' }, 'New project name');
+    const renameInput = element('input', { id: 'new-project-name', name: 'name', type: 'text' });
+    const renameButton = element('button', { type: 'submit' }, 'Rename project');
+    const renameAlert = element('p', { class: 'alert', role: 'alert', hidden: '' });
+    if (project.archived) {
+      renameInput.disabled = true;
+      renameButton.disabled = true;
+    }
+    renameForm.append(renameLabel, renameInput, renameButton);
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) {
+        renameAlert.textContent = 'Project name is required';
+        renameAlert.hidden = false;
+        return;
+      }
+      try {
+        const renamed = await request(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+        });
+        heading.textContent = renamed.name;
+        renameInput.value = '';
+        renameAlert.hidden = true;
+      } catch (error) {
+        renameAlert.textContent = error.message;
+        renameAlert.hidden = false;
+      }
+    });
+    app.append(renameForm, renameAlert);
     const form = element('form', { class: 'task-form' });
     const label = element('label', { for: 'task-title' }, 'Task title');
     const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
