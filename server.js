@@ -34,6 +34,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Notes are plain text; initialize only the new field on existing tasks.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Preserve the current order when upgrading databases that predate task movement.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   database.exec(`BEGIN;
@@ -72,8 +76,8 @@ const rememberPosition = database.prepare(`INSERT INTO task_positions (project_i
 const nextPosition = database.prepare(`SELECT coalesce(max(position), 0) + 1 AS position
   FROM task_positions WHERE project_id = ?`);
 const savedPosition = database.prepare('SELECT position FROM task_positions WHERE project_id = ? AND task_id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
-const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, ?)`);
 const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, position = ?
@@ -82,6 +86,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const updateNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 const taskData = task => ({ ...task, completed: Boolean(task.completed) });
 const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT count(*) FROM tasks WHERE project_id = p.id) AS total,
@@ -172,7 +177,7 @@ const server = createServer(async (request, response) => {
         if (findProject.get(projectId).archived) {
           return json(response, 409, { error: 'Archived project is read-only' });
         }
-        const changes = ['title', 'completed', 'priority', 'due_date', 'destination_project_id'].filter(key => input && Object.hasOwn(input, key));
+        const changes = ['title', 'completed', 'priority', 'due_date', 'notes', 'destination_project_id'].filter(key => input && Object.hasOwn(input, key));
         if (changes.length > 1) {
           return json(response, 400, { error: 'Task changes must be separate requests' });
         }
@@ -195,6 +200,11 @@ const server = createServer(async (request, response) => {
             moveTask.run(destinationId, position, projectId, taskId);
           });
           return json(response, 200, taskData(findTask.get(destinationId, taskId)));
+        } else if (changes[0] === 'notes') {
+          if (typeof input.notes !== 'string') {
+            return json(response, 400, { error: 'Notes must be text' });
+          }
+          updateNotes.run(input.notes, projectId, taskId);
         } else if (changes[0] === 'due_date') {
           const dueDate = normalizeDueDate(input.due_date);
           if (dueDate === null) {

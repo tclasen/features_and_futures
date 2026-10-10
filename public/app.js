@@ -330,7 +330,7 @@ async function renderProject(id) {
     app.querySelector('[role="alert"]')?.remove();
     // Keep the edited control attached with its new value during the request.
     // Rebuilding here would undo a checkbox click before the browser observes it.
-    for (const control of row.querySelectorAll('input, button, select')) {
+    for (const control of row.querySelectorAll('input, button, select, textarea')) {
       control.disabled = true;
     }
     try {
@@ -427,6 +427,22 @@ async function renderProject(id) {
         event.preventDefault();
         saveTask(task, { due_date: dueDateInput.value }, row);
       });
+      const notesForm = element('form');
+      const notesLabel = element('label', 'Task notes');
+      notesLabel.htmlFor = `task-notes-${task.id}`;
+      const notesInput = element('textarea');
+      notesInput.id = notesLabel.htmlFor;
+      notesInput.name = 'notes';
+      notesInput.value = task.notes;
+      notesInput.disabled = checkbox.disabled;
+      const saveNotes = element('button', 'Save notes');
+      saveNotes.type = 'submit';
+      saveNotes.disabled = checkbox.disabled;
+      notesForm.append(notesLabel, notesInput, saveNotes);
+      notesForm.addEventListener('submit', event => {
+        event.preventDefault();
+        saveTask(task, { notes: notesInput.value }, row);
+      });
       const moveForm = element('form');
       const destinationLabel = element('label', 'Destination project');
       destinationLabel.htmlFor = `destination-project-${task.id}`;
@@ -447,7 +463,7 @@ async function renderProject(id) {
         if (destination.disabled) return;
         saveTask(task, { destination_project_id: Number(destination.value) }, row);
       });
-      row.append(taskRenameForm, priorityLabel, priority, dueDateForm, moveForm);
+      row.append(taskRenameForm, priorityLabel, priority, dueDateForm, notesForm, moveForm);
       list.append(row);
     }
   }

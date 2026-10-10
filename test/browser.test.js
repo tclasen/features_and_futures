@@ -48,7 +48,7 @@ async function page(archived = false, beforeSave = async () => {}, destinations 
     { id: 2, title: 'Second', completed: true, priority: 'Low' },
     { id: 3, title: 'Third', completed: false, priority: 'Normal' },
     { id: 4, title: 'Fourth', completed: true, priority: 'High' },
-  ].map(task => ({ ...task, due_date: '' }));
+  ].map(task => ({ ...task, due_date: '', notes: '' }));
   const writes = [];
   const project = { id: 1, name: 'Example', archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -69,7 +69,7 @@ async function page(archived = false, beforeSave = async () => {}, destinations 
         data = target;
       } else if (options?.method === 'POST' && path.endsWith('/tasks')) {
         data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
-          completed: false, priority: project.default_priority, due_date: '' };
+          completed: false, priority: project.default_priority, due_date: '', notes: '' };
         tasks.push(data);
       } else if (path.endsWith('/tasks')) data = tasks;
       else if (path === '/api/projects') data = [project, ...destinations];
@@ -180,7 +180,7 @@ test('task edits re-evaluate both filters without resetting them; rename retains
   assert.equal(p.byId('priority-filter').value, 'Low');
   await p.choose('task-filter', 'Completed');
   assert.deepEqual(p.titles(), ['Renamed', 'Second']);
-  assert.deepEqual(p.tasks[0], { id: 1, title: 'Renamed', completed: true, priority: 'Low', due_date: '' });
+  assert.deepEqual(p.tasks[0], { id: 1, title: 'Renamed', completed: true, priority: 'Low', due_date: '', notes: '' });
 });
 
 test('completion edits keep the clicked checkbox attached until saving finishes', async () => {
@@ -444,6 +444,73 @@ async function searchTasks(p, query) {
 }
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('notes save exact plain text without changing fields, membership, or applied controls', async () => {
+  const p = await page();
+  await saveDate(p, 1, '2024-02-29');
+  await p.choose('task-filter', 'Open');
+  await p.choose('priority-filter', 'High');
+  await applyDueRange(p, '2024-02-01', '2024-03-01');
+  await searchTasks(p, 'FIRST');
+  const original = structuredClone(p.tasks);
+  for (const notes of ['  <script>alert("literal")</script>\n\nUnicode: 雪 🐈\t  ', '', ' \n\t ']) {
+    const input = p.byId('task-notes-1');
+    assert.equal(input.tag, 'textarea');
+    assert.ok(p.app.all().some(node => node.tag === 'label' &&
+      node.textContent === 'Task notes' && node.htmlFor === input.id));
+    assert.equal(input.parent.children.at(-1).textContent, 'Save notes');
+    input.value = notes;
+    await input.parent.fire('submit');
+    await settle();
+    assert.deepEqual(p.tasks, original.map(task => task.id === 1 ? { ...task, notes } : task));
+    assert.equal(p.byId(input.id).value, notes);
+    assert.deepEqual(p.titles(), ['First']);
+    assert.equal(p.byId('task-filter').value, 'Open');
+    assert.equal(p.byId('priority-filter').value, 'High');
+    assert.equal(p.byId('task-search').value, 'FIRST');
+    assert.equal(p.byId('due-from').value, '2024-02-01');
+    assert.equal(p.byId('due-through').value, '2024-03-01');
+    if (notes.includes('Unicode')) {
+      await searchTasks(p, 'Unicode');
+      assert.deepEqual(p.titles(), []); // Notes do not participate in title search.
+      await searchTasks(p, 'FIRST');
+      assert.equal(p.byId(input.id).value, notes);
+    }
+  }
+  await searchTasks(p, 'Unicode');
+  assert.deepEqual(p.titles(), []);
+});
+
+test('notes controls disable during saves and archives, and recover from failures', async () => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const p = await page(false, () => pending);
+  const input = p.byId('task-notes-1');
+  input.value = 'Saved\nnotes';
+  await input.parent.fire('submit');
+  assert.equal(input.disabled, true);
+  assert.equal(input.parent.children.at(-1).disabled, true);
+  finish();
+  await settle();
+  assert.equal(p.byId(input.id).value, 'Saved\nnotes');
+  assert.equal(p.byId(input.id).disabled, false);
+  const archived = await page(true);
+  for (const row of archived.rows()) {
+    const textarea = row.all().find(node => node.tag === 'textarea');
+    assert.equal(textarea.disabled, true);
+    assert.equal(textarea.parent.children.at(-1).disabled, true);
+    textarea.value = 'Blocked';
+    await textarea.parent.fire('submit');
+  }
+  assert.deepEqual(archived.writes, []);
+  const failed = await page(false, async () => { throw new Error('Save failed'); });
+  failed.byId('task-notes-1').value = 'Unsaved';
+  await failed.byId('task-notes-1').parent.fire('submit');
+  await settle();
+  assert.equal(failed.byId('task-notes-1').value, '');
+  assert.equal(failed.byId('task-notes-1').disabled, false);
+  assert.equal(failed.app.querySelector('[role="alert"]').textContent, 'Save failed');
+});
 
 test('task search intersects filters and retains applied query through edits', async () => {
   const p = await page();

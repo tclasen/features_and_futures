@@ -440,7 +440,7 @@ test('archive and priority migrations preserve existing project IDs, tasks, and 
     const expected = { id: 17, name: 'Existing project', archived: false, default_priority: 'Normal', total: 1, completed: 1 };
     assert.deepEqual(await (await request('/api/projects')).json(), [expected]);
     assert.deepEqual(await (await request('/api/projects/17/tasks')).json(), [
-      { id: 23, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
+      { id: 23, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '' },
     ]);
     await server.stop();
     server = await start(databasePath);
@@ -571,7 +571,7 @@ test('remembered positions survive reverse returns, vacant slots, archive, and m
     // Reverse return order restores the old relative positions, not arrival order.
     await move(2, 7, 1);
     const returned = await move(2, 5, 1);
-    assert.deepEqual(returned, { id: 5, ...changes });
+    assert.deepEqual(returned, { id: 5, notes: '', ...changes });
     assert.deepEqual(await ids(1), [5, 7, created.id, 3]);
     await move(2, 10, 1);
     assert.deepEqual(await ids(1), [10, 5, 7, created.id, 3]);
@@ -596,6 +596,77 @@ test('remembered positions survive reverse returns, vacant slots, archive, and m
     await move(3, 5, 1);
     assert.deepEqual(await ids(1), [5, created.id]);
     assert.deepEqual((await request(tasks(1))).data[0], returned);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('notes preserve exact text, other fields and remembered order through migration, moves and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const db = join(directory, 'db.sqlite');
+  let server;
+  try {
+    // Pre-notes schema with non-ID ordering and saved task fields.
+    const legacy = new DatabaseSync(db);
+    legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+        due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (id, name, default_priority) VALUES (1, 'Source', 'High'), (2, 'Destination', 'Low');
+      INSERT INTO tasks (id, project_id, title, completed, priority, due_date, position) VALUES
+        (10, 1, 'Original', 1, 'High', '0001-01-01', 1), (5, 1, 'Other', 0, 'Low', '', 2);`);
+    legacy.close();
+    server = await start(db);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const list = async p => (await request(`/api/projects/${p}/tasks`)).json();
+    const patch = (p, changes) => request(`/api/projects/${p}/tasks/10`, 'PATCH', changes);
+    let expected = { id: 10, title: 'Original', completed: true, priority: 'High', due_date: '0001-01-01', notes: '' };
+    const other = { id: 5, title: 'Other', completed: false, priority: 'Low', due_date: '', notes: '' };
+    assert.deepEqual(await list(1), [expected, other]);
+    const summary = await (await request('/api/projects/1')).json();
+    const notes = '  <script>literal markup</script> & <b>text</b>\n\n雪 🐈\t trailing  ';
+    expected.notes = notes;
+    assert.deepEqual(await (await patch(1, { notes })).json(), expected);
+    for (const invalid of [null, 42, {}, ['text'], true]) {
+      assert.equal((await patch(1, { notes: invalid })).status, 400);
+    }
+    assert.equal((await patch(1, { notes: 'Mixed', title: 'Changed' })).status, 400);
+    assert.equal((await patch(2, { notes: 'Wrong owner' })).status, 404);
+    assert.deepEqual(await list(1), [expected, other]);
+    assert.deepEqual(await (await request('/api/projects/1')).json(), summary);
+    const created = await (await request('/api/projects/2/tasks', 'POST', { title: 'New task' })).json();
+    assert.equal(created.notes, '');
+    await server.stop();
+    server = await start(db);
+    assert.deepEqual(await list(1), [expected, other]);
+    expected.title = 'Renamed';
+    assert.deepEqual(await (await patch(1, { title: ' Renamed ' })).json(), expected);
+    assert.deepEqual(await (await patch(1, { destination_project_id: 2 })).json(), expected);
+    assert.deepEqual(await list(2), [created, expected]);
+    await request('/api/projects/2', 'PATCH', { archived: true });
+    assert.equal((await patch(2, { notes: 'Blocked' })).status, 409);
+    await server.stop();
+    server = await start(db);
+    assert.deepEqual(await list(2), [created, expected]);
+    await request('/api/projects/2', 'PATCH', { archived: false });
+    expected.notes = ' Current\nnotes 🐈 ';
+    assert.deepEqual(await (await patch(2, { notes: expected.notes })).json(), expected);
+    assert.deepEqual(await (await patch(2, { destination_project_id: 1 })).json(), expected);
+    assert.deepEqual(await list(1), [expected, other]);
+    for (const value of [' \n\t ', '']) {
+      expected.notes = value;
+      assert.deepEqual(await (await patch(1, { notes: value })).json(), expected);
+    }
+    await server.stop();
+    server = await start(db);
+    assert.deepEqual(await list(1), [expected, other]);
+    assert.deepEqual(await (await request('/api/projects/1')).json(), summary);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
