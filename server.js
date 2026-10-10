@@ -5,9 +5,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url));
-const configuredDbPath = process.env.DB_PATH;
-const dbPath = configuredDbPath
-  ? (path.isAbsolute(configuredDbPath) ? configuredDbPath : path.resolve(appDirectory, configuredDbPath))
+const dbPath = process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
   : path.join(appDirectory, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
@@ -98,3 +97,12 @@ const server = http.createServer(async (req, res) => {
 
 const port = Number(process.env.PORT || 8080);
 server.listen(port, '0.0.0.0', () => console.log(`Workboard listening on ${port}`));
+
+function shutdown() {
+  server.close(() => {
+    db.close();
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
