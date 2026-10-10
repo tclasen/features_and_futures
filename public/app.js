@@ -83,14 +83,14 @@ function projectRow(project) {
   return row;
 }
 
-function asciiLower(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 function renderProjects() {
   const filtered = projectData.filter((project) =>
     Boolean(project.archived) === (projectFilter.value === 'Archived')
-    && asciiLower(project.name).includes(appliedProjectQuery));
+    && normalizeSearch(project.name).includes(appliedProjectQuery));
   projects.replaceChildren(...filtered.map(projectRow));
 }
 
@@ -98,14 +98,14 @@ projectFilter.addEventListener('change', renderProjects);
 projectSearchForm.addEventListener('submit', (event) => {
   event.preventDefault();
   projectSearch.value = projectSearch.value.trim();
-  appliedProjectQuery = asciiLower(projectSearch.value);
+  appliedProjectQuery = normalizeSearch(projectSearch.value);
   showError();
   renderProjects();
 });
 taskSearchForm.addEventListener('submit', (event) => {
   event.preventDefault();
   taskSearch.value = taskSearch.value.trim();
-  appliedTaskQuery = asciiLower(taskSearch.value);
+  appliedTaskQuery = normalizeSearch(taskSearch.value);
   showError();
   renderTasks();
 });
@@ -312,7 +312,7 @@ function renderTasks() {
       || (Boolean(task.due_date)
         && (!appliedDueFrom || task.due_date >= appliedDueFrom)
         && (!appliedDueThrough || task.due_date <= appliedDueThrough));
-    const matchesSearch = asciiLower(task.title).includes(appliedTaskQuery);
+    const matchesSearch = normalizeSearch(task.title).includes(appliedTaskQuery);
     return matchesCompletion && matchesPriority && matchesDueRange && matchesSearch;
   });
   tasksContainer.replaceChildren(...filtered.map(taskRow));

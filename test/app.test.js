@@ -948,7 +948,7 @@ test('task moves list eligible projects, retain source filters, and recover from
   }
 });
 
-test('project search intersects archives, trims only outer whitespace, and resets on return', async () => {
+test('project search intersects archives, normalizes spaces, and resets on return', async () => {
   let projects = [
     { id: 1, name: 'Alpha  Plan', archived: 0, completed: 1, total: 3 },
     { id: 2, name: 'alpha Plan', archived: 0, completed: 0, total: 0 },
@@ -983,9 +983,9 @@ test('project search intersects archives, trims only outer whitespace, and reset
   await search(' \tAlPhA  \n');
   assert.deepEqual(names(), ['Alpha  Plan', 'alpha Plan']);
   assert.equal(rows()[0].children[1].textContent, '1/3 completed');
-  await search('alpha  '); // Outer spaces are trimmed; internal spaces remain significant.
+  await search('alpha  ');
   await search(' alpha  p ');
-  assert.deepEqual(names(), ['Alpha  Plan']);
+  assert.deepEqual(names(), ['Alpha  Plan', 'alpha Plan']);
   await search('alpha');
   element('project-search').value = 'unapplied draft';
   element('project-filter').value = 'Archived';
@@ -1009,6 +1009,44 @@ test('project search intersects archives, trims only outer whitespace, and reset
   await loadPage(reopened, '/', fetch);
   assert.equal(reopened.get('#project-search').value, '');
   assert.equal(reopened.get('#projects').children.length, 5);
+});
+
+test('project and task search collapse only ASCII spaces and tabs without rewriting saved text', async () => {
+  const originals = ['Alpha  Plan', 'ALPHA\t\tPlan', 'aLpHa \t  \tPlan',
+    'Alpha\nPlan', 'Alpha\u00a0Plan', 'ÄLPHA Plan'];
+  for (const kind of ['project', 'task']) {
+    const saved = originals.map((text, index) => ({
+      id: index + 1, name: text, title: text, archived: 0,
+      completed: false, priority: 'Normal', due_date: '', total: 0,
+    }));
+    const fetch = async (path, options) => {
+      assert.equal(options, undefined, 'Searching must not write saved data');
+      const data = kind === 'project' || path.endsWith('/tasks') ? saved
+        : { id: 7, name: 'Source', archived: saved[0].archived, default_priority: 'Normal' };
+      return { ok: true, json: async () => structuredClone(data) };
+    };
+    for (const archived of [0, 1]) {
+      saved.forEach((item) => { item.archived = archived; });
+      const elements = pageElements();
+      await loadPage(elements, kind === 'project' ? '/' : '/projects/7', fetch);
+      if (kind === 'project' && archived) {
+        elements.get('#project-filter').value = 'Archived';
+        await elements.get('#project-filter').fire('change');
+      }
+      const text = () => elements.get(kind === 'project' ? '#projects' : '#tasks')
+        .children.map((row) => row.children[kind === 'project' ? 0 : 1].textContent);
+      assert.deepEqual(text(), originals, 'Reopening displays original saved text');
+      for (const query of ['alpha plan', ' \tALPHA\t\tPLAN\n', 'AlPhA \t  \tPlAn']) {
+        elements.get(`#${kind}-search`).value = query;
+        await elements.get(`#search-${kind}s`).fire('submit');
+        assert.deepEqual(text(), originals.slice(0, 3));
+      }
+      elements.get(`#${kind}-search`).value = ' \t ';
+      await elements.get(`#search-${kind}s`).fire('submit');
+      assert.deepEqual(text(), originals, 'Clearing search displays original saved text');
+      assert.deepEqual(saved.map((item) => item[kind === 'project' ? 'name' : 'title']), originals);
+    }
+  }
 });
 
 test('task search intersects all filters and re-evaluates edits while preserving queries', async () => {
