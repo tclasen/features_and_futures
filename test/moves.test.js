@@ -8,10 +8,10 @@ import { join } from 'node:path';
 import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
-test('moves append tasks, preserve their data, enforce active ownership, and persist after restart', async () => {
+async function verifyRememberedOrder(schemaVersion) {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const databasePath = join(directory, 'workboard.sqlite');
-  // Start with the Task 010 schema to verify the ordering migration.
+  // Exercise both the pre-position schema and the existing move-order schema.
   const database = new DatabaseSync(databasePath);
   database.exec(`
     CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
@@ -23,6 +23,14 @@ test('moves append tasks, preserve their data, enforce active ownership, and per
       (1, 'Older completed', 1, 'High', '0001-01-01'), (1, 'Blank date', 0, 'Normal', ''),
       (2, 'Destination existing', 0, 'Low', '9999-12-31');
   `);
+  if (schemaVersion === 11) {
+    database.exec(`
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id * 10;
+      INSERT INTO tasks (project_id, title, position) VALUES
+        (3, 'Later position', 20), (3, 'Earlier position', 10);
+    `);
+  }
   database.close();
   const reservation = net.createServer();
   reservation.listen(0, '127.0.0.1');
@@ -63,7 +71,9 @@ test('moves append tasks, preserve their data, enforce active ownership, and per
     assert.deepEqual(await get('/health'), { status: 'ok' });
     const originals = await get(taskPath(1));
     const destinationTasks = await get(taskPath(2));
+    const thirdTasks = await get(taskPath(3));
     assert.deepEqual(originals.map((task) => task.id), [1, 2]);
+    assert.deepEqual(thirdTasks.map((task) => task.id), schemaVersion === 11 ? [5, 4] : []);
     for (const invalid of [1, 0, -1, null, '2', 1.5]) {
       assert.equal((await move(1, 1, invalid)).status, 400);
     }
@@ -95,19 +105,62 @@ test('moves append tasks, preserve their data, enforce active ownership, and per
     assert.deepEqual(await get(taskPath(2)), ordered);
     assert.deepEqual(await get(taskPath(1)), []);
     assert.equal((await move(2, 1, 3)).status, 200);
-    assert.deepEqual(await get(taskPath(3)), [originals[0]]);
+    assert.deepEqual(await get(taskPath(3)), [...thirdTasks, originals[0]]);
+    // Returning restores only position; field edits made while away survive.
+    const revised = { title: 'Changed while away', completed: false, priority: 'Low', due_date: '2028-02-29' };
+    for (const [key, value] of Object.entries(revised)) {
+      assert.equal((await write(taskPath(3, 1), { [key]: value })).status, 200);
+    }
+    originals[0] = { ...originals[0], ...revised };
     assert.equal((await move(3, 1, 2)).status, 200);
-    assert.deepEqual(await get(taskPath(2)), [destinationTasks[0], created, originals[1], originals[0]]);
+    assert.deepEqual(await get(taskPath(2)), [destinationTasks[0], originals[0], created, originals[1]]);
+    // Return in reverse order, with a newly created task occupying a later position.
     assert.equal((await move(2, 2, 1)).status, 200);
     assert.deepEqual(await get(taskPath(1)), [originals[1]]);
+    const sourceCreated = await (await write(taskPath(1), { title: 'New source task' }, 'POST')).json();
+    assert.equal(sourceCreated.priority, 'High');
+    await write('/api/projects/1', { name: 'Renamed source' });
+    await write('/api/projects/1', { archived: true });
+    assert.equal((await move(2, 1, 1)).status, 409);
     await stop();
     await start();
-    assert.deepEqual(await get(taskPath(1)), [originals[1]]);
-    assert.deepEqual(await get(taskPath(2)), [destinationTasks[0], created, originals[0]]);
-    assert.equal((await get('/api/projects/2')).completed, 1);
+    assert.deepEqual(await get(taskPath(1)), [originals[1], sourceCreated]);
+    assert.deepEqual(await get(taskPath(2)), [destinationTasks[0], originals[0], created]);
+    assert.equal((await get('/api/projects/2')).completed, 0);
     assert.equal((await get('/api/projects/2')).total, 3);
+    await write('/api/projects/1', { archived: false });
+    assert.equal((await move(2, 1, 1)).status, 200);
+    assert.deepEqual(await get(taskPath(1)), [originals[0], originals[1], sourceCreated]);
+
+    // Reserve positions even while every task is away from its project.
+    assert.equal((await move(1, 1, 2)).status, 200);
+    assert.equal((await move(1, 2, 2)).status, 200);
+    assert.equal((await move(1, sourceCreated.id, 2)).status, 200);
+    assert.deepEqual(await get(taskPath(1)), []);
+    const emptyCreated = await (await write(taskPath(1), { title: 'Created while all away' }, 'POST')).json();
+    const arrival = await (await write(taskPath(3), { title: 'First arrival' }, 'POST')).json();
+    assert.equal((await move(3, arrival.id, 1)).status, 200);
+    await stop();
+    await start();
+    for (const task of [sourceCreated, originals[1], originals[0]]) {
+      assert.equal((await move(2, task.id, 1)).status, 200);
+    }
+    const restored = [originals[0], originals[1], sourceCreated, emptyCreated, arrival];
+    assert.deepEqual(await get(taskPath(1)), restored);
+    assert.deepEqual(await get(taskPath(2)), [destinationTasks[0], created]);
+    assert.deepEqual(await get(taskPath(3)), thirdTasks);
+    assert.equal((await get('/api/projects/1')).total, 5);
+    assert.equal((await get('/api/projects/1')).completed, 0);
+    await stop();
+    await start();
+    assert.deepEqual(await get(taskPath(1)), restored);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
   }
-});
+}
+
+for (const schemaVersion of [10, 11]) {
+  test(`moves remember project order, preserve data, and migrate Task ${schemaVersion} through restart`,
+    () => verifyRememberedOrder(schemaVersion));
+}
