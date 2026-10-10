@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-test('task moves append, preserve data and filters, reject archived projects, and persist', async () => {
+test('task moves remember project positions, preserve data and filters, reject archived projects, and persist', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const databasePath = join(directory, 'workboard.sqlite');
   // Start with the original schema to verify migration preserves legacy order.
@@ -98,9 +98,9 @@ test('task moves append, preserve data and filters, reject archived projects, an
     await post('/projects/2/restore');
     assert.equal(await get('/projects/2'), destination);
     await post('/projects/2/tasks/1/move', { destination: '1' });
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'First']);
+    assert.deepEqual(titles(await get('/projects/1')), ['First', 'Remaining']);
     await post('/projects/1/tasks', { title: 'Created after move' });
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'First', 'Created after move']);
+    assert.deepEqual(titles(await get('/projects/1')), ['First', 'Remaining', 'Created after move']);
     await post('/projects/1/tasks/2/move', { destination: '2' });
     destination = await get('/projects/2');
     assert.deepEqual(titles(destination), ['Existing destination task', 'Remaining']);
@@ -112,6 +112,66 @@ test('task moves append, preserve data and filters, reject archived projects, an
     await stop();
     await start();
     assert.equal(await get('/projects/1'), final);
+
+    // Return to a second project too, placing First in its remembered slot
+    // before Remaining even though Remaining arrived there more recently.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual(titles(await get('/projects/2')), ['Existing destination task', 'First', 'Remaining']);
+    await post('/projects/1/tasks/4/move', { destination: '2' });
+    assert.deepEqual(titles(await get('/projects/1')), []);
+    // Vacated slots still count when assigning positions to new tasks and
+    // first-time arrivals. Both must follow all remembered source positions.
+    await post('/projects/1/tasks', { title: 'New while empty' });
+    await post('/projects/3/tasks', { title: 'First-time arrival' });
+    await post('/projects/3/tasks/6/move', { destination: '1' });
+    assert.deepEqual(titles(await get('/projects/1')), ['New while empty', 'First-time arrival']);
+    await post('/projects/1/rename', { name: 'Renamed source' });
+    await post('/projects/2/tasks/1/rename', { title: 'Updated first' });
+    await post('/projects/2/tasks/1/priority', { priority: 'Low' });
+    await post('/projects/2/tasks/1/due-date', { dueDate: '2026-10-10' });
+    await post('/projects/2/tasks/1', {});
+    await post('/projects/1/archive');
+    assert.equal((await post('/projects/2/tasks/1/move', { destination: '1' })).status, 400);
+    await stop();
+    await start();
+    await post('/projects/1/restore');
+    // Return multiple tasks in reverse order across process restarts.
+    await post('/projects/2/tasks/4/move', { destination: '1' });
+    await post('/projects/2/tasks/2/move', { destination: '1' });
+    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'Created after move', 'New while empty', 'First-time arrival']);
+    await stop();
+    await start();
+    const returning = await post('/projects/2/tasks/1/move', { ...state, destination: '1' });
+    assert.equal(returning.headers.get('location'), '/projects/2?filter=Completed&priorityFilter=High&dueFrom=0001-01-01&dueThrough=9999-12-31');
+    const restored = await get('/projects/1');
+    assert.deepEqual(titles(restored), ['Updated first', 'Remaining', 'Created after move', 'New while empty', 'First-time arrival']);
+    assert.match(restored, /<h1>Renamed source<\/h1>/);
+    assert.match(restored, /aria-label="Complete Updated first" onchange/);
+    assert.match(restored, /<option selected>Low<\/option>/);
+    assert.match(restored, /name="dueDate" type="text" value="2026-10-10"/);
+    assert.deepEqual(titles(await get('/projects/2')), ['Existing destination task']);
+    assert.match(await get('/'), /project-summary">0\/5 completed/);
+    assert.match(await get('/'), /project-summary">0\/1 completed/);
+    await stop();
+    await start();
+    assert.equal(await get('/projects/1'), restored);
+
+    // Simulate an upgrade from Task 011 with an existing position column:
+    // positions need not follow task IDs after earlier moves.
+    await stop();
+    const priorVersion = new DatabaseSync(databasePath);
+    priorVersion.exec(`DROP TABLE task_positions;
+      UPDATE tasks SET position = CASE id WHEN 1 THEN 50 WHEN 2 THEN 40
+        WHEN 4 THEN 30 WHEN 5 THEN 20 WHEN 6 THEN 10 ELSE position END;`);
+    priorVersion.close();
+    await start();
+    const migratedOrder = ['First-time arrival', 'New while empty', 'Created after move', 'Remaining', 'Updated first'];
+    assert.deepEqual(titles(await get('/projects/1')), migratedOrder);
+    await post('/projects/1/tasks/6/move', { destination: '2' });
+    await stop();
+    await start();
+    await post('/projects/2/tasks/6/move', { destination: '1' });
+    assert.deepEqual(titles(await get('/projects/1')), migratedOrder);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
