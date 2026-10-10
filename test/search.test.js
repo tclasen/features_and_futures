@@ -38,7 +38,9 @@ test('search intersects filters, retains queries through edits, and resets on na
     await start();
     for (const name of ['Alpha Board', 'ALPHA  Board', 'Other', 'Ärea']) await post('/projects', { name });
     assert.deepEqual(projectNames(await page('/?search=%20aLpHa%20')), ['Alpha Board', 'ALPHA  Board']);
-    assert.deepEqual(projectNames(await page('/?search=alpha%20board')), ['Alpha Board']);
+    assert.deepEqual(projectNames(await page('/?search=alpha%20board')), ['Alpha Board', 'ALPHA  Board']);
+    assert.deepEqual(projectNames(await page('/?search=%09ALPHA%20%09%09BOARD%20')), ['Alpha Board', 'ALPHA  Board']);
+    assert.deepEqual(projectNames(await page('/?search=alpha%0Aboard')), []);
     assert.deepEqual(projectNames(await page('/?search=%C3%A4rea')), []);
     await post('/projects/2/archive');
     assert.deepEqual(projectNames(await page('/?search=alpha')), ['Alpha Board']);
@@ -50,7 +52,9 @@ test('search intersects filters, retains queries through edits, and resets on na
     for (const title of ['Alpha One', 'ALPHA  Two', 'Other', 'Ärea']) await post('/projects/1/tasks', { title });
     for (const id of [1, 2, 3]) await post(`/projects/1/tasks/${id}/due-date`, { dueDate: '2024-06-01' });
     assert.deepEqual(taskIds(await page('/projects/1?search=%20aLpHa%20')), [1, 2]);
-    assert.deepEqual(taskIds(await page('/projects/1?search=alpha%20two')), []);
+    assert.deepEqual(taskIds(await page('/projects/1?search=alpha%20two')), [2]);
+    assert.deepEqual(taskIds(await page('/projects/1?search=%20ALPHA%09%20%09TWO%09')), [2]);
+    assert.match(await page('/projects/1?search=alpha%20two'), /<span>ALPHA  Two<\/span>/);
     assert.deepEqual(taskIds(await page('/projects/1?search=%C3%A4rea')), []);
     const filtered = '/projects/1?' + new URLSearchParams(state);
     html = await page(filtered);
@@ -83,7 +87,7 @@ test('search intersects filters, retains queries through edits, and resets on na
     assert.deepEqual(taskIds(html), [2]);
     assert.match(html, /id="task-search"[^>]*value="alpha"/);
     assert.deepEqual(taskIds(await editedPage('/projects/1/tasks/2/move', { destination: '3' })), []);
-    await post('/projects/3/tasks/2/rename', { title: 'Alpha returned' });
+    await post('/projects/3/tasks/2/rename', { title: 'Alpha \t  returned' });
     await post('/projects/3/tasks/2/move', { destination: '1' });
     assert.deepEqual(taskIds(await page(filtered)), [2]);
     assert.deepEqual(taskIds(await page('/projects/1')), [1, 2, 3, 4, 5]);
@@ -99,6 +103,9 @@ test('search intersects filters, retains queries through edits, and resets on na
     await start();
     assert.deepEqual(taskIds(await page(filtered)), [2]);
     assert.deepEqual(taskIds(await page('/projects/1')), [1, 2, 3, 4, 5]);
+    assert.deepEqual(taskIds(await page('/projects/1?search=alpha%20returned')), [2]);
+    assert.match(await page('/projects/1?search=alpha%20returned'), /<span>Alpha \t  returned<\/span>/);
+    assert.deepEqual(projectNames(await page('/?filter=Archived&search=alpha%09%20board')), ['ALPHA  Board']);
     assert.match(await page('/projects/1'), /id="task-search"[^>]*value=""/);
     assert.match(await page('/'), /id="project-search"[^>]*value=""/);
   } finally {

@@ -131,7 +131,9 @@ function page(title, body) {
 }
 
 const asciiLower = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
-const matchesSearch = (name, query) => asciiLower(name).includes(asciiLower(query));
+// Normalize only for comparison; persisted and displayed text stays untouched.
+const normalizeSearch = value => asciiLower(value.replace(/[ \t]+/g, ' '));
+const matchesSearch = (name, query) => normalizeSearch(name).includes(normalizeSearch(query));
 const searchQuery = params => (params.get('search') || '').trim();
 
 function home(error = '', filter = 'Active', search = '') {
