@@ -31,7 +31,7 @@ const projectJson = (project) => ({ ...project, archived: Boolean(project.archiv
 const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const updateTask = db.prepare('UPDATE tasks SET title = ?, completed = ? WHERE project_id = ? AND id = ?');
 const taskJson = (task) => ({ ...task, completed: Boolean(task.completed) });
 
 const assets = new Map([
@@ -117,10 +117,18 @@ const server = http.createServer(async (request, response) => {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJson(request);
         if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
-        if (typeof input?.completed !== 'boolean') {
+        const task = findTask.get(projectId, taskId);
+        const renaming = Object.hasOwn(input ?? {}, 'title');
+        const completing = Object.hasOwn(input ?? {}, 'completed');
+        const title = renaming && typeof input.title === 'string' ? input.title.trim() : '';
+        if (renaming && !title) {
+          return json(response, 400, { error: 'Task title is required' });
+        }
+        if ((!renaming && !completing) || (completing && typeof input.completed !== 'boolean')) {
           return json(response, 400, { error: 'Completion must be a boolean' });
         }
-        completeTask.run(Number(input.completed), projectId, taskId);
+        updateTask.run(renaming ? title : task.title,
+          completing ? Number(input.completed) : task.completed, projectId, taskId);
         return json(response, 200, taskJson(findTask.get(projectId, taskId)));
       }
     }
