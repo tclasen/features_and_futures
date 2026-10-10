@@ -28,6 +28,7 @@ const listProjects = database.prepare(`SELECT projects.id, projects.name,
   WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -143,6 +144,12 @@ function projectPage(project, filter = 'All', error = '') {
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create task-controls" method="post" action="/projects/${project.id}/rename">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form class="create task-controls" method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -210,6 +217,31 @@ const server = http.createServer(async (request, response) => {
       const project = findProject.get(projectRoute[1]);
       if (project) {
         sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+        return;
+      }
+    }
+    const renameRoute = /^\/projects\/([1-9]\d*)\/rename$/.exec(url.pathname);
+    if (request.method === 'POST' && renameRoute) {
+      const project = findProject.get(renameRoute[1]);
+      if (project) {
+        const form = await readForm(request);
+        if (!form) {
+          sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived projects cannot be renamed'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(response, 400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        response.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        response.end();
         return;
       }
     }

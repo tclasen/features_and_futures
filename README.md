@@ -18,6 +18,10 @@ completed/total task count. Archive and restore projects from their rows.
 Archived projects retain their tasks and filters while task creation and
 completion changes are disabled. Archive state also persists across restarts;
 existing databases are upgraded automatically.
+Active project pages also allow renaming with `New project name` and
+`Rename project`. Names are trimmed and must not be blank. Renaming preserves
+the project's URL, list position, tasks, and completion counts across restarts.
+Archived projects cannot be renamed until restored.
 
 Run the integration checks:
 
