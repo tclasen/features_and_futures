@@ -17,3 +17,5 @@ Future task016 is an unfrozen draft. Its separate zero-inference PM fixture may 
 Task016 now freezes after30variants:two56-check full modes, two reload sentinels and26negative variants. Registered test counts, anchored live exclusion and separate Deleted priority/date/title intersections verify. Native upgrade/restart remain mandatory at dispatch. See task016-validation.json.
 
 Task017 now freezes after25variants:two58-check full modes, two reload sentinels and21deliberate defects. Portable notes use explicitly specified LF line endings; source notes remain unchanged. Independent native phase checks remain required. See task017-validation.json.
+
+Task018 freezes after24variants:two62-check full modes, two reload sentinels and20genuine import/retained-behavior defects, plus two focused default-observer checks. Original racing prototype retained; native phase checks mandatory. See task018-validation.json.

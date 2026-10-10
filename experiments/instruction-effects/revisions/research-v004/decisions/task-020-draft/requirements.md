@@ -1,0 +1,7 @@
+## Requirement020: complete and reopen visible directory tasks
+
+Dependencies: all requirements through019 remain cumulative. The directory provides `Complete visible tasks` and `Reopen visible tasks`. In Active project scope with a live task filter, these set completion to true or false respectively for every task matching the current task filter, priority, due range and title search, across their owning active projects. Already matching completion values remain unchanged. Preserve every other field, original order, ownership and remembered positions.
+
+Keep the current directory filters/search/range selected after each action and refresh membership and project summaries from the saved state. Thus completing results under Open removes them from that same filtered view, while reopening under Completed removes them from that view. Tasks outside the matching result set, deleted tasks and archived projects remain unchanged. Both controls are disabled when Project scope is Archived, Task filter is Deleted, or there are no eligible visible live tasks.
+
+Bulk changes persist through reload and real server restart. Moving a task later retains its bulk-updated completion and original fields; reopening or completing tasks never restores a deleted task, changes a project's archived flag, or revises any earlier filtering behavior.
