@@ -13,6 +13,9 @@ test('combined filters retain selections and reevaluate completion, priority and
   const completionFilter = control('All');
   const priorityFilter = control('All');
   const alert = { textContent: '' };
+  const defaultPriority = Object.assign(control('Normal'), {
+    dataset: { defaultUrl: '/default-priority', savedPriority: 'Normal' }
+  });
   const rows = [
     [false, 'Low'], [true, 'Normal'], [false, 'High'], [true, 'High'], [false, 'Normal']
   ].map(([completed, priority], index) => {
@@ -37,7 +40,7 @@ test('combined filters retain selections and reevaluate completion, priority and
     URLSearchParams,
     fetch: async () => ({ ok: saveOk }),
     document: {
-      getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : alert,
+      getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : alert,
       querySelectorAll: selector => ({
         '[data-testid="task-row"]': rows,
         '[data-completion-url]': rows.map(row => row.checkbox),
@@ -64,6 +67,13 @@ test('combined filters retain selections and reevaluate completion, priority and
   priorityFilter.value = 'High';
   completionFilter.change();
   assert.deepEqual(visible(), [2]);
+  defaultPriority.value = 'Low';
+  await defaultPriority.change();
+  assert.equal(defaultPriority.dataset.savedPriority, 'Low');
+  assert.equal(defaultPriority.disabled, false);
+  assert.equal(completionFilter.value, 'Open');
+  assert.equal(priorityFilter.value, 'High');
+  assert.deepEqual(visible(), [2]);
   rows[2].form.elements.title.value = '  Renamed task  ';
   await rows[2].form.submit({ preventDefault() {} });
   assert.equal(rows[2].span.textContent, 'Renamed task');
@@ -79,6 +89,10 @@ test('combined filters retain selections and reevaluate completion, priority and
   await rows[0].checkbox.change();
   assert.deepEqual(visible(), []);
   saveOk = false;
+  defaultPriority.value = 'High';
+  await defaultPriority.change();
+  assert.equal(defaultPriority.value, 'Low');
+  assert.deepEqual(visible(), []);
   rows[4].select.value = 'High';
   await rows[4].select.change();
   assert.equal(rows[4].select.value, 'Normal');
