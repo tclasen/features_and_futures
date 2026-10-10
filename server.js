@@ -127,7 +127,10 @@ function page() {
       const filterLabel = element('label', 'Project filter'); filterLabel.htmlFor = 'project-filter';
       const filter = document.createElement('select'); filter.id = 'project-filter';
       for (const value of ['Active', 'Archived']) { const option = element('option', value); option.value = value; filter.append(option); }
-      app.append(filterLabel, filter);
+      const searchLabel = element('label', 'Project search'); searchLabel.htmlFor = 'project-search';
+      const searchInput = document.createElement('input'); searchInput.id = 'project-search'; searchInput.type = 'text';
+      const searchButton = element('button', 'Search projects'); searchButton.type = 'button';
+      app.append(filterLabel, filter, searchLabel, searchInput, searchButton);
       const form = document.createElement('form');
       const field = element('div', undefined, 'field');
       const label = element('label', 'Project name');
@@ -148,6 +151,7 @@ function page() {
       const rows = element('div', undefined, 'rows');
       rows.setAttribute('aria-label', 'Projects');
       app.append(rows);
+      let appliedProjectQuery = '';
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -157,17 +161,25 @@ function page() {
         const response = await fetch('/api/projects', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
         });
-        if (response.ok) { input.value = ''; await loadRows(rows, filter); }
+        if (response.ok) { input.value = ''; await loadRows(rows, filter, appliedProjectQuery); }
       });
-      filter.addEventListener('change', () => loadRows(rows, filter));
-      await loadRows(rows, filter);
+      filter.addEventListener('change', () => loadRows(rows, filter, appliedProjectQuery));
+      searchButton.addEventListener('click', () => {
+        appliedProjectQuery = searchInput.value.trim();
+        searchInput.value = appliedProjectQuery;
+        loadRows(rows, filter, appliedProjectQuery);
+      });
+      await loadRows(rows, filter, '');
     }
 
     const projectRowElements = new WeakMap();
     const projectRowRequests = new WeakMap();
 
-    async function loadRows(rows, filterSelect) {
+    function asciiLower(value) { return value.replace(/[A-Z]/g, character => character.toLowerCase()); }
+
+    async function loadRows(rows, filterSelect, query = '') {
       const filter = filterSelect.value;
+      const appliedQuery = query.trim();
       const requestId = (projectRowRequests.get(rows) || 0) + 1;
       projectRowRequests.set(rows, requestId);
       const response = await fetch('/api/projects?filter=' + filter.toLowerCase());
@@ -178,14 +190,15 @@ function page() {
         rowElements = new Map();
         projectRowElements.set(rows, rowElements);
       }
-      const visibleIds = new Set(projects.map(project => String(project.id)));
+      const matchingProjects = projects.filter(project => !appliedQuery || asciiLower(project.name).includes(asciiLower(appliedQuery)));
+      const visibleIds = new Set(matchingProjects.map(project => String(project.id)));
       for (const [id, row] of rowElements) {
         if (!visibleIds.has(id)) {
           row.remove();
           rowElements.delete(id);
         }
       }
-      for (const project of projects) {
+      for (const project of matchingProjects) {
         const id = String(project.id);
         let row = rowElements.get(id);
         const isNew = !row;
@@ -215,7 +228,7 @@ function page() {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ archived: filter !== 'Archived' })
           });
-          await loadRows(rows, filterSelect);
+          await loadRows(rows, filterSelect, query);
         };
         if (isNew) rows.append(row);
       }
@@ -299,6 +312,9 @@ function page() {
       const dueThroughLabel = element('label', 'Due through'); dueThroughLabel.htmlFor = 'due-through';
       const dueThrough = document.createElement('input'); dueThrough.id = 'due-through'; dueThrough.type = 'text';
       const applyDueRange = element('button', 'Apply due range'); applyDueRange.type = 'button';
+      const taskSearchLabel = element('label', 'Task search'); taskSearchLabel.htmlFor = 'task-search';
+      const taskSearchInput = document.createElement('input'); taskSearchInput.id = 'task-search'; taskSearchInput.type = 'text';
+      const taskSearchButton = element('button', 'Search tasks'); taskSearchButton.type = 'button';
       const dueRangeError = element('p', 'Due range must use valid YYYY-MM-DD dates', 'error');
       dueRangeError.setAttribute('role', 'alert'); dueRangeError.hidden = true;
       const dueOrderError = element('p', 'Due from must not be after Due through', 'error');
@@ -308,7 +324,9 @@ function page() {
       const rows = element('div', undefined, 'rows');
       rows.setAttribute('aria-label', 'Tasks');
       app.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter,
-        dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, dueRangeError, dueOrderError, rows);
+        dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange,
+        taskSearchLabel, taskSearchInput, taskSearchButton, dueRangeError, dueOrderError, rows);
+      let appliedTaskQuery = '';
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const title = input.value.trim();
@@ -317,10 +335,15 @@ function page() {
         const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
         });
-        if (result.ok) { input.value = ''; await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough); }
+        if (result.ok) { input.value = ''; await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough, appliedTaskQuery); }
       });
-      filter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough));
-      priorityFilter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough));
+      filter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough, appliedTaskQuery));
+      priorityFilter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough, appliedTaskQuery));
+      taskSearchButton.addEventListener('click', () => {
+        appliedTaskQuery = taskSearchInput.value.trim();
+        taskSearchInput.value = appliedTaskQuery;
+        loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough, appliedTaskQuery);
+      });
       applyDueRange.addEventListener('click', async () => {
         const from = dueFrom.value.trim();
         const through = dueThrough.value.trim();
@@ -329,9 +352,9 @@ function page() {
         if (from && through && from > through) { dueOrderError.hidden = false; return; }
         appliedDueFrom = from; appliedDueThrough = through;
         dueFrom.value = from; dueThrough.value = through;
-        await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough);
+        await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough, appliedTaskQuery);
       });
-      await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough);
+      await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough, appliedTaskQuery);
     }
 
     function isValidDate(value) {
@@ -342,7 +365,7 @@ function page() {
       return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
     }
 
-    async function loadTasks(projectId, rows, filter, priorityFilter, dueFrom = '', dueThrough = '') {
+    async function loadTasks(projectId, rows, filter, priorityFilter, dueFrom = '', dueThrough = '', searchQuery = '') {
       const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks');
       const tasks = await response.json();
       const projectResponse = await fetch('/api/projects/' + encodeURIComponent(projectId));
@@ -351,6 +374,7 @@ function page() {
       const destinations = (await destinationsResponse.json()).filter(item => String(item.id) !== String(projectId));
       rows.replaceChildren();
       for (const task of tasks) {
+        if (searchQuery && !asciiLower(task.title).includes(asciiLower(searchQuery.trim()))) continue;
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
         if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
         if ((dueFrom || dueThrough) && !task.due_date) continue;
@@ -363,7 +387,7 @@ function page() {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
           });
-          await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
+          await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
         });
         const title = element('span', task.title, 'task-title');
         const renameInput = document.createElement('input');
@@ -384,7 +408,7 @@ function page() {
           const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle })
           });
-          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
+          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
         });
         const priority = document.createElement('select');
         priority.setAttribute('aria-label', 'Task priority');
@@ -397,7 +421,7 @@ function page() {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
           });
-          await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
+          await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
         });
         const dueDate = document.createElement('input');
         dueDate.type = 'text';
@@ -415,7 +439,7 @@ function page() {
             const saved = await result.json();
             dueDate.value = saved.due_date || '';
             const error = row.querySelector('[role="alert"]'); if (error) error.remove();
-            await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
+            await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
           } else {
             let error = row.querySelector('[role="alert"]');
             if (!error) { error = element('span', 'Due date must be a valid YYYY-MM-DD date', 'error'); error.setAttribute('role', 'alert'); row.append(error); }
@@ -435,7 +459,7 @@ function page() {
           const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id) + '/move', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_project_id: destination.value })
           });
-          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
+          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
         });
         row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton); rows.append(row);
       }
