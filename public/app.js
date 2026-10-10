@@ -1,4 +1,5 @@
 import { matchesTaskFilters, normalizeDueRange } from './task-filters.js';
+import { matchesProjectFilters, normalizeSearchQuery } from './search.js';
 
 const app = document.querySelector('#app');
 
@@ -65,6 +66,11 @@ async function showProjects() {
       <option>Active</option>
       <option>Archived</option>
     </select>
+    <form id="project-search-form">
+      <label for="project-search">Project search</label>
+      <input id="project-search" type="text" autocomplete="off">
+      <button type="submit">Search projects</button>
+    </form>
     <ul class="projects"></ul>
   `;
   const list = app.querySelector('ul');
@@ -73,9 +79,16 @@ async function showProjects() {
   const submit = form.querySelector('button');
   const filter = app.querySelector('select');
   let projects = [];
+  let searchQuery = '';
+  const searchInput = app.querySelector('#project-search');
+  app.querySelector('#project-search-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchQuery = normalizeSearchQuery(searchInput.value);
+    searchInput.value = searchQuery;
+    renderProjects();
+  });
   function renderProjects() {
-    const archived = filter.value === 'Archived';
-    list.replaceChildren(...projects.filter((project) => Boolean(project.archived) === archived)
+    list.replaceChildren(...projects.filter((project) => matchesProjectFilters(project, filter.value, searchQuery))
       .map((project) => projectRow(project, renderProjects)));
   }
   filter.addEventListener('change', renderProjects);
@@ -190,6 +203,11 @@ async function showProject(id) {
       <input id="due-through" type="text" autocomplete="off">
       <button type="submit">Apply due range</button>
     </form>
+    <form id="task-search-form">
+      <label for="task-search">Task search</label>
+      <input id="task-search" type="text" autocomplete="off">
+      <button type="submit">Search tasks</button>
+    </form>
     <ul class="tasks"></ul>
   `;
   if (project.archived) {
@@ -232,6 +250,14 @@ async function showProject(id) {
   let tasks = [];
   const pendingUpdates = new Set();
   let dueRange = normalizeDueRange('', '');
+  let searchQuery = '';
+  const searchInput = section.querySelector('#task-search');
+  section.querySelector('#task-search-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchQuery = normalizeSearchQuery(searchInput.value);
+    searchInput.value = searchQuery;
+    renderTasks();
+  });
   const dueRangeForm = section.querySelector('#due-range-form');
   const dueFrom = section.querySelector('#due-from');
   const dueThrough = section.querySelector('#due-through');
@@ -250,7 +276,7 @@ async function showProject(id) {
   });
 
   function renderTasks() {
-    const visible = tasks.filter((task) => matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange));
+    const visible = tasks.filter((task) => matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange, searchQuery));
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
