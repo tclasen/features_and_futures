@@ -43,7 +43,11 @@ CREATE TABLE IF NOT EXISTS task_positions (
   PRIMARY KEY (task_id, project_id)
 );
 INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
-  SELECT id, project_id, sort_order FROM tasks;`);
+  SELECT id, project_id, sort_order FROM tasks;
+UPDATE tasks SET sort_order = (
+  SELECT position FROM task_positions
+  WHERE task_positions.task_id = tasks.id AND task_positions.project_id = tasks.project_id
+);`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
