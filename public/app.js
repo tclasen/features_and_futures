@@ -24,6 +24,7 @@ async function render() {
       return;
     }
     app.append(element('h1', project.name));
+    if (project.archived) app.append(element('p', 'Archived project')); 
     const back = element('button', 'Projects');
     back.addEventListener('click', () => navigate('/'));
     app.append(back);
@@ -37,6 +38,7 @@ async function render() {
     input.autocomplete = 'off';
     const submit = element('button', 'Create task');
     submit.type = 'submit';
+    if (project.archived) submit.disabled = true;
     form.append(label, input, submit);
     const alert = element('p', '', 'alert');
     alert.setAttribute('role', 'alert');
@@ -60,6 +62,7 @@ async function render() {
         const checkbox = element('input');
         checkbox.type = 'checkbox';
         checkbox.checked = task.completed;
+        checkbox.disabled = project.archived;
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         checkbox.addEventListener('change', async () => {
           await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
@@ -99,25 +102,43 @@ async function render() {
   const alert = element('p', '', 'alert');
   alert.setAttribute('role', 'alert');
   alert.hidden = true;
+  const filterLabel = element('label', 'Project filter');
+  filterLabel.htmlFor = 'project-filter';
+  const filter = element('select');
+  filter.id = 'project-filter';
+  for (const value of ['Active', 'Archived']) filter.append(new Option(value, value));
   const list = element('section', undefined, 'project-list');
   list.setAttribute('aria-label', 'Projects');
-  app.append(form, alert, list);
+  app.append(form, alert, filterLabel, filter, list);
 
   async function loadProjects() {
     const response = await fetch('/api/projects');
     const projects = await response.json();
     list.replaceChildren();
-    for (const project of projects) {
+    for (const project of projects.filter(p => p.archived === (filter.value === 'Archived'))) {
       const row = element('div', undefined, 'project-row');
       row.dataset.testid = 'project-row';
-      row.append(element('span', project.name));
+      const details = element('div');
+      details.append(element('span', project.name));
+      const summary = element('span', project.summary, 'project-summary');
+      summary.dataset.testid = 'project-summary';
+      details.append(summary);
+      row.append(details);
       const open = element('button', 'Open project');
       open.type = 'button';
       open.addEventListener('click', () => navigate(`/projects/${project.id}`));
       row.append(open);
+      const action = element('button', project.archived ? 'Restore project' : 'Archive project');
+      action.type = 'button';
+      action.addEventListener('click', async () => {
+        await fetch(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+        await loadProjects();
+      });
+      row.append(action);
       list.append(row);
     }
   }
+  filter.addEventListener('change', loadProjects);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = input.value.trim();
