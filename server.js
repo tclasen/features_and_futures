@@ -125,6 +125,14 @@ function projectPage(project, filter = 'All', error = '') {
           </label>
           <noscript><button type="submit">Save completion</button></noscript>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${['Low', 'Normal', 'High'].map((option) => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
+          </select>
+          <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save priority</button></noscript>
+        </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           <input type="hidden" name="filter" value="${filter}">
           <label for="new-task-title-${task.id}">New task title</label>
@@ -225,7 +233,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/.exec(path);
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?$/.exec(path);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const project = Number.isSafeInteger(projectId) ? store.find(projectId) : undefined;
@@ -254,6 +262,13 @@ const server = createServer(async (request, response) => {
                 return;
               }
               updated = store.renameTask(projectId, taskId, title);
+            } else if (taskMatch[3] === 'priority') {
+              const priority = form.get('priority');
+              if (!['Low', 'Normal', 'High'].includes(priority)) {
+                sendHtml(response, 400, projectPage(project, filter, 'Invalid task priority'));
+                return;
+              }
+              updated = store.setTaskPriority(projectId, taskId, priority);
             } else {
               updated = store.setTaskCompleted(projectId, taskId, form.get('completed') === '1');
             }

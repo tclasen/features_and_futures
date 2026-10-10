@@ -21,4 +21,6 @@ Active project pages also support renaming. Names are trimmed and must be nonbla
 
 Each task row also supports renaming with a trimmed, nonblank title. Renaming preserves task identity, project ownership, order, completion, and filter membership, and updates the completion label. Archived projects disable and reject task renaming until restored.
 
-The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, and migration from the previous schema.
+Each task has an independent Low, Normal (default), or High priority. Priority changes save automatically and preserve task order, ownership, title, completion, and summaries. Archived projects disable and reject priority changes until restored. Existing tasks migrate to Normal; saved priorities survive renaming and server restarts.
+
+The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, priorities, and migration from the previous schema.

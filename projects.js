@@ -23,6 +23,10 @@ export function openProjectStore(path) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
   }
+  // Default both migrated and new tasks to Normal without changing task identity.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+  }
   const list = database.prepare(`
     SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
       COALESCE(SUM(t.completed), 0) AS completed
@@ -34,11 +38,16 @@ export function openProjectStore(path) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
-  const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTaskTitle = database.prepare(`
     UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
+
+  const updateTaskPriority = database.prepare(`
+    UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
 
@@ -67,6 +76,12 @@ export function openProjectStore(path) {
       const trimmedTitle = title.trim();
       if (!trimmedTitle) throw new Error('Task title is required');
       return updateTaskTitle.run(trimmedTitle, projectId, taskId).changes > 0;
+    },
+    setTaskPriority(projectId, taskId, priority) {
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        throw new Error('Invalid task priority');
+      }
+      return updateTaskPriority.run(priority, projectId, taskId).changes > 0;
     },
     setTaskCompleted(projectId, taskId, completed) {
       if (find.get(projectId)?.archived) return false;

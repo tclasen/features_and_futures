@@ -332,6 +332,71 @@ test('task renaming preserves ownership, completion, order, filters, and persist
   }
 });
 
+test('priorities migrate, persist independently, and preserve task data through archive and rename', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('First'), ('Second');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Pending', 0), (2, 'Other', 0);
+  `);
+  database.close();
+  let app;
+  try {
+    app = await start(databasePath);
+    const detail = async (project = 1, filter = 'All') => (await fetch(`${app.url}/projects/${project}?filter=${filter}`)).text();
+    const priorities = (html) => [...html.matchAll(/<select id="task-priority-\d+"[^>]*>([\s\S]*?)<\/select>/g)].map((match) => {
+      assert.deepEqual([...match[1].matchAll(/<option(?: selected)?>(.*?)<\/option>/g)].map((option) => option[1]), ['Low', 'Normal', 'High']);
+      return /<option selected>(.*?)<\/option>/.exec(match[1])[1];
+    });
+    assert.deepEqual(priorities(await detail()), ['Normal', 'Normal']);
+    await post(app.url, '/projects/1/tasks', { title: 'New' });
+    assert.deepEqual(priorities(await detail()), ['Normal', 'Normal', 'Normal']);
+    const saved = taskRows(await detail());
+    assert.equal((await post(app.url, '/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' })).headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal((await post(app.url, '/projects/1/tasks/2/priority', { priority: 'Low' })).status, 303);
+    for (const priority of ['', 'Urgent', 'normal']) {
+      assert.equal((await post(app.url, '/projects/1/tasks/1/priority', { priority })).status, 400);
+    }
+    assert.equal((await post(app.url, '/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post(app.url, '/projects/1/tasks/99999/priority', { priority: 'Low' })).status, 404);
+    const check = async () => {
+      assert.deepEqual(priorities(await detail()), ['High', 'Low', 'Normal']);
+      assert.deepEqual(priorities(await detail(2)), ['Normal']);
+      assert.deepEqual(priorities(await detail(1, 'Completed')), ['High']);
+      assert.deepEqual(priorities(await detail(1, 'Open')), ['Low', 'Normal']);
+      assert.deepEqual(taskRows(await detail()), saved);
+      assert.match(await (await fetch(app.url)).text(), /data-testid="project-summary">1\/3 completed/);
+    };
+    await check();
+    await post(app.url, '/projects/1/tasks/1/rename', { title: 'Renamed' });
+    saved[0].title = 'Renamed';
+    await check();
+    await app.stop();
+    app = await start(databasePath);
+    await check();
+    await post(app.url, '/projects/1/archive', {});
+    assert.equal(((await detail()).match(/<select id="task-priority-\d+"[^>]* disabled/g) || []).length, 3);
+    assert.equal((await post(app.url, '/projects/1/tasks/1/priority', { priority: 'Low' })).status, 409);
+    await app.stop();
+    app = await start(databasePath);
+    assert.deepEqual(priorities(await detail()), ['High', 'Low', 'Normal']);
+    await post(app.url, '/projects/1/restore', {});
+    assert.doesNotMatch(await detail(), / disabled/);
+    await check();
+    await post(app.url, '/projects/1/tasks/1/priority', { priority: 'Normal' });
+    await app.stop();
+    app = await start(databasePath);
+    assert.deepEqual(priorities(await detail()), ['Normal', 'Low', 'Normal']);
+    assert.deepEqual(taskRows(await detail()), saved);
+  } finally {
+    if (app) await app.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, navigate, escape HTML, and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const databasePath = join(directory, 'nested', 'projects.sqlite');
