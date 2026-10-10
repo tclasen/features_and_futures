@@ -72,7 +72,7 @@ function renderRename(project, heading) {
   });
 }
 function matchesSearch(value, query) {
-  const fold = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  const fold = text => text.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
   return fold(value).includes(fold(query));
 }
 function searchForm(label, buttonLabel, id, onApply) {

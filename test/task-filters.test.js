@@ -407,9 +407,9 @@ test('archived projects keep both filters usable and editing controls disabled',
   assert.deepEqual(ui.writes, []);
 });
 
-test('project search trims, folds only ASCII, preserves internal spaces and intersects archive filter', async () => {
+test('project search trims, normalizes spaces and tabs, folds only ASCII and intersects archive filter', async () => {
   const ui = await page(false, [
-    { id: 2, name: 'ALPHA  Beta', archived: 0, total: 3, completed: 1 },
+    { id: 2, name: 'ALPHA \t  Beta', archived: 0, total: 3, completed: 1 },
     { id: 3, name: 'alpha Beta', archived: 1, total: 2, completed: 2 },
     { id: 4, name: 'Älpha', archived: 0, total: 0, completed: 0 },
   ], '/');
@@ -419,20 +419,20 @@ test('project search trims, folds only ASCII, preserves internal spaces and inte
   const names = () => rows().map(row => row.children[0].textContent);
   assert.equal(search.value, '');
   assert.equal(search.parent.children.at(-1).textContent, 'Search projects');
-  assert.deepEqual(names(), ['Project', 'ALPHA  Beta', 'Älpha']);
+  assert.deepEqual(names(), ['Project', 'ALPHA \t  Beta', 'Älpha']);
   search.value = '  AlPhA  ';
   await search.parent.fire('submit');
-  assert.deepEqual(names(), ['ALPHA  Beta']);
+  assert.deepEqual(names(), ['ALPHA \t  Beta']);
   assert.equal(rows()[0].children[1].textContent, '1/3 completed');
   filter.value = 'Archived';
   await filter.fire('change');
   assert.deepEqual(names(), ['alpha Beta']);
-  search.value = 'alpha  beta';
+  search.value = 'alpha \t beta';
   await search.parent.fire('submit');
-  assert.deepEqual(names(), []);
+  assert.deepEqual(names(), ['alpha Beta']);
   filter.value = 'Active';
   await filter.fire('change');
-  assert.deepEqual(names(), ['ALPHA  Beta']);
+  assert.deepEqual(names(), ['ALPHA \t  Beta']);
   search.value = 'älpha';
   await search.parent.fire('submit');
   assert.deepEqual(names(), []);
@@ -441,7 +441,7 @@ test('project search trims, folds only ASCII, preserves internal spaces and inte
   assert.deepEqual(names(), ['Älpha']);
   search.value = '   ';
   await search.parent.fire('submit');
-  assert.deepEqual(names(), ['Project', 'ALPHA  Beta', 'Älpha']);
+  assert.deepEqual(names(), ['Project', 'ALPHA \t  Beta', 'Älpha']);
   assert.deepEqual(ui.writes, []);
 });
 
@@ -514,4 +514,41 @@ test('archived task search is usable and clearing retains other filters', async 
   await search.parent.fire('submit');
   assert.deepEqual(ui.titles(), ['Second', 'Fourth']);
   assert.deepEqual(ui.writes, []);
+});
+
+
+test('task search normalizes only spaces and tabs without changing saved titles or filters', async () => {
+  const ui = await page();
+  const title = 'MiXeD  \t  SpAcEs';
+  const rename = ui.control('new-task-title-1');
+  rename.value = title;
+  await rename.parent.fire('submit');
+  const completion = ui.control('task-filter');
+  const priority = ui.control('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const search = ui.control('task-search');
+  const saved = structuredClone(ui.tasks);
+  for (const query of ['mixed spaces', '  MIXED\t \tSPACES  ', 'mixed  spaces']) {
+    search.value = query;
+    await search.parent.fire('submit');
+    assert.deepEqual(ui.titles(), [title]);
+    assert.equal(ui.rows()[0].children[0].attributes['aria-label'], `Complete ${title}`);
+    assert.equal(ui.control('new-task-title-1').value, title);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+  }
+  // Other internal whitespace is not collapsed.
+  for (const query of ['mixed\nspaces', 'mixed\u00a0spaces']) {
+    search.value = query;
+    await search.parent.fire('submit');
+    assert.deepEqual(ui.titles(), []);
+  }
+  search.value = ' \t ';
+  await search.parent.fire('submit');
+  assert.deepEqual(ui.titles(), [title]);
+  assert.deepEqual(ui.tasks, saved);
+  assert.deepEqual(ui.writes, [{ title }]);
 });
