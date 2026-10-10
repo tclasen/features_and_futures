@@ -1,7 +1,5 @@
-# Unfrozen movement-order revision
+# Return-position revision preparation
 
-Chosen at the task009 shared barrier before comparative inspection. Task012 intentionally changes the prior always-append rule for returning tasks while retaining first-arrival append. This revisits earlier behavior and persistent upgrades using identical criteria for all twelve builders. Concrete cumulative tests and full positive/negative fixture verification remain required; this draft is not in the task stream and is not dispatched.
+Chosen at task009 shared barrier before comparative inspection. Task012 explicitly changes always-append movement for returning tasks while retaining first-arrival append and current field values. Current positions and separate per-project histories must survive project renaming/archive/restoration.
 
-Prospective continuation after task012: project/task search with revised case/whitespace matching, persistent task notes, reversible deletion/restoration, and portable export/import with identity and validation checks, following the original prospective workload areas. Details must precede comparative inspection and each shared dispatch.
-
-Draft suite44acceptance,1postrestart,1upgrade. The restart sentinel also reads the completed per-project return order seeded in acceptance. No native task012 dispatch occurs before full fixture verification.
+[Fixture verification](../../preflight/priority-fixtures/stage-12-check-1791626127487/verified.json) records two44-check positive modes, two1-check reload sentinels and17intentional defects each selecting/failing1assertion: five return-order defects plus twelve selected inherited defects. Full cumulative positives include all earlier behavior. The restart sentinel also reads the completed per-project return order seeded in acceptance. Synthetic HTTP observations prove reload only; actual native process restart, SQLite upgrade, promotion and30second observations remain mandatory. Still unfrozen/undispatched until task011shared barrier and full report pass.
