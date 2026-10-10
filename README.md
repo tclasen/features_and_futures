@@ -18,7 +18,9 @@ Use New project name and Rename project on an active project's page to change it
 
 Each task row has New task title and Rename task controls. Renaming trims the title and preserves the task's project, position, completion state, and filter membership. Blank titles display a validation alert. Archived projects disable task renaming until restored.
 
-Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority is saved independently for each task and persists across restarts and renaming. Archived projects disable priority changes until restored.
+Each task has a Task priority selector with Low, Normal, and High options. Existing tasks default to Normal. Priority is saved independently for each task and persists across restarts and renaming. Archived projects disable priority changes until restored.
+
+Default task priority sets the priority for subsequent tasks in that project. Projects initially use Normal; changing the saved default leaves existing tasks and both task filters unchanged. Defaults persist across restarts, renaming, archival, and restoration. Archived projects display their saved default with the selector disabled.
 
 Each project page also has a Priority filter with All, Low, Normal, and High options, initially All. It combines with Task filter to show tasks matching both selections in creation order. Edits and validation keep both filter selections; priority and completion changes immediately update the matching rows. Filters remain usable in archived projects and never change the completion summary.
 
