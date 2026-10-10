@@ -29,6 +29,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Workboard</title>
@@ -91,7 +92,18 @@ async function render() {
           const title=document.createElement('span'); title.textContent=task.title;
           const checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=Boolean(task.completed); checkbox.disabled=Boolean(project.archived); checkbox.setAttribute('aria-label','Complete '+task.title);
           checkbox.addEventListener('change', async () => { await fetch('/api/projects/'+project.id+'/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:checkbox.checked})}); await loadTasks(); });
-          row.append(title, checkbox); app.append(row);
+          row.append(title, checkbox);
+          const renameInput=document.createElement('input'); renameInput.type='text'; renameInput.setAttribute('aria-label','New task title'); renameInput.value=task.title; renameInput.disabled=Boolean(project.archived);
+          const renameButton=document.createElement('button'); renameButton.type='button'; renameButton.textContent='Rename task'; renameButton.disabled=Boolean(project.archived);
+          renameButton.addEventListener('click',async()=>{
+            const newTitle=renameInput.value.trim();
+            let alert=app.querySelector('[data-task-alert]');
+            if (!alert) { alert=document.createElement('div'); alert.setAttribute('role','alert'); alert.dataset.taskAlert='true'; app.insertBefore(alert,filterLabel); }
+            if (!newTitle) { alert.textContent='Task title is required'; return; }
+            const result=await fetch('/api/projects/'+project.id+'/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({title:newTitle})});
+            if (result.ok) { alert.remove(); await loadTasks(); }
+          });
+          row.append(renameInput,renameButton); app.append(row);
         }
       }
       return;
@@ -170,9 +182,15 @@ const server = createServer(async (request, response) => {
       try {
         let raw = ''; for await (const chunk of request) raw += chunk;
         const data = JSON.parse(raw);
-        if (typeof data.completed !== 'boolean') return send(response, 400, { error: 'Invalid completion state' });
         const taskId = Number(tasksMatch[2]);
         if (!getTask.get(taskId, projectId)) return send(response, 404, { error: 'Not found' });
+        if (typeof data.title === 'string') {
+          const title=data.title.trim();
+          if (!title) return send(response,400,{error:'Task title is required'});
+          renameTask.run(title,taskId,projectId);
+          return send(response,200,{ok:true});
+        }
+        if (typeof data.completed !== 'boolean') return send(response, 400, { error: 'Invalid completion state' });
         updateTask.run(data.completed ? 1 : 0, taskId, projectId);
         return send(response, 200, { ok: true });
       } catch { return send(response, 400, { error: 'Invalid request' }); }
