@@ -26,6 +26,11 @@ trimmed and must not be blank. Renaming preserves ownership, creation order,
 completion state, filter membership, and project summaries across restarts.
 Task renaming is disabled while the project is archived and enabled on restore.
 
+Each task has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Priority changes persist across
+restarts and preserve task titles, completion, ordering, ownership, and summaries.
+Archived projects disable priority changes; restoring enables them again.
+
 The Project filter starts with Active projects. Archive a project to move it to
 Archived, or restore it to return it to Active. Each project shows its completed
 and total task counts. Archived projects remain readable with working task
@@ -49,4 +54,4 @@ databases, and check project and task validation, ordering, navigation, HTML
 escaping, task filtering and ownership, completion changes, and persistence
 after restarts, legacy database migration, archive/restore, summaries, and
 archived-project mutation protection, and project and task renaming with identity
-and data preservation.
+and data preservation, and task priorities including migration and persistence.
