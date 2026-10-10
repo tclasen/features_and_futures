@@ -28,6 +28,10 @@ const renameButton = renameForm.querySelector('button');
 const renameAlert = document.querySelector('#rename-alert');
 let currentProjectId = null;
 
+function foldAsciiCase(value) {
+  return value.replace(/[A-Z]/g, character => character.toLowerCase());
+}
+
 function isValidDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
@@ -55,7 +59,7 @@ async function renderList() {
   const showingArchived = projectFilter.value === 'Archived';
   for (const project of projects) {
     if (Boolean(project.archived) !== showingArchived) continue;
-    if (!project.name.toLowerCase().includes(appliedProjectQuery.toLowerCase())) continue;
+    if (!foldAsciiCase(project.name).includes(foldAsciiCase(appliedProjectQuery))) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
     row.className = 'project-row';
@@ -98,7 +102,7 @@ async function renderTasks() {
   const selectedPriority = priorityFilter.value;
   taskSearchInput.value = appliedTaskQuery;
   for (const task of tasks) {
-    if (!task.title.toLowerCase().includes(appliedTaskQuery.toLowerCase())) continue;
+    if (!foldAsciiCase(task.title).includes(foldAsciiCase(appliedTaskQuery))) continue;
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     if (appliedDueRange.from || appliedDueRange.through) {
