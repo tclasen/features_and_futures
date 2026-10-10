@@ -185,6 +185,7 @@ async function renderProject(id) {
             const saved = await update.json();
             savedPriority = saved.priority;
             tasks = tasks.map(item => item.id === saved.id ? saved : item);
+            renderTasks();
           } catch {
             priority.value = savedPriority;
             showError('Could not update task priority');
