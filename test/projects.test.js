@@ -70,6 +70,48 @@ test('projects validate, navigate, and persist across restarts', async () => {
     assert.equal(await (await fetch(base)).text(), list);
     assert.equal(await (await fetch(base + path)).text(), detail);
     assert.equal((await fetch(`${base}/projects/999999`)).status, 404);
+
+    async function post(route, values) {
+      return fetch(base + route, { method: 'POST', body: new URLSearchParams(values), redirect: 'manual' });
+    }
+    async function detailPage(filter = 'All') {
+      return (await fetch(`${base}${path}?filter=${filter}`)).text();
+    }
+    for (const title of ['', '   ']) {
+      const response = await post(`${path}/tasks`, { title });
+      assert.equal(response.status, 400);
+      const body = await response.text();
+      assert.match(body, /role="alert">Task title is required/);
+      assert.doesNotMatch(body, /data-testid="task-row"/);
+    }
+    assert.equal((await post(`${path}/tasks`, { title: '  First task  ' })).status, 303);
+    assert.equal((await post(`${path}/tasks`, { title: 'Second <task>' })).status, 303);
+    let tasks = await detailPage();
+    assert.match(tasks, /<label for="task-title">Task title/);
+    assert.match(tasks, /<label for="task-filter">Task filter/);
+    assert.match(tasks, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    assert.equal((tasks.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.ok(tasks.indexOf('<span>First task') < tasks.indexOf('<span>Second &lt;task&gt;'));
+    assert.match(tasks, /aria-label="Complete First task" onchange/);
+    const completion = tasks.match(/action="([^\"]+\/completion)"/)[1];
+    assert.equal((await post(completion, { completed: '1' })).status, 303);
+    tasks = await detailPage();
+    assert.match(tasks, /aria-label="Complete First task" checked/);
+    assert.doesNotMatch(await detailPage('Open'), /<span>First task/);
+    assert.match(await detailPage('Open'), /<span>Second &lt;task&gt;/);
+    assert.match(await detailPage('Completed'), /<span>First task/);
+    assert.doesNotMatch(await detailPage('Completed'), /<span>Second &lt;task&gt;/);
+    assert.doesNotMatch(await (await fetch(`${base}/projects/2`)).text(), /data-testid="task-row"/);
+    assert.equal((await post(completion.replace('/projects/1/', '/projects/2/'), { completed: '0' })).status, 404);
+    await stop();
+    await start();
+    assert.equal(await detailPage(), tasks);
+    assert.equal((await post(completion, {})).status, 303);
+    assert.doesNotMatch(await detailPage(), /aria-label="Complete First task" checked/);
+    assert.doesNotMatch(await detailPage('Completed'), /data-testid="task-row"/);
+    await stop();
+    await start();
+    assert.doesNotMatch(await detailPage(), /aria-label="Complete First task" checked/);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

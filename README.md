@@ -8,7 +8,7 @@ Run:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open http://localhost:8080. The server binds to `0.0.0.0`; `/health` returns JSON health status. Projects are stored in the configured SQLite file. Defaults are port 8080 and `data/workboard.sqlite`.
+Open http://localhost:8080. The server binds to `0.0.0.0`; `/health` returns JSON health status. Projects and their tasks (including completion state) are stored in the configured SQLite file. Open a project to create tasks, toggle completion, and filter by All, Open, or Completed. Defaults are port 8080 and `data/workboard.sqlite`.
 
 Verify:
 
@@ -16,4 +16,4 @@ Verify:
 npm test
 ```
 
-Tests use a temporary database and verify project creation, blank-name validation, ordering, escaping, detail navigation, and persistence across server restarts.
+Tests use a temporary database and verify project and task creation, blank-input validation, ordering, escaping, detail navigation, project isolation, completion toggling, filtering, and persistence across server restarts.
