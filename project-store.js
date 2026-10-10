@@ -35,6 +35,7 @@ export function openProjectStore(path) {
   const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+  const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const taskRecord = (task) => task && { ...task, completed: Boolean(task.completed) };
   const projectRecord = (project) => project && { ...project, archived: Boolean(project.archived) };
 
@@ -85,6 +86,17 @@ export function openProjectStore(path) {
       requireActiveProject(projectId);
       if (typeof completed !== 'boolean') throw new Error('Task completion must be a boolean');
       updateTask.run(Number(completed), projectId, taskId);
+      return taskRecord(findTask.get(projectId, taskId));
+    },
+    renameTask(projectId, taskId, title) {
+      requireActiveProject(projectId);
+      const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+      if (!trimmedTitle) {
+        const error = new Error('Task title is required');
+        error.status = 400;
+        throw error;
+      }
+      updateTaskTitle.run(trimmedTitle, projectId, taskId);
       return taskRecord(findTask.get(projectId, taskId));
     },
     close: () => database.close(),

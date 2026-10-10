@@ -65,6 +65,15 @@ const server = createServer(async (request, response) => {
       }
       if (taskId && request.method === 'PATCH') {
         const input = await readJson(request);
+        if (input && Object.hasOwn(input, 'title')) {
+          if (Object.hasOwn(input, 'completed')) {
+            return json(response, 400, { error: 'Change task title or completion separately' });
+          }
+          const task = store.renameTask(projectId, taskId, input.title);
+          return task
+            ? json(response, 200, task)
+            : json(response, 404, { error: 'Task not found' });
+        }
         if (typeof input?.completed !== 'boolean') {
           return json(response, 400, { error: 'Task completion must be a boolean' });
         }

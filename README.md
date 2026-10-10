@@ -27,3 +27,8 @@ On an active project page, use New project name and Rename project to change its
 name. Names are trimmed and cannot be blank. Renaming preserves the project's URL,
 list position, tasks, and completion summary. Archived projects must be restored
 before they can be renamed.
+
+Each task row provides New task title and Rename task. Titles are trimmed and
+cannot be blank. Renaming preserves ownership, creation order, completion state,
+and completion summaries. Task rename controls are disabled while the project
+is archived and become available after restoration.

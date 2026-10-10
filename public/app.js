@@ -237,6 +237,23 @@ async function renderTasks(projectId, archived) {
   let tasks = [];
   const pendingUpdates = new Set();
 
+  async function updateTask(task, changes) {
+    pendingUpdates.add(task.id);
+    alert.hidden = true;
+    try {
+      const updated = await api(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      Object.assign(task, updated);
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      pendingUpdates.delete(task.id);
+    }
+  }
+
   function renderList() {
     const matching = tasks.filter((task) => filter.value === 'all'
       || (filter.value === 'completed' ? task.completed : !task.completed));
@@ -248,30 +265,59 @@ async function renderTasks(projectId, archived) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
-      checkbox.disabled = archived || pendingUpdates.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      const renameForm = document.createElement('form');
+      renameForm.className = 'task-rename';
+      const renameLabel = document.createElement('label');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      renameLabel.textContent = 'New task title';
+      const renameControls = document.createElement('div');
+      renameControls.className = 'create-controls';
+      const renameInput = document.createElement('input');
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.type = 'text';
+      renameInput.name = 'title';
+      renameInput.autocomplete = 'off';
+      renameInput.value = task.title;
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename task';
+      renameControls.append(renameInput, renameButton);
+      renameForm.append(renameLabel, renameControls);
+      function setDisabled(pending) {
+        checkbox.disabled = archived || pending;
+        renameInput.disabled = archived || pending;
+        renameButton.disabled = archived || pending;
+      }
+      setDisabled(pendingUpdates.has(task.id));
       checkbox.addEventListener('change', async () => {
-        checkbox.disabled = true;
-        pendingUpdates.add(task.id);
-        alert.hidden = true;
-        try {
-          const updated = await api(`${path}/${task.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: checkbox.checked }),
-          });
-          task.completed = updated.completed;
-        } catch (error) {
-          checkbox.checked = task.completed;
-          showError(alert, error.message);
-        } finally {
-          pendingUpdates.delete(task.id);
-          checkbox.disabled = archived;
-          // Refresh filtered or replaced rows; otherwise preserve the focused checkbox.
-          if (filter.value !== 'all' || !checkbox.isConnected) renderList();
-        }
+        if (archived || pendingUpdates.has(task.id)) return;
+        setDisabled(true);
+        await updateTask(task, { completed: checkbox.checked });
+        checkbox.checked = task.completed;
+        setDisabled(false);
+        // Refresh filtered or replaced rows; otherwise preserve the focused checkbox.
+        if (filter.value !== 'all' || !checkbox.isConnected) renderList();
       });
-      row.append(title, checkbox);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (archived || pendingUpdates.has(task.id)) return;
+        alert.hidden = true;
+        const newTitle = renameInput.value.trim();
+        if (!newTitle) {
+          showError(alert, 'Task title is required');
+          renameInput.focus();
+          return;
+        }
+        setDisabled(true);
+        await updateTask(task, { title: newTitle });
+        title.textContent = task.title;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        renameInput.value = task.title;
+        setDisabled(false);
+        if (!row.isConnected) renderList();
+      });
+      row.append(title, checkbox, renameForm);
       return row;
     }));
   }
