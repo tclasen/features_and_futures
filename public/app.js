@@ -79,6 +79,16 @@ async function renderProject(id) {
     } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
   });
 
+  const defaultLabel = element('label', { text: 'Default task priority' }); defaultLabel.htmlFor = 'default-task-priority';
+  const defaultPriority = element('select'); defaultPriority.id = defaultLabel.htmlFor;
+  for (const value of ['Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; defaultPriority.append(option); }
+  defaultPriority.value = project.defaultPriority;
+  defaultPriority.disabled = Boolean(project.archived);
+  defaultPriority.addEventListener('change', async () => {
+    try {
+      await request(`/api/projects/${encodeURIComponent(id)}/default-priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
+    } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+  });
   const form = element('form', { className: 'create-form' });
   const label = element('label', { text: 'Task title' });
   const input = element('input'); input.type = 'text'; input.id = 'task-title'; input.autocomplete = 'off'; label.htmlFor = input.id;
@@ -143,7 +153,7 @@ async function renderProject(id) {
   });
   filter.addEventListener('change', refreshTasks);
   priorityFilter.addEventListener('change', refreshTasks);
-  app.append(renameForm, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+  app.append(renameForm, defaultLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
   await refreshTasks();
 }
 

@@ -10,7 +10,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
   );
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,15 +22,17 @@ database.exec(`
   )
 `);
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 database.exec('PRAGMA foreign_keys = ON');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const addTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -72,17 +75,20 @@ const server = createServer(async (request, response) => {
   }
   if (taskMatch && request.method === 'POST') {
     const projectId = Number(taskMatch[1]);
-    if (!getProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+    const project = getProject.get(projectId);
+    if (!project || project.archived) return sendJson(response, 404, { error: 'Active project not found' });
     const body = await readBody(request);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-    const result = addTask.run(projectId, title);
+    const result = addTask.run(projectId, title, project.defaultPriority);
     return sendJson(response, 201, getTask.get(Number(result.lastInsertRowid)));
   }
   const taskUpdateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskUpdateMatch && request.method === 'PATCH') {
     const body = await readBody(request);
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
+    const project = getProject.get(Number(taskUpdateMatch[1]));
+    if (!project || project.archived) return sendJson(response, 404, { error: 'Active project not found' });
     const result = updateTask.run(body.completed ? 1 : 0, Number(taskUpdateMatch[2]), Number(taskUpdateMatch[1]));
     return result.changes ? sendJson(response, 200, getTask.get(Number(taskUpdateMatch[2]))) : sendJson(response, 404, { error: 'Task not found' });
   }
@@ -108,6 +114,14 @@ const server = createServer(async (request, response) => {
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
     const result = renameTask.run(title, taskId, projectId);
     return result.changes ? sendJson(response, 200, getTask.get(taskId)) : sendJson(response, 404, { error: 'Task not found' });
+  }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultPriorityMatch && request.method === 'PATCH') {
+    const projectId = Number(defaultPriorityMatch[1]);
+    const body = await readBody(request);
+    if (!['Low', 'Normal', 'High'].includes(body?.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+    const result = updateDefaultPriority.run(body.priority, projectId);
+    return result.changes ? sendJson(response, 200, getProject.get(projectId)) : sendJson(response, 404, { error: 'Active project not found' });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && request.method === 'GET') {
