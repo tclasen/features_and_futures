@@ -49,6 +49,31 @@ const server = createServer(async (request, response) => {
         return json(response, 201, store.create(input.name));
       }
     }
+    const tasksApi = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+    if (tasksApi) {
+      const [, projectId, taskId] = tasksApi;
+      if (!store.find(projectId)) return json(response, 404, { error: 'Project not found' });
+      if (!taskId && request.method === 'GET') {
+        return json(response, 200, store.listTasks(projectId));
+      }
+      if (!taskId && request.method === 'POST') {
+        const input = await readJson(request);
+        if (typeof input?.title !== 'string' || !input.title.trim()) {
+          return json(response, 400, { error: 'Task title is required' });
+        }
+        return json(response, 201, store.createTask(projectId, input.title));
+      }
+      if (taskId && request.method === 'PATCH') {
+        const input = await readJson(request);
+        if (typeof input?.completed !== 'boolean') {
+          return json(response, 400, { error: 'Task completion must be a boolean' });
+        }
+        const task = store.setTaskCompletion(projectId, taskId, input.completed);
+        return task
+          ? json(response, 200, task)
+          : json(response, 404, { error: 'Task not found' });
+      }
+    }
     const projectApi = pathname.match(/^\/api\/projects\/([1-9]\d*)$/);
     if (request.method === 'GET' && projectApi) {
       const project = store.find(projectApi[1]);

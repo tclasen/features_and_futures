@@ -7,8 +7,8 @@ npm start
 ```
 
 The server binds to `0.0.0.0`, using `PORT` (default `8080`). Set `DB_PATH`
-to the SQLite file to retain projects across restarts; the default is
-`data/workboard.sqlite`. Its parent directory is created automatically.
+to the SQLite file to retain projects, their tasks, and completion state across
+restarts; the default is `data/workboard.sqlite`. Its parent directory is created automatically.
 `GET /health` returns `{"status":"ok"}`.
 
 ```sh

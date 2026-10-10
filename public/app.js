@@ -91,9 +91,117 @@ async function renderProject(id) {
     const project = await api(`/api/projects/${id}`);
     app.querySelector('h1').textContent = project.name;
     document.title = `${project.name} · Workboard`;
+    await renderTasks(id);
   } catch (error) {
     app.querySelector('h1').textContent = 'Project unavailable';
     showError(app.querySelector('[role="alert"]'), error.message);
+  }
+}
+
+async function renderTasks(projectId) {
+  const section = document.createElement('section');
+  section.setAttribute('aria-label', 'Tasks');
+  section.innerHTML = `
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="create-controls">
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <p role="alert" hidden></p>
+    <div class="task-filter">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter">
+        <option value="all">All</option>
+        <option value="open">Open</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
+    <ul aria-label="Tasks"></ul>`;
+  app.append(section);
+  const form = section.querySelector('form');
+  const input = section.querySelector('input');
+  const button = form.querySelector('button');
+  const alert = section.querySelector('[role="alert"]');
+  const filter = section.querySelector('select');
+  const list = section.querySelector('ul');
+  const path = `/api/projects/${projectId}/tasks`;
+  let tasks = [];
+  const pendingUpdates = new Set();
+
+  function renderList() {
+    const matching = tasks.filter((task) => filter.value === 'all'
+      || (filter.value === 'completed' ? task.completed : !task.completed));
+    list.replaceChildren(...matching.map((task) => {
+      const row = document.createElement('li');
+      row.dataset.testid = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.disabled = pendingUpdates.has(task.id);
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        pendingUpdates.add(task.id);
+        alert.hidden = true;
+        try {
+          const updated = await api(`${path}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          task.completed = updated.completed;
+        } catch (error) {
+          checkbox.checked = task.completed;
+          showError(alert, error.message);
+        } finally {
+          pendingUpdates.delete(task.id);
+          checkbox.disabled = false;
+          // Refresh filtered or replaced rows; otherwise preserve the focused checkbox.
+          if (filter.value !== 'all' || !checkbox.isConnected) renderList();
+        }
+      });
+      row.append(title, checkbox);
+      return row;
+    }));
+  }
+
+  filter.addEventListener('change', renderList);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (button.disabled) return;
+    alert.hidden = true;
+    const title = input.value.trim();
+    if (!title) {
+      showError(alert, 'Task title is required');
+      input.focus();
+      return;
+    }
+    button.disabled = true;
+    try {
+      tasks.push(await api(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      }));
+      renderList();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  try {
+    tasks = await api(path);
+    renderList();
+    button.disabled = false;
+  } catch (error) {
+    showError(alert, error.message);
   }
 }
 
