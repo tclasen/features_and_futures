@@ -292,7 +292,73 @@ test('task rename preserves ownership, order, completion, summaries, and persist
   }
 });
 
-test('archive migration preserves existing project IDs, tasks, and completion', async () => {
+test('priorities are independent, validated, archived read-only, and persistent', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'projects.sqlite');
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const project = await (await request('/api/projects', 'POST', { name: 'Owner' })).json();
+    const other = await (await request('/api/projects', 'POST', { name: 'Other' })).json();
+    const path = `/api/projects/${project.id}`;
+    const tasksPath = `${path}/tasks`;
+    const first = await (await request(tasksPath, 'POST', { title: 'First' })).json();
+    const second = await (await request(tasksPath, 'POST', { title: 'Second' })).json();
+    const otherTasks = `/api/projects/${other.id}/tasks`;
+    const otherTask = await (await request(otherTasks, 'POST', { title: 'Other task' })).json();
+    assert.equal(first.priority, 'Normal');
+    assert.equal(second.priority, 'Normal');
+    const taskPath = `${tasksPath}/${first.id}`;
+    await request(taskPath, 'PATCH', { completed: true });
+    first.completed = true;
+    const summary = { ...project, total: 2, completed: 1 };
+    for (const priority of ['High', 'Low', 'Normal', 'High']) {
+      const response = await request(taskPath, 'PATCH', { priority });
+      assert.equal(response.status, 200);
+      first.priority = priority;
+      assert.deepEqual(await response.json(), first);
+      assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+      assert.deepEqual(await (await request(otherTasks)).json(), [otherTask]);
+      assert.deepEqual(await (await request(path)).json(), summary);
+    }
+    for (const priority of ['', 'high', ' High ', null, 1, {}, ['Low']]) {
+      assert.equal((await request(taskPath, 'PATCH', { priority })).status, 400);
+    }
+    for (const changes of [{ priority: 'Low', title: 'Mixed' }, { priority: 'Low', completed: false }]) {
+      assert.equal((await request(taskPath, 'PATCH', changes)).status, 400);
+    }
+    assert.equal((await request(`${otherTasks}/${first.id}`, 'PATCH', { priority: 'Low' })).status, 404);
+    assert.equal((await request(`${tasksPath}/99999`, 'PATCH', { priority: 'Low' })).status, 404);
+    first.title = 'Renamed';
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { title: ' Renamed ' })).json(), first);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    await request(path, 'PATCH', { archived: true });
+    assert.equal((await request(taskPath, 'PATCH', { priority: 'Low' })).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal((await request(taskPath, 'PATCH', { priority: 'Low' })).status, 409);
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    await request(path, 'PATCH', { archived: false });
+    first.priority = 'Low';
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { priority: 'Low' })).json(), first);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    assert.deepEqual(await (await request(path)).json(), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive and priority migrations preserve existing project IDs, tasks, and completion', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
   const legacy = new DatabaseSync(databasePath);
@@ -309,7 +375,7 @@ test('archive migration preserves existing project IDs, tasks, and completion', 
     const expected = { id: 17, name: 'Existing project', archived: false, total: 1, completed: 1 };
     assert.deepEqual(await (await request('/api/projects')).json(), [expected]);
     assert.deepEqual(await (await request('/api/projects/17/tasks')).json(), [
-      { id: 23, title: 'Existing task', completed: true },
+      { id: 23, title: 'Existing task', completed: true, priority: 'Normal' },
     ]);
     await server.stop();
     server = await start(databasePath);

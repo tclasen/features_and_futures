@@ -268,7 +268,21 @@ async function renderProject(id) {
         }
         saveTask(task, { title });
       });
-      row.append(taskRenameForm);
+      const priorityLabel = element('label', 'Task priority');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      const priority = element('select');
+      priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', value);
+        option.value = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = checkbox.disabled;
+      priority.addEventListener('change', () => {
+        saveTask(task, { priority: priority.value });
+      });
+      row.append(taskRenameForm, priorityLabel, priority);
       list.append(row);
     }
   }

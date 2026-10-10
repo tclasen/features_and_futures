@@ -23,11 +23,16 @@ CREATE INDEX IF NOT EXISTS tasks_by_project ON tasks(project_id, id)`);
 if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
 }
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+// Adding a default also initializes existing tasks without changing their identity.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const prioritizeTask = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const taskData = task => ({ ...task, completed: Boolean(task.completed) });
 const projectQuery = `SELECT p.id, p.name, p.archived,
   (SELECT count(*) FROM tasks WHERE project_id = p.id) AS total,
@@ -110,10 +115,16 @@ const server = createServer(async (request, response) => {
         if (findProject.get(projectId).archived) {
           return json(response, 409, { error: 'Archived project is read-only' });
         }
-        if (input && Object.hasOwn(input, 'title')) {
-          if (Object.hasOwn(input, 'completed')) {
-            return json(response, 400, { error: 'Rename and completion must be separate requests' });
+        const changes = ['title', 'completed', 'priority'].filter(key => input && Object.hasOwn(input, key));
+        if (changes.length > 1) {
+          return json(response, 400, { error: 'Task changes must be separate requests' });
+        }
+        if (changes[0] === 'priority') {
+          if (!['Low', 'Normal', 'High'].includes(input.priority)) {
+            return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
           }
+          prioritizeTask.run(input.priority, projectId, taskId);
+        } else if (changes[0] === 'title') {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
           renameTask.run(title, projectId, taskId);
