@@ -8,9 +8,11 @@ Run:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. The server binds to `0.0.0.0`; `PORT` defaults to `8080` and `DB_PATH` defaults to `./data/workboard.sqlite`. Keep the SQLite file to preserve projects, tasks, and completion states between server restarts. `GET /health` returns `{"status":"ok"}`.
+Open `http://localhost:8080`. The server binds to `0.0.0.0`; `PORT` defaults to `8080` and `DB_PATH` defaults to `./data/workboard.sqlite`. Keep the SQLite file to preserve projects, tasks, and completion states and archive state between server restarts. `GET /health` returns `{"status":"ok"}`.
 
 Open a project to create tasks, check or uncheck their completion, and filter by All, Open, or Completed. Task titles and project names are trimmed and must not be blank. Each project shows only its own tasks in creation order.
+
+The project list shows completion totals and filters Active or Archived projects. Archive projects to disable task creation and completion changes; restore them to resume work with their tasks intact. Existing project databases are migrated automatically.
 
 Verify:
 
@@ -18,4 +20,4 @@ Verify:
 npm test
 ```
 
-The integration tests use temporary databases and check health, form labels, validation, trimming, creation order, HTML escaping, navigation, task filtering, completion changes, project isolation, and persistence across process restarts.
+The integration tests use temporary databases and check health, form labels, validation, trimming, creation order, HTML escaping, navigation, task filtering, completion changes, project isolation, archive/restore, completion summaries, database migration, and persistence across process restarts.
