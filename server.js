@@ -37,6 +37,16 @@ try {
 } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
@@ -53,9 +63,12 @@ const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const addTaskWithPriority = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
-const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, position =
-  COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1)
-  WHERE id = ? AND project_id = ?`);
+const addTaskPosition = database.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks WHERE id = ?`);
+const getRememberedPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextProjectPosition = database.prepare('SELECT COALESCE(MAX(position) + 1, 1) AS position FROM task_project_positions WHERE project_id = ?');
+const setTaskPosition = database.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
+const rememberTaskPosition = database.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 
 function send(response, status, body, contentType = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
@@ -474,7 +487,9 @@ const server = createServer(async (request, response) => {
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return send(response, 400, JSON.stringify({ error: 'Task title is required' }));
       const result = addTaskWithPriority.run(projectId, title, project.default_task_priority || 'Normal', projectId);
-      return send(response, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
+      const taskId = Number(result.lastInsertRowid);
+      addTaskPosition.run(taskId);
+      return send(response, 201, JSON.stringify({ id: taskId, title, completed: false }));
     }
   }
   const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
@@ -489,8 +504,25 @@ const server = createServer(async (request, response) => {
     if (!destination || destination.archived || destinationId === sourceId) {
       return send(response, 400, JSON.stringify({ error: 'Active destination project is required' }));
     }
-    const result = moveTask.run(destinationId, destinationId, moveMatch[2], sourceId);
-    return result.changes ? send(response, 200, JSON.stringify({ status: 'ok' })) : send(response, 404, JSON.stringify({ error: 'Task not found' }));
+    const taskId = Number(moveMatch[2]);
+    if (!database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId)) {
+      return send(response, 404, JSON.stringify({ error: 'Task not found' }));
+    }
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      // Record the source position in case this task later returns there.
+      addTaskPosition.run(taskId);
+      const remembered = getRememberedPosition.get(taskId, destinationId);
+      const position = remembered ? remembered.position : nextProjectPosition.get(destinationId).position;
+      if (!remembered) rememberTaskPosition.run(taskId, destinationId, position);
+      const result = setTaskPosition.run(destinationId, position, taskId, sourceId);
+      if (!result.changes) throw new Error('Task changed during move');
+      database.exec('COMMIT');
+      return send(response, 200, JSON.stringify({ status: 'ok' }));
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (request.method === 'PATCH' && archiveMatch) {
