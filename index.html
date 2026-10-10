@@ -29,6 +29,7 @@
     .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #d9dfeb; border-radius: 8px; background: white; }
     .task-row input { flex: 0 0 auto; width: 18px; height: 18px; }
     .task-title { overflow-wrap: anywhere; }
+    .task-rename-form { display: flex; flex: 1; align-items: center; gap: 8px; margin: 0; }
     @media (max-width: 480px) { form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -79,6 +80,7 @@
     const tasks = document.querySelector('#tasks');
     const taskAlert = document.querySelector('#task-alert');
     let activeProjectId = null;
+    let activeProjectArchived = false;
 
     async function loadProjects() {
       const archived = document.querySelector('#project-filter').value === 'archived';
@@ -135,6 +137,7 @@
       activeProjectId = id;
       document.querySelector('#detail-name').textContent = project.name;
       const isArchived = !!project.archived;
+      activeProjectArchived = isArchived;
       document.querySelector('#archived-notice').hidden = !isArchived;
       document.querySelector('#new-project-name').disabled = isArchived;
       document.querySelector('#rename-form').querySelector('button').disabled = isArchived;
@@ -169,7 +172,37 @@
         const title = document.createElement('span');
         title.className = 'task-title';
         title.textContent = task.title;
-        row.append(checkbox, title);
+        const renameForm = document.createElement('form');
+        renameForm.className = 'task-rename-form';
+        renameForm.noValidate = true;
+        const renameInput = document.createElement('input');
+        renameInput.type = 'text';
+        renameInput.setAttribute('aria-label', 'New task title');
+        renameInput.value = task.title;
+        renameInput.disabled = activeProjectArchived;
+        const renameButton = document.createElement('button');
+        renameButton.type = 'submit';
+        renameButton.textContent = 'Rename task';
+        renameButton.disabled = activeProjectArchived;
+        renameForm.append(renameInput, renameButton);
+        renameForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const newTitle = renameInput.value.trim();
+          if (!newTitle) {
+            taskAlert.textContent = 'Task title is required';
+            renameInput.focus();
+            return;
+          }
+          const result = await fetch(`/api/tasks/${task.id}/rename`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ title: newTitle })
+          });
+          if (result.ok) {
+            taskAlert.textContent = '';
+            await loadTasks();
+          }
+        });
+        row.append(checkbox, title, renameForm);
         return row;
       }));
     }

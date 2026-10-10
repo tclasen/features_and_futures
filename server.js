@@ -100,6 +100,19 @@ const server = createServer(async (req, res) => {
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (req.method === 'POST' && taskRenameMatch) {
+    let data;
+    try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    const title = typeof data.title === 'string' ? data.title.trim() : '';
+    if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+    const taskId = Number(taskRenameMatch[1]);
+    const task = db.prepare('SELECT t.id, p.archived FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(taskId);
+    if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    if (task.archived) return sendJson(res, 409, { error: 'Archived project' });
+    db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
+    return sendJson(res, 200, { title });
+  }
   if (req.method === 'PATCH' && taskMatch) {
     let data;
     try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
