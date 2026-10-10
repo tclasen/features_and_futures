@@ -132,7 +132,7 @@ async function renderList(errorMessage = '', selectedFilter = 'active') {
   }
 }
 
-async function renderProject(id, selectedFilter = 'all') {
+async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all') {
   const projects = await getProjects();
   const project = projects.find((item) => String(item.id) === id);
   if (!project) return renderList('Project not found');
@@ -203,12 +203,14 @@ async function renderProject(id, selectedFilter = 'all') {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const title = input.value.trim();
-    if (!title) return renderProjectWithAlert(id, 'Task title is required', document.querySelector('#task-filter')?.value || 'all');
+    const currentFilter = document.querySelector('#task-filter')?.value || 'all';
+    const currentPriority = document.querySelector('#priority-filter')?.value || 'all';
+    if (!title) return renderProjectWithAlert(id, 'Task title is required', currentFilter, currentPriority);
     const response = await fetch(`/api/projects/${id}/tasks`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
-    if (!response.ok) return renderProjectWithAlert(id, 'Unable to create task', document.querySelector('#task-filter')?.value || 'all');
-    renderProject(id, document.querySelector('#task-filter')?.value || 'all');
+    if (!response.ok) return renderProjectWithAlert(id, 'Unable to create task', currentFilter, currentPriority);
+    renderProject(id, currentFilter, currentPriority);
   });
   app.append(form);
 
@@ -229,6 +231,23 @@ async function renderProject(id, selectedFilter = 'all') {
   filterField.append(filterLabel, filter);
   app.append(filterField);
 
+  const priorityFilterField = document.createElement('div');
+  priorityFilterField.className = 'filter-field';
+  const priorityFilterLabel = document.createElement('label');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  priorityFilterLabel.textContent = 'Priority filter';
+  const priorityFilter = document.createElement('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = document.createElement('option');
+    option.value = value.toLowerCase();
+    option.textContent = value;
+    priorityFilter.append(option);
+  }
+  priorityFilter.value = selectedPriority;
+  priorityFilterField.append(priorityFilterLabel, priorityFilter);
+  app.append(priorityFilterField);
+
   const taskList = document.createElement('div');
   taskList.className = 'task-list';
   app.append(taskList);
@@ -245,6 +264,7 @@ async function renderProject(id, selectedFilter = 'all') {
     for (const task of tasks) {
       if (filter.value === 'open' && task.completed) continue;
       if (filter.value === 'completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'all' && task.priority.toLowerCase() !== priorityFilter.value) continue;
       const row = document.createElement('section');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -289,12 +309,13 @@ async function renderProject(id, selectedFilter = 'all') {
         event.preventDefault();
         const newTitle = renameInput.value.trim();
         const selected = filter.value;
-        if (!newTitle) return renderProjectWithAlert(id, 'Task title is required', selected);
+        const selectedPriority = priorityFilter.value;
+        if (!newTitle) return renderProjectWithAlert(id, 'Task title is required', selected, selectedPriority);
         const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: newTitle }),
         });
-        if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename task', selected);
+        if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename task', selected, selectedPriority);
         task.title = newTitle;
         renderTasks();
       });
@@ -324,6 +345,7 @@ async function renderProject(id, selectedFilter = 'all') {
         if (response.ok) {
           task.priority = prioritySelect.value;
           prioritySelect.disabled = project.archived;
+          renderTasks();
         } else {
           prioritySelect.value = previousPriority;
           prioritySelect.disabled = project.archived;
@@ -335,11 +357,12 @@ async function renderProject(id, selectedFilter = 'all') {
     }
   };
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   renderTasks();
 }
 
-async function renderProjectWithAlert(id, message, filter = 'all') {
-  await renderProject(id, filter);
+async function renderProjectWithAlert(id, message, filter = 'all', priority = 'all') {
+  await renderProject(id, filter, priority);
   const alert = document.createElement('p');
   alert.className = 'alert';
   alert.setAttribute('role', 'alert');
