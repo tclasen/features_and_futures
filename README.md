@@ -30,6 +30,11 @@ Each task has a `Task priority` selector with Low, Normal, and High options.
 Existing and new tasks default to Normal. Priorities persist across restarts
 and survive renaming, completion changes, archiving, and restoration.
 Archived projects disable priority edits until restored.
+Project pages also offer a Priority filter with All, Low, Normal, and High
+options. It works together with the Task filter, retaining creation order.
+Both selections are preserved during task edits and remain usable in archived
+projects. Opening a project from the list starts with both filters set to All;
+filtering never changes task data or project completion counts.
 
 Run the integration checks:
 

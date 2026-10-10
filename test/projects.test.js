@@ -378,4 +378,85 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   await stop();
   base = await start();
   assert.equal(await taskPage(), normalAgain);
+  // Combined filters select the intersection, without changing saved data.
+  async function combinedPage(filter = 'All', priority = 'All') {
+    return (await fetch(`${base}${paths[0]}?${new URLSearchParams({ filter, priorityFilter: priority })}`)).text();
+  }
+  const filterOptions = (html, id) =>
+    new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)[1].trim();
+  assert.equal(filterOptions(await combinedPage(), 'priority-filter'),
+    '<option selected>All</option><option>Low</option><option>Normal</option><option>High</option>');
+  for (const filter of ['All', 'Open', 'Completed']) {
+    for (const priority of ['All', 'Low', 'Normal', 'High']) {
+      const html = await combinedPage(filter, priority);
+      const expectedTitles = [
+        { title: 'Priority preserved', completed: true, priority: 'Normal' },
+        { title: 'Renamed open task', completed: false, priority: 'Low' },
+      ].filter((task) =>
+        (filter === 'All' || task.completed === (filter === 'Completed')) &&
+        (priority === 'All' || task.priority === priority)).map((task) => task.title);
+      assert.equal(taskCount(html), expectedTitles.length);
+      const visibleTitles = [...html.matchAll(/class="task-title">([^<]*)<\/span>/g)].map((match) => match[1]);
+      assert.deepEqual(visibleTitles, expectedTitles);
+      assert.match(filterOptions(html, 'task-filter'), new RegExp(`<option selected>${filter}</option>`));
+      assert.match(filterOptions(html, 'priority-filter'), new RegExp(`<option selected>${priority}</option>`));
+    }
+  }
+  assert.equal(await (await fetch(base)).text(), restoredList);
+  assert.equal(await taskPage(), normalAgain);
+  assert.equal(await combinedPage('bad', 'bad'), normalAgain);
+
+  const selected = { filter: 'Completed', priorityFilter: 'Normal' };
+  const selectedPage = await combinedPage('Completed', 'Normal');
+  // Every editing form carries both selections, including creation/project rename.
+  for (const form of selectedPage.matchAll(/<form[^>]*method="post"[^>]*>([\s\S]*?)<\/form>/g)) {
+    assert.match(form[1], /name="filter" value="Completed"/);
+    assert.match(form[1], /name="priorityFilter" value="Normal"/);
+  }
+  for (const path of [`${taskPaths[0]}/rename`, `${paths[0]}/tasks`]) {
+    const response = await postTask(path, { ...selected, title: '   ' });
+    assert.equal(response.status, 400);
+    const html = await response.text();
+    assert.equal(taskCount(html), 1);
+    assert.match(filterOptions(html, 'task-filter'), /<option selected>Completed<\/option>/);
+    assert.match(filterOptions(html, 'priority-filter'), /<option selected>Normal<\/option>/);
+  }
+  const renameFiltered = await postTask(`${taskPaths[0]}/rename`, { ...selected, title: '  Filtered rename  ' });
+  assert.equal(renameFiltered.headers.get('location'), `${paths[0]}?filter=Completed&priorityFilter=Normal`);
+  assert.match(await combinedPage('Completed', 'Normal'), /aria-label="Complete Filtered rename" checked/);
+  const priorityFiltered = await postTask(`${taskPaths[0]}/priority`, { ...selected, priority: 'High' });
+  assert.equal(priorityFiltered.headers.get('location'), `${paths[0]}?filter=Completed&priorityFilter=Normal`);
+  assert.equal(taskCount(await (await fetch(`${base}${priorityFiltered.headers.get('location')}`)).text()), 0);
+  assert.equal(taskCount(await combinedPage('Completed', 'High')), 1);
+  assert.equal(await (await fetch(base)).text(), restoredList);
+  const completionFiltered = await postTask(taskPaths[0], { filter: 'Completed', priorityFilter: 'High' });
+  assert.equal(completionFiltered.headers.get('location'), `${paths[0]}?filter=Completed&priorityFilter=High`);
+  assert.equal(taskCount(await (await fetch(`${base}${completionFiltered.headers.get('location')}`)).text()), 0);
+  assert.equal(taskCount(await combinedPage('Open', 'High')), 1);
+  assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
+  const savedCombined = await combinedPage('Open', 'High');
+  await stop();
+  base = await start();
+  assert.equal(await combinedPage('Open', 'High'), savedCombined);
+
+  assert.equal((await postTask(`${paths[0]}/archive`, {})).status, 303);
+  const archivedCombined = await combinedPage('Open', 'High');
+  assert.equal(taskCount(archivedCombined), 1);
+  assert.doesNotMatch(archivedCombined, /<select id="(?:task-filter|priority-filter)"[^>]*disabled/);
+  assert.match(archivedCombined, /<select id="task-priority-\d+"[^>]*disabled/);
+  assert.match(archivedCombined, /type="checkbox"[^>]*disabled/);
+  assert.match(archivedCombined, /<input id="new-task-title-\d+"[^>]*disabled/);
+  assert.match(archivedCombined, /disabled>Rename task<\/button>/);
+  assert.equal(taskCount(await combinedPage('Completed', 'High')), 0);
+  assert.equal(taskCount(await combinedPage('Open', 'Low')), 1);
+  await stop();
+  base = await start();
+  assert.equal(await combinedPage('Open', 'High'), archivedCombined);
+  assert.equal((await postTask(`${paths[0]}/restore`, {})).status, 303);
+  assert.equal(await combinedPage('Open', 'High'), savedCombined);
+  // Project-list links have no filter parameters, so each opening defaults to All.
+  assert.match(await (await fetch(base)).text(), new RegExp(`action="${paths[0]}"`));
+  assert.equal(taskCount(await taskPage()), 2);
+  assert.match(filterOptions(await taskPage(), 'priority-filter'), /<option selected>All<\/option>/);
+
 });
