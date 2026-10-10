@@ -24,6 +24,59 @@ async function start(dbPath) {
   return { base, async stop() { const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; } };
 }
 
+test('tasks validate, remain scoped, filter, toggle, and persist', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'db.sqlite');
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.base + path)).text();
+    const post = (path, fields) => fetch(server.base + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual'
+    });
+    await post('/projects', { name: 'One' });
+    await post('/projects', { name: 'Two' });
+    let html = await get('/projects/1');
+    assert.match(html, /Task title/);
+    assert.match(html, /<option selected>All<\/option>/);
+    const blank = await post('/projects/1/tasks', { title: ' \t ' });
+    assert.equal(blank.status, 400);
+    assert.match(await blank.text(), /role="alert">Task title is required/);
+    assert.doesNotMatch(await get('/projects/1'), /data-testid="task-row"/);
+    assert.equal((await post('/projects/1/tasks', { title: '  First & <task>  ' })).status, 303);
+    await post('/projects/1/tasks', { title: 'Second' });
+    html = await get('/projects/1');
+    assert.equal((html.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.ok(html.indexOf('First &amp; &lt;task&gt;') < html.indexOf('>Second<'));
+    assert.match(html, /aria-label="Complete First &amp; &lt;task&gt;"/);
+    assert.doesNotMatch(html, / checked/);
+    assert.doesNotMatch(await get('/projects/2'), /data-testid="task-row"/);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const saved = await get('/projects/1');
+    assert.match(saved, / checked/);
+    const open = await get('/projects/1?filter=Open');
+    assert.doesNotMatch(open, /data-testid="task-row"[\s\S]*First &amp;/);
+    assert.match(open, />Second</);
+    const completed = await get('/projects/1?filter=Completed');
+    assert.match(completed, /First &amp; &lt;task&gt;/);
+    assert.doesNotMatch(completed, />Second</);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), saved);
+    assert.equal(await get('/projects/1?filter=Completed'), completed);
+    await post('/projects/1/tasks/1', {});
+    assert.doesNotMatch(await get('/projects/1'), / checked/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /data-testid="task-row"/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.doesNotMatch(await get('/projects/1'), / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, render in order, navigate, and survive a restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   let server;
