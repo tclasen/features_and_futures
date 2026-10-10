@@ -10,7 +10,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,8 +20,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
-try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
-  if (!String(error.message).includes('duplicate column name')) throw error;
+for (const migration of [
+  'ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))',
+  "ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"
+]) {
+  try { db.exec(migration); } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) throw error;
+  }
 }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -55,8 +61,8 @@ const server = http.createServer((request, response) => {
         const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
         if (!project) return sendJson(response, 404, { error: 'Project not found' });
         if (project.archived) return sendJson(response, 409, { error: 'Project is archived' });
-        const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+        const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
       } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
     });
     return;
@@ -107,10 +113,25 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+    return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
       FROM projects p ORDER BY p.id`).all().map(project => ({ ...project, archived: Boolean(project.archived) })));
+  }
+  const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultPriorityRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const priority = JSON.parse(body).priority;
+        if (!['Low', 'Normal', 'High'].includes(priority)) return sendJson(response, 400, { error: 'Invalid default task priority' });
+        const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(priority, Number(defaultPriorityRoute[1]));
+        return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active project not found' });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
   }
   const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
   if (renameRoute && request.method === 'PATCH') {
