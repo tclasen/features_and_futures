@@ -1,6 +1,6 @@
 # Prospective continuation after repeated accounting gaps
 
-Status: prospective controls implemented and tested; new run preparation and complete end-to-end gates remain pending. The research-v002 plan is still a draft and its entry guard refuses native dispatch. The original research-v001 plan, runs, measurements and missing counters remain unchanged.
+Status update (2026-10-10): research-v002 was frozen prospectively after163PM tests and a native runtime/isolation/archive fixture passed. Fresh run eval-002 has completed six shared checkpoints. Four original unknown native receipts remain unknown; analysis with verified containing bounds passes the functional/evidence gates while complete native accounting remains false. See the frozen plan, its preflight/adoption/verified.json and eval-002 reports. The proposal text below records the design and original preparation requirements; earlier v001 runs and observations remain unchanged.
 
 Both eval-001 and its fresh exact discovery replacement stopped during task 003 after an upstream HTTP 503 with no native counters. They retain350 and 371 requests respectively, one unknown cost each, and35 accepted checkpoints each. Neither can support research-v001 findings. Repeatedly selecting only trajectories with complete usage can also condition results on provider reliability and request exposure; keeping the failed archives does not remove that selection limitation.
 

@@ -10,3 +10,5 @@ Select later details before the corresponding comparative inspection. Record pro
 
 
 This prospective progression is retained for eval-002 before its comparative outcomes. Task006 remains a draft until its preceding shared barrier and exact final fixture check. Task007 is retained as an undispatched draft in the original replacement run; it needs full browser fixture verification before freezing.
+
+Task008 details selected during task006 before comparative inspection: project-specific persistent default priorities apply only to future tasks. Existing task data, both selected filters, all-task summaries and archive restrictions remain intact. Draft cumulative positive/negative checks precede freezing.
