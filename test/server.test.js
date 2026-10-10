@@ -111,6 +111,7 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
     assert.equal(task.priority, 'Normal');
+    assert.equal(task.due_date, '');
     const nextTask = await (await createTask('Second task')).json();
     assert.notEqual(task.id, nextTask.id);
     assert.deepEqual(await tasks(), [task, nextTask]);
@@ -137,6 +138,7 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     await stop();
     const prePriority = new DatabaseSync(join(directory, 'nested', 'projects.sqlite'));
     prePriority.exec('ALTER TABLE tasks DROP COLUMN priority');
+    prePriority.exec('ALTER TABLE tasks DROP COLUMN due_date');
     prePriority.exec('ALTER TABLE projects DROP COLUMN default_task_priority');
     prePriority.close();
     await start();
@@ -313,6 +315,57 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     assert.equal(freshProject.default_task_priority, 'Normal');
     const freshTask = await (await createTask('Fresh task', `${base}/api/projects/${freshProject.id}/tasks`)).json();
     assert.equal(freshTask.priority, 'Normal');
+    assert.equal(freshTask.due_date, '');
+
+    const setDate = (target, due_date, url = tasksUrl) => fetch(`${url}/${target.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ due_date }),
+    });
+    const projectsBeforeDates = await list();
+    const tasksBeforeDates = await tasks();
+    const target = tasksBeforeDates[0];
+    assert.equal((await setDate(target, '2024-02-29', otherTasksUrl)).status, 404);
+    assert.equal((await setDate({ id: 999999 }, '2024-02-29')).status, 404);
+    const savedDate = await setDate(target, '  0001-01-01  ');
+    assert.equal(savedDate.status, 200);
+    target.due_date = '0001-01-01';
+    assert.deepEqual(await savedDate.json(), target);
+    for (const invalid of ['0000-01-01', '1900-02-29', '2025-04-31', '2025-1-01', null, 123]) {
+      const rejected = await setDate(target, invalid);
+      assert.equal(rejected.status, 400);
+      assert.deepEqual(await rejected.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await tasks(), tasksBeforeDates);
+    }
+    for (const extra of [{ title: 'Mixed' }, { priority: 'Low' }, { completed: true }]) {
+      assert.equal((await fetch(`${tasksUrl}/${target.id}`, {
+        method: 'PATCH', body: JSON.stringify({ due_date: '2024-02-29', ...extra }),
+      })).status, 400);
+    }
+    assert.deepEqual(await list(), projectsBeforeDates);
+    assert.equal((await renameTask(target, 'Dated task')).status, 200);
+    target.title = 'Dated task';
+    assert.deepEqual(await tasks(), tasksBeforeDates);
+    assert.equal((await setDate(otherTask, '9999-12-31', otherTasksUrl)).status, 200);
+    const otherDatedTasks = await tasks(otherTasksUrl);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(), tasksBeforeDates);
+    assert.deepEqual(await tasks(otherTasksUrl), otherDatedTasks);
+    assert.deepEqual(await list(), projectsBeforeDates);
+    assert.equal((await archive(true)).status, 200);
+    assert.equal((await setDate(target, '')).status, 409);
+    assert.deepEqual(await tasks(), tasksBeforeDates);
+    assert.equal((await archive(false)).status, 200);
+    const cleared = await setDate(target, ' \t\n ');
+    assert.equal(cleared.status, 200);
+    target.due_date = '';
+    assert.deepEqual(await cleared.json(), target);
+    assert.deepEqual(await tasks(), tasksBeforeDates);
+    assert.deepEqual(await tasks(otherTasksUrl), otherDatedTasks);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(), tasksBeforeDates);
+    assert.deepEqual(await list(), projectsBeforeDates);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

@@ -261,11 +261,27 @@ async function showProject(id) {
       }
       priority.value = task.priority;
       priority.disabled = checkbox.disabled;
+      const dueDateForm = document.createElement('form');
+      const dueDateLabel = document.createElement('label');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      dueDateLabel.textContent = 'Task due date';
+      const dueDateInput = document.createElement('input');
+      dueDateInput.id = dueDateLabel.htmlFor;
+      dueDateInput.type = 'text';
+      dueDateInput.value = task.due_date;
+      dueDateInput.autocomplete = 'off';
+      dueDateInput.disabled = checkbox.disabled;
+      const dueDateButton = document.createElement('button');
+      dueDateButton.type = 'submit';
+      dueDateButton.textContent = 'Save due date';
+      dueDateButton.disabled = checkbox.disabled;
+      dueDateForm.append(dueDateLabel, dueDateInput, dueDateButton);
 
       async function saveTask(update) {
         if (project.archived || pendingUpdates.has(task.id)) return;
         pendingUpdates.add(task.id);
-        checkbox.disabled = renameInput.disabled = renameButton.disabled = priority.disabled = true;
+        checkbox.disabled = renameInput.disabled = renameButton.disabled = priority.disabled =
+          dueDateInput.disabled = dueDateButton.disabled = true;
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
             method: 'PATCH',
@@ -290,7 +306,11 @@ async function showProject(id) {
         saveTask({ title });
       });
       priority.addEventListener('change', () => saveTask({ priority: priority.value }));
-      row.append(title, checkbox, renameForm, priorityLabel, priority);
+      dueDateForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveTask({ due_date: dueDateInput.value });
+      });
+      row.append(title, checkbox, renameForm, priorityLabel, priority, dueDateForm);
       return row;
     }));
   }
