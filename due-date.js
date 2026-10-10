@@ -11,3 +11,20 @@ export function parseDueDate(value) {
   const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day >= 1 && day <= daysInMonth[month - 1] ? date : null;
 }
+
+export function parseDueRange(fromValue, throughValue) {
+  const from = parseDueDate(fromValue);
+  const through = parseDueDate(throughValue);
+  if (from === null || through === null) {
+    return { error: 'Due range must use valid YYYY-MM-DD dates' };
+  }
+  if (from && through && from > through) {
+    return { error: 'Due from must not be after Due through' };
+  }
+  return { from, through };
+}
+
+export function matchesDueRange(date, { from, through }) {
+  if (!from && !through) return true;
+  return Boolean(date) && (!from || date >= from) && (!through || date <= through);
+}

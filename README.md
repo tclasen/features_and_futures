@@ -69,3 +69,14 @@ shows an alert and preserves the saved date. Due-date edits preserve task data,
 both filters and completion summaries. Archived projects disable due-date edits
 until restored. Dates persist across restarts, and existing databases are upgraded
 with empty dates without changing existing tasks.
+
+Project pages provide Due from and Due through textboxes and Apply due range.
+Ranges use the same Gregorian date validation as task due dates and include both
+boundaries. A blank side is unbounded; two blank sides also include undated tasks.
+A nonblank side excludes undated tasks. The range intersects completion and
+priority filters and preserves creation order. Invalid or reversed ranges show an
+alert without changing the applied range. Edits preserve all selected filters and
+immediately update matching rows. Completion summaries still count every task.
+Range state is carried in the page URL (`rangeFrom` and `rangeThrough`) and form
+submissions; opening a project from the list starts with empty boundaries.
+Range controls remain available in archived projects while task edits are disabled.
