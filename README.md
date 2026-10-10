@@ -55,10 +55,16 @@ across restarts; completion summaries reflect each project's current tasks.
 Project search intersects Active/Archived selection. Task search intersects
 completion, priority, and the applied due range. Both match substrings ignoring
 ASCII letter case and trimming surrounding query whitespace; internal whitespace
-remains significant. Task search stays applied through edits and moves. Searches
-remain usable while archived and never affect saved data or summary counts.
+is normalized for matching: runs of ASCII spaces and tabs count as one space.
+Stored names and titles keep their original text. Task search stays applied
+through edits and moves. Searches remain usable while archived and never affect saved data or summary counts.
 Opening the list through Projects clears project search; opening a project from
 the list clears task search and its other filters.
+Each task has optional multiline plain-text notes, saved with Save notes. Notes
+preserve whitespace, Unicode, and literal markup and persist through moves,
+return ordering, reloads, and restarts. They do not participate in search.
+Saving notes keeps all filters applied. Archived notes remain visible with
+editing disabled until restoration. Existing tasks start with empty notes.
 `GET /health` returns
 `{"status":"ok"}`.
 
