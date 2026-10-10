@@ -139,6 +139,33 @@ async function loadTasks() {
       error.hidden = true;
       await loadTasks();
     });
+    const dueDateForm = document.createElement('form');
+    dueDateForm.className = 'task-due-date-form';
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.value = task.due_date || '';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.disabled = activeProjectArchived;
+    const dueDateButton = document.createElement('button');
+    dueDateButton.type = 'submit';
+    dueDateButton.textContent = 'Save due date';
+    dueDateButton.disabled = activeProjectArchived;
+    dueDateForm.append(dueDateInput, dueDateButton);
+    dueDateForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const update = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/due-date`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dueDate: dueDateInput.value })
+      });
+      const result = await update.json();
+      if (!update.ok) {
+        showError(result.error || 'Unable to save due date');
+        return;
+      }
+      error.hidden = true;
+      await loadTasks();
+    });
     const renameForm = document.createElement('form');
     renameForm.className = 'task-rename-form';
     const renameInput = document.createElement('input');
@@ -166,7 +193,7 @@ async function loadTasks() {
       }
       await loadTasks();
     });
-    row.append(title, label, priority, renameForm);
+    row.append(title, label, priority, renameForm, dueDateForm);
     taskContainer.append(row);
   }
 }

@@ -30,6 +30,7 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(colum
 if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name);
 if (!taskColumns.includes('priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+if (!taskColumns.includes('due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 if (!projectColumns.includes('default_task_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
 
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
@@ -41,12 +42,22 @@ const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const updateProjectArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
 const updateTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
+const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?');
+
+function isValidDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
 
 async function readJson(request) {
   return new Promise((resolve, reject) => {
@@ -183,6 +194,19 @@ const server = createServer(async (request, response) => {
     if (getProject.get(task.project_id).archived) return sendJson(response, 409, { error: 'Archived project' });
     updateTaskPriority.run(priority, task.id);
     return sendJson(response, 200, { ...task, priority });
+  }
+  const taskDueDateMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/due-date\/?$/);
+  if (request.method === 'PATCH' && taskDueDateMatch) {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    if (typeof body?.dueDate !== 'string') return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+    const dueDate = body.dueDate.trim();
+    if (dueDate && !isValidDueDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+    const task = getTask.get(decodeURIComponent(taskDueDateMatch[1]));
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (getProject.get(task.project_id).archived) return sendJson(response, 409, { error: 'Archived project' });
+    updateTaskDueDate.run(dueDate || null, task.id);
+    return sendJson(response, 200, { ...task, due_date: dueDate || null });
   }
   if (request.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
     const project = getProject.get(decodeURIComponent(url.pathname.slice('/api/projects/'.length)));
