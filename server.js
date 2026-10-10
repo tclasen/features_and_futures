@@ -10,10 +10,18 @@ const dbPath = process.env.DB_PATH || join(root, 'workboard.sqlite');
 if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
 
 const db = new DatabaseSync(dbPath);
+db.exec('PRAGMA foreign_keys = ON');
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     created_at INTEGER NOT NULL
   )
 `);
@@ -21,6 +29,25 @@ db.exec(`
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
 const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
+const updateTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
+
+async function readJson(request) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => {
+      raw += chunk;
+      if (raw.length > 100_000) reject(new Error('Request too large'));
+    });
+    request.on('end', () => {
+      try { resolve(JSON.parse(raw)); } catch { reject(new Error('Invalid JSON')); }
+    });
+    request.on('error', reject);
+  });
+}
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -48,15 +75,7 @@ const server = createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body;
     try {
-      body = await new Promise((resolve, reject) => {
-        let raw = '';
-        request.setEncoding('utf8');
-        request.on('data', chunk => { raw += chunk; if (raw.length > 100_000) reject(new Error('Request too large')); });
-        request.on('end', () => {
-          try { resolve(JSON.parse(raw)); } catch { reject(new Error('Invalid JSON')); }
-        });
-        request.on('error', reject);
-      });
+      body = await readJson(request);
     } catch {
       return sendJson(response, 400, { error: 'Invalid request' });
     }
@@ -65,6 +84,31 @@ const server = createServer(async (request, response) => {
     const project = { id: randomUUID(), name };
     insertProject.run(project.id, project.name, Date.now());
     return sendJson(response, 201, project);
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/?$/);
+  if (tasksMatch) {
+    const projectId = decodeURIComponent(tasksMatch[1]);
+    if (!getProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+    if (request.method === 'GET') return sendJson(response, 200, listTasks.all(projectId));
+    if (request.method === 'POST') {
+      let body;
+      try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      const task = { id: randomUUID(), title, completed: 0 };
+      insertTask.run(task.id, projectId, title, Date.now());
+      return sendJson(response, 201, task);
+    }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/?$/);
+  if (request.method === 'PATCH' && taskMatch) {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
+    const task = getTask.get(decodeURIComponent(taskMatch[1]));
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    updateTaskCompletion.run(body.completed ? 1 : 0, task.id);
+    return sendJson(response, 200, { ...task, completed: body.completed ? 1 : 0 });
   }
   if (request.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
     const project = getProject.get(decodeURIComponent(url.pathname.slice('/api/projects/'.length)));
