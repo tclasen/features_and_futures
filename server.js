@@ -36,6 +36,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateProjectArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
@@ -88,6 +89,18 @@ const server = createServer(async (request, response) => {
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     updateProjectArchive.run(body.archived ? 1 : 0, project.id);
     return sendJson(response, 200, { ...project, archived: body.archived ? 1 : 0 });
+  }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/name\/?$/);
+  if (renameMatch && request.method === 'PATCH') {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+    const project = getProject.get(decodeURIComponent(renameMatch[1]));
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived project' });
+    updateProjectName.run(name, project.id);
+    return sendJson(response, 200, { ...project, name });
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body;

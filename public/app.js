@@ -10,6 +10,8 @@ const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
+const renameForm = document.querySelector('#rename-project');
+const newProjectNameInput = document.querySelector('#new-project-name');
 let activeProjectId;
 let activeProjectArchived = false;
 
@@ -65,6 +67,8 @@ async function showRoute() {
   activeProjectArchived = Boolean(project.archived);
   document.querySelector('#project-title').textContent = project.name;
   archivedNotice.hidden = !activeProjectArchived;
+  newProjectNameInput.disabled = activeProjectArchived;
+  renameForm.querySelector('button').disabled = activeProjectArchived;
   taskForm.querySelector('button').disabled = activeProjectArchived;
   listView.hidden = true;
   detailView.hidden = false;
@@ -131,6 +135,22 @@ form.addEventListener('submit', async event => {
 
 document.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
 function showError(message) { error.textContent = message; error.hidden = false; }
+renameForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  error.hidden = true;
+  const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/name`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: newProjectNameInput.value })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    showError(result.error || 'Unable to rename project');
+    return;
+  }
+  document.querySelector('#project-title').textContent = result.name;
+  newProjectNameInput.value = '';
+});
 projectFilter.addEventListener('change', () => loadProjects().catch(() => showError('Unable to load projects')));
 taskForm.addEventListener('submit', async event => {
   event.preventDefault();
