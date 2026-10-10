@@ -75,7 +75,7 @@ test('combined filters preserve selections, re-evaluate edits, and work archived
     assert.match(html, /aria-label="Complete Renamed"/);
     selected(html, 'task-filter', 'Open');
     selected(html, 'priority-filter', 'High');
-    assert.equal((html.match(/name="priorityFilter" value="High"/g) || []).length, 5);
+    assert.equal((html.match(/name="priorityFilter" value="High"/g) || []).length, 6);
     response = await post('/projects/1/tasks/1/rename', { ...filters, title: ' ' });
     assert.equal(response.status, 400);
     html = await response.text();

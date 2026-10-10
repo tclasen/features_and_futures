@@ -65,7 +65,7 @@ test('priorities migrate, persist independently, and respect ownership and archi
     assert.equal((await post('/projects/1/tasks/99/priority', { priority: 'Low' })).status, 404);
     assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 400);
     const updated = await get('/projects/1');
-    assert.equal(updated, original.replace(options('Normal'), options('High')));
+    assert.equal(updated, original.replace(select(original, 1)[0], select(original, 1)[0].replace(options('Normal'), options('High'))));
     assert.match(await get('/'), /1\/2 completed/);
     assert.match(await get('/projects/1?filter=Completed'), /Complete Existing/);
     assert.doesNotMatch(await get('/projects/1?filter=Open'), /Complete Existing/);
