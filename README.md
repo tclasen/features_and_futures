@@ -28,6 +28,13 @@ creation order; completion and task IDs are saved in SQLite. Filters are stored 
 the page URL and default to All. Checkbox and filter changes submit using browser
 JavaScript; creation and navigation use ordinary HTML forms.
 
+The project list defaults to Active and can show Archived projects. Each row
+summarizes completed tasks out of all tasks. Archive/restore retains tasks and
+completion state. Archived project pages allow viewing and filtering but disable
+task creation and completion; the server also rejects task mutations with HTTP
+403. Existing databases are upgraded automatically with all projects active.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
-completion toggles, reloads, and persistence across process restarts.
+completion toggles, archive/restore, summaries, legacy schema migration, reloads,
+and persistence across process restarts.

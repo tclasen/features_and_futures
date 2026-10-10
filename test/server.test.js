@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -32,6 +33,72 @@ async function start(databasePath) {
     },
   };
 }
+
+test('archive migration, summaries, read-only tasks, restoration, and persistence', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'board.sqlite');
+  // Simulate the schema from the previous checkpoint.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (name) VALUES ('Legacy');`);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    assert.match(await get('/'), /<option selected>Active<\/option>/);
+    assert.match(await get('/'), /data-testid="project-summary">0\/0 completed/);
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Done' });
+    await post('/projects/1/tasks', { title: 'Open' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    assert.equal((await post('/projects/1/archive')).status, 303);
+    assert.doesNotMatch(await get('/'), /<span>Legacy<\/span>/);
+    const archived = await get('/?filter=Archived');
+    assert.match(archived, /<option selected>Archived<\/option>/);
+    assert.match(archived, /<span>Legacy<\/span>/);
+    assert.match(archived, /1\/2 completed/);
+    assert.match(archived, />Restore project<\/button>/);
+    assert.match(archived, />Open project<\/button>/);
+    assert.doesNotMatch(archived, /<span>Second<\/span>/);
+    const detail = await get('/projects/1');
+    assert.match(detail, /Archived project/);
+    assert.match(detail, /<button type="submit" disabled>Create task/);
+    assert.equal((detail.match(/<input[^>]*type="checkbox"[^>]*disabled/g) || []).length, 2);
+    const completed = await get('/projects/1?filter=Completed');
+    assert.match(completed, /Complete Done/);
+    assert.doesNotMatch(completed, /Complete Open/);
+    const open = await get('/projects/1?filter=Open');
+    assert.match(open, /Complete Open/);
+    assert.doesNotMatch(open, /Complete Done/);
+    assert.equal((await post('/projects/1/tasks', { title: 'Blocked' })).status, 403);
+    assert.equal((await post('/projects/1/tasks/1')).status, 403);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await get('/?filter=Archived'), archived);
+    assert.equal(await get('/projects/1'), detail);
+    assert.equal((await post('/projects/1/restore')).status, 303);
+    const restored = await get('/projects/1');
+    assert.doesNotMatch(restored, /<(?:input|button)[^>]*disabled|<p>Archived project/);
+    assert.match(restored, /aria-label="Complete Done" checked/);
+    assert.doesNotMatch(await get('/?filter=Archived'), /data-testid="project-row"/);
+    const active = await get('/');
+    assert.ok(active.indexOf('<span>Legacy') < active.indexOf('<span>Second'));
+    assert.match(active, /1\/2 completed/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await get('/'), active);
+    assert.equal(await get('/projects/1'), restored);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('tasks validate, filter, remain project-owned, and persist completion', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
