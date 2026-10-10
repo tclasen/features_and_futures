@@ -31,6 +31,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = Boolean(window.currentProjectArchived);
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
@@ -51,8 +52,10 @@ async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
   const projects = await response.json();
+  const filter = document.querySelector('#project-filter').value;
   projectContainer.replaceChildren();
   for (const project of projects) {
+    if (filter === 'Active' && project.archived || filter === 'Archived' && !project.archived) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
     row.className = 'project-row';
@@ -62,7 +65,17 @@ async function loadProjects() {
     open.type = 'button';
     open.textContent = 'Open project';
     open.addEventListener('click', () => navigate(`/projects/${project.id}`));
-    row.append(name, open);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.textContent = project.archived ? 'Restore project' : 'Archive project';
+    action.addEventListener('click', async () => {
+      const response = await fetch(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+      if (response.ok) await loadProjects();
+    });
+    row.append(name, summary, open, action);
     projectContainer.append(row);
   }
 }
@@ -83,6 +96,9 @@ async function renderRoute() {
   const project = await response.json();
   activeProjectId = project.id;
   document.querySelector('#project-title').textContent = project.name;
+  window.currentProjectArchived = project.archived;
+  document.querySelector('#archived-message').hidden = !project.archived;
+  document.querySelector('#task-form').querySelectorAll('input, button').forEach(control => { control.disabled = project.archived; });
   listView.hidden = true;
   detailView.hidden = false;
   taskMessage.hidden = true;
@@ -134,6 +150,7 @@ document.querySelector('#task-form').addEventListener('submit', async (event) =>
   } catch { showTaskError('Unable to create task'); }
 });
 document.querySelector('#task-filter').addEventListener('change', renderTasks);
+document.querySelector('#project-filter').addEventListener('change', () => loadProjects().catch(showLoadError));
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 window.addEventListener('popstate', () => renderRoute().catch(showLoadError));
 renderRoute().catch(showLoadError);
