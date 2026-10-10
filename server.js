@@ -30,8 +30,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 )`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, \'Normal\')');
+const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
@@ -106,6 +108,11 @@ const server = http.createServer(async (req, res) => {
       const owner = getProject.get(taskMatch[1]);
       if (!owner) return json(res, 404, { error: 'Project not found' });
       if (owner.archived) return json(res, 403, { error: 'Archived project' });
+      if (typeof payload.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(payload.priority)) return json(res, 400, { error: 'Invalid task priority' });
+        const result = updateTaskPriority.run(payload.priority, taskMatch[2], taskMatch[1]);
+        return result.changes ? json(res, 200, { priority: payload.priority }) : json(res, 404, { error: 'Task not found' });
+      }
       if (typeof payload.title === 'string') {
         const title = payload.title.trim();
         if (!title) return json(res, 400, { error: 'Task title is required' });
