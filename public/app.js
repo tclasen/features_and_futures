@@ -81,13 +81,28 @@ async function renderTasks(project) {
   const filterControls = element('div');
   filterControls.className = 'task-filter';
   filterControls.append(filterLabel, filter);
+  const priorityFilterLabel = element('label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    priorityFilter.append(option);
+  }
+  priorityFilter.value = 'All';
+  const priorityFilterControls = element('div');
+  priorityFilterControls.className = 'task-filter';
+  priorityFilterControls.append(priorityFilterLabel, priorityFilter);
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(form, filterControls, list);
+  app.append(form, filterControls, priorityFilterControls, list);
   const tasks = await request(endpoint);
 
   function matchesFilter(task) {
-    return filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed);
+    const matchesCompletion = filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed);
+    const matchesPriority = priorityFilter.value === 'All' || task.priority === priorityFilter.value;
+    return matchesCompletion && matchesPriority;
   }
 
   function taskRow(task) {
@@ -171,7 +186,7 @@ async function renderTasks(project) {
           body: JSON.stringify({ priority: priority.value }),
         });
         task.priority = saved.priority;
-        priority.value = saved.priority;
+        drawTasks();
         app.querySelector('[role="alert"]')?.remove();
       } catch (error) {
         priority.value = task.priority;
@@ -193,6 +208,7 @@ async function renderTasks(project) {
 
   drawTasks();
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (project.archived) return;
