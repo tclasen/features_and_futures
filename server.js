@@ -98,11 +98,20 @@ const server = createServer(async (request, response) => {
   if (request.method === 'PATCH' && projectUpdate) {
     const id = Number(projectUpdate[1]);
     try {
-      const { archived } = await readBody(request);
-      if (typeof archived !== 'boolean') return sendJson(response, 400, { error: 'Invalid archive state' });
-      const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
-      if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
-      return sendJson(response, 200, { id, archived });
+      const update = await readBody(request);
+      if (typeof update.archived === 'boolean') {
+        const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(update.archived ? 1 : 0, id);
+        if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+        return sendJson(response, 200, { id, archived: update.archived });
+      }
+      if (typeof update.name === 'string') {
+        const name = update.name.trim();
+        if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+        const result = database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+        if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+        return sendJson(response, 200, { id, name });
+      }
+      return sendJson(response, 400, { error: 'Invalid project update' });
     } catch {
       return sendJson(response, 400, { error: 'Invalid request' });
     }
