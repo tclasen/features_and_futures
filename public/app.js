@@ -75,7 +75,9 @@ async function renderProject(id) {
     event.preventDefault();
     try {
       await request(`/api/projects/${encodeURIComponent(id)}/rename`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: renameInput.value }) });
-      await renderProject(id);
+      project.name = renameInput.value.trim();
+      app.querySelector('h1').textContent = project.name;
+      renameInput.value = project.name;
     } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
   });
 
@@ -183,7 +185,7 @@ async function renderProject(id) {
     const from = dueFrom.value.trim(), through = dueThrough.value.trim();
     const validDate = value => {
       if (!value) return true;
-      const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!match) return false;
       const [, y, m, d] = match.map(Number);
       if (y < 1 || m < 1 || m > 12 || d < 1) return false;
@@ -192,7 +194,9 @@ async function renderProject(id) {
     };
     if (!validDate(from) || !validDate(through)) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return; }
     if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return; }
-    appliedDueFrom = from; appliedDueThrough = through; alert.hidden = true;
+    appliedDueFrom = from; appliedDueThrough = through;
+    dueFrom.value = from; dueThrough.value = through;
+    alert.hidden = true;
     refreshTasks();
   });
   filter.addEventListener('change', refreshTasks);
