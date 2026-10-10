@@ -8,7 +8,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. Defaults are port 8080 and `./data/workboard.sqlite`. The server binds to `0.0.0.0`. `GET /health` returns `{"status":"ok"}`.
 
-Projects and their tasks are stored in SQLite and displayed in creation order. Each project page supports task creation, completion checkboxes, and All/Open/Completed filtering. Native HTML forms provide creation and navigation; browser JavaScript submits completion and filter changes automatically.
+Projects and their tasks are stored in SQLite and displayed in creation order. Each project page supports task creation, completion checkboxes, and All/Open/Completed filtering. The project list supports Active/Archived filtering, archive/restore controls, and completion summaries across all tasks. Archived projects keep their tasks visible and filterable but disable task creation and completion changes. Existing databases are migrated automatically. Native HTML forms provide creation and navigation; browser JavaScript submits completion and filter changes automatically.
 
 Run the integration checks (including process-restart persistence):
 
