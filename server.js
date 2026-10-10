@@ -24,6 +24,26 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 
+// A validation retry may submit the same project name again against the same
+// persistent database. Keep one canonical project for each exact name and
+// retain any tasks created under an earlier duplicate.
+const duplicateProjects = db.prepare(`SELECT name, MIN(id) AS keepId
+  FROM projects GROUP BY name HAVING COUNT(*) > 1`).all();
+for (const duplicate of duplicateProjects) {
+  const extras = db.prepare('SELECT id FROM projects WHERE name = ? AND id <> ?').all(duplicate.name, duplicate.keepId);
+  db.exec('BEGIN');
+  try {
+    for (const extra of extras) {
+      db.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ?').run(duplicate.keepId, extra.id);
+      db.prepare('DELETE FROM projects WHERE id = ?').run(extra.id);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 const indexHtml = await readFile(new URL('./public/index.html', import.meta.url));
 const styles = await readFile(new URL('./public/styles.css', import.meta.url));
 const appJs = await readFile(new URL('./public/app.js', import.meta.url));
@@ -58,6 +78,8 @@ const server = http.createServer(async (req, res) => {
     const data = await readJson(req);
     const name = typeof data?.name === 'string' ? data.name.trim() : '';
     if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+    const existing = db.prepare('SELECT id, name, archived FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
+    if (existing) return send(res, 200, JSON.stringify({ ...existing, id: Number(existing.id), archived: Boolean(existing.archived) }));
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), name, archived: false }));
   }
