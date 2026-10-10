@@ -9,18 +9,19 @@ const dbPath = process.env.DB_PATH || join(root, 'workboard.sqlite');
 if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
-  CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
   CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
 `);
 db.exec('PRAGMA foreign_keys = ON');
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const send = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
   const readBody = async () => { let body = ''; for await (const chunk of req) body += chunk; return JSON.parse(body); };
   if (req.method === 'GET' && url.pathname === '/health') return send(200, { status: 'ok' });
-  if (url.pathname === '/api/projects' && req.method === 'GET') return send(200, db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({...p, archived: Boolean(p.archived)})));
+  if (url.pathname === '/api/projects' && req.method === 'GET') return send(200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({...p, archived: Boolean(p.archived)})));
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     try { const name = String((await readBody()).name ?? '').trim(); if (!name) return send(400, { error: 'Project name is required' }); const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name); return send(201, { id: Number(result.lastInsertRowid), name }); }
     catch { return send(400, { error: 'Invalid request' }); }
@@ -34,6 +35,15 @@ const server = http.createServer(async (req, res) => {
       return result.changes ? send(200, { ok: true, name }) : send(404, { error: 'Project not found or archived' });
     } catch { return send(400, { error: 'Invalid request' }); }
   }
+  const projectDefault = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (projectDefault && req.method === 'PATCH') {
+    try {
+      const { priority } = await readBody();
+      if (!['Low', 'Normal', 'High'].includes(priority)) return send(400, {error:'Invalid task priority'});
+      const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(priority, Number(projectDefault[1]));
+      return result.changes ? send(200, {ok:true, priority}) : send(404, {error:'Project not found'});
+    } catch { return send(400, {error:'Invalid request'}); }
+  }
   const projectArchive = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (projectArchive && req.method === 'PATCH') {
     try { const { archived } = await readBody(); const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, Number(projectArchive[1])); return result.changes ? send(200, {ok:true}) : send(404, {error:'Project not found'}); }
@@ -44,12 +54,12 @@ const server = http.createServer(async (req, res) => {
   if (taskRoute && req.method === 'POST') {
     try {
       const projectId = Number(taskRoute[1]);
-      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!project) return send(404, {error:'Project not found'});
       if (project.archived) return send(403, {error:'Archived project'});
       const title = String((await readBody()).title ?? '').trim();
       if (!title) return send(400, {error:'Task title is required'});
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
       return send(201, {id:Number(result.lastInsertRowid), title, completed:false});
     } catch { return send(400, {error:'Invalid request'}); }
   }
