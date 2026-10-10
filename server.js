@@ -34,6 +34,7 @@ const listProjects = database.prepare(`
 `);
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -90,6 +91,11 @@ function projectPage(project, filter = 'All', error = '') {
     <form class="back" method="get" action="/"><button type="submit">Projects</button></form>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <p role="alert" id="task-error"${error ? '' : ' hidden'}>${escapeHtml(error)}</p>
+    <form class="create" method="post" action="/projects/${project.id}/rename">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form class="create" method="post" action="/projects/${project.id}/tasks">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text">
@@ -213,7 +219,7 @@ const server = http.createServer(async (request, response) => {
       response.end();
       return;
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*))?|archive|restore))?$/.exec(pathname);
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*))?|archive|restore|rename))?$/.exec(pathname);
     if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -228,6 +234,23 @@ const server = http.createServer(async (request, response) => {
         if (request.method === 'GET' && pathname === `/projects/${id}`) {
           const filter = url.searchParams.get('filter');
           sendHtml(response, 200, projectPage(project, ['Open', 'Completed'].includes(filter) ? filter : 'All'));
+          return;
+        }
+        if (request.method === 'POST' && pathname === `/projects/${id}/rename`) {
+          const form = await readForm(request);
+          const currentProject = findProject.get(id);
+          if (currentProject.archived) {
+            sendHtml(response, 403, projectPage(currentProject, 'All', 'Archived project'));
+            return;
+          }
+          const name = (form.get('name') || '').trim();
+          if (!name) {
+            sendHtml(response, 400, projectPage(currentProject, 'All', 'Project name is required'));
+            return;
+          }
+          renameProject.run(name, id);
+          response.writeHead(303, { Location: `/projects/${id}` });
+          response.end();
           return;
         }
         if (request.method === 'POST' && pathname === `/projects/${id}/tasks`) {

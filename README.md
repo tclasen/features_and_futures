@@ -28,3 +28,8 @@ projects. Archiving preserves all tasks but disables task creation and completio
 changes until restoration. Each project row summarizes completed tasks out of all
 its tasks, independently of the task filter. Existing SQLite files are upgraded
 automatically, with existing projects initially active.
+
+Active project pages also support renaming. Names are trimmed and cannot be blank.
+Renaming preserves the project's URL, creation order, tasks and completion summary.
+Archived projects cannot be renamed until restored. Renamed projects persist in
+the same SQLite file across restarts.
