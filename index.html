@@ -19,6 +19,9 @@
     .project-row { justify-content: space-between; align-items: center; background: white; border: 1px solid #d9e0e8; border-radius: .5rem; padding: .8rem 1rem; margin: .6rem 0; }
     .alert { color: #a32323; margin: .5rem 0; }
     .back { margin-bottom: 1rem; }
+    .task-row { display: flex; gap: .75rem; align-items: center; background: white; border: 1px solid #d9e0e8; border-radius: .5rem; padding: .8rem 1rem; margin: .6rem 0; }
+    .task-row input { min-width: auto; }
+    select { font: inherit; padding: .6rem .8rem; border: 1px solid #aab4c0; border-radius: .4rem; }
   </style>
 </head>
 <body>
@@ -91,6 +94,85 @@
       const heading = document.createElement('h1');
       heading.textContent = project ? project.name : 'Project not found';
       app.append(heading);
+      if (!project) return;
+
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = 'title';
+      label.append(input);
+      const create = document.createElement('button');
+      create.textContent = 'Create task';
+      form.append(label, create);
+      const alert = document.createElement('p');
+      alert.className = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      app.append(form, alert);
+
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      filterLabel.append(filter);
+      app.append(filterLabel);
+      const taskList = document.createElement('div');
+      app.append(taskList);
+      let tasks = await (await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`)).json();
+
+      function renderTasks() {
+        taskList.replaceChildren();
+        const visibleTasks = tasks.filter((task) => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
+        for (const task of visibleTasks) {
+          const row = document.createElement('section');
+          row.dataset.testid = 'task-row';
+          row.className = 'task-row';
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
+            });
+            if (saved.ok) {
+              task.completed = checkbox.checked;
+              renderTasks();
+            }
+          });
+          row.append(title, checkbox);
+          taskList.append(row);
+        }
+      }
+      filter.addEventListener('change', renderTasks);
+      renderTasks();
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          alert.textContent = 'Task title is required';
+          alert.hidden = false;
+          return;
+        }
+        const created = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title })
+        });
+        if (created.ok) {
+          tasks.push(await created.json());
+          input.value = '';
+          alert.hidden = true;
+          renderTasks();
+        }
+      });
     }
 
     const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
