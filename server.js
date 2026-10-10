@@ -158,19 +158,40 @@ function priorityFilter(value) {
   return taskPriorities.includes(value) ? value : 'All';
 }
 
-function projectLocation(projectId, filter, priority) {
+function dueRange(values) {
+  const from = (values.get('dueFrom') || '').trim();
+  const through = (values.get('dueThrough') || '').trim();
+  return !dueRangeError(from, through) ? { from, through } : { from: '', through: '' };
+}
+
+function dueRangeError(from, through) {
+  if ((from && !isValidDueDate(from)) || (through && !isValidDueDate(through))) {
+    return 'Due range must use valid YYYY-MM-DD dates';
+  }
+  if (from && through && from > through) return 'Due from must not be after Due through';
+  return '';
+}
+
+function projectLocation(projectId, filter, priority, range = { from: '', through: '' }) {
   const query = new URLSearchParams();
   if (filter !== 'All') query.set('filter', filter);
   if (priority !== 'All') query.set('priorityFilter', priority);
+  if (range.from) query.set('dueFrom', range.from);
+  if (range.through) query.set('dueThrough', range.through);
   return `/projects/${projectId}${query.size ? `?${query}` : ''}`;
 }
 
-function projectPage(project, filter = 'All', priority = 'All', error = '') {
+function projectPage(project, filter = 'All', priority = 'All', error = '', range = { from: '', through: '' }) {
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${range.from}">
+    <input type="hidden" name="dueThrough" value="${range.through}">`;
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
-    <input type="hidden" name="priorityFilter" value="${priority}">`;
+    <input type="hidden" name="priorityFilter" value="${priority}">${rangeFields}`;
   const tasks = listTasks.all(project.id).filter(task =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
-    (priority === 'All' || task.priority === priority));
+    (priority === 'All' || task.priority === priority) &&
+    ((!range.from && !range.through) || (task.due_date &&
+      (!range.from || task.due_date >= range.from) &&
+      (!range.through || task.due_date <= range.through))));
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     <form method="get" action="/"><button type="submit">Projects</button></form>
@@ -200,6 +221,7 @@ function projectPage(project, filter = 'All', priority = 'All', error = '') {
       </div>
     </form>
     <form class="task-filter" method="get" action="/projects/${project.id}">
+      ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -208,6 +230,14 @@ function projectPage(project, filter = 'All', priority = 'All', error = '') {
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
         ${['All', ...taskPriorities].map(option => `<option${priority === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form class="task-filter" method="post" action="/projects/${project.id}/due-range">
+      ${filterFields}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="from" type="text" value="${range.from}" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="through" type="text" value="${range.through}" autocomplete="off">
+      <button type="submit">Apply due range</button>
     </form>
     <div class="projects">
       ${tasks.length ? tasks.map(task => `
@@ -292,6 +322,28 @@ const server = http.createServer(async (request, response) => {
       redirect(response, '/');
       return;
     }
+    const dueRangeRoute = /^\/projects\/([1-9]\d*)\/due-range$/.exec(url.pathname);
+    if (request.method === 'POST' && dueRangeRoute) {
+      const project = getProject.get(dueRangeRoute[1]);
+      if (project) {
+        const form = await readForm(request);
+        if (!form) {
+          sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = taskFilter(form.get('filter'));
+        const priority = priorityFilter(form.get('priorityFilter'));
+        const from = (form.get('from') || '').trim();
+        const through = (form.get('through') || '').trim();
+        const error = dueRangeError(from, through);
+        if (error) {
+          sendHtml(response, 400, projectPage(project, filter, priority, error, dueRange(form)));
+          return;
+        }
+        redirect(response, projectLocation(project.id, filter, priority, { from, through }));
+        return;
+      }
+    }
     const defaultPriorityRoute = /^\/projects\/([1-9]\d*)\/default-priority$/.exec(url.pathname);
     if (request.method === 'POST' && defaultPriorityRoute) {
       const project = getProject.get(defaultPriorityRoute[1]);
@@ -303,17 +355,18 @@ const server = http.createServer(async (request, response) => {
         }
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, priority, 'Archived project defaults cannot be changed'));
+          sendHtml(response, 403, projectPage(project, filter, priority, 'Archived project defaults cannot be changed', range));
           return;
         }
         const defaultPriority = form.get('priority');
         if (!taskPriorities.includes(defaultPriority)) {
-          sendHtml(response, 400, projectPage(project, filter, priority, 'Task priority is invalid'));
+          sendHtml(response, 400, projectPage(project, filter, priority, 'Task priority is invalid', range));
           return;
         }
         updateProjectDefaultPriority.run(defaultPriority, project.id);
-        redirect(response, projectLocation(project.id, filter, priority));
+        redirect(response, projectLocation(project.id, filter, priority, range));
         return;
       }
     }
@@ -328,17 +381,18 @@ const server = http.createServer(async (request, response) => {
         }
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, priority, 'Archived projects cannot be renamed'));
+          sendHtml(response, 403, projectPage(project, filter, priority, 'Archived projects cannot be renamed', range));
           return;
         }
         const name = (form.get('name') || '').trim();
         if (!name) {
-          sendHtml(response, 400, projectPage(project, filter, priority, 'Project name is required'));
+          sendHtml(response, 400, projectPage(project, filter, priority, 'Project name is required', range));
           return;
         }
         renameProject.run(name, project.id);
-        redirect(response, projectLocation(project.id, filter, priority));
+        redirect(response, projectLocation(project.id, filter, priority, range));
         return;
       }
     }
@@ -354,7 +408,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && projectRoute) {
       const project = getProject.get(projectRoute[1]);
       if (project) {
-        sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter'))));
+        sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')), '', dueRange(url.searchParams)));
         return;
       }
     }
@@ -369,8 +423,9 @@ const server = http.createServer(async (request, response) => {
         }
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, priority, 'Archived project tasks cannot be changed'));
+          sendHtml(response, 403, projectPage(project, filter, priority, 'Archived project tasks cannot be changed', range));
           return;
         }
         const taskId = taskRoute[2];
@@ -379,21 +434,21 @@ const server = http.createServer(async (request, response) => {
           if (taskRoute[3] === 'due-date') {
             const dueDate = (form.get('dueDate') || '').trim();
             if (dueDate && !isValidDueDate(dueDate)) {
-              sendHtml(response, 400, projectPage(project, filter, priority, 'Due date must be a valid YYYY-MM-DD date'));
+              sendHtml(response, 400, projectPage(project, filter, priority, 'Due date must be a valid YYYY-MM-DD date', range));
               return;
             }
             result = updateTaskDueDate.run(dueDate, taskId, project.id);
           } else if (taskRoute[3] === 'priority') {
             const taskPriority = form.get('priority');
             if (!taskPriorities.includes(taskPriority)) {
-              sendHtml(response, 400, projectPage(project, filter, priority, 'Task priority is invalid'));
+              sendHtml(response, 400, projectPage(project, filter, priority, 'Task priority is invalid', range));
               return;
             }
             result = updateTaskPriority.run(taskPriority, taskId, project.id);
           } else if (taskRoute[3] === 'rename') {
             const title = (form.get('title') || '').trim();
             if (!title) {
-              sendHtml(response, 400, projectPage(project, filter, priority, 'Task title is required'));
+              sendHtml(response, 400, projectPage(project, filter, priority, 'Task title is required', range));
               return;
             }
             result = renameTask.run(title, taskId, project.id);
@@ -407,12 +462,12 @@ const server = http.createServer(async (request, response) => {
         } else {
           const title = (form.get('title') || '').trim();
           if (!title) {
-            sendHtml(response, 400, projectPage(project, filter, priority, 'Task title is required'));
+            sendHtml(response, 400, projectPage(project, filter, priority, 'Task title is required', range));
             return;
           }
           createTask.run(project.id, title, project.default_task_priority);
         }
-        redirect(response, projectLocation(project.id, filter, priority));
+        redirect(response, projectLocation(project.id, filter, priority, range));
         return;
       }
     }

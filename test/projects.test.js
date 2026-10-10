@@ -7,6 +7,140 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('due ranges intersect filters, validate without replacing the applied range, and follow edits', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-ranges-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const titles = page => [...page.matchAll(/<span>([^<]*)<\/span>/g)].map(match => match[1]);
+    const apply = values => post('/projects/1/due-range', values);
+    const follow = async response => {
+      assert.equal(response.status, 303);
+      return html(response.headers.get('location'));
+    };
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const dates = ['', '2024-02-28', '2024-02-29', '2024-03-01', '2024-03-02', '0001-01-01', '9999-12-31'];
+    for (const [index, date] of dates.entries()) {
+      await post('/projects/1/tasks', { title: `Task ${index + 1}` });
+      await post(`/projects/1/tasks/${index + 1}/due-date`, { dueDate: date });
+    }
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    await post('/projects/1/tasks/3/priority', { priority: 'High' });
+    await post('/projects/1/tasks/4/priority', { priority: 'High' });
+    await post('/projects/1/tasks/3', { completed: '1' });
+    const list = await html('/');
+    const initial = await html('/projects/1');
+    assert.match(initial, /<label for="due-from">Due from<\/label>/);
+    assert.match(initial, /<input id="due-from"[^>]*type="text" value=""/);
+    assert.match(initial, /<label for="due-through">Due through<\/label>/);
+    assert.match(initial, /<input id="due-through"[^>]*type="text" value=""/);
+    assert.match(initial, />Apply due range<\/button>/);
+    for (const [from, through, expected] of [
+      ['', '', ['Task 1', 'Task 2', 'Task 3', 'Task 4', 'Task 5', 'Task 6', 'Task 7']],
+      ['2024-02-29', '', ['Task 3', 'Task 4', 'Task 5', 'Task 7']],
+      ['', '2024-03-01', ['Task 2', 'Task 3', 'Task 4', 'Task 6']],
+      ['2024-02-29', '2024-03-01', ['Task 3', 'Task 4']],
+      ['2024-02-29', '2024-02-29', ['Task 3']],
+      ['0001-01-01', '9999-12-31', ['Task 2', 'Task 3', 'Task 4', 'Task 5', 'Task 6', 'Task 7']],
+      ['0001-01-01', '0001-01-01', ['Task 6']],
+      ['9999-12-31', '9999-12-31', ['Task 7']],
+    ]) {
+      assert.deepEqual(titles(await follow(await apply({ from, through }))), expected);
+      assert.equal(await html('/'), list);
+    }
+    const state = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-01' };
+    const path = `/projects/1?${new URLSearchParams(state)}`;
+    const trimmed = await apply({ ...state, from: ' 2024-02-29 \t', through: ' 2024-03-01 ' });
+    assert.equal(trimmed.headers.get('location'), path);
+    const filtered = await follow(trimmed);
+    assert.deepEqual(titles(filtered), ['Task 3']);
+    assert.match(filtered, /<option selected>Completed<\/option>/);
+    assert.match(filtered, /<option selected>High<\/option>/);
+    // Every editing form and the combobox form carry the applied boundaries.
+    for (const form of filtered.match(/<form[^>]*>[\s\S]*?<\/form>/g)) {
+      if (form.includes('action="/"')) continue;
+      assert.match(form, /name="dueFrom" value="2024-02-29"/);
+      assert.match(form, /name="dueThrough" value="2024-03-01"/);
+    }
+    for (const invalid of ['0000-01-01', '10000-01-01', '2024-2-29', '1900-02-29', '2025-02-29', '2024-04-31', 'text']) {
+      for (const boundary of ['from', 'through']) {
+        const response = await apply({ ...state, from: state.dueFrom, through: state.dueThrough, [boundary]: invalid });
+        assert.equal(response.status, 400);
+        const page = await response.text();
+        assert.match(page, /role="alert">Due range must use valid YYYY-MM-DD dates/);
+        assert.deepEqual(titles(page), ['Task 3']);
+        assert.match(page, /id="due-from"[^>]*value="2024-02-29"/);
+        assert.match(page, /<option selected>Completed<\/option>/);
+        assert.match(page, /<option selected>High<\/option>/);
+      }
+    }
+    const reversed = await apply({ ...state, from: '2024-03-02', through: '2024-02-29' });
+    assert.equal(reversed.status, 400);
+    const reversedPage = await reversed.text();
+    assert.match(reversedPage, /role="alert">Due from must not be after Due through/);
+    assert.deepEqual(titles(reversedPage), ['Task 3']);
+    assert.equal(await html(path), filtered);
+    assert.equal(await html('/'), list);
+    assert.deepEqual(titles(await html(`/projects/1?${new URLSearchParams({ ...state, filter: 'Open' })}`)), ['Task 4']);
+    assert.deepEqual(titles(await html(`/projects/1?${new URLSearchParams({ ...state, priorityFilter: 'Normal' })}`)), []);
+
+    const edit = async (route, values, expected) => {
+      const response = await post(`/projects/1/${route}`, { ...state, ...values });
+      assert.equal(response.headers.get('location'), path);
+      assert.deepEqual(titles(await follow(response)), expected);
+    };
+    await edit('tasks/3/rename', { title: ' Renamed task ' }, ['Renamed task']);
+    await edit('rename', { name: ' Renamed project ' }, ['Renamed task']);
+    await edit('default-priority', { priority: 'High' }, ['Renamed task']);
+    await edit('tasks', { title: 'New undated task' }, ['Renamed task']);
+    await edit('tasks/3/due-date', { dueDate: '2024-03-02' }, []);
+    await edit('tasks/3/due-date', { dueDate: '2024-03-01' }, ['Renamed task']);
+    await edit('tasks/3/priority', { priority: 'Low' }, []);
+    await edit('tasks/3/priority', { priority: 'High' }, ['Renamed task']);
+    await edit('tasks/3', {}, []);
+    await edit('tasks/3', { completed: '1' }, ['Renamed task']);
+    await edit('tasks/3/due-date', { dueDate: '  ' }, []);
+    await edit('tasks/3/due-date', { dueDate: '2024-02-29' }, ['Renamed task']);
+    const saved = await html(path);
+    const savedList = await html('/');
+    assert.match(savedList, /data-testid="project-summary">1\/8 completed/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html(path), saved);
+    assert.equal(await html('/'), savedList);
+    await post('/projects/1/archive');
+    const archived = await html(path);
+    assert.deepEqual(titles(archived), ['Renamed task']);
+    for (const id of ['due-from', 'due-through', 'task-filter', 'priority-filter']) {
+      const control = new RegExp(`<(?:input|select) id="${id}"[^>]*>`).exec(archived)[0];
+      assert.ok(!control.includes('disabled'));
+    }
+    assert.match(archived, /<button type="submit">Apply due range<\/button>/);
+    assert.match(archived, /id="task-due-date-3"[^>]* disabled/);
+    assert.match(archived, /id="task-priority-3"[^>]* disabled/);
+    assert.match(archived, /aria-label="Complete Renamed task" checked disabled/);
+    assert.deepEqual(titles(await follow(await apply({ from: '2024-03-01', through: '2024-03-02' }))), ['Task 4', 'Task 5']);
+    await post('/projects/1/restore');
+    assert.equal(await html(path), saved);
+    const reopened = await html('/projects/1');
+    assert.equal(titles(reopened).length, 8);
+    assert.match(reopened, /id="due-from"[^>]*value=""/);
+    assert.match(reopened, /id="due-through"[^>]*value=""/);
+    assert.match(await html('/projects/2'), /Other project task/);
+    assert.equal((await apply({ from: '2024-02-29', through: '' })).status, 303);
+    assert.equal((await post('/projects/999/due-range', {})).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('due dates migrate, validate Gregorian days, preserve task data, and survive restart and archival', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
   const databasePath = join(directory, 'workboard.sqlite');

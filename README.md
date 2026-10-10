@@ -31,6 +31,12 @@ Tasks support optional due dates. Save a real Gregorian date in YYYY-MM-DD forma
 (years 0001–9999), or leave the textbox blank to clear it. Dates persist without
 timezone conversion. Invalid dates leave saved data unchanged; archived projects
 disable date editing until restoration.
+Project pages also filter by an inclusive due-date range using Due from, Due through,
+and Apply due range. Blank boundaries are unbounded; with either boundary set,
+undated tasks are excluded. The range intersects the completion and priority
+filters, stays applied during edits, and remains usable while archived. Invalid
+ranges keep the previous applied range. Reopening from the project list resets
+both boundaries to empty.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
