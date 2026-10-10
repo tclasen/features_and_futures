@@ -247,7 +247,34 @@ async function showProject(id) {
           } catch (error) { showError(error); }
           finally { taskRename.disabled = Boolean(project.archived); }
         });
-        row.append(titleText, checkbox, taskRenameForm);
+        const priorityLabel = element('label', 'Task priority');
+        priorityLabel.htmlFor = `task-priority-${task.id}`;
+        const priority = element('select');
+        priority.id = priorityLabel.htmlFor;
+        for (const name of ['Low', 'Normal', 'High']) {
+          const option = element('option', name);
+          option.value = name;
+          priority.append(option);
+        }
+        priority.value = task.priority;
+        priority.disabled = Boolean(project.archived);
+        priority.addEventListener('change', async () => {
+          priority.disabled = true;
+          alert.hidden = true;
+          try {
+            const saved = await request(`/api/projects/${id}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ priority: priority.value }),
+            });
+            task.priority = saved.priority;
+          } catch (error) { showError(error); }
+          finally {
+            priority.value = task.priority;
+            priority.disabled = Boolean(project.archived);
+          }
+        });
+        row.append(titleText, checkbox, taskRenameForm, priorityLabel, priority);
         list.append(row);
       }
     }

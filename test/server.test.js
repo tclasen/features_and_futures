@@ -48,7 +48,7 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     const page = await (await fetch(base)).text();
     assert.match(page, /<h1>Workboard<\/h1>/);
     const script = await (await fetch(`${base}/app.js`)).text();
-    for (const label of ['Project name', 'Create project', 'Open project', 'Projects', 'project-row', 'Task title', 'Create task', 'Task filter', 'All', 'Open', 'Completed', 'task-row', 'Complete ${task.title}', 'Project filter', 'Active', 'Archived', 'Archive project', 'Restore project', 'Archived project', 'project-summary', 'New project name', 'Rename project', 'New task title', 'Rename task']) {
+    for (const label of ['Project name', 'Create project', 'Open project', 'Projects', 'project-row', 'Task title', 'Create task', 'Task filter', 'All', 'Open', 'Completed', 'task-row', 'Complete ${task.title}', 'Project filter', 'Active', 'Archived', 'Archive project', 'Restore project', 'Archived project', 'project-summary', 'New project name', 'Rename project', 'New task title', 'Rename task', 'Task priority', 'Low', 'Normal', 'High']) {
       assert.ok(script.includes(label));
     }
     for (const blank of ['', '  \t\n']) {
@@ -83,6 +83,7 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     const task = await taskResponse.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
+    assert.equal(task.priority, 'Normal');
     const nextTask = await (await createTask('Second task')).json();
     assert.deepEqual(await getTasks(), [task, nextTask]);
     assert.deepEqual(await getTasks(second.id), []);
@@ -93,6 +94,10 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     assert.deepEqual(await getTasks(), [completedTask, nextTask]);
     assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
     await stop();
+    // Simulate a Task 005 database with existing open and completed tasks.
+    const beforePriority = new DatabaseSync(join(directory, 'projects.sqlite'));
+    beforePriority.exec('ALTER TABLE tasks DROP COLUMN priority');
+    beforePriority.close();
     await start();
     assert.deepEqual(await getTasks(), [completedTask, nextTask]);
     assert.deepEqual(await getTasks(second.id), []);
@@ -186,6 +191,37 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     await start();
     assert.deepEqual(await getTasks(), [restoredTask, nextTask]);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    const prioritize = (priority, projectId = first.id, taskId = task.id) => fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+    });
+    for (const invalid of ['', 'Urgent', 'high', null, 1]) {
+      assert.equal((await prioritize(invalid)).status, 400);
+    }
+    assert.equal((await prioritize('High', second.id)).status, 404);
+    const highTask = { ...restoredTask, priority: 'High' };
+    assert.deepEqual(await (await prioritize('High')).json(), highTask);
+    const lowTask = { ...nextTask, priority: 'Low' };
+    assert.deepEqual(await (await prioritize('Low', first.id, nextTask.id)).json(), lowTask);
+    assert.deepEqual(await getTasks(), [highTask, lowTask]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    await stop();
+    await start();
+    assert.deepEqual(await getTasks(), [highTask, lowTask]);
+    await setArchive(true);
+    assert.equal((await prioritize('Normal')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await getTasks(), [highTask, lowTask]);
+    assert.equal((await prioritize('Low')).status, 409);
+    await setArchive(false);
+    const finalTask = { ...highTask, title: 'Priority preserved' };
+    assert.deepEqual(await (await renameTask(' Priority preserved ')).json(), finalTask);
+    assert.deepEqual(await getTasks(), [finalTask, lowTask]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    assert.deepEqual(await (await prioritize('Normal')).json(), { ...finalTask, priority: 'Normal' });
+    await stop();
+    await start();
+    assert.deepEqual(await getTasks(), [{ ...finalTask, priority: 'Normal' }, lowTask]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
