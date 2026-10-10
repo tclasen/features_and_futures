@@ -2,6 +2,7 @@ import http from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { normalizeDueDate } from './due-date.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -31,6 +32,9 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
   database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.default_task_priority,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -41,10 +45,10 @@ function projectValue(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ?, priority = ? WHERE project_id = ? AND id = ?');
+const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ?, priority = ?, due_date = ? WHERE project_id = ? AND id = ?');
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
 }
@@ -118,7 +122,8 @@ const server = http.createServer(async (request, response) => {
         const renaming = Object.hasOwn(body ?? {}, 'title');
         const changingCompletion = Object.hasOwn(body ?? {}, 'completed');
         const changingPriority = Object.hasOwn(body ?? {}, 'priority');
-        if ((changingCompletion || (!renaming && !changingPriority)) && typeof body?.completed !== 'boolean') {
+        const changingDueDate = Object.hasOwn(body ?? {}, 'due_date');
+        if ((changingCompletion || (!renaming && !changingPriority && !changingDueDate)) && typeof body?.completed !== 'boolean') {
           return json(response, 400, { error: 'Completed must be a boolean' });
         }
         const title = renaming ? (typeof body.title === 'string' ? body.title.trim() : '') : task.title;
@@ -127,7 +132,11 @@ const server = http.createServer(async (request, response) => {
         if (!['Low', 'Normal', 'High'].includes(priority)) {
           return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
         }
-        updateTask.run(changingCompletion ? Number(body.completed) : task.completed, title, priority, projectId, taskId);
+        const dueDate = changingDueDate ? normalizeDueDate(body.due_date) : task.due_date;
+        if (dueDate === null) {
+          return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        }
+        updateTask.run(changingCompletion ? Number(body.completed) : task.completed, title, priority, dueDate, projectId, taskId);
         return json(response, 200, taskValue(findTask.get(projectId, taskId)));
       }
     }
