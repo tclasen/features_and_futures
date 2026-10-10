@@ -14,6 +14,7 @@ class Element {
     this.disabled = false;
     this.textContent = '';
   }
+  focus() {}
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this.attributes[name] = value; }
@@ -68,6 +69,7 @@ async function page(archived = false) {
       tasks.push({ id: tasks.length + 1, project_id: 1, title: `${priority} ${completed ? 'done' : 'open'}`, priority, completed });
     }
   }
+  const project = { id: 1, archived, default_priority: 'Normal' };
   const context = vm.createContext({
     document: {
       querySelector: selector => selector === '#app' ? app : alert,
@@ -75,14 +77,24 @@ async function page(archived = false) {
     },
     fetch: async (path, options) => {
       if (!options) return { ok: true, json: async () => structuredClone(tasks) };
+      const input = JSON.parse(options.body);
+      if (path === '/api/projects/1') {
+        Object.assign(project, input);
+        return { ok: true, json: async () => structuredClone(project) };
+      }
+      if (options.method === 'POST') {
+        const task = { id: tasks.length + 1, project_id: 1, title: input.title, completed: false, priority: project.default_priority };
+        tasks.push(task);
+        return { ok: true, json: async () => structuredClone(task) };
+      }
       const task = tasks.find(task => path.endsWith(`/${task.id}`));
-      Object.assign(task, JSON.parse(options.body));
+      Object.assign(task, input);
       return { ok: true, json: async () => structuredClone(task) };
     },
   });
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   vm.runInContext(source.replace(/render\(\);\s*$/, ''), context);
-  await context.renderTasks({ id: 1, archived });
+  await context.renderTasks(structuredClone(project));
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
   const rows = () => app.querySelector('#tasks').children;
@@ -157,4 +169,32 @@ test('archived project filters work while every task editing control stays disab
   assert.equal(p.app.querySelector('#task-form').querySelector('button').disabled, true);
   assert.equal(p.priority.disabled, false);
   assert.equal(p.completion.disabled, false);
+  const defaultPriority = p.app.querySelector('#default-task-priority');
+  assert.equal(defaultPriority.value, 'Normal');
+  assert.equal(defaultPriority.disabled, true);
+});
+
+test('changing the project default leaves filters and existing rows intact; new tasks inherit it', async () => {
+  const p = await page();
+  const control = p.app.querySelector('#default-task-priority');
+  assert.deepEqual(control.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(control.value, 'Normal');
+  await p.select(p.completion, 'Open');
+  await p.select(p.priority, 'High');
+  const existing = structuredClone(p.tasks);
+  await p.select(control, 'Low');
+  assert.equal(control.value, 'Low');
+  assert.deepEqual(p.tasks, existing);
+  assert.equal(p.completion.value, 'Open');
+  assert.equal(p.priority.value, 'High');
+  assert.deepEqual(p.titles(), ['High open']);
+  p.app.querySelector('#task-title').value = 'Inherits Low';
+  await p.app.querySelector('#task-form').fire('submit');
+  assert.deepEqual(p.titles(), ['High open']);
+  assert.equal(p.tasks.at(-1).priority, 'Low');
+  await p.select(p.priority, 'Low');
+  assert.deepEqual(p.titles(), ['Low open', 'Inherits Low']);
+  await p.select(control, 'High');
+  assert.deepEqual(p.titles(), ['Low open', 'Inherits Low']);
+  assert.equal(p.tasks.at(-1).priority, 'Low');
 });

@@ -85,6 +85,10 @@ function renderRename(project) {
 async function renderTasks(project) {
   const section = document.createElement('section');
   section.innerHTML = `
+    <label for="default-task-priority" class="filter-label">Default task priority</label>
+    <select id="default-task-priority">
+      <option>Low</option><option>Normal</option><option>High</option>
+    </select>
     <form id="task-form">
       <label for="task-title">Task title</label>
       <div class="create-controls">
@@ -108,6 +112,25 @@ async function renderTasks(project) {
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('#tasks');
+  const defaultPriority = section.querySelector('#default-task-priority');
+  defaultPriority.value = project.default_priority;
+  defaultPriority.disabled = Boolean(project.archived);
+  defaultPriority.addEventListener('change', async () => {
+    defaultPriority.disabled = true;
+    showAlert('');
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: defaultPriority.value }),
+      });
+      Object.assign(project, saved);
+    } catch (error) { showAlert(error.message); }
+    finally {
+      defaultPriority.value = project.default_priority;
+      defaultPriority.disabled = Boolean(project.archived);
+    }
+  });
   const path = `/api/projects/${project.id}/tasks`;
   let tasks = await api(path);
 
