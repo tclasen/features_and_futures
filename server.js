@@ -456,7 +456,7 @@ function page() {
           }
         });
         const notes = document.createElement('textarea');
-        notes.value = task.notes || '';
+        notes.value = task.notes ?? '';
         notes.setAttribute('aria-label', 'Task notes');
         notes.disabled = Boolean(project.archived);
         const saveNotes = element('button', 'Save notes');
