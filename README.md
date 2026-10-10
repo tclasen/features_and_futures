@@ -8,7 +8,7 @@ npm start
 
 The server binds to `0.0.0.0` on `PORT` (default `8080`). SQLite data is
 stored at `DB_PATH` (default `data/workboard.sqlite`); keep this file to
-preserve projects, tasks and completion state across restarts. Parent directories
+preserve projects, archive state, tasks and completion state across restarts. Parent directories
 are created automatically.
 
 ```sh
@@ -22,3 +22,9 @@ through the form at `/` and opened at `/projects/<id>`.
 Each project page supports creating tasks, toggling completion and filtering by
 All, Open or Completed. Task filters use the page's `filter` query parameter;
 opening a project without it defaults to All.
+
+The project list defaults to Active; select Archived to open or restore archived
+projects. Archiving preserves all tasks but disables task creation and completion
+changes until restoration. Each project row summarizes completed tasks out of all
+its tasks, independently of the task filter. Existing SQLite files are upgraded
+automatically, with existing projects initially active.
