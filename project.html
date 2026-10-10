@@ -7,6 +7,12 @@
   <style>
     body { max-width: 48rem; margin: 3rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; color: #172033; }
     button { font: inherit; padding: .55rem .75rem; cursor: pointer; }
+    form { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin-top: 1rem; }
+    label { display: grid; gap: .25rem; }
+    input, select { font: inherit; padding: .55rem .75rem; }
+    #alert { color: #a12622; min-height: 1.5em; }
+    #tasks { list-style: none; padding: 0; }
+    .task-row { border-top: 1px solid #d8deea; padding: .85rem 0; display: flex; align-items: center; gap: .65rem; }
   </style>
 </head>
 <body>
@@ -14,6 +20,15 @@
     <button id="back" type="button">Projects</button>
     <h1 id="project-name"></h1>
     <p id="missing" role="alert" hidden>Project not found</p>
+    <section id="task-section" hidden aria-label="Tasks">
+      <form id="create-form">
+        <label>Task title<input id="task-title" name="title" type="text" autocomplete="off"></label>
+        <button type="submit">Create task</button>
+      </form>
+      <p id="alert" role="alert" aria-live="polite"></p>
+      <label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
+      <ul id="tasks" aria-label="Tasks"></ul>
+    </section>
   </main>
   <script type="module">
     document.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
@@ -23,6 +38,44 @@
       const project = await response.json();
       document.querySelector('#project-name').textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      document.querySelector('#task-section').hidden = false;
+      const taskList = document.querySelector('#tasks');
+      const filter = document.querySelector('#task-filter');
+      async function loadTasks() {
+        const taskResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+        const tasks = await taskResponse.json();
+        const visible = tasks.filter(task => filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed));
+        taskList.replaceChildren(...visible.map(task => {
+          const row = document.createElement('li');
+          row.dataset.testid = 'task-row';
+          row.className = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            await loadTasks();
+          });
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          row.append(checkbox, title);
+          return row;
+        }));
+      }
+      filter.addEventListener('change', loadTasks);
+      document.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const alertBox = document.querySelector('#alert');
+        alertBox.textContent = '';
+        const title = document.querySelector('#task-title').value.trim();
+        if (!title) { alertBox.textContent = 'Task title is required'; return; }
+        const createResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (!createResponse.ok) { const error = await createResponse.json(); alertBox.textContent = error.error || 'Unable to create task'; return; }
+        document.querySelector('#task-title').value = '';
+        await loadTasks();
+      });
+      await loadTasks();
     } else {
       document.querySelector('#missing').hidden = false;
     }
