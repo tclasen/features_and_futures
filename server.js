@@ -32,6 +32,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -65,6 +66,23 @@ const server = createServer(async (req, res) => {
     } catch {
       sendJson(res, 400, { error: 'Invalid request' });
     }
+    return;
+  }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (req.method === 'PATCH' && renameMatch) {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const name = JSON.parse(body).name;
+      if (typeof name !== 'string' || !name.trim()) { sendJson(res, 400, { error: 'Project name is required' }); return; }
+      const id = Number(renameMatch[1]);
+      const project = getProject.get(id);
+      if (!project) { sendJson(res, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(res, 409, { error: 'Archived projects cannot be renamed' }); return; }
+      const trimmedName = name.trim();
+      renameProject.run(trimmedName, id);
+      sendJson(res, 200, { id, name: trimmedName });
+    } catch { sendJson(res, 400, { error: 'Invalid request' }); }
     return;
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
