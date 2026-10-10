@@ -115,7 +115,8 @@ async function showProject(id) {
     const projects = await getProjects();
     const project = projects.find((item) => String(item.id) === id);
     if (project) {
-      root.append(element('h1', project.name));
+      const heading = element('h1', project.name);
+      root.append(heading);
       if (project.archived) root.append(element('p', 'Archived project'));
       const renameForm = element('form', undefined, 'create-form');
       const renameLabel = element('label', 'New project name');
@@ -145,7 +146,11 @@ async function showProject(id) {
         const response = await fetch(`/api/projects/${id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
         });
-        if (response.ok) await showProject(id);
+        if (response.ok) {
+          heading.textContent = name;
+          renameInput.value = '';
+          renameError.hidden = true;
+        }
       });
       root.append(renameForm, renameError);
       const defaultLabel = element('label', 'Default task priority');
@@ -208,6 +213,24 @@ async function renderTasks(projectId, archived) {
     option.value = value;
     priorityFilter.append(option);
   }
+  const dueFromLabel = element('label', 'Due from');
+  dueFromLabel.htmlFor = 'due-from';
+  const dueFrom = element('input');
+  dueFrom.type = 'text';
+  dueFrom.id = 'due-from';
+  dueFrom.setAttribute('aria-label', 'Due from');
+  const dueThroughLabel = element('label', 'Due through');
+  dueThroughLabel.htmlFor = 'due-through';
+  const dueThrough = element('input');
+  dueThrough.type = 'text';
+  dueThrough.id = 'due-through';
+  dueThrough.setAttribute('aria-label', 'Due through');
+  const applyDueRange = element('button', 'Apply due range');
+  applyDueRange.type = 'button';
+  const rangeError = element('p', undefined, 'alert');
+  rangeError.setAttribute('role', 'alert');
+  rangeError.hidden = true;
+  let appliedRange = { from: '', through: '' };
   const rows = element('section', undefined, 'tasks');
   rows.setAttribute('aria-label', 'Tasks');
   async function refresh() {
@@ -217,6 +240,11 @@ async function renderTasks(projectId, archived) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if (appliedRange.from || appliedRange.through) {
+        if (!task.dueDate) continue;
+        if (appliedRange.from && task.dueDate < appliedRange.from) continue;
+        if (appliedRange.through && task.dueDate > appliedRange.through) continue;
+      }
       const row = element('div', undefined, 'task-row');
       row.dataset.testid = 'task-row';
       row.append(element('span', task.title));
@@ -300,6 +328,30 @@ async function renderTasks(projectId, archived) {
   }
   filter.addEventListener('change', refresh);
   priorityFilter.addEventListener('change', refresh);
+  applyDueRange.addEventListener('click', async () => {
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    const validDate = value => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const [year, month, day] = value.split('-').map(Number);
+      if (year < 1 || month < 1 || month > 12) return false;
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      return day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    };
+    if ((from && !validDate(from)) || (through && !validDate(through))) {
+      rangeError.textContent = 'Due range must use valid YYYY-MM-DD dates';
+      rangeError.hidden = false;
+      return;
+    }
+    if (from && through && from > through) {
+      rangeError.textContent = 'Due from must not be after Due through';
+      rangeError.hidden = false;
+      return;
+    }
+    appliedRange = { from, through };
+    rangeError.hidden = true;
+    await refresh();
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const title = input.value.trim();
@@ -318,7 +370,8 @@ async function renderTasks(projectId, archived) {
       await refresh();
     }
   });
-  root.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
+  root.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter,
+    dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rangeError, rows);
   try { await refresh(); }
   catch { const message = element('p', 'Could not load tasks'); message.setAttribute('role', 'alert'); root.append(message); }
 }
