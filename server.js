@@ -25,6 +25,7 @@ db.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -39,6 +40,9 @@ if (!projectColumns.some(column => column.name === 'default_priority')) {
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
+if (!taskColumns.some(column => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
 db.exec('PRAGMA foreign_keys = ON');
 
@@ -122,7 +126,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId);
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId);
     return send(res, 200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
 
@@ -162,6 +166,13 @@ const server = http.createServer(async (req, res) => {
         if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
         return send(res, 200, JSON.stringify({ id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), priority }));
       }
+      if (typeof input.dueDate === 'string') {
+        const dueDate = input.dueDate.trim();
+        if (dueDate && !isValidDate(dueDate)) return send(res, 400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+        const result = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?').run(dueDate || null, Number(taskMatch[1]), Number(taskMatch[2]));
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), dueDate: dueDate || null }));
+      }
       if (typeof input.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]), Number(taskMatch[2]));
       if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
@@ -189,5 +200,17 @@ const server = http.createServer(async (req, res) => {
 
   return send(res, 404, JSON.stringify({ error: 'Not found' }));
 });
+
+function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
 
 server.listen(port, '0.0.0.0');

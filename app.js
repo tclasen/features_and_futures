@@ -300,6 +300,33 @@ async function renderProject(id) {
         }
       });
       row.append(priorityLabel);
+      const dueDateForm = element('form', 'due-date-form');
+      const dueDateInput = element('input', 'due-date-input');
+      dueDateInput.type = 'text';
+      dueDateInput.value = task.dueDate || '';
+      dueDateInput.setAttribute('aria-label', 'Task due date');
+      dueDateInput.disabled = project.archived;
+      const dueDateButton = element('button', 'due-date-button', 'Save due date');
+      dueDateButton.type = 'submit';
+      dueDateButton.disabled = project.archived;
+      dueDateForm.append(dueDateInput, dueDateButton);
+      dueDateForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        alert.hidden = true;
+        const dueDate = dueDateInput.value.trim();
+        try {
+          const updated = await request(`/api/projects/${id}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dueDate }),
+          });
+          task.dueDate = updated.dueDate;
+          dueDateInput.value = updated.dueDate || '';
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      row.append(dueDateForm);
       list.append(row);
     }
   }
