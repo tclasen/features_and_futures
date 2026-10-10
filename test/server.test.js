@@ -84,3 +84,59 @@ test('health, project validation, creation order, detail, and restart persistenc
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task validation, project isolation, completion updates, and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'test.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.base + path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const first = await (await request('/api/projects', 'POST', { name: 'First' })).json();
+    const second = await (await request('/api/projects', 'POST', { name: 'Second' })).json();
+    const tasksPath = `/api/projects/${first.id}/tasks`;
+    const otherPath = `/api/projects/${second.id}/tasks`;
+    for (const title of ['', ' \t\n ', null, 42]) {
+      const response = await request(tasksPath, 'POST', { title });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    assert.deepEqual(await (await request(tasksPath)).json(), []);
+    const created = await request(tasksPath, 'POST', { title: '  First task  ' });
+    assert.equal(created.status, 201);
+    const task = await created.json();
+    assert.equal(task.title, 'First task');
+    assert.equal(task.completed, false);
+    const next = await (await request(tasksPath, 'POST', { title: '<b>Next</b>' })).json();
+    assert.deepEqual(await (await request(tasksPath)).json(), [task, next]);
+    assert.deepEqual(await (await request(otherPath)).json(), []);
+    assert.equal((await request(`${otherPath}/${task.id}`, 'PATCH', { completed: true })).status, 404);
+    assert.equal((await request('/api/projects/999999/tasks', 'POST', { title: 'Missing' })).status, 404);
+    for (const completed of [1, 'true', null]) {
+      assert.equal((await request(`${tasksPath}/${task.id}`, 'PATCH', { completed })).status, 400);
+    }
+    assert.equal((await request(`${tasksPath}/999999`, 'PATCH', { completed: true })).status, 404);
+    for (const completed of [true, false, true]) {
+      const response = await request(`${tasksPath}/${task.id}`, 'PATCH', { completed });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...task, completed });
+    }
+    const expected = [{ ...task, completed: true }, next];
+    assert.deepEqual(await (await request(tasksPath)).json(), expected);
+    const malformed = await fetch(server.base + tasksPath, { method: 'POST', body: '{' });
+    assert.equal(malformed.status, 400);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), expected);
+    assert.deepEqual(await (await request(otherPath)).json(), []);
+    assert.equal((await request(`/projects/${first.id}`)).status, 200);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
