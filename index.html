@@ -220,6 +220,55 @@
         priorityFilter.append(option);
       }
       controls.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
+      const dueRangeForm = document.createElement('form');
+      dueRangeForm.className = 'task-controls';
+      const dueFromLabel = document.createElement('label');
+      dueFromLabel.htmlFor = 'due-from';
+      dueFromLabel.textContent = 'Due from';
+      const dueFrom = document.createElement('input');
+      dueFrom.id = 'due-from';
+      dueFrom.type = 'text';
+      dueFrom.placeholder = 'YYYY-MM-DD';
+      const dueThroughLabel = document.createElement('label');
+      dueThroughLabel.htmlFor = 'due-through';
+      dueThroughLabel.textContent = 'Due through';
+      const dueThrough = document.createElement('input');
+      dueThrough.id = 'due-through';
+      dueThrough.type = 'text';
+      dueThrough.placeholder = 'YYYY-MM-DD';
+      const applyDueRange = document.createElement('button');
+      applyDueRange.type = 'submit';
+      applyDueRange.textContent = 'Apply due range';
+      dueRangeForm.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
+      let appliedFrom = '';
+      let appliedThrough = '';
+      const isValidDate = (value) => {
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+      };
+      dueRangeForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          alert.hidden = false;
+          return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through';
+          alert.hidden = false;
+          return;
+        }
+        appliedFrom = from;
+        appliedThrough = through;
+        alert.hidden = true;
+        drawTasks();
+      });
       const defaultPriorityLabel = document.createElement('label');
       defaultPriorityLabel.htmlFor = 'default-task-priority';
       defaultPriorityLabel.textContent = 'Default task priority';
@@ -251,7 +300,10 @@
         list.replaceChildren();
         const matching = tasks.filter((task) =>
           (filter.value === 'All' || (filter.value === 'Completed') === task.completed) &&
-          (priorityFilter.value === 'All' || (task.priority || 'Normal') === priorityFilter.value));
+          (priorityFilter.value === 'All' || (task.priority || 'Normal') === priorityFilter.value) &&
+          ((!appliedFrom && !appliedThrough) || (Boolean(task.dueDate) &&
+            (!appliedFrom || task.dueDate >= appliedFrom) &&
+            (!appliedThrough || task.dueDate <= appliedThrough))));
         for (const task of matching) {
           const row = document.createElement('div');
           row.className = 'task-row';
@@ -313,6 +365,7 @@
             task.dueDate = (await saved.json()).dueDate;
             dueDateInput.value = task.dueDate || '';
             alert.hidden = true;
+            drawTasks();
           });
           const renameForm = document.createElement('form');
           renameForm.className = 'task-rename';
@@ -409,7 +462,7 @@
         renameInput.value = '';
         alert.hidden = true;
       });
-      app.append(back, heading, archivedNotice, renameForm, form, alert, controls, defaultPriorityLabel, defaultPriority, list);
+      app.append(back, heading, archivedNotice, renameForm, form, alert, controls, dueRangeForm, defaultPriorityLabel, defaultPriority, list);
       drawTasks();
     }
 
