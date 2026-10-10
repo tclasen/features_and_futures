@@ -18,7 +18,8 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0
+    completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
@@ -26,6 +27,10 @@ database.exec('PRAGMA foreign_keys = ON');
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 
 const page = await readFile(new URL('./index.html', import.meta.url));
@@ -84,7 +89,7 @@ const server = createServer(async (request, response) => {
         ? database.prepare('SELECT id FROM projects WHERE id = ?').get(id)
         : undefined;
       if (!project) return sendJson(response, 404, { error: 'Project not found' });
-      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(id);
+      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(id);
       return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
     }
     const project = Number.isInteger(id) && id > 0
@@ -129,7 +134,7 @@ const server = createServer(async (request, response) => {
         const trimmedTitle = typeof title === 'string' ? title.trim() : '';
         if (!trimmedTitle) return sendJson(response, 400, { error: 'Task title is required' });
         const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, trimmedTitle);
-        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title: trimmedTitle, completed: false });
+        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title: trimmedTitle, completed: false, priority: 'Normal' });
       }
       if (request.method === 'PATCH' && taskId !== null) {
         const update = await readBody(request);
@@ -144,6 +149,11 @@ const server = createServer(async (request, response) => {
           const result = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
           if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
           return sendJson(response, 200, { id: taskId, projectId, title });
+        }
+        if (['Low', 'Normal', 'High'].includes(update.priority)) {
+          const result = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(update.priority, taskId, projectId);
+          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          return sendJson(response, 200, { id: taskId, projectId, priority: update.priority });
         }
         return sendJson(response, 400, { error: 'Invalid task update' });
       }
