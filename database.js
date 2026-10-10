@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { normalizeDueDate, matchesDueRange } from './due-date.js';
+import { matchesSearch } from './search.js';
 
 export function openWorkboard(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -108,7 +109,8 @@ export function openWorkboard(databasePath) {
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
 
   return {
-    list: (filter = 'active') => list.all(filter === 'archived' ? 1 : 0),
+    list: (filter = 'active', query = '') => list.all(filter === 'archived' ? 1 : 0)
+      .filter((project) => matchesSearch(project.name, query)),
     find: (id) => find.get(id),
     setArchived: (id, archived) => updateArchived.run(archived ? 1 : 0, id).changes > 0,
     setDefaultPriority(id, priority) {
@@ -127,11 +129,11 @@ export function openWorkboard(databasePath) {
       return { id: Number(result.lastInsertRowid), name: trimmedName };
     },
     tasks: {
-      list(projectId, filter = 'all', priorityFilter = 'all', dueRange = {}) {
+      list(projectId, filter = 'all', priorityFilter = 'all', dueRange = {}, query = '') {
         return listTasks.all(projectId).filter((task) => (
           filter === 'open' ? !task.completed : filter === 'completed' ? task.completed : true
         ) && (priorityFilter === 'all' || task.priority === priorityFilter)
-          && matchesDueRange(task.due_date, dueRange));
+          && matchesDueRange(task.due_date, dueRange) && matchesSearch(task.title, query));
       },
       create(projectId, title) {
         const project = find.get(projectId);

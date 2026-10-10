@@ -18,11 +18,16 @@ function page(title, content) {
 </html>`;
 }
 
-export function projectsPage(projects, error = '', filter = 'active') {
+function searchFields(query) {
+  return query ? `<input type="hidden" name="query" value="${escapeHtml(query)}">` : '';
+}
+
+export function projectsPage(projects, error = '', filter = 'active', query = '') {
   return page('Projects', `
     <h1>Workboard</h1>
     <form method="post" action="/projects" class="create-form">
       <input type="hidden" name="filter" value="${filter}">
+      ${searchFields(query)}
       <label for="project-name">Project name</label>
       <div class="form-controls">
         <input id="project-name" name="name" type="text">
@@ -31,11 +36,20 @@ export function projectsPage(projects, error = '', filter = 'active') {
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form method="get" action="/" class="project-filter" data-submit-on-change>
+      ${searchFields(query)}
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter">
         ${[['active', 'Active'], ['archived', 'Archived']].map(([value, label]) =>
           `<option value="${value}"${filter === value ? ' selected' : ''}>${label}</option>`).join('')}
       </select>
+    </form>
+    <form method="get" action="/" class="search-form">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-search">Project search</label>
+      <div class="form-controls">
+        <input id="project-search" name="query" type="text" value="${escapeHtml(query)}">
+        <button type="submit">Search projects</button>
+      </div>
     </form>
     <section aria-label="Projects" class="projects">
       ${projects.length ? projects.map((project) => `
@@ -47,16 +61,18 @@ export function projectsPage(projects, error = '', filter = 'active') {
           </form>
           <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}">
             <input type="hidden" name="filter" value="${filter}">
+            ${searchFields(query)}
             <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
           </form>
         </div>`).join('') : '<p class="empty">No projects yet.</p>'}
     </section>`);
 }
 
-export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all', dueRange = { from: '', through: '' }, destinations = []) {
+export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all', dueRange = { from: '', through: '' }, destinations = [], query = '') {
   const dueFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(dueRange.from)}">
       <input type="hidden" name="dueThrough" value="${escapeHtml(dueRange.through)}">`;
-  const filterFields = `<input type="hidden" name="filter" value="${filter}">
+  const filterFields = `${searchFields(query)}
+      <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
       ${dueFields}`;
   return page(project.name, `
@@ -90,6 +106,7 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form method="get" action="/projects/${project.id}" class="task-filter" data-submit-on-change>
       ${dueFields}
+      ${searchFields(query)}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter">
         ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
@@ -104,6 +121,7 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
     <form method="get" action="/projects/${project.id}" class="due-range">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      ${searchFields(query)}
       <input type="hidden" name="appliedDueFrom" value="${escapeHtml(dueRange.from)}">
       <input type="hidden" name="appliedDueThrough" value="${escapeHtml(dueRange.through)}">
       <label for="due-from">Due from</label>
@@ -111,6 +129,16 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
       <label for="due-through">Due through</label>
       <input id="due-through" name="dueThrough" type="text" value="${escapeHtml(dueRange.through)}">
       <button type="submit">Apply due range</button>
+    </form>
+    <form method="get" action="/projects/${project.id}" class="search-form">
+      ${dueFields}
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      <label for="task-search">Task search</label>
+      <div class="form-controls">
+        <input id="task-search" name="query" type="text" value="${escapeHtml(query)}">
+        <button type="submit">Search tasks</button>
+      </div>
     </form>
     <section aria-label="Tasks" class="tasks">
       ${tasks.length ? tasks.map((task) => `

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { openWorkboard } from './database.js';
 import { projectsPage, projectPage, notFoundPage } from './pages.js';
 import { normalizeDueDate, normalizeDueRange } from './due-date.js';
+import { normalizeSearchQuery } from './search.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const projects = openWorkboard(process.env.DB_PATH ?? './data/workboard.sqlite');
@@ -22,6 +23,7 @@ function taskView(params) {
   // The range form carries the applied boundaries so invalid submissions retain membership.
   const previous = normalizeDueRange(params.get('appliedDueFrom') ?? '', params.get('appliedDueThrough') ?? '');
   return {
+    query: normalizeSearchQuery(params.get('query')),
     filter: taskFilter(params.get('filter')),
     priority: priorityFilter(params.get('priorityFilter')),
     dueRange: requested.range ?? previous.range ?? { from: '', through: '' },
@@ -30,13 +32,14 @@ function taskView(params) {
 }
 
 function renderProject(project, view, error = view.error) {
-  const { filter, priority, dueRange } = view;
+  const { filter, priority, dueRange, query } = view;
   const destinations = projects.list().filter((candidate) => candidate.id !== project.id);
-  return projectPage(project, projects.tasks.list(project.id, filter, priority, dueRange), filter, error, priority, dueRange, destinations);
+  return projectPage(project, projects.tasks.list(project.id, filter, priority, dueRange, query), filter, error, priority, dueRange, destinations, query);
 }
 
-function projectLocation(id, { filter, priority, dueRange }) {
+function projectLocation(id, { filter, priority, dueRange, query }) {
   const params = new URLSearchParams({ filter });
+  if (query) params.set('query', query);
   if (priority !== 'all') params.set('priorityFilter', priority);
   if (dueRange.from) params.set('dueFrom', dueRange.from);
   if (dueRange.through) params.set('dueThrough', dueRange.through);
@@ -83,13 +86,15 @@ const server = createServer(async (request, response) => {
       send(response, 200, appScript, 'text/javascript; charset=utf-8');
     } else if (request.method === 'GET' && url.pathname === '/') {
       const filter = projectFilter(url.searchParams.get('filter'));
-      send(response, 200, projectsPage(projects.list(filter), '', filter));
+      const query = normalizeSearchQuery(url.searchParams.get('query'));
+      send(response, 200, projectsPage(projects.list(filter, query), '', filter, query));
     } else if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
+      const filter = projectFilter(form.get('filter'));
+      const query = normalizeSearchQuery(form.get('query'));
       const project = projects.create(form.get('name'));
       if (!project) {
-        const filter = projectFilter(form.get('filter'));
-        send(response, 400, projectsPage(projects.list(filter), 'Project name is required', filter));
+        send(response, 400, projectsPage(projects.list(filter, query), 'Project name is required', filter, query));
       } else {
         redirect(response, '/');
       }
@@ -101,7 +106,10 @@ const server = createServer(async (request, response) => {
         send(response, 404, notFoundPage());
         return;
       }
-      redirect(response, `/?filter=${projectFilter(form.get('filter'))}`);
+      const params = new URLSearchParams({ filter: projectFilter(form.get('filter')) });
+      const query = normalizeSearchQuery(form.get('query'));
+      if (query) params.set('query', query);
+      redirect(response, `/?${params}`);
     } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/rename$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;
