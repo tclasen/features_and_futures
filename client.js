@@ -78,7 +78,79 @@ async function showProject(id) {
     const heading = element('h1', { text: project.name });
     const back = element('button', { type: 'button', text: 'Projects' });
     back.addEventListener('click', () => navigate('/'));
-    app.replaceChildren(heading, back);
+    const form = element('form', { className: 'create-form' });
+    const label = element('label', { text: 'Task title' });
+    label.htmlFor = 'task-title';
+    const input = element('input', { type: 'text' });
+    input.id = 'task-title';
+    input.name = 'title';
+    const submit = element('button', { type: 'submit', text: 'Create task' });
+    form.append(label, input, submit);
+
+    const filterLabel = element('label', { text: 'Task filter' });
+    filterLabel.htmlFor = 'task-filter';
+    const filter = element('select');
+    filter.id = 'task-filter';
+    for (const value of ['All', 'Open', 'Completed']) {
+      const option = element('option', { text: value });
+      option.value = value;
+      filter.append(option);
+    }
+    const list = element('div', { className: 'task-list' });
+    const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const drawTasks = () => {
+      list.replaceChildren();
+      for (const task of tasks) {
+        const completed = Boolean(task.completed);
+        if (filter.value === 'Open' && completed) continue;
+        if (filter.value === 'Completed' && !completed) continue;
+        const row = element('article', { className: 'task-row' });
+        row.dataset.testid = 'task-row';
+        row.append(element('span', { text: task.title }));
+        const checkbox = element('input', { type: 'checkbox', label: `Complete ${task.title}` });
+        checkbox.checked = completed;
+        checkbox.addEventListener('change', async () => {
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked })
+            });
+            task.completed = updated.completed;
+            drawTasks();
+          } catch (error) {
+            showError(error.message);
+            checkbox.checked = !checkbox.checked;
+          }
+        });
+        row.append(checkbox);
+        list.append(row);
+      }
+    };
+    filter.addEventListener('change', drawTasks);
+    drawTasks();
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const title = input.value.trim();
+      if (!title) {
+        showError('Task title is required');
+        input.focus();
+        return;
+      }
+      try {
+        const task = await request(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        tasks.push(task);
+        input.value = '';
+        drawTasks();
+      } catch (error) {
+        showError(error.message);
+      }
+    });
+    app.replaceChildren(heading, back, form, filterLabel, filter, list);
   } catch {
     app.replaceChildren(element('h1', { text: 'Project not found' }));
     const back = element('button', { type: 'button', text: 'Projects' });
