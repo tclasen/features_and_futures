@@ -140,6 +140,31 @@ async function renderTasks(projectId, archived) {
         }
       });
       row.append(checkbox, element('span', task.title));
+      const priorityControls = element('div', undefined, { class: 'task-priority' });
+      const priority = element('select', undefined, { id: `task-priority-${task.id}` });
+      for (const value of ['Low', 'Normal', 'High']) {
+        priority.append(element('option', value, { value }));
+      }
+      priority.value = task.priority;
+      priority.disabled = archived;
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        alert.hidden = true;
+        try {
+          const saved = await api(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          task.priority = saved.priority;
+        } catch (error) {
+          showError(error);
+        } finally {
+          priority.value = task.priority;
+          priority.disabled = archived;
+        }
+      });
+      priorityControls.append(element('label', 'Task priority', { for: priority.id }), priority);
+      row.append(priorityControls);
       const renameForm = element('form', undefined, { class: 'task-rename-form' });
       const renameInput = element('input', undefined, {
         id: `new-task-title-${task.id}`, type: 'text', name: 'title', autocomplete: 'off',

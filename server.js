@@ -21,6 +21,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 );
 CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id)`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const projectQuery = `SELECT projects.id, projects.name, projects.archived,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -28,10 +31,10 @@ const listProjects = db.prepare(`${projectQuery} GROUP BY projects.id ORDER BY p
 const findProject = db.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
 const updateProject = db.prepare('UPDATE projects SET name = ?, archived = ? WHERE id = ?');
 const projectJson = (project) => ({ ...project, archived: Boolean(project.archived) });
-const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const updateTask = db.prepare('UPDATE tasks SET title = ?, completed = ? WHERE project_id = ? AND id = ?');
+const updateTask = db.prepare('UPDATE tasks SET title = ?, completed = ?, priority = ? WHERE project_id = ? AND id = ?');
 const taskJson = (task) => ({ ...task, completed: Boolean(task.completed) });
 
 const assets = new Map([
@@ -120,15 +123,20 @@ const server = http.createServer(async (request, response) => {
         const task = findTask.get(projectId, taskId);
         const renaming = Object.hasOwn(input ?? {}, 'title');
         const completing = Object.hasOwn(input ?? {}, 'completed');
+        const prioritizing = Object.hasOwn(input ?? {}, 'priority');
         const title = renaming && typeof input.title === 'string' ? input.title.trim() : '';
         if (renaming && !title) {
           return json(response, 400, { error: 'Task title is required' });
         }
-        if ((!renaming && !completing) || (completing && typeof input.completed !== 'boolean')) {
+        if ((!renaming && !completing && !prioritizing) || (completing && typeof input.completed !== 'boolean')) {
           return json(response, 400, { error: 'Completion must be a boolean' });
         }
+        if (prioritizing && !['Low', 'Normal', 'High'].includes(input.priority)) {
+          return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+        }
         updateTask.run(renaming ? title : task.title,
-          completing ? Number(input.completed) : task.completed, projectId, taskId);
+          completing ? Number(input.completed) : task.completed,
+          prioritizing ? input.priority : task.priority, projectId, taskId);
         return json(response, 200, taskJson(findTask.get(projectId, taskId)));
       }
     }
