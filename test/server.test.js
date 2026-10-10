@@ -588,7 +588,7 @@ test('task validation, project isolation, completion updates, and restart persis
   }
 });
 
-test('moves append persistently, preserve task data, update summaries, and reject ineligible projects', async () => {
+test('moves append on first arrival, restore return order, preserve data, and reject ineligible projects', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
   const databasePath = join(directory, 'test.sqlite');
   // Ordering migrates from IDs without losing existing tasks.
@@ -644,7 +644,7 @@ test('moves append persistently, preserve task data, update summaries, and rejec
     assert.equal((await move(2, first.id, 1)).status, 409);
     await value('/api/projects/2', 'PATCH', { archived: false });
     assert.deepEqual(await (await move(2, first.id, 1)).json(), first);
-    assert.deepEqual(await tasks(1), [second, first]);
+    assert.deepEqual(await tasks(1), [first, second]);
     assert.deepEqual(await (await move(1, second.id, 2)).json(), second); // Blank due date preserved.
     assert.deepEqual(await tasks(2), [existing, appended, second]);
     await server.stop();
@@ -654,6 +654,100 @@ test('moves append persistently, preserve task data, update summaries, and rejec
     assert.deepEqual(await tasks(2), [existing, appended, second]);
     assert.deepEqual(await (await move(2, second.id, 1)).json(), second);
     assert.deepEqual(await tasks(1), [first, second]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('remembered positions survive reverse returns, empty projects, renames, archives, and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-return-order-'));
+  const databasePath = join(directory, 'test.sqlite');
+  // Task 011 data can have an order unlike global task IDs after movement.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('A'), ('B'), ('C');
+    INSERT INTO tasks (project_id, title, completed, position) VALUES
+      (1, 'Later', 0, 8), (1, 'Earlier', 1, 4), (2, 'B existing', 0, 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.base + path, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const value = async (path, method = 'GET', body) => {
+      const response = await request(path, method, body);
+      assert.ok(response.ok, await response.clone().text());
+      return response.json();
+    };
+    const tasks = (project) => value(`/api/projects/${project}/tasks`);
+    const ids = async (project) => (await tasks(project)).map((task) => task.id);
+    const move = (source, task, destination) => value(`/api/projects/${source}/tasks/${task}/move`, 'POST', {
+      destination_project_id: destination,
+    });
+    const create = (project, title) => value(`/api/projects/${project}/tasks`, 'POST', { title });
+    const patch = (project, body) => value(`/api/projects/${project}`, 'PATCH', body);
+    assert.deepEqual(await ids(1), [2, 1]);
+    await move(1, 2, 2);
+    await move(1, 1, 2);
+    assert.deepEqual(await ids(1), []);
+    assert.deepEqual(await ids(2), [3, 2, 1]);
+    // Even an empty source must append beyond its reserved positions.
+    const newA = await create(1, 'New A');
+    // First arrival also appends beyond reservations left by absent tasks.
+    await move(2, 3, 1);
+    await patch(1, { name: 'Renamed A' });
+    const latest = await value('/api/projects/2/tasks/2', 'PATCH', {
+      title: 'Latest title', completed: false, priority: 'High', due_date: '2024-02-29',
+    });
+    await patch(1, { archived: true });
+    const blocked = await request('/api/projects/2/tasks/2/move', 'POST', { destination_project_id: 1 });
+    assert.equal(blocked.status, 409);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await ids(1), [newA.id, 3]);
+    assert.deepEqual(await ids(2), [2, 1]);
+    await patch(1, { archived: false });
+    // Return in reverse order, including after a restart between returns.
+    await move(2, 1, 1);
+    assert.deepEqual(await ids(1), [1, newA.id, 3]);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await move(2, 2, 1), latest);
+    assert.deepEqual(await ids(1), [2, 1, newA.id, 3]);
+    const summaries = await value('/api/projects');
+    assert.deepEqual(summaries.map((p) => [p.completed_count, p.total_count]), [[0, 4], [0, 0], [0, 0]]);
+    // Another project's history is independent, with reversed first arrivals.
+    await move(1, 1, 3);
+    await move(1, 2, 3);
+    assert.deepEqual(await ids(3), [1, 2]);
+    await move(3, 1, 2);
+    await move(3, 2, 2);
+    assert.deepEqual(await ids(2), [2, 1]);
+    const newB = await create(2, 'New B');
+    await move(1, 3, 2);
+    assert.deepEqual(await ids(2), [3, 2, 1, newB.id]);
+    await move(2, 2, 3);
+    await move(2, 1, 3);
+    assert.deepEqual(await ids(3), [1, 2]);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await ids(3), [1, 2]);
+    assert.deepEqual((await tasks(3))[1], latest);
+    await move(3, 1, 1);
+    await move(3, 2, 1);
+    assert.deepEqual(await ids(1), [2, 1, newA.id]);
+    assert.deepEqual(await ids(2), [3, newB.id]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
