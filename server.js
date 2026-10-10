@@ -33,6 +33,7 @@ const listProjects = database.prepare(`
 `);
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -134,6 +135,12 @@ function projectPage(project, filter = 'All', error = '') {
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create" action="/projects/${project.id}/rename" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form class="create" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -214,6 +221,27 @@ const server = createServer(async (request, response) => {
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (project) {
         sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+        return;
+      }
+    }
+    const renameRoute = /^\/projects\/([1-9]\d*)\/rename$/.exec(pathname);
+    if (request.method === 'POST' && renameRoute) {
+      const id = Number(renameRoute[1]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (project) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project cannot be changed'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(response, 400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        updateProjectName.run(name, id);
+        redirectToProject(response, id, filter);
         return;
       }
     }

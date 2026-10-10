@@ -34,7 +34,12 @@ completion state. Archived project pages allow viewing and filtering but disable
 task creation and completion; the server also rejects task mutations with HTTP
 403. Existing databases are upgraded automatically with all projects active.
 
+Active project pages support renaming with trimmed, required names. Renaming
+preserves project IDs, URLs, creation order, tasks, and completion state. Archived
+projects disable rename controls and reject rename requests with HTTP 403;
+restoration enables renaming again.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
-completion toggles, archive/restore, summaries, legacy schema migration, reloads,
+completion toggles, archive/restore, renaming, summaries, legacy schema migration, reloads,
 and persistence across process restarts.
