@@ -87,6 +87,38 @@ function renderRename(project, heading) {
   app.append(form);
 }
 
+function renderDefaultPriority(project) {
+  const controls = element('div', undefined, { class: 'rename-form' });
+  const select = element('select', undefined, { id: 'default-task-priority' });
+  for (const value of ['Low', 'Normal', 'High']) {
+    select.append(element('option', value, { value }));
+  }
+  select.value = project.default_task_priority;
+  select.disabled = project.archived;
+  const alert = element('p', '', { role: 'alert', class: 'alert' });
+  alert.hidden = true;
+  controls.append(element('label', 'Default task priority', { for: select.id }), select, alert);
+  select.addEventListener('change', async () => {
+    if (project.archived) return;
+    select.disabled = true;
+    alert.hidden = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_task_priority: select.value }),
+      });
+      Object.assign(project, saved);
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+    } finally {
+      select.value = project.default_task_priority;
+      select.disabled = project.archived;
+    }
+  });
+  app.append(controls);
+}
+
 async function renderTasks(projectId, archived) {
   const form = element('form');
   const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text', autocomplete: 'off' });
@@ -257,6 +289,7 @@ async function render() {
     app.append(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
     renderRename(project, heading);
+    renderDefaultPriority(project);
     await renderTasks(projectId, project.archived);
     return;
   }

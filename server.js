@@ -13,6 +13,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
+}
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,16 +27,16 @@ CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id)`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
-const projectQuery = `SELECT projects.id, projects.name, projects.archived,
+const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.default_task_priority,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
 const listProjects = db.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = db.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
-const updateProject = db.prepare('UPDATE projects SET name = ?, archived = ? WHERE id = ?');
+const updateProject = db.prepare('UPDATE projects SET name = ?, archived = ?, default_task_priority = ? WHERE id = ?');
 const projectJson = (project) => ({ ...project, archived: Boolean(project.archived) });
 const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET title = ?, completed = ?, priority = ? WHERE project_id = ? AND id = ?');
 const taskJson = (task) => ({ ...task, completed: Boolean(task.completed) });
 
@@ -83,18 +86,23 @@ const server = http.createServer(async (request, response) => {
       const project = findProject.get(match[1]);
       const renaming = Object.hasOwn(input ?? {}, 'name');
       const archiving = Object.hasOwn(input ?? {}, 'archived');
-      if (renaming && project.archived) {
+      const changingDefault = Object.hasOwn(input ?? {}, 'default_task_priority');
+      if ((renaming || changingDefault) && project.archived) {
         return json(response, 409, { error: 'Archived project' });
       }
       const name = renaming && typeof input.name === 'string' ? input.name.trim() : '';
       if (renaming && !name) {
         return json(response, 400, { error: 'Project name is required' });
       }
-      if ((!renaming && !archiving) || (archiving && typeof input.archived !== 'boolean')) {
+      if ((!renaming && !archiving && !changingDefault) || (archiving && typeof input.archived !== 'boolean')) {
         return json(response, 400, { error: 'Archive state must be a boolean' });
       }
+      if (changingDefault && !['Low', 'Normal', 'High'].includes(input.default_task_priority)) {
+        return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+      }
       updateProject.run(renaming ? name : project.name,
-        archiving ? Number(input.archived) : project.archived, match[1]);
+        archiving ? Number(input.archived) : project.archived,
+        changingDefault ? input.default_task_priority : project.default_task_priority, match[1]);
       return json(response, 200, projectJson(findProject.get(match[1])));
     }
     const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
@@ -110,10 +118,11 @@ const server = http.createServer(async (request, response) => {
       }
       if (request.method === 'POST' && !taskId) {
         const input = await readJson(request);
-        if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
+        const currentProject = findProject.get(projectId);
+        if (currentProject.archived) return json(response, 409, { error: 'Archived project' });
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title);
+        const result = insertTask.run(projectId, title, currentProject.default_task_priority);
         return json(response, 201, taskJson(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (request.method === 'PATCH' && taskId) {

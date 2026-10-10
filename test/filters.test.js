@@ -40,6 +40,7 @@ async function page(archived = false) {
     priority, completed,
   })));
   const writes = [];
+  const project = { id: 1, name: 'Filters', archived, default_task_priority: 'Normal', total_count: 6, completed_count: 3 };
   const context = {
     document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
     window: { location: { pathname: '/projects/1' } },
@@ -50,14 +51,17 @@ async function page(archived = false) {
         const input = JSON.parse(options.body);
         writes.push({ path, input });
         if (options.method === 'POST') {
-          result = { id: tasks.length + 1, project_id: 1, title: input.title.trim(), completed: false, priority: 'Normal' };
+          result = { id: tasks.length + 1, project_id: 1, title: input.title.trim(), completed: false, priority: project.default_task_priority };
           tasks.push(result);
+        } else if (path === '/api/projects/1') {
+          Object.assign(project, input);
+          result = project;
         } else {
           result = tasks.find((task) => task.id === Number(path.split('/').at(-1)));
           Object.assign(result, input);
         }
       } else if (path.endsWith('/tasks')) result = tasks;
-      else result = { id: 1, name: 'Filters', archived, total_count: 6, completed_count: 3 };
+      else result = project;
       return { ok: true, json: async () => structuredClone(result) };
     },
   };
@@ -145,4 +149,40 @@ test('priority, completion, rename, and creation re-evaluate rows without resett
   assert.deepEqual(titles(app), []);
   await select('Open', 'Normal');
   assert.deepEqual(titles(app), ['Normal open', 'New normal task']);
+});
+
+test('project default control saves independently of filters and existing task rows', async () => {
+  const { app, tasks, writes } = await page();
+  const completion = byId(app, 'task-filter');
+  const priority = byId(app, 'priority-filter');
+  completion.value = 'Open';
+  await completion.dispatch('change');
+  priority.value = 'High';
+  await priority.dispatch('change');
+  const before = structuredClone(tasks);
+  const defaultPriority = byId(app, 'default-task-priority');
+  assert.equal(defaultPriority.value, 'Normal');
+  assert.equal(defaultPriority.disabled, false);
+  assert.equal(find(app, (node) => node.attributes.for === defaultPriority.id).textContent, 'Default task priority');
+  assert.deepEqual(defaultPriority.children.map((node) => node.textContent), ['Low', 'Normal', 'High']);
+  defaultPriority.value = 'High';
+  await defaultPriority.dispatch('change');
+  assert.equal(defaultPriority.value, 'High');
+  assert.deepEqual(tasks, before);
+  assert.deepEqual(titles(app), ['High open']);
+  assert.deepEqual(writes, [{ path: '/api/projects/1', input: { default_task_priority: 'High' } }]);
+  byId(app, 'task-title').value = 'Inherited high';
+  await find(app, (node) => node.tag === 'form' && descendants(node).some((child) => child.id === 'task-title')).dispatch('submit');
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  assert.deepEqual(titles(app), ['High open', 'Inherited high']);
+  defaultPriority.value = 'Low';
+  await defaultPriority.dispatch('change');
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  assert.deepEqual(titles(app), ['High open', 'Inherited high']);
+  assert.equal(tasks.at(-1).priority, 'High');
+  const archived = await page(true);
+  assert.equal(byId(archived.app, 'default-task-priority').value, 'Normal');
+  assert.equal(byId(archived.app, 'default-task-priority').disabled, true);
 });
