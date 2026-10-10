@@ -37,6 +37,11 @@
       <label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
       <label>Priority filter<select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label>
       <label>Default task priority<select id="default-priority"><option>Low</option><option>Normal</option><option>High</option></select></label>
+      <div id="due-range">
+        <label>Due from<input id="due-from" type="text" autocomplete="off"></label>
+        <label>Due through<input id="due-through" type="text" autocomplete="off"></label>
+        <button id="apply-due-range" type="button">Apply due range</button>
+      </div>
       <ul id="tasks" aria-label="Tasks"></ul>
     </section>
   </main>
@@ -97,12 +102,40 @@
       const taskList = document.querySelector('#tasks');
       const filter = document.querySelector('#task-filter');
       const priorityFilter = document.querySelector('#priority-filter');
+      let appliedDueRange = { from: '', through: '' };
+      function validCalendarDate(value) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return false;
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        if (year < 1 || month < 1 || month > 12) return false;
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+      }
+      document.querySelector('#apply-due-range').addEventListener('click', async () => {
+        const alertBox = document.querySelector('#alert');
+        alertBox.textContent = '';
+        const from = document.querySelector('#due-from').value.trim();
+        const through = document.querySelector('#due-through').value.trim();
+        if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+          alertBox.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          return;
+        }
+        if (from && through && from > through) {
+          alertBox.textContent = 'Due from must not be after Due through';
+          return;
+        }
+        appliedDueRange = { from, through };
+        await loadTasks();
+      });
       async function loadTasks() {
         const taskResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
         const tasks = await taskResponse.json();
         const visible = tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed)) &&
-          (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+          (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+          ((!appliedDueRange.from && !appliedDueRange.through) || (!!task.due_date &&
+            (!appliedDueRange.from || task.due_date >= appliedDueRange.from) &&
+            (!appliedDueRange.through || task.due_date <= appliedDueRange.through)))
         );
         taskList.replaceChildren(...visible.map(task => {
           const row = document.createElement('li');
