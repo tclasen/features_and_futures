@@ -9,7 +9,7 @@ const root=resolve('experiments/instruction-effects/revisions/research-v007');
 const stage=30;
 assert.ok([30].includes(stage));
 const suite=root+'/decisions/task-030-draft/suite/playwright.config.mjs';
-const evidence=root+'/preflight/priority-fixtures/stage30-workspace-import-check-'+Date.now();
+const evidence=root+'/preflight/priority-fixtures/stage30-full-check-'+Date.now();
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 let projects=[],nextId=1,mode='form',defect='none',rowDelay=100;
 function seed() {
@@ -391,8 +391,6 @@ async function run(name,phase='acceptance',grep) {
 await mkdir(evidence,{recursive:true});await writeFile(evidence+'/executed-controller.mjs',await readFile(import.meta.filename));
 const results=[];
 try {
- for(mode of ['async','form','fetch']){defect='none';seed();const r=await run('positive-'+mode,'acceptance','097 |098 |099 |100 ');results.push(r);assert.equal(r.exit,0,JSON.stringify(r));assert.equal(r.statistics.expected,4);}
- mode='async';
- for(const [fault,id] of [['workspace-import-collapse-names','097'],['workspace-import-overwrites-existing','097'],['workspace-import-reverse-owners','097'],['workspace-import-reverses-tasks','097'],['workspace-import-untrimmed-name','097'],['workspace-import-untrimmed-title','097'],['workspace-import-drops-archive','097'],['workspace-import-wrong-default','097'],['workspace-import-loses-deletion','097'],['workspace-import-loses-completion','097'],['workspace-import-loses-date','097'],['workspace-import-trims-notes','097'],['workspace-import-restore-appends','098'],['workspace-import-partial-before-error','099'],['workspace-import-loses-rejected-input','099'],['workspace-import-no-limit','099']]){defect=fault;seed();const r=await run('negative-'+fault+'-'+id,'acceptance',id+' ');results.push(r);assert.notEqual(r.exit,0,JSON.stringify(r));assert.ok(r.statistics.unexpected>0,JSON.stringify(r));}
- await writeFile(evidence+'/verified.json',JSON.stringify({verified:true,model_calls:0,results,scope:'Unfrozen Task030 checks097/098/099/100 in3correct modes and16activated faults; persistence/full cumulative gate pending.'},null,2)+'\n');console.log(JSON.stringify({verified:true,variants:results.length,model_calls:0}));
+ for(mode of ['async','form','fetch']){defect='none';seed();const r=await run('positive-'+mode);results.push(r);assert.equal(r.exit,0,JSON.stringify(r));assert.equal(r.statistics.expected,99);const sentinel=await run('synthetic-postrestart-'+mode,'postrestart');results.push(sentinel);assert.equal(sentinel.exit,0,JSON.stringify(sentinel));assert.equal(sentinel.statistics.expected,1);const sample=await run('synthetic-observation-'+mode,'observation-30');results.push(sample);assert.equal(sample.exit,0,JSON.stringify(sample));assert.equal(sample.statistics.expected,1);}
+ await writeFile(evidence+'/verified.json',JSON.stringify({verified:true,model_calls:0,results,scope:'Unfrozen full99cumulative checks in3correct modes including500ms asynchronous bulk writes, plus3syntheticpostrestart and3readonlyobservation probes. No actualnativeprocessrestart or30secondserverstability window is claimed. Focused fault-control gates require independent verification against these final prospective inputs.'},null,2)+'\n');console.log(JSON.stringify({verified:true,variants:results.length,model_calls:0}));
 }finally{await new Promise(r=>server.close(r));}

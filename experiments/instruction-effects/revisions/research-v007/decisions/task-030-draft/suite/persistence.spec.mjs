@@ -60,6 +60,6 @@ test('012 data survives a real server-process restart', async ({ page, context }
 
   if(stage>=20){for(const owner of ['Bulk restart first','Bulk restart second']){await page.goto('/');await expect(projectRow(page,owner).getByTestId('project-summary')).toHaveText('1/1 completed');await openProject(page,owner);const title=projectName('Bulk restart record')+' '+owner;await expect(page.getByRole('checkbox',{name:'Complete '+title,exact:true})).toBeChecked();await expect(taskRow(page,title).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('High');await expect(taskRow(page,title).getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2052-02-29');await expect(taskRow(page,title).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Bulk restart Ω\noriginal');}}
 
-  if(stage>=30)await checkWorkspaceImportPersistence(page);
+  if(stage>=30)await checkWorkspaceImportPersistence(page,['postrestart','upgrade'].includes(process.env.FF_PHASE));
   if(stage>=24)await checkBulkDeletionPersistence(page,['postrestart','upgrade'].includes(process.env.FF_PHASE));
 });
