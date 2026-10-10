@@ -99,7 +99,7 @@ test('combined filters retain selections through edits, archives and restart', a
     selections(html, 'Completed', 'Low');
     assert.deepEqual(rows(html), ['B', 'D']);
     assert.doesNotMatch(html, /id="(?:task-filter|priority-filter)"[^>]*disabled/);
-    assert.equal((html.match(/name="priority" disabled/g) || []).length, 2);
+    assert.equal((html.match(/id="task-priority-\d+" name="priority" disabled/g) || []).length, 2);
     await stop();
     await start();
     assert.equal(await get(path('Completed', 'Low')), html);
