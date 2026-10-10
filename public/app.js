@@ -60,6 +60,7 @@ async function renderList(archived = false) {
 
 async function renderProject(id) {
   const project = await request(`/api/projects/${encodeURIComponent(id)}`);
+  const destinations = (await request('/api/projects?archived=false')).filter(candidate => candidate.id !== project.id);
   app.replaceChildren();
   const back = element('button', { text: 'Projects' }); back.type = 'button';
   back.addEventListener('click', () => { location.href = '/'; });
@@ -168,9 +169,23 @@ async function renderProject(id) {
           await refreshTasks();
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
+      const destinationLabel = element('label', { text: 'Destination project' });
+      const destination = element('select');
+      destinationLabel.htmlFor = `destination-project-${task.id}`; destination.id = destinationLabel.htmlFor;
+      for (const candidate of destinations) {
+        const option = element('option', { text: candidate.name }); option.value = candidate.id; destination.append(option);
+      }
+      destination.disabled = Boolean(project.archived) || destinations.length === 0;
+      const moveButton = element('button', { text: 'Move task' }); moveButton.type = 'button'; moveButton.disabled = destination.disabled;
+      moveButton.addEventListener('click', async () => {
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/move`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destinationId: Number(destination.value) }) });
+          await refreshTasks();
+        } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+      });
       const title = element('span', { text: task.title });
       title.dataset.taskTitle = task.title;
-      row.append(checkbox, title, priorityLabel, priority, renameForm, dueForm); list.append(row);
+      row.append(checkbox, title, priorityLabel, priority, renameForm, dueForm, destinationLabel, destination, moveButton); list.append(row);
     }
   }
   form.addEventListener('submit', async event => {
