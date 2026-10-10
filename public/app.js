@@ -84,10 +84,12 @@ async function renderProject(id) {
   for (const value of ['Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; defaultPriority.append(option); }
   defaultPriority.value = project.defaultPriority;
   defaultPriority.disabled = Boolean(project.archived);
-  defaultPriority.addEventListener('change', async () => {
-    try {
-      await request(`/api/projects/${encodeURIComponent(id)}/default-priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
-    } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+  let defaultPrioritySave = Promise.resolve();
+  defaultPriority.addEventListener('change', () => {
+    const selectedPriority = defaultPriority.value;
+    defaultPrioritySave = defaultPrioritySave
+      .then(() => request(`/api/projects/${encodeURIComponent(id)}/default-priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: selectedPriority }) }))
+      .catch(error => { alert.textContent = error.message; alert.hidden = false; });
   });
   const form = element('form', { className: 'create-form' });
   const label = element('label', { text: 'Task title' });
@@ -147,6 +149,7 @@ async function renderProject(id) {
   form.addEventListener('submit', async event => {
     event.preventDefault();
     try {
+      await defaultPrioritySave;
       await request(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: input.value }) });
       await refreshTasks(); input.value = ''; alert.hidden = true;
     } catch (error) { alert.textContent = error.message; alert.hidden = false; }
