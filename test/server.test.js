@@ -284,6 +284,82 @@ test('task renaming preserves completion, ownership, order, and summaries across
   }
 });
 
+test('priority defaults, validation, independence, archive protection, and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const databasePath = join(directory, 'test.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Existing'), ('Other');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Open', 0), (2, 'Other task', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.base + path, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const projectPath = '/api/projects/1';
+    const tasksPath = `${projectPath}/tasks`;
+    const taskPath = `${tasksPath}/1`;
+    const original = await (await request(tasksPath)).json();
+    assert.deepEqual(original, [
+      { id: 1, title: 'Done', completed: true, priority: 'Normal' },
+      { id: 2, title: 'Open', completed: false, priority: 'Normal' },
+    ]);
+    const created = await (await request(tasksPath, 'POST', { title: 'New' })).json();
+    assert.equal(created.priority, 'Normal');
+    const summary = await (await request(projectPath)).json();
+    const other = await (await request('/api/projects/2/tasks')).json();
+    assert.equal((await request('/api/projects/2/tasks/1', 'PATCH', { priority: 'High' })).status, 404);
+    for (const priority of ['', 'high', ' High ', null, 42]) {
+      const response = await request(taskPath, 'PATCH', { priority, title: 'Not saved', completed: false });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await (await request(tasksPath)).json(), [...original, created]);
+    }
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await request(taskPath, 'PATCH', { priority });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...original[0], priority });
+    }
+    const renamed = { ...original[0], title: 'Renamed', priority: 'High' };
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { title: ' Renamed ' })).json(), renamed);
+    assert.deepEqual(await (await request(`${tasksPath}/2`, 'PATCH', { priority: 'Low' })).json(), { ...original[1], priority: 'Low' });
+    const expected = [renamed, { ...original[1], priority: 'Low' }, created];
+    assert.deepEqual(await (await request(tasksPath)).json(), expected);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+    assert.deepEqual(await (await request('/api/projects/2/tasks')).json(), other);
+    await request(projectPath, 'PATCH', { archived: true });
+    assert.equal((await request(taskPath, 'PATCH', { priority: 'Normal' })).status, 409);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), expected);
+    assert.equal((await request(taskPath, 'PATCH', { priority: 'Normal' })).status, 409);
+    await request(projectPath, 'PATCH', { archived: false });
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+    assert.deepEqual(await (await request(tasksPath)).json(), expected);
+    const restored = { ...renamed, priority: 'Low' };
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { priority: 'Low' })).json(), restored);
+    // Completion updates must preserve priority too.
+    const completed = { ...restored, completed: false };
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { completed: false })).json(), completed);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [completed, expected[1], created]);
+    assert.deepEqual(await (await request('/api/projects/2/tasks')).json(), other);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task validation, project isolation, completion updates, and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
   const databasePath = join(directory, 'test.sqlite');

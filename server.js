@@ -24,6 +24,10 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
 }
+// Existing tasks receive the same default as new tasks.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+}
 const projectQuery = `SELECT projects.id, projects.name, projects.archived,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -34,10 +38,10 @@ function projectValue(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ? WHERE project_id = ? AND id = ?');
+const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ?, priority = ? WHERE project_id = ? AND id = ?');
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
 }
@@ -109,12 +113,17 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const renaming = Object.hasOwn(body ?? {}, 'title');
         const changingCompletion = Object.hasOwn(body ?? {}, 'completed');
-        if ((changingCompletion || !renaming) && typeof body?.completed !== 'boolean') {
+        const changingPriority = Object.hasOwn(body ?? {}, 'priority');
+        if ((changingCompletion || (!renaming && !changingPriority)) && typeof body?.completed !== 'boolean') {
           return json(response, 400, { error: 'Completed must be a boolean' });
         }
         const title = renaming ? (typeof body.title === 'string' ? body.title.trim() : '') : task.title;
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        updateTask.run(changingCompletion ? Number(body.completed) : task.completed, title, projectId, taskId);
+        const priority = changingPriority ? body.priority : task.priority;
+        if (!['Low', 'Normal', 'High'].includes(priority)) {
+          return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+        }
+        updateTask.run(changingCompletion ? Number(body.completed) : task.completed, title, priority, projectId, taskId);
         return json(response, 200, taskValue(findTask.get(projectId, taskId)));
       }
     }
