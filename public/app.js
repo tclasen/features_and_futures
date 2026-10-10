@@ -153,7 +153,33 @@ async function renderProject(id) {
             checkbox.disabled = false;
           }
         });
-        row.append(element('span', task.title), checkbox);
+        const title = element('span', task.title);
+        const renameForm = element('form');
+        const renameInput = element('input', undefined, {
+          type: 'text',
+          'aria-label': 'New task title',
+        });
+        const renameButton = element('button', 'Rename task', { type: 'submit' });
+        renameInput.disabled = archived;
+        renameButton.disabled = archived;
+        renameForm.append(renameInput, renameButton);
+        renameForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          alert.hidden = true;
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ title: renameInput.value }),
+            });
+            task.title = updated.title;
+            renderTasks();
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
+        row.append(title, checkbox, renameForm);
         list.append(row);
       }
     };

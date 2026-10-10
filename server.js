@@ -44,6 +44,7 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 async function readJson(request) {
   let body = '';
@@ -165,12 +166,32 @@ const server = createServer(async (request, response) => {
       return;
     }
     const body = await readJson(request);
-    if (typeof body?.completed !== 'boolean') {
-      sendJson(response, 400, { error: 'Task completion must be a boolean' });
+    if (typeof body?.completed === 'boolean') {
+      const project = getProject.get(projectId);
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+      sendJson(response, 200, { ...existing, completed: body.completed ? 1 : 0 });
       return;
     }
-    updateTask.run(body.completed ? 1 : 0, taskId, projectId);
-    sendJson(response, 200, { ...existing, completed: body.completed ? 1 : 0 });
+    if (typeof body?.title === 'string') {
+      const project = getProject.get(projectId);
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      const title = body.title.trim();
+      if (!title) {
+        sendJson(response, 400, { error: 'Task title is required' });
+        return;
+      }
+      renameTask.run(title, taskId, projectId);
+      sendJson(response, 200, { ...existing, title });
+      return;
+    }
+    sendJson(response, 400, { error: 'Task update must include a title or completion state' });
     return;
   }
 
