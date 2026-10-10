@@ -56,7 +56,8 @@ def evaluate(replicates, look_number):
         results[key] = {**interval, 'classification': classify(interval, *margins)}
     return results
 
-def record_look(journal, batch, replicates, candidate_hash, plan_hash, evidence_loader=None):
+def record_look(journal, batch, replicates, candidate_hash, plan_hash, evidence_loader=None,
+                analysis_method='complete-native-point-v1'):
     """Reserve j before validation, so failed and inconclusive analyses consume looks."""
     journal = Path(journal)
     previous = read_jsonl(journal) if journal.exists() else []
@@ -65,19 +66,29 @@ def record_look(journal, batch, replicates, candidate_hash, plan_hash, evidence_
     record_id = str(uuid.uuid4())
     binding = {'look': j, 'batch': batch, 'candidate_sha256': candidate_hash, 'plan_sha256': plan_hash,
                'record_id': record_id, 'input_sha256': digest_json(replicates),
-               'run_ids': [r['run_id'] for r in replicates]}
+               'run_ids': [r['run_id'] for r in replicates], 'analysis_method': analysis_method}
     append_json(journal, {'kind': 'confirmation_look_started', 'utc': timestamp(), **binding})
     try:
         for prior in starts:
+            if prior.get('analysis_method', 'complete-native-point-v1') != analysis_method:
+                raise ValueError('Analysis method changed; create a new study journal')
             if prior['batch'] != batch and set(prior['run_ids']) & set(binding['run_ids']):
                 raise ValueError('Independent confirmation batches cannot reuse runs')
             if prior['plan_sha256'] != plan_hash:
                 raise ValueError('Plan changed; create a new study journal')
+            if analysis_method == 'native-cost-outer-bounds-v1' and prior['batch'] == batch and not set(prior['run_ids']).issubset(binding['run_ids']):
+                raise ValueError('Retain every run assigned to this confirmation batch')
         if evidence_loader is not None:
             replicates = evidence_loader()
             if [r['run_id'] for r in replicates] != binding['run_ids']:
                 raise ValueError('Evidence loader changed planned run identities')
-        results = evaluate(replicates, j)
+        if analysis_method == 'complete-native-point-v1':
+            results = evaluate(replicates, j)
+        elif analysis_method == 'native-cost-outer-bounds-v1':
+            from .bounded_confirmation import evaluate as evaluate_bounds
+            results = evaluate_bounds(replicates, j)
+        else:
+            raise ValueError('Unsupported analysis method')
         append_json(journal, {'kind': 'confirmation_look_finished', 'utc': timestamp(), **binding,
                              'analysis_inputs_sha256': digest_json(replicates), 'replicates': replicates,
                              'results': results, 'all_classified': all(r['classification'] != 'unresolved' for r in results.values())})

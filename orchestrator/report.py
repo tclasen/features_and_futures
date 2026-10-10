@@ -14,9 +14,17 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     m=json.loads((run/"manifest.json").read_text())
+    partial=m.get('experiment_revision')=='research-v002'
+    if partial:
+        from .evaluation import validate_research_manifest
+        validate_research_manifest(run)
     state=json.loads((run/"state.json").read_text())
     events=read_jsonl(run/"events.jsonl"); usage=read_jsonl(run/"usage.jsonl")
     problems=[]
+    if partial:
+        from .prepare import file_hashes
+        if file_hashes(run/'definitions')!=m['provenance']['definition_hashes']:
+            problems.append('Frozen definition hash mismatch')
     if digest_json(m)!=(run/"manifest.sha256").read_text().strip(): problems.append("manifest checksum mismatch")
     if m["execution"].get("task_stream_revision")=="append-only-rounds-v1":
         from .task_stream import task_stream, stream_input_hash
@@ -29,10 +37,11 @@ def main():
     configurations={b["builder_id"]:b for b in m["runtime"]["builder_configurations"]}
     for u in usage:
         if u["counts"] is None:
-            problems.append("missing usage: "+u["request_id"]);continue
-        if native_counts(u["usage"])!=u["counts"]: problems.append("native usage normalization mismatch: "+u["request_id"])
+            problems.append("missing usage: "+u["request_id"])
+            if not partial: continue
+        elif native_counts(u["usage"])!=u["counts"]: problems.append("native usage normalization mismatch: "+u["request_id"])
         model=m["pricing"][u["model"]]
-        if price_counts(u["counts"],model["pricing"])!=u["cost"]: problems.append("cost mismatch: "+u["request_id"])
+        if u['counts'] is not None and price_counts(u["counts"],model["pricing"])!=u["cost"]: problems.append("cost mismatch: "+u["request_id"])
         if u["pricing_snapshot_sha256"]!=model["snapshot_sha256"]:problems.append("price snapshot mismatch")
         raw=run/"tasks"/u["task_id"]/"attempts"/u["builder_id"]/u["attempt_id"]/"requests"
         for suffix,field in (("request.json","request_sha256"),("response.raw","response_sha256")):
@@ -176,10 +185,18 @@ def main():
     problems.extend(checkpoint_coverage(m,events))
     expected_checkpoints=len(required_checkpoints(m))
     complete=(state["status"]=="completed" and not problems)
+    extra={}
+    if partial:
+        from .partial_report import augment
+        extra=augment(run,m,events,usage,tasks,builder_rows,problems,state)
+        extra['bound_control_code_sha256']={name:digest_bytes(Path(__file__).with_name(name+'.py').read_bytes())
+            for name in ('partial_report','retained_incidents','evidence_bounds','bounded_confirmation')}
     report={"schema_version":1,"readiness_passed":complete,"state":state["status"],
+        **extra,
         "expected_checkpoints":expected_checkpoints,"manifest_sha256":digest_json(json.loads((run/"manifest.json").read_text())),
         **({"task_stream_input_sha256":stream_input_hash(run)} if m["execution"].get("task_stream_revision")=="append-only-rounds-v1" else {}),"analysis_code_sha256":digest_bytes(Path(__file__).read_bytes()),
         "inputs":{"events_sha256":digest_bytes((run/"events.jsonl").read_bytes()),
+                  **({'state_sha256':digest_bytes((run/'state.json').read_bytes())} if partial else {}),
                   "usage_sha256":digest_bytes((run/"usage.jsonl").read_bytes())},
         "event_counts":dict(counts),"requests":len(usage),
         "native_count_coverage":sum(u["counts"] is not None for u in usage)/len(usage) if usage else None,
@@ -191,13 +208,17 @@ def main():
             "PM conversation usage and invoice cost are unavailable; costs are frozen OpenRouter reference estimates.",
             f"The {m['evidence_policy']['post_deployment_window_seconds']}-second surrogate observation supplies bounded stability evidence; no recovery sample without incidents.",
             ("Native-return timing separates observer/gateway drain from builder execution." if m["execution"].get("timing_revision")=="harness-return-v2" else "Attempt wall time includes a small PM observer/gateway drain overhead after harness return."),
-            "The separate research-v001 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect."]}
+            ("The separate research-v002 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect." if partial else "The separate research-v001 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect.")]}
+    if partial:
+        report['limitations'].append('Unknown native expenditure has no point estimate; verified known sums are lower bounds. Analysis readiness does not establish complete token accounting.')
+        report['limitations'].append('The primary v002 rejection outcome is the first observed PM assessment; first scheduled attempt acceptance remains separately labelled.')
     version=run/"reports"/("report-"+digest_json(report)[:16]+".json")
     write_json(version,report)
     write_json(run/"reports/latest.json",{"report":version.name,"sha256":digest_bytes(version.read_bytes())})
     print(json.dumps({"readiness_passed":complete,"accepted":counts["task_accepted"],"requests":len(usage),
+                      **({k:extra[k] for k in ('analysis_ready','native_accounting_complete','analysis_problems')} if partial else {}),
                       "archive_checkpoints":archive_count,"problems":problems},indent=2))
-    if not complete: raise SystemExit(1)
+    if not complete and not extra.get('analysis_ready',False): raise SystemExit(1)
 
 if __name__=="__main__":
     main()

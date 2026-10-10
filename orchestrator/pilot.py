@@ -211,6 +211,13 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
             working_tree_clean=not bool(dirty),archive=index["checksums"],**attrs)
         usage=[u for u in read_jsonl(run/"usage.jsonl") if
                all(u.get(k)==attrs[k] for k in ("builder_id","task_id","attempt_id"))]
+        incomplete=not usage or any(u['counts'] is None for u in usage)
+        provider_failure=any(u['status']!=200 and u.get('outcome')!='builder-invalid-tool-call' for u in usage)
+        if manifest.get('experiment_revision')=='research-v002' and (incomplete or provider_failure):
+            from .retained_incidents import retain_for_recovery
+            feedback=retain_for_recovery(run,manifest,usage,attrs,output,index,head,ledger)
+            print(f'{task_id} {bid} INFRASTRUCTURE RETAINED {attempt_id}; continuing original task in fresh context',flush=True)
+            continue
         if not usage or any(u["counts"] is None for u in usage):
             raise RuntimeError(f"{bid} {attempt_id}: incomplete native accounting; preserve and diagnose before retrying")
         if any(u["status"]!=200 and u.get("outcome")!="builder-invalid-tool-call" for u in usage):

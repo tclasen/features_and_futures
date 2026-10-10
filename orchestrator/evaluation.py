@@ -20,6 +20,11 @@ def validate_research_manifest(run):
     definition=json.loads(path.read_text())
     if definition['primary_family_size'] != 36 or definition['stopping']['required_independent_batches'] != 2:
         raise InfrastructureError('Unsupported research evidence method')
+    from .retained_incidents import validate_policy
+    try:
+        validate_policy(manifest, definition)
+    except ValueError as error:
+        raise InfrastructureError(str(error)) from error
     if manifest['execution'].get('task_stream_revision')!='append-only-rounds-v1':
         raise InfrastructureError('Research requires a frozen append-only task stream')
     if manifest['purpose']=='research-confirmation' or 'recovery_source' in manifest['research']:

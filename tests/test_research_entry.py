@@ -11,7 +11,7 @@ class ResearchEntryTests(unittest.TestCase):
     def fixture(self, root, purpose='research-discovery'):
         plan=root/'plan.json';plan.write_text(json.dumps({'primary_family_size':36,'stopping':{'required_independent_batches':2}}))
         run=root/'eval-001';run.mkdir()
-        manifest={'purpose':purpose,'execution':{'task_stream_revision':'append-only-rounds-v1'},'research':{'analysis_plan':{'path':'plan.json','sha256':digest_bytes(plan.read_bytes())}}}
+        manifest={'experiment_revision':'research-v001','purpose':purpose,'execution':{'task_stream_revision':'append-only-rounds-v1'},'research':{'analysis_plan':{'path':'plan.json','sha256':digest_bytes(plan.read_bytes())}}}
         (run/'manifest.json').write_text(json.dumps(manifest))
         return run,plan
     def test_pilot_manifest_cannot_start_research(self):
