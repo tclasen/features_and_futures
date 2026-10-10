@@ -6,6 +6,12 @@ async function getProjects() {
   return response.json();
 }
 
+async function getTasks(projectId) {
+  const response = await fetch(`/api/projects/${projectId}/tasks`);
+  if (!response.ok) throw new Error('Could not load tasks');
+  return response.json();
+}
+
 function element(tag, text, className) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -79,11 +85,86 @@ async function showProject(id) {
   try {
     const projects = await getProjects();
     const project = projects.find((item) => String(item.id) === id);
-    if (project) root.append(element('h1', project.name));
-    else root.append(element('h1', 'Project not found'));
+    if (project) {
+      root.append(element('h1', project.name));
+      await renderTasks(id);
+    } else root.append(element('h1', 'Project not found'));
   } catch {
     root.append(element('h1', 'Could not load project'));
   }
+}
+
+async function renderTasks(projectId) {
+  const form = element('form', undefined, 'create-form');
+  const label = element('label', 'Task title');
+  label.htmlFor = 'task-title';
+  const input = element('input');
+  input.id = 'task-title';
+  input.name = 'title';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  const submit = element('button', 'Create task');
+  submit.type = 'submit';
+  form.append(label, input, submit);
+  const error = element('p', undefined, 'alert');
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  const filterLabel = element('label', 'Task filter');
+  filterLabel.htmlFor = 'task-filter';
+  const filter = element('select');
+  filter.id = 'task-filter';
+  for (const value of ['All', 'Open', 'Completed']) {
+    const option = element('option', value);
+    option.value = value;
+    filter.append(option);
+  }
+  const rows = element('section', undefined, 'tasks');
+  rows.setAttribute('aria-label', 'Tasks');
+  async function refresh() {
+    const tasks = await getTasks(projectId);
+    rows.replaceChildren();
+    for (const task of tasks) {
+      if (filter.value === 'Open' && task.completed) continue;
+      if (filter.value === 'Completed' && !task.completed) continue;
+      const row = element('div', undefined, 'task-row');
+      row.dataset.testid = 'task-row';
+      row.append(element('span', task.title));
+      const checkbox = element('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        if (response.ok) await refresh();
+      });
+      row.append(checkbox);
+      rows.append(row);
+    }
+  }
+  filter.addEventListener('change', refresh);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title) {
+      error.textContent = 'Task title is required';
+      error.hidden = false;
+      input.focus();
+      return;
+    }
+    const response = await fetch(`/api/projects/${projectId}/tasks`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    });
+    if (response.ok) {
+      input.value = '';
+      error.hidden = true;
+      await refresh();
+    }
+  });
+  root.append(form, error, filterLabel, filter, rows);
+  try { await refresh(); }
+  catch { const message = element('p', 'Could not load tasks'); message.setAttribute('role', 'alert'); root.append(message); }
 }
 
 const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
