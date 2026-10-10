@@ -202,7 +202,10 @@ async function renderProject(id) {
       notesForm.addEventListener('submit', async event => {
         event.preventDefault();
         try {
-          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
+          const saved = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
+          // Keep the exact textarea contents visible after the save, including
+          // markup-like text which must remain plain text rather than HTML.
+          notes.value = saved.notes;
           await refreshTasks();
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
