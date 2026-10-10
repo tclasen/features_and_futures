@@ -189,6 +189,21 @@ async function renderProject(id) {
           await refreshTasks();
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
+      const notesForm = element('form', { className: 'create-form' });
+      const notesLabel = element('label', { text: 'Task notes' });
+      const notes = element('textarea');
+      notes.id = `task-notes-${task.id}`; notesLabel.htmlFor = notes.id;
+      notes.value = task.notes ?? ''; notes.disabled = Boolean(project.archived);
+      const notesButton = element('button', { text: 'Save notes' });
+      notesButton.type = 'submit'; notesButton.disabled = Boolean(project.archived);
+      notesForm.append(notesLabel, notes, notesButton);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
+          await refreshTasks();
+        } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+      });
       const destinationLabel = element('label', { text: 'Destination project' });
       const destination = element('select');
       destinationLabel.htmlFor = `destination-project-${task.id}`; destination.id = destinationLabel.htmlFor;
@@ -205,7 +220,7 @@ async function renderProject(id) {
       });
       const title = element('span', { text: task.title });
       title.dataset.taskTitle = task.title;
-      row.append(checkbox, title, priorityLabel, priority, renameForm, dueForm, destinationLabel, destination, moveButton); list.append(row);
+      row.append(checkbox, title, priorityLabel, priority, renameForm, dueForm, notesForm, destinationLabel, destination, moveButton); list.append(row);
     }
   }
   form.addEventListener('submit', async event => {
