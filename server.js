@@ -123,10 +123,12 @@ function projectsPage(error = '', filter = 'Active') {
     </section>`);
 }
 
-function projectPage(project, filter = 'All', error = '', selectedPriority = 'All') {
+function projectPage(project, filter = 'All', error = '', selectedPriority = 'All', dueFrom = '', dueThrough = '') {
   const tasks = listTasks.all(project.id).filter(task =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
-    (selectedPriority === 'All' || task.priority === selectedPriority));
+    (selectedPriority === 'All' || task.priority === selectedPriority) &&
+    ((!dueFrom && !dueThrough) || (task.due_date &&
+      (!dueFrom || task.due_date >= dueFrom) && (!dueThrough || task.due_date <= dueThrough))));
   return page(`<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
@@ -163,6 +165,15 @@ function projectPage(project, filter = 'All', error = '', selectedPriority = 'Al
         ${priorityFilters.map(option => `<option${option === selectedPriority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
+    <form method="post" action="/projects/${project.id}/due-range">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${selectedPriority}">
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(dueFrom)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(dueThrough)}">
+      <button type="submit">Apply due range</button>
+    </form>
     <section aria-label="Tasks">
       ${tasks.map(task => `<div class="task" data-testid="task-row">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
@@ -193,7 +204,9 @@ function projectPage(project, filter = 'All', error = '', selectedPriority = 'Al
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
       </div>`).join('')}
-    </section>`);
+    </section>`.replace(/<form\b[^>]*>/g, opening => `${opening}
+      <input type="hidden" name="dueFrom" value="${escapeHtml(dueFrom)}">
+      <input type="hidden" name="dueThrough" value="${escapeHtml(dueThrough)}">`));
 }
 
 async function formData(request) {
@@ -216,13 +229,32 @@ const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
     let selectedPriority = priorityFilter(url.searchParams.get('priorityFilter'));
+    let dueFrom = '';
+    let dueThrough = '';
+    const readRange = data => {
+      const from = (data.get('dueFrom') || '').trim();
+      const through = (data.get('dueThrough') || '').trim();
+      if ((!from || validDueDate(from)) && (!through || validDueDate(through)) &&
+          (!from || !through || from <= through)) {
+        dueFrom = from;
+        dueThrough = through;
+      }
+    };
+    readRange(url.searchParams);
     const readForm = async () => {
       const data = await formData(request);
       selectedPriority = priorityFilter(data.get('priorityFilter'));
+      readRange(data);
       return data;
     };
-    const detailPage = (project, filter, error) => projectPage(project, filter, error, selectedPriority);
-    const detailLocation = (id, filter) => `/projects/${id}?filter=${filter}${selectedPriority === 'All' ? '' : `&priorityFilter=${selectedPriority}`}`;
+    const detailPage = (project, filter, error) => projectPage(project, filter, error, selectedPriority, dueFrom, dueThrough);
+    const detailLocation = (id, filter) => {
+      const params = new URLSearchParams({ filter });
+      if (selectedPriority !== 'All') params.set('priorityFilter', selectedPriority);
+      if (dueFrom) params.set('dueFrom', dueFrom);
+      if (dueThrough) params.set('dueThrough', dueThrough);
+      return `/projects/${id}?${params}`;
+    };
     if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -254,6 +286,29 @@ const server = http.createServer(async (request, response) => {
       }
       archiveProject.run(action === 'archive' ? 1 : 0, id);
       response.writeHead(303, { Location: action === 'archive' ? '/' : '/?filter=Archived' });
+      response.end();
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/due-range$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project) {
+        html(response, 404, page('<h1>Project not found</h1>'));
+        return;
+      }
+      const data = await readForm();
+      const filter = taskFilter(data.get('filter'));
+      const from = (data.get('rangeFrom') || '').trim();
+      const through = (data.get('rangeThrough') || '').trim();
+      if ((from && !validDueDate(from)) || (through && !validDueDate(through))) {
+        html(response, 400, detailPage(project, filter, 'Due range must use valid YYYY-MM-DD dates'));
+        return;
+      }
+      if (from && through && from > through) {
+        html(response, 400, detailPage(project, filter, 'Due from must not be after Due through'));
+        return;
+      }
+      dueFrom = from;
+      dueThrough = through;
+      response.writeHead(303, { Location: detailLocation(id, filter) });
       response.end();
     } else if (request.method === 'POST' && /^\/projects\/\d+\/default-priority$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
@@ -415,7 +470,7 @@ const server = http.createServer(async (request, response) => {
         html(response, 404, page('<h1>Project not found</h1><form action="/"><button>Projects</button></form>'));
         return;
       }
-      html(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), '', priorityFilter(url.searchParams.get('priorityFilter'))));
+      html(response, 200, detailPage(project, taskFilter(url.searchParams.get('filter')), ''));
     } else {
       html(response, 404, page('<h1>Page not found</h1>'));
     }
