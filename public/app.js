@@ -56,6 +56,39 @@ function projectRow(project, drawProjects) {
 
 async function renderTasks(project) {
   const endpoint = `/api/projects/${project.id}/tasks`;
+  const defaultLabel = element('label', 'Default task priority');
+  defaultLabel.htmlFor = 'default-task-priority';
+  const defaultPriority = element('select');
+  defaultPriority.id = defaultLabel.htmlFor;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.default_task_priority;
+  defaultPriority.disabled = Boolean(project.archived);
+  defaultPriority.addEventListener('change', async () => {
+    if (project.archived) return;
+    defaultPriority.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_task_priority: defaultPriority.value }),
+      });
+      project.default_task_priority = saved.default_task_priority;
+      defaultPriority.value = project.default_task_priority;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      defaultPriority.value = project.default_task_priority;
+      showError(error.message);
+    } finally {
+      defaultPriority.disabled = Boolean(project.archived);
+    }
+  });
+  const defaultControls = element('div');
+  defaultControls.className = 'task-filter';
+  defaultControls.append(defaultLabel, defaultPriority);
   const form = element('form');
   const titleLabel = element('label', 'Task title');
   titleLabel.htmlFor = 'task-title';
@@ -96,7 +129,7 @@ async function renderTasks(project) {
   priorityFilterControls.append(priorityFilterLabel, priorityFilter);
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(form, filterControls, priorityFilterControls, list);
+  app.append(form, defaultControls, filterControls, priorityFilterControls, list);
   const tasks = await request(endpoint);
 
   function matchesFilter(task) {

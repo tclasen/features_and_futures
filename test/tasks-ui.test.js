@@ -42,6 +42,81 @@ class Element {
 
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 
+test('project default UI preserves filters and existing tasks, inherits on creation, and disables when archived', async () => {
+  const project = { id: 7, name: 'Project', archived: 0, default_task_priority: 'Normal' };
+  const tasks = [
+    { id: 1, project_id: 7, title: 'Existing', completed: false, priority: 'High' },
+    { id: 2, project_id: 7, title: 'Completed', completed: true, priority: 'Low' },
+  ];
+  let failUpdate = false;
+  let mutations = 0;
+  const fetch = async (path, options = {}) => {
+    if (options.method) mutations++;
+    if (options.method === 'PATCH') {
+      if (failUpdate) return { ok: false, json: async () => ({ error: 'Update failed' }) };
+      Object.assign(project, JSON.parse(options.body));
+      return jsonResponse(project);
+    }
+    if (options.method === 'POST') {
+      const task = { id: tasks.length + 1, project_id: 7, title: JSON.parse(options.body).title,
+        completed: false, priority: project.default_task_priority };
+      tasks.push(task);
+      return jsonResponse(task);
+    }
+    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+  };
+  const { app } = await renderUI('/projects/7', fetch);
+  const control = app.find((node) => node.id === 'default-task-priority');
+  assert.equal(app.find((node) => node.htmlFor === control.id).textContent, 'Default task priority');
+  assert.deepEqual(control.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(control.value, 'Normal');
+  assert.equal(control.disabled, false);
+  const completion = app.find((node) => node.id === 'task-filter');
+  const priority = app.find((node) => node.id === 'priority-filter');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const original = JSON.stringify(tasks);
+  for (const value of ['Low', 'Normal', 'High']) {
+    control.value = value;
+    await control.fire('change');
+    assert.equal(project.default_task_priority, value);
+    assert.equal(control.disabled, false);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+    assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Existing']);
+    assert.equal(JSON.stringify(tasks), original);
+  }
+  failUpdate = true;
+  control.value = 'Low';
+  await control.fire('change');
+  assert.equal(control.value, 'High');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Update failed');
+  failUpdate = false;
+  const title = app.find((node) => node.id === 'task-title');
+  title.value = 'Inherited';
+  await title.parent.fire('submit');
+  assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Existing', 'Inherited']);
+  assert.equal(tasks[2].priority, 'High');
+  control.value = 'Low';
+  await control.fire('change');
+  assert.equal(tasks[2].priority, 'High');
+  for (const archived of [0, 1, 0]) {
+    project.archived = archived;
+    const reloaded = await renderUI('/projects/7', fetch);
+    const saved = reloaded.app.find((node) => node.id === control.id);
+    assert.equal(saved.value, 'Low');
+    assert.equal(saved.disabled, Boolean(archived));
+    if (archived) {
+      const before = mutations;
+      await saved.fire('change');
+      assert.equal(mutations, before);
+    }
+  }
+});
+
 test('task UI validation, labels, filtering, creation order, and completion changes', async () => {
   const app = new Element('main');
   let tasks = [
