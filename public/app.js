@@ -227,6 +227,23 @@ async function renderProject(id) {
       option.textContent = value;
       priorityFilter.append(option);
     }
+    const dueFromLabel = document.createElement('label');
+    dueFromLabel.htmlFor = 'due-from';
+    dueFromLabel.textContent = 'Due from';
+    const dueFrom = document.createElement('input');
+    dueFrom.id = 'due-from';
+    dueFrom.type = 'text';
+    const dueThroughLabel = document.createElement('label');
+    dueThroughLabel.htmlFor = 'due-through';
+    dueThroughLabel.textContent = 'Due through';
+    const dueThrough = document.createElement('input');
+    dueThrough.id = 'due-through';
+    dueThrough.type = 'text';
+    const applyDueRange = document.createElement('button');
+    applyDueRange.type = 'button';
+    applyDueRange.textContent = 'Apply due range';
+    let appliedDueFrom = '';
+    let appliedDueThrough = '';
     const list = document.createElement('div');
     list.className = 'task-list';
     const tasksResponse = await fetch(`/api/projects/${id}/tasks`);
@@ -238,6 +255,9 @@ async function renderProject(id) {
         if (filter.value === 'Open' && task.completed) continue;
         if (filter.value === 'Completed' && !task.completed) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+        if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
+        if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
+        if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
         const row = document.createElement('article');
         row.className = 'task-row';
         row.dataset.testid = 'task-row';
@@ -333,6 +353,7 @@ async function renderProject(id) {
           task.dueDate = result.dueDate;
           dueDateInput.value = result.dueDate || '';
           content.querySelector('[role="alert"]')?.remove();
+          drawTasks();
         });
         row.append(title, renameForm, priority, checkbox, dueDateInput, saveDueDate);
         list.append(row);
@@ -340,6 +361,35 @@ async function renderProject(id) {
     }
     filter.addEventListener('change', drawTasks);
     priorityFilter.addEventListener('change', drawTasks);
+    applyDueRange.addEventListener('click', () => {
+      const from = dueFrom.value.trim();
+      const through = dueThrough.value.trim();
+      const validDate = (value) => {
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        if (year < 1 || month < 1 || month > 12) return false;
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return day >= 1 && day <= days[month - 1];
+      };
+      if ((from && !validDate(from)) || (through && !validDate(through))) {
+        content.querySelector('[role="alert"]')?.remove();
+        showError('Due range must use valid YYYY-MM-DD dates');
+        return;
+      }
+      if (from && through && from > through) {
+        content.querySelector('[role="alert"]')?.remove();
+        showError('Due from must not be after Due through');
+        return;
+      }
+      appliedDueFrom = from;
+      appliedDueThrough = through;
+      content.querySelector('[role="alert"]')?.remove();
+      drawTasks();
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const title = input.value.trim();
@@ -359,7 +409,8 @@ async function renderProject(id) {
       drawTasks();
       input.focus();
     });
-    content.append(renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    content.append(renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter,
+      dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
     drawTasks();
   } else {
     const alert = document.createElement('p');
