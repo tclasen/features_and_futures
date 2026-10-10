@@ -43,6 +43,9 @@
             <label for="default-priority">Default task priority</label> <select id="default-priority" ${project.archived ? 'disabled' : ''}><option ${project.default_priority === 'Low' ? 'selected' : ''}>Low</option><option ${project.default_priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${project.default_priority === 'High' ? 'selected' : ''}>High</option></select>
             <label for="task-filter">Task filter</label> <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
             <label for="priority-filter">Priority filter</label> <select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
+            <label for="due-from">Due from</label> <input id="due-from" aria-label="Due from" type="text">
+            <label for="due-through">Due through</label> <input id="due-through" aria-label="Due through" type="text">
+            <button type="button" id="apply-due-range">Apply due range</button><p class="error" role="alert" id="range-error" hidden></p>
             <section id="tasks" aria-label="Tasks"></section>`;
           if (!project.archived) {
             const renameForm = document.querySelector('#rename-form');
@@ -67,9 +70,27 @@
             await fetch(`/api/projects/${project.id}/default-priority`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
           });
           const priorityFilter = document.querySelector('#priority-filter');
+          let appliedFrom = '', appliedThrough = '';
+          const rangeError = document.querySelector('#range-error');
+          const validDate = value => {
+            const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+            if (!match) return false;
+            const [year, month, day] = match.slice(1).map(Number);
+            if (year < 1 || month < 1 || month > 12) return false;
+            const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+            return day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+          };
+          document.querySelector('#apply-due-range').addEventListener('click', async () => {
+            const from = document.querySelector('#due-from').value.trim();
+            const through = document.querySelector('#due-through').value.trim();
+            rangeError.hidden = true;
+            if ((from && !validDate(from)) || (through && !validDate(through))) { rangeError.textContent = 'Due range must use valid YYYY-MM-DD dates'; rangeError.hidden = false; return; }
+            if (from && through && from > through) { rangeError.textContent = 'Due from must not be after Due through'; rangeError.hidden = false; return; }
+            appliedFrom = from; appliedThrough = through; await refreshTasks();
+          });
           async function refreshTasks() {
             const tasks = await fetch(`/api/projects/${project.id}/tasks`).then(response => response.json());
-            taskList.innerHTML = tasks.filter(task => (filter.value === 'All' || (filter.value === 'Completed') === task.completed) && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)).map(task => `<div class="row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-task-id="${task.id}"><select aria-label="Task priority" data-priority-task-id="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><form class="task-rename-form" data-task-id="${task.id}"><input aria-label="New task title" placeholder="New task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button><span class="error" role="alert" hidden></span></form><form class="due-date-form" data-task-id="${task.id}"><input aria-label="Task due date" value="${escapeHtml(task.due_date || '')}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button><span class="error" role="alert" hidden></span></form></div>`).join('');
+            taskList.innerHTML = tasks.filter(task => (filter.value === 'All' || (filter.value === 'Completed') === task.completed) && (priorityFilter.value === 'All' || task.priority === priorityFilter.value) && (!appliedFrom && !appliedThrough || Boolean(task.due_date) && (!appliedFrom || task.due_date >= appliedFrom) && (!appliedThrough || task.due_date <= appliedThrough))).map(task => `<div class="row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-task-id="${task.id}"><select aria-label="Task priority" data-priority-task-id="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><form class="task-rename-form" data-task-id="${task.id}"><input aria-label="New task title" placeholder="New task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button><span class="error" role="alert" hidden></span></form><form class="due-date-form" data-task-id="${task.id}"><input aria-label="Task due date" value="${escapeHtml(task.due_date || '')}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button><span class="error" role="alert" hidden></span></form></div>`).join('');
             taskList.querySelectorAll('.task-rename-form').forEach(renameForm => {
               const renameInput = renameForm.querySelector('input');
               const renameError = renameForm.querySelector('[role=alert]');
