@@ -33,6 +33,78 @@ async function start(databasePath) {
   };
 }
 
+test('project priority defaults migrate, persist, and affect only subsequent owned tasks', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
+  const databasePath = join(directory, 'defaults.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Legacy');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing', 1)`);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const html = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const selection = (body, id) => body.match(new RegExp(`<select id="${id}"[^>]*>[\\s\\S]*?<\\/select>`))[0];
+    const defaultSelect = (body) => selection(body, 'default-task-priority');
+    let body = await html('/projects/1');
+    assert.match(body, /<label for="default-task-priority">Default task priority<\/label>/);
+    assert.match(defaultSelect(body), /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    assert.match(selection(body, 'task-priority-1'), /<option selected>Normal<\/option>/);
+    await post('/projects', { name: 'Independent' });
+    const fields = { filter: 'Completed', priorityFilter: 'Normal' };
+    const filteredUrl = '/projects/1?filter=Completed&priorityFilter=Normal';
+    const before = await html(filteredUrl);
+    const changed = await post('/projects/1/default-priority', { ...fields, priority: 'High' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), filteredUrl);
+    body = await html(filteredUrl);
+    assert.match(selection(body, 'task-filter'), /<option selected>Completed<\/option>/);
+    assert.match(selection(body, 'priority-filter'), /<option selected>Normal<\/option>/);
+    assert.equal(body.slice(body.indexOf('<ul>')), before.slice(before.indexOf('<ul>')));
+    assert.match(await html('/'), /1\/1 completed/);
+    assert.match(defaultSelect(await html('/projects/2')), /<option selected>Normal<\/option>/);
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/2/tasks', { title: 'Other normal' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Inherited low' });
+    await post('/projects/1/tasks/2', { completed: '1' });
+    await post('/projects/1/tasks/2/rename', { title: 'Renamed high' });
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    body = await html('/projects/1');
+    assert.match(selection(body, 'task-priority-1'), /<option selected>Normal<\/option>/);
+    assert.match(selection(body, 'task-priority-2'), /<option selected>High<\/option>/);
+    assert.match(selection(body, 'task-priority-4'), /<option selected>Low<\/option>/);
+    assert.match(body, /aria-label="Complete Renamed high" checked/);
+    assert.match(selection(await html('/projects/2'), 'task-priority-3'), /<option selected>Normal<\/option>/);
+    assert.match(await html('/'), /2\/3 completed/);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Invalid' })).status, 400);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assert.match(defaultSelect(archived), /disabled/);
+    assert.match(defaultSelect(archived), /<option selected>Low<\/option>/);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Normal' })).status, 403);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    body = await html('/projects/1');
+    assert.doesNotMatch(defaultSelect(body), /disabled/);
+    assert.match(defaultSelect(body), /<option selected>Low<\/option>/);
+    await post('/projects/1/tasks', { title: 'After restart' });
+    assert.match(selection(await html('/projects/1'), 'task-priority-5'), /<option selected>Low<\/option>/);
+    assert.match(await html('/'), /2\/4 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('combined filters preserve selections, re-evaluate edits, and work while archived', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
   const databasePath = join(directory, 'tasks.sqlite');
