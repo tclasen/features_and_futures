@@ -10,6 +10,13 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   )
+  ;
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  )
 `);
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
@@ -49,6 +56,64 @@ const server = createServer(async (request, response) => {
       }
       const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
       sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && request.method === 'GET') {
+    const projectId = Number(tasksMatch[1]);
+    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+      .map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), completed: Boolean(task.completed) }));
+    sendJson(response, 200, tasks);
+    return;
+  }
+
+  if (tasksMatch && request.method === 'POST') {
+    try {
+      const projectId = Number(tasksMatch[1]);
+      const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+      if (!project) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      const body = await readJson(request);
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) {
+        sendJson(response, 400, { error: 'Task title is required' });
+        return;
+      }
+      const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+
+  const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  if (taskMatch && request.method === 'PATCH') {
+    try {
+      const projectId = Number(taskMatch[1]);
+      const taskId = Number(taskMatch[2]);
+      const body = await readJson(request);
+      if (typeof body?.completed !== 'boolean') {
+        sendJson(response, 400, { error: 'Completion state is required' });
+        return;
+      }
+      const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
+      if (!Number(result.changes)) {
+        sendJson(response, 404, { error: 'Task not found' });
+        return;
+      }
+      sendJson(response, 200, { id: taskId, projectId, completed: body.completed });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
