@@ -33,7 +33,7 @@
     if (path.startsWith('/projects/')) {
       const id = decodeURIComponent(path.slice('/projects/'.length));
       const project = projects.find(item => String(item.id) === id);
-      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${project ? escapeHtml(project.name) : 'Project not found'}</h1>${project?.archived ? '<p>Archived project</p>' : ''}${project ? `<form id="rename-form"><label for="new-project-name">New project name</label><input id="new-project-name" name="name" type="text" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form>` : ''}${project ? `<form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form><p id="alert" role="alert" aria-live="polite"></p><label>Default task priority<select id="default-priority" ${project.archived ? 'disabled' : ''}><option ${project.default_priority === 'Low' ? 'selected' : ''}>Low</option><option ${project.default_priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${project.default_priority === 'High' ? 'selected' : ''}>High</option></select></label><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><label>Priority filter<select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label><section id="tasks" aria-label="Tasks"></section>` : ''}`;
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${project ? escapeHtml(project.name) : 'Project not found'}</h1>${project?.archived ? '<p>Archived project</p>' : ''}${project ? `<form id="rename-form"><label for="new-project-name">New project name</label><input id="new-project-name" name="name" type="text" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form>` : ''}${project ? `<form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form><p id="alert" role="alert" aria-live="polite"></p><label>Default task priority<select id="default-priority" ${project.archived ? 'disabled' : ''}><option ${project.default_priority === 'Low' ? 'selected' : ''}>Low</option><option ${project.default_priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${project.default_priority === 'High' ? 'selected' : ''}>High</option></select></label><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><label>Priority filter<select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label><form id="due-range-form"><label>Due from<input id="due-from" type="text"></label><label>Due through<input id="due-through" type="text"></label><button type="submit">Apply due range</button></form><section id="tasks" aria-label="Tasks"></section>` : ''}`;
       document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
       if (project) {
         if (!project.archived) {
@@ -52,10 +52,15 @@
         const tasks = await fetch(endpoint).then(r => r.json());
         const list = document.querySelector('#tasks');
         const alert = document.querySelector('#alert');
+        let appliedFrom = '';
+        let appliedThrough = '';
         function renderTasks() {
           const filter = document.querySelector('#task-filter').value;
           const priorityFilter = document.querySelector('#priority-filter').value;
-          list.innerHTML = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === task.completed) && (priorityFilter === 'All' || task.priority === priorityFilter)).map(task => `<div class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-id="${task.id}"><label>Task priority<select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><label>Task due date<input type="text" aria-label="Task due date" data-due-input="${task.id}" value="${escapeHtml(task.due_date || '')}" ${project.archived ? 'disabled' : ''}></label><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><label>New task title<input type="text" aria-label="New task title" data-rename-input="${task.id}" ${project.archived ? 'disabled' : ''}></label><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
+          list.innerHTML = tasks.filter(task => {
+            const dateMatches = !appliedFrom && !appliedThrough ? true : Boolean(task.due_date) && (!appliedFrom || task.due_date >= appliedFrom) && (!appliedThrough || task.due_date <= appliedThrough);
+            return (filter === 'All' || (filter === 'Completed') === task.completed) && (priorityFilter === 'All' || task.priority === priorityFilter) && dateMatches;
+          }).map(task => `<div class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-id="${task.id}"><label>Task priority<select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><label>Task due date<input type="text" aria-label="Task due date" data-due-input="${task.id}" value="${escapeHtml(task.due_date || '')}" ${project.archived ? 'disabled' : ''}></label><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><label>New task title<input type="text" aria-label="New task title" data-rename-input="${task.id}" ${project.archived ? 'disabled' : ''}></label><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
           list.querySelectorAll('[data-save-due]').forEach(button => button.addEventListener('click', async () => {
             const task = tasks.find(item => String(item.id) === button.dataset.saveDue);
             const input = list.querySelector(`[data-due-input="${button.dataset.saveDue}"]`);
@@ -68,7 +73,7 @@
               if (year < 1 || month < 1 || month > 12 || day < 1 || day > (days[month - 1] || 0)) { alert.textContent = 'Due date must be a valid YYYY-MM-DD date'; return; }
             }
             const response = await fetch(`${endpoint}/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ due_date: value || null }) });
-            if (response.ok) { task.due_date = value || null; alert.textContent = ''; }
+            if (response.ok) { task.due_date = value || null; alert.textContent = ''; renderTasks(); }
             else alert.textContent = 'Due date must be a valid YYYY-MM-DD date';
           }));
           list.querySelectorAll('[data-rename]').forEach(button => button.addEventListener('click', async () => {
@@ -97,6 +102,22 @@
         });
         document.querySelector('#task-filter').addEventListener('change', renderTasks);
         document.querySelector('#priority-filter').addEventListener('change', renderTasks);
+        document.querySelector('#due-range-form').addEventListener('submit', event => {
+          event.preventDefault();
+          const from = document.querySelector('#due-from').value.trim();
+          const through = document.querySelector('#due-through').value.trim();
+          const valid = value => {
+            if (!value) return true;
+            if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+            const [year, month, day] = value.split('-').map(Number);
+            const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+            const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= (days[month - 1] || 0);
+          };
+          if (!valid(from) || !valid(through)) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; return; }
+          if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; return; }
+          appliedFrom = from; appliedThrough = through; alert.textContent = ''; renderTasks();
+        });
         document.querySelector('#task-form').addEventListener('submit', async event => {
           event.preventDefault();
           const input = document.querySelector('#task-title');
