@@ -39,6 +39,10 @@ test('saved edits change matching membership while renaming preserves it', () =>
   assert.equal(matchesTaskFilters(task, 'Open', 'High'), true);
   task.title = 'Renamed high';
   assert.equal(matchesTaskFilters(task, 'Open', 'High'), true);
+  task.dueDate = '2026-10-10';
+  assert.equal(matchesTaskFilters(task, 'Open', 'High'), true);
+  task.dueDate = '';
+  assert.equal(matchesTaskFilters(task, 'Open', 'High'), true);
   task.priority = 'Low';
   assert.equal(matchesTaskFilters(task, 'Open', 'High'), false);
   assert.equal(matchesTaskFilters(task, 'Open', 'Low'), true);

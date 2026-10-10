@@ -36,5 +36,10 @@ default; changing it leaves existing tasks and both selected filters unchanged.
 Archived projects display their saved default but disable changes until restored.
 Priority changes preserve task order, completion, ownership, and summaries;
 renaming preserves priority. Archived projects disable priority edits until restored.
-Run `npm test` for HTTP integration tests, including persistence across separate
+Each task supports an optional Task due date. Save a real Gregorian date in
+YYYY-MM-DD format (years 0001–9999), or save a blank value to clear it. Dates are
+calendar days without timezone conversion. Invalid dates leave saved data intact.
+Due dates persist independently through renaming and restarts; archived projects
+disable due-date editing until restored.
+Run `npm test` for date-validation and HTTP integration tests, including persistence across separate
 server processes. Tests use temporary databases and clean them up afterward.

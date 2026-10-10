@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeDueDate } from './due-date.js';
 
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -52,6 +53,9 @@ export function createApplication(dbPath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'defaultTaskPriority')) {
     database.exec("ALTER TABLE projects ADD COLUMN defaultTaskPriority TEXT NOT NULL DEFAULT 'Normal' CHECK (defaultTaskPriority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'dueDate')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN dueDate TEXT NOT NULL DEFAULT ''");
+  }
   const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.defaultTaskPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -62,12 +66,13 @@ export function createApplication(dbPath) {
   const updateDefaultTaskPriority = database.prepare('UPDATE projects SET defaultTaskPriority = ? WHERE id = ?');
   const projectData = (project) => ({ ...project, archived: Boolean(project.archived) });
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-  const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+  const getTask = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+  const updateTaskDueDate = database.prepare('UPDATE tasks SET dueDate = ? WHERE project_id = ? AND id = ?');
   const taskData = (task) => ({ ...task, completed: Boolean(task.completed) });
 
   function json(response, status, value) {
@@ -112,9 +117,9 @@ export function createApplication(dbPath) {
           if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
           const input = await readJson(request);
           if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
-          const fields = ['title', 'completed', 'priority'].filter((field) => Object.hasOwn(input ?? {}, field));
+          const fields = ['title', 'completed', 'priority', 'dueDate'].filter((field) => Object.hasOwn(input ?? {}, field));
           if (fields.length > 1) {
-            return json(response, 400, { error: 'Update title, completion, or priority separately' });
+            return json(response, 400, { error: 'Update title, completion, priority, or due date separately' });
           }
           if (Object.hasOwn(input ?? {}, 'title')) {
             const title = typeof input.title === 'string' ? input.title.trim() : '';
@@ -125,6 +130,12 @@ export function createApplication(dbPath) {
               return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
             }
             updateTaskPriority.run(input.priority, projectId, taskId);
+          } else if (Object.hasOwn(input ?? {}, 'dueDate')) {
+            const dueDate = normalizeDueDate(input.dueDate);
+            if (dueDate === null) {
+              return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+            }
+            updateTaskDueDate.run(dueDate, projectId, taskId);
           } else {
             if (typeof input?.completed !== 'boolean') {
               return json(response, 400, { error: 'Completion must be a boolean' });

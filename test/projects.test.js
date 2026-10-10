@@ -36,6 +36,75 @@ async function start(dbPath) {
   };
 }
 
+test('due dates preserve other task data and persist through rename, archive, clearing, and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-'));
+  const dbPath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const send = (path, method, body) => fetch(`${server.url}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const list = async (path) => (await fetch(`${server.url}${path}`)).json();
+    const first = await (await send('/api/projects', 'POST', { name: 'First' })).json();
+    const second = await (await send('/api/projects', 'POST', { name: 'Second' })).json();
+    const projectPath = `/api/projects/${first.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const otherTasksPath = `/api/projects/${second.id}/tasks`;
+    const task = await (await send(tasksPath, 'POST', { title: 'Original' })).json();
+    const next = await (await send(tasksPath, 'POST', { title: 'Next' })).json();
+    const other = await (await send(otherTasksPath, 'POST', { title: 'Other' })).json();
+    for (const created of [task, next, other]) assert.equal(created.dueDate, '');
+    const taskPath = `${tasksPath}/${task.id}`;
+    await send(taskPath, 'PATCH', { completed: true });
+    const completed = await (await send(taskPath, 'PATCH', { priority: 'High' })).json();
+    const summaries = await list('/api/projects');
+    let expected = { ...completed, dueDate: '2000-02-29' };
+    const saved = await send(taskPath, 'PATCH', { dueDate: ' \t2000-02-29\n ' });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), expected);
+    for (const dueDate of ['1900-02-29', '2026-04-31', '0000-01-01', '2026-1-01', 'nonsense', null, 42]) {
+      const response = await send(taskPath, 'PATCH', { dueDate });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await list(tasksPath), [expected, next]);
+    }
+    assert.equal((await send(`${otherTasksPath}/${task.id}`, 'PATCH', { dueDate: '2026-01-01' })).status, 404);
+    assert.equal((await send(taskPath, 'PATCH', { dueDate: '', title: 'Changed' })).status, 400);
+    expected = { ...expected, title: 'Renamed' };
+    assert.deepEqual(await (await send(taskPath, 'PATCH', { title: ' Renamed ' })).json(), expected);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(tasksPath), [expected, next]);
+    assert.deepEqual(await list(otherTasksPath), [other]);
+    assert.deepEqual(await list('/api/projects'), summaries);
+    await send(projectPath, 'PATCH', { archived: true });
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    for (const dueDate of ['', '2026-01-01']) {
+      assert.equal((await send(taskPath, 'PATCH', { dueDate })).status, 409);
+    }
+    assert.deepEqual(await list(tasksPath), [expected, next]);
+    await send(projectPath, 'PATCH', { archived: false });
+    for (const dueDate of ['', ' \t\n ']) {
+      await send(taskPath, 'PATCH', { dueDate: '9999-12-31' });
+      expected = { ...expected, dueDate: '' };
+      assert.deepEqual(await (await send(taskPath, 'PATCH', { dueDate })).json(), expected);
+    }
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(tasksPath), [expected, next]);
+    assert.deepEqual(await list(otherTasksPath), [other]);
+    assert.deepEqual(await list('/api/projects'), summaries);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects and owned tasks validate, preserve order, and survive a server-process restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const dbPath = join(directory, 'nested', 'projects.sqlite');
@@ -381,7 +450,7 @@ test('migrates existing projects and tasks without changing IDs or completion', 
         { id: 7, name: 'Existing project', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 },
       ]);
       assert.deepEqual(await (await fetch(`${server.url}/api/projects/7/tasks`)).json(), [
-        { id: 11, title: 'Existing task', completed: true, priority: 'Normal' },
+        { id: 11, title: 'Existing task', completed: true, priority: 'Normal', dueDate: '' },
       ]);
       await server.stop();
       server = undefined;
