@@ -104,8 +104,15 @@ async function renderTasks(projectId, archived) {
   }
   filter.value = 'All';
   filterControls.append(element('label', 'Task filter', { for: 'task-filter' }), filter);
+  const priorityFilterControls = element('div', undefined, { class: 'task-filter' });
+  const priorityFilter = element('select', undefined, { id: 'priority-filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    priorityFilter.append(element('option', value, { value }));
+  }
+  priorityFilter.value = 'All';
+  priorityFilterControls.append(element('label', 'Priority filter', { for: 'priority-filter' }), priorityFilter);
   const list = element('section', undefined, { 'aria-label': 'Tasks', class: 'task-list' });
-  app.append(form, filterControls, list);
+  app.append(form, filterControls, priorityFilterControls, list);
   const path = `/api/projects/${projectId}/tasks`;
   const tasks = await api(path);
 
@@ -115,8 +122,9 @@ async function renderTasks(projectId, archived) {
   }
 
   function refresh() {
-    const visible = tasks.filter((task) => filter.value === 'All' ||
-      (filter.value === 'Completed' ? task.completed : !task.completed));
+    const visible = tasks.filter((task) =>
+      (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)) &&
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     list.replaceChildren(...visible.map((task) => {
       const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
       const checkbox = element('input', undefined, {
@@ -159,8 +167,7 @@ async function renderTasks(projectId, archived) {
         } catch (error) {
           showError(error);
         } finally {
-          priority.value = task.priority;
-          priority.disabled = archived;
+          refresh();
         }
       });
       priorityControls.append(element('label', 'Task priority', { for: priority.id }), priority);
@@ -207,6 +214,7 @@ async function renderTasks(projectId, archived) {
   }
 
   filter.addEventListener('change', refresh);
+  priorityFilter.addEventListener('change', refresh);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (archived) return;
