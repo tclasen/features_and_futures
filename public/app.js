@@ -61,6 +61,72 @@ async function renderProject(id) {
     const back = element('button', 'Projects', { type: 'button', class: 'back' });
     back.addEventListener('click', () => { window.location.href = '/'; });
     app.append(back, element('h1', project.name));
+
+    const form = element('form');
+    const label = element('label', 'Task title', { for: 'task-title' });
+    const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text', 'aria-label': 'Task title' });
+    const submit = element('button', 'Create task', { type: 'submit' });
+    const alert = element('p', undefined, { role: 'alert', hidden: '' });
+    form.append(label, input, submit);
+
+    const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
+    const filter = element('select', undefined, { id: 'task-filter', 'aria-label': 'Task filter' });
+    for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+    const list = element('ul');
+    let tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const renderTasks = () => {
+      const matching = tasks.filter((task) => filter.value === 'All'
+        || (filter.value === 'Completed' ? Boolean(task.completed) : !task.completed));
+      list.replaceChildren();
+      for (const task of matching) {
+        const row = element('li', undefined, { 'data-testid': 'task-row' });
+        const checkbox = element('input', undefined, {
+          type: 'checkbox',
+          'aria-label': `Complete ${task.title}`,
+        });
+        checkbox.checked = Boolean(task.completed);
+        checkbox.addEventListener('change', async () => {
+          checkbox.disabled = true;
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked }),
+            });
+            task.completed = updated.completed;
+            renderTasks();
+          } catch (error) {
+            checkbox.checked = Boolean(task.completed);
+            alert.textContent = error.message;
+            alert.hidden = false;
+          } finally {
+            checkbox.disabled = false;
+          }
+        });
+        row.append(element('span', task.title), checkbox);
+        list.append(row);
+      }
+    };
+    filter.addEventListener('change', renderTasks);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      alert.hidden = true;
+      try {
+        const task = await request(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: input.value }),
+        });
+        tasks.push(task);
+        input.value = '';
+        renderTasks();
+      } catch (error) {
+        alert.textContent = error.message;
+        alert.hidden = false;
+      }
+    });
+    renderTasks();
+    app.append(form, alert, filterLabel, filter, list);
   } catch {
     app.append(element('h1', 'Project not found'));
     const back = element('button', 'Projects', { type: 'button' });
