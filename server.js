@@ -59,7 +59,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 // Seed membership history for databases created before per-project positions existed.
 db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, position FROM tasks ORDER BY position, id`);
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0))');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM task_project_positions WHERE project_id = ?), 0))');
 const rememberTaskPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const getRememberedPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 const nextProjectPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_project_positions WHERE project_id = ?');
