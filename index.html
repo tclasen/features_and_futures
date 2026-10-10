@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #18212f; background: #f5f7fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(760px, calc(100% - 32px)); margin: 56px auto; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    form { display: flex; gap: 10px; margin-bottom: 16px; }
+    input { min-width: 0; flex: 1; padding: 11px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; }
+    button { padding: 10px 15px; border: 0; border-radius: 6px; background: #2458c6; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1948a9; }
+    .rows { display: grid; gap: 10px; }
+    [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .alert { margin: 0 0 12px; color: #a31f2b; }
+    .back { margin-bottom: 24px; background: #465367; }
+    @media (max-width: 480px) { form { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+    async function loadProjects() {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error('Could not load projects');
+      return response.json();
+    }
+
+    async function showList(error = '') {
+      app.innerHTML = `<h1>Workboard</h1>
+        ${error ? `<p class="alert" role="alert">${esc(error)}</p>` : ''}
+        <form id="create-form">
+          <input id="project-name" name="name" aria-label="Project name" placeholder="Project name">
+          <button type="submit">Create project</button>
+        </form>
+        <section class="rows" aria-label="Projects" id="project-list"></section>`;
+      const list = app.querySelector('#project-list');
+      for (const project of await loadProjects()) {
+        const row = document.createElement('div');
+        row.dataset.testid = 'project-row';
+        row.innerHTML = `<span>${esc(project.name)}</span><button type="button" data-id="${project.id}">Open project</button>`;
+        row.querySelector('button').addEventListener('click', () => navigate(`/projects/${project.id}`));
+        list.append(row);
+      }
+      app.querySelector('#create-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = app.querySelector('#project-name').value.trim();
+        if (!name) return showList('Project name is required');
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!response.ok) return showList('Could not create project');
+        showList();
+      });
+    }
+
+    async function showProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) { history.replaceState({}, '', '/'); return showList(); }
+      const project = await response.json();
+      app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>`;
+      app.querySelector('button').addEventListener('click', () => navigate('/'));
+    }
+
+    function navigate(path) {
+      history.pushState({}, '', path);
+      render();
+    }
+    function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      return match ? showProject(match[1]) : showList();
+    }
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
