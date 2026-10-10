@@ -92,6 +92,14 @@ function projectPage(project, filter = 'All', error = '') {
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form method="post" action="/projects/${project.id}/rename">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="create">
+        <input id="new-project-name" name="name" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+    </form>
     <form method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -169,6 +177,27 @@ const server = createServer(async (request, response) => {
       response.writeHead(303, { Location: '/' });
       response.end();
       return;
+    }
+    const renameMatch = /^\/projects\/([1-9]\d*)\/rename$/.exec(path);
+    if (request.method === 'POST' && renameMatch) {
+      const id = Number(renameMatch[1]);
+      const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
+      if (project) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 409, projectPage(project, filter, 'Archived project is read-only'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(response, 400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        store.rename(id, name);
+        redirectToProject(response, id, filter);
+        return;
+      }
     }
     const archiveMatch = /^\/projects\/([1-9]\d*)\/(archive|restore)$/.exec(path);
     if (request.method === 'POST' && archiveMatch) {

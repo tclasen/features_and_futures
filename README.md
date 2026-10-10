@@ -17,4 +17,6 @@ npm test
 
 The project list defaults to Active; select Archived to open or restore archived projects. Every project row summarizes all tasks as completed/total. Archived projects keep their tasks and filters, but task creation and completion changes are disabled and rejected by the server. Existing SQLite databases are automatically migrated without changing project or task IDs.
 
-The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, and migration from the previous schema.
+Active project pages also support renaming. Names are trimmed and must be nonblank; renaming keeps the URL, creation order, tasks, and summary unchanged. Archived projects cannot be renamed until restored. Renamed names persist in the same SQLite database.
+
+The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, and migration from the previous schema.
