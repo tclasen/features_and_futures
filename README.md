@@ -14,6 +14,8 @@ The Project filter defaults to Active. Archive projects from their rows, or choo
 
 Active project pages also offer New project name and Rename project. Names are trimmed and cannot be blank. Renaming preserves the project's URL, list position, tasks, and summary, and survives restarts. Archived projects cannot be renamed until restored.
 
+Each task row offers New task title and Rename task. Titles are trimmed and cannot be blank. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries. Task titles persist across restarts. Archived projects disable task renaming until restored.
+
 `GET /health` returns `{"status":"ok"}`.
 
 Run integration tests with `npm test`. Tests use an isolated temporary database and verify schema migration, project/task validation, rename identity and data preservation, ordering, project isolation, completion summaries, archive write protection, restoration, page serving, and persistence across process restarts.

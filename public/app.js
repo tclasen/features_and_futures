@@ -196,14 +196,30 @@ async function showProject(id) {
       checkbox.checked = task.completed;
       checkbox.disabled = Boolean(project.archived) || pendingUpdates.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
-      checkbox.addEventListener('change', async () => {
+      const renameForm = document.createElement('form');
+      const renameLabel = document.createElement('label');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      renameLabel.textContent = 'New task title';
+      const renameInput = document.createElement('input');
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.type = 'text';
+      renameInput.autocomplete = 'off';
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename task';
+      renameInput.disabled = checkbox.disabled;
+      renameButton.disabled = checkbox.disabled;
+      renameForm.append(renameLabel, renameInput, renameButton);
+
+      async function saveTask(update) {
+        if (project.archived || pendingUpdates.has(task.id)) return;
         pendingUpdates.add(task.id);
-        checkbox.disabled = true;
+        checkbox.disabled = renameInput.disabled = renameButton.disabled = true;
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: checkbox.checked }),
+            body: JSON.stringify(update),
           });
           Object.assign(task, saved);
           app.querySelector('[role="alert"]').hidden = true;
@@ -213,8 +229,16 @@ async function showProject(id) {
           pendingUpdates.delete(task.id);
           renderTasks();
         }
+      }
+      checkbox.addEventListener('change', () => saveTask({ completed: checkbox.checked }));
+      renameForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (project.archived || pendingUpdates.has(task.id)) return;
+        const title = renameInput.value.trim();
+        if (!title) return showError('Task title is required');
+        saveTask({ title });
       });
-      row.append(title, checkbox);
+      row.append(title, checkbox, renameForm);
       return row;
     }));
   }
