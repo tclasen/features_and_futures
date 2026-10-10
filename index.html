@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #18212f; background: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(100% - 32px, 720px); margin: 64px auto; }
+    h1 { margin: 0 0 28px; font-size: 2rem; }
+    form, .project-row { display: flex; align-items: center; gap: 12px; }
+    form { margin-bottom: 12px; }
+    input { min-width: 0; flex: 1; padding: 12px 14px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
+    button { padding: 11px 16px; border: 0; border-radius: 7px; color: white; background: #2459c4; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #17469f; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #91b5ff; outline-offset: 2px; }
+    [role="alert"] { min-height: 1.5em; color: #a12626; }
+    .project-list { display: grid; gap: 10px; margin-top: 20px; }
+    .project-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #dce2ec; border-radius: 8px; background: white; }
+    .project-name { overflow-wrap: anywhere; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    #project-view button { margin-bottom: 24px; }
+    @media (max-width: 480px) { main { margin-top: 36px; } form { align-items: stretch; flex-direction: column; } form button { width: 100%; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeText = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+    async function showProjects() {
+      app.innerHTML = `
+        <h1>Workboard</h1>
+        <form id="create-project">
+          <label for="project-name" class="visually-hidden">Project name</label>
+          <input id="project-name" name="name" type="text" aria-label="Project name" autocomplete="off">
+          <button type="submit">Create project</button>
+        </form>
+        <div id="form-message" role="alert" aria-live="polite"></div>
+        <section id="project-list" class="project-list" aria-label="Projects"></section>`;
+      const list = app.querySelector('#project-list');
+      const loadProjects = async () => {
+        const response = await fetch('/api/projects');
+        const projects = await response.json();
+        list.innerHTML = projects.map((project) => `
+          <div class="project-row" data-testid="project-row">
+            <span class="project-name">${escapeText(project.name)}</span>
+            <button type="button" data-project-id="${project.id}">Open project</button>
+          </div>`).join('');
+      };
+      await loadProjects();
+      app.querySelector('#create-project').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = app.querySelector('#project-name');
+        const name = input.value.trim();
+        const message = app.querySelector('#form-message');
+        if (!name) {
+          message.textContent = 'Project name is required';
+          return;
+        }
+        const response = await fetch('/api/projects', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (!response.ok) {
+          const result = await response.json();
+          message.textContent = result.error || 'Could not create project';
+          return;
+        }
+        message.textContent = '';
+        input.value = '';
+        await loadProjects();
+      });
+      list.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-project-id]');
+        if (button) location.href = `/projects/${button.dataset.projectId}`;
+      });
+    }
+
+    async function showProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) {
+        app.innerHTML = '<h1>Project not found</h1><button id="back" type="button">Projects</button>';
+      } else {
+        const project = await response.json();
+        app.innerHTML = `<section id="project-view"><button id="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1></section>`;
+      }
+      app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+    }
+
+    const match = location.pathname.match(/^\/projects\/(\d+)$/);
+    if (match) await showProject(match[1]);
+    else await showProjects();
+  </script>
+</body>
+</html>
