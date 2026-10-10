@@ -34,19 +34,49 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
-// Separate per-project ordering from identity so moves can append existing tasks.
+// Preserve the current order when upgrading databases that predate task movement.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   database.exec(`BEGIN;
     ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
     UPDATE tasks SET position = id;
     COMMIT`);
 }
+// Positions remain reserved even while a task belongs to another project.
+// Seed only current ownership: earlier moves cannot be reconstructed from old databases.
+database.exec(`BEGIN;
+  CREATE TABLE IF NOT EXISTS task_positions (
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (project_id, task_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT OR IGNORE INTO task_positions (project_id, task_id, position)
+    SELECT project_id, id, position FROM tasks;
+  COMMIT`);
+
+function transaction(action) {
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    const result = action();
+    database.exec('COMMIT');
+    return result;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+const rememberPosition = database.prepare(`INSERT INTO task_positions (project_id, task_id, position)
+  VALUES (?, ?, ?) ON CONFLICT (project_id, task_id) DO NOTHING`);
+const nextPosition = database.prepare(`SELECT coalesce(max(position), 0) + 1 AS position
+  FROM task_positions WHERE project_id = ?`);
+const savedPosition = database.prepare('SELECT position FROM task_positions WHERE project_id = ? AND task_id = ?');
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT coalesce(max(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT coalesce(max(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  VALUES (?, ?, ?, ?)`);
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, position = ?
   WHERE project_id = ? AND id = ?`);
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
@@ -128,7 +158,12 @@ const server = createServer(async (request, response) => {
         }
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, currentProject.default_priority, projectId);
+        const result = transaction(() => {
+          const position = nextPosition.get(projectId).position;
+          const inserted = insertTask.run(projectId, title, currentProject.default_priority, position);
+          rememberPosition.run(projectId, inserted.lastInsertRowid, position);
+          return inserted;
+        });
         return json(response, 201, taskData(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (request.method === 'PATCH' && taskId !== null) {
@@ -151,8 +186,14 @@ const server = createServer(async (request, response) => {
           if (destination.archived) {
             return json(response, 409, { error: 'Destination project is archived' });
           }
-          // This single statement atomically changes ownership and appends in order.
-          moveTask.run(destinationId, destinationId, projectId, taskId);
+          // Reuse a remembered slot, or reserve a new one after all established slots.
+          // Ownership and position history must commit together.
+          transaction(() => {
+            const position = savedPosition.get(destinationId, taskId)?.position
+              ?? nextPosition.get(destinationId).position;
+            rememberPosition.run(destinationId, taskId, position);
+            moveTask.run(destinationId, position, projectId, taskId);
+          });
           return json(response, 200, taskData(findTask.get(destinationId, taskId)));
         } else if (changes[0] === 'due_date') {
           const dueDate = normalizeDueDate(input.due_date);
