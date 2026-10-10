@@ -26,6 +26,35 @@ db.exec(`
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 
+// Older runs could create the same project repeatedly. Keep the first project
+// ID and move any tasks from duplicates onto it before removing duplicate rows.
+const duplicateProjects = db.prepare(`SELECT name, MIN(id) AS keepId
+  FROM projects GROUP BY name HAVING COUNT(*) > 1`).all();
+const mergeDuplicates = () => {
+  const duplicatesForName = db.prepare('SELECT id FROM projects WHERE name = ? AND id != ?');
+  const moveTasks = db.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ?');
+  const removeProject = db.prepare('DELETE FROM projects WHERE id = ?');
+  const markArchived = db.prepare('UPDATE projects SET archived = 1 WHERE id = ?');
+  for (const duplicate of duplicateProjects) {
+    for (const row of duplicatesForName.all(duplicate.name, duplicate.keepId)) {
+      moveTasks.run(duplicate.keepId, row.id);
+      if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(row.id).archived) {
+        markArchived.run(duplicate.keepId);
+      }
+      removeProject.run(row.id);
+    }
+  }
+};
+db.exec('BEGIN');
+try {
+  mergeDuplicates();
+  db.exec('COMMIT');
+} catch (error) {
+  db.exec('ROLLBACK');
+  throw error;
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS projects_name_unique ON projects(name)');
+
 const indexHtml = await readFile(path.join(here, 'index.html'));
 const json = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
