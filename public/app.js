@@ -25,6 +25,35 @@ function showError(message) {
   alert.textContent = message;
 }
 
+function asciiLowercase(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
+function searchControls(labelText, buttonText, id) {
+  const form = element('form');
+  const label = element('label', labelText);
+  label.htmlFor = id;
+  const input = element('input');
+  input.id = id;
+  input.type = 'text';
+  const button = element('button', buttonText);
+  button.type = 'submit';
+  form.append(label, input, button);
+  let appliedQuery = '';
+  return {
+    form,
+    matches: (value) => asciiLowercase(value).includes(appliedQuery),
+    onApply(draw) {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        input.value = input.value.trim();
+        appliedQuery = asciiLowercase(input.value);
+        draw();
+      });
+    },
+  };
+}
+
 function projectRow(project, drawProjects) {
   const row = element('li');
   row.dataset.testid = 'project-row';
@@ -146,9 +175,10 @@ async function renderTasks(project) {
   dueRangeForm.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
   let appliedFrom = '';
   let appliedThrough = '';
+  const search = searchControls('Task search', 'Search tasks', 'task-search');
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(form, defaultControls, filterControls, priorityFilterControls, dueRangeForm, list);
+  app.append(form, defaultControls, filterControls, priorityFilterControls, dueRangeForm, search.form, list);
   const [tasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
   const destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== project.id);
 
@@ -158,7 +188,7 @@ async function renderTasks(project) {
     const matchesDueRange = (!appliedFrom && !appliedThrough) || Boolean(task.due_date &&
       (!appliedFrom || task.due_date >= appliedFrom) &&
       (!appliedThrough || task.due_date <= appliedThrough));
-    return matchesCompletion && matchesPriority && matchesDueRange;
+    return matchesCompletion && matchesPriority && matchesDueRange && search.matches(task.title);
   }
 
   function taskRow(task) {
@@ -329,6 +359,7 @@ async function renderTasks(project) {
   }
 
   drawTasks();
+  search.onApply(drawTasks);
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
   dueRangeForm.addEventListener('submit', (event) => {
@@ -457,14 +488,17 @@ async function render() {
   const filterControls = element('div');
   filterControls.className = 'project-filter';
   filterControls.append(filterLabel, filter);
-  app.append(form, filterControls, list);
+  const search = searchControls('Project search', 'Search projects', 'project-search');
+  app.append(form, filterControls, search.form, list);
   const projects = await request('/api/projects');
   function drawProjects() {
     list.replaceChildren(...projects
       .filter((project) => Boolean(project.archived) === (filter.value === 'Archived'))
+      .filter((project) => search.matches(project.name))
       .map((project) => projectRow(project, drawProjects)));
   }
   drawProjects();
+  search.onApply(drawProjects);
   filter.addEventListener('change', drawProjects);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();

@@ -1014,3 +1014,267 @@ test('move controls list eligible projects, retain filters, recover from errors,
   assert.equal(select.disabled, true);
   assert.equal(select.parent.children[2].disabled, true);
 });
+
+test('project search applies ASCII substrings, preserves whitespace and archive filter, and resets on entry', async () => {
+  const projects = [
+    { id: 1, name: 'Alpha  Beta', archived: 0, completed_count: 1, total_count: 3 },
+    { id: 2, name: 'alpha Beta', archived: 0, completed_count: 0, total_count: 0 },
+    { id: 3, name: 'ALPHA archive', archived: 1, completed_count: 2, total_count: 2 },
+    { id: 4, name: 'Älpha', archived: 0, completed_count: 0, total_count: 0 },
+  ];
+  let mutations = 0;
+  const fetch = async (path, options = {}) => {
+    if (options.method) mutations++;
+    if (options.method === 'PATCH') {
+      const project = projects.find((candidate) => path.endsWith(`/${candidate.id}`));
+      Object.assign(project, JSON.parse(options.body));
+      return jsonResponse(project);
+    }
+    if (options.method === 'POST') {
+      const project = { id: 5, name: JSON.parse(options.body).name, archived: 0, completed_count: 0, total_count: 0 };
+      projects.push(project);
+      return jsonResponse(project);
+    }
+    return jsonResponse(projects);
+  };
+  const { app, window } = await renderUI('/', fetch);
+  const search = app.find((node) => node.id === 'project-search');
+  const filter = app.find((node) => node.id === 'project-filter');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Projects');
+  const names = () => list.children.map((row) => row.children[0].textContent);
+  assert.equal(search.type, 'text');
+  assert.equal(search.value, '');
+  assert.equal(app.find((node) => node.htmlFor === search.id).textContent, 'Project search');
+  assert.equal(search.parent.children[2].textContent, 'Search projects');
+  assert.deepEqual(names(), ['Alpha  Beta', 'alpha Beta', 'Älpha']);
+  for (const [query, expected] of [
+    [' \tALPHA\n ', ['Alpha  Beta', 'alpha Beta']],
+    ['alpha  b', ['Alpha  Beta']],
+    ['alpha b', ['alpha Beta']],
+    ['älpha', []], ['ÄLPHA', ['Älpha']], [' \t ', ['Alpha  Beta', 'alpha Beta', 'Älpha']],
+  ]) {
+    search.value = query;
+    await search.parent.fire('submit');
+    assert.deepEqual(names(), expected);
+  }
+  assert.equal(mutations, 0);
+  search.value = 'alpha';
+  await search.parent.fire('submit');
+  search.value = 'unapplied';
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['ALPHA archive']);
+  assert.equal(list.children[0].children[3].textContent, 'Restore project');
+  await list.children[0].children[3].fire('click');
+  assert.deepEqual(names(), []);
+  filter.value = 'Active';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['Alpha  Beta', 'alpha Beta', 'ALPHA archive']);
+  assert.equal(list.children[0].children[1].textContent, '1/3 completed');
+  const create = app.find((node) => node.id === 'project-name');
+  create.value = 'Unrelated';
+  await create.parent.fire('submit');
+  assert.deepEqual(names(), ['Alpha  Beta', 'alpha Beta', 'ALPHA archive']);
+  await list.children[0].children[2].fire('click');
+  assert.equal(window.location.href, '/projects/1');
+  const reopened = await renderUI('/', fetch);
+  assert.equal(reopened.app.find((node) => node.id === search.id).value, '');
+  assert.equal(reopened.app.find((node) => node.attributes['aria-label'] === 'Projects').children.length, 5);
+});
+
+test('task search intersects every filter, retains applied query, and stays usable when archived', async () => {
+  const project = { id: 7, name: 'Project', archived: 0, default_task_priority: 'Normal' };
+  const tasks = [
+    { id: 1, title: 'ALPHA  first', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 2, title: 'alpha second', completed: true, priority: 'Low', due_date: '2024-03-01' },
+    { id: 3, title: 'Other', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 4, title: 'Alpha undated', completed: true, priority: 'High', due_date: '' },
+    { id: 5, title: 'ÄLPHA', completed: false, priority: 'Normal', due_date: '' },
+  ];
+  const original = JSON.stringify(tasks);
+  let mutations = 0;
+  const fetch = async (path, options = {}) => {
+    if (options.method) mutations++;
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
+  };
+  for (const archived of [0, 1, 0]) {
+    project.archived = archived;
+    const { app, window } = await renderUI('/projects/7', fetch);
+    const search = app.find((node) => node.id === 'task-search');
+    const completion = app.find((node) => node.id === 'task-filter');
+    const priority = app.find((node) => node.id === 'priority-filter');
+    const from = app.find((node) => node.id === 'due-from');
+    const through = app.find((node) => node.id === 'due-through');
+    const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+    const titles = () => list.children.map((row) => row.children[0].textContent);
+    assert.equal(search.type, 'text');
+    assert.equal(search.value, '');
+    assert.equal(search.disabled, false);
+    assert.equal(app.find((node) => node.htmlFor === search.id).textContent, 'Task search');
+    assert.equal(search.parent.children[2].textContent, 'Search tasks');
+    assert.equal(search.parent.children[2].disabled, false);
+    for (const query of ['alpha', 'alpha  ', 'alpha  f', 'alpha s', 'älpha', 'Älpha', ' \t ']) {
+      for (const completed of ['All', 'Open', 'Completed']) {
+        for (const selectedPriority of ['All', 'Low', 'Normal', 'High']) {
+          completion.value = completed;
+          await completion.fire('change');
+          priority.value = selectedPriority;
+          await priority.fire('change');
+          from.value = through.value = '2024-02-29';
+          await from.parent.fire('submit');
+          search.value = ` ${query} `;
+          await search.parent.fire('submit');
+          const fold = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+          const expected = tasks.filter((task) => task.due_date === '2024-02-29' &&
+            (completed === 'All' || task.completed === (completed === 'Completed')) &&
+            (selectedPriority === 'All' || task.priority === selectedPriority) &&
+            fold(task.title).includes(fold(query.trim())));
+          assert.deepEqual(titles(), expected.map((task) => task.title));
+          assert.equal(completion.value, completed);
+          assert.equal(priority.value, selectedPriority);
+          assert.equal(from.value, '2024-02-29');
+          assert.equal(through.value, '2024-02-29');
+          for (const row of list.children) assert.equal(row.children[1].disabled, Boolean(archived));
+        }
+      }
+    }
+    search.value = ' ALPHA ';
+    await search.parent.fire('submit');
+    search.value = 'unapplied';
+    completion.value = priority.value = 'All';
+    await completion.fire('change');
+    await priority.fire('change');
+    assert.deepEqual(titles(), ['ALPHA  first']);
+    from.value = through.value = '';
+    await from.parent.fire('submit');
+    assert.deepEqual(titles(), ['ALPHA  first', 'alpha second', 'Alpha undated']);
+    search.value = '';
+    await search.parent.fire('submit');
+    assert.deepEqual(titles(), tasks.map((task) => task.title));
+    await app.find((node) => node.textContent === 'Projects').fire('click');
+    assert.equal(window.location.href, '/');
+    const reopened = await renderUI('/projects/7', fetch);
+    assert.equal(reopened.app.find((node) => node.id === search.id).value, '');
+    assert.equal(reopened.app.find((node) => node.attributes['aria-label'] === 'Tasks').children.length, 5);
+  }
+  assert.equal(mutations, 0);
+  assert.equal(JSON.stringify(tasks), original);
+});
+
+test('task mutations re-evaluate search while preserving all applied filters and current data', async () => {
+  const project = { id: 7, name: 'Project', archived: 0, default_task_priority: 'High' };
+  const destinationProject = { id: 8, name: 'Destination', archived: 0 };
+  let tasks = [
+    { id: 1, project_id: 7, title: 'Match first', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 2, project_id: 7, title: 'Other', completed: false, priority: 'High', due_date: '2024-02-29' },
+  ];
+  const fetch = async (path, options = {}) => {
+    if (options.method === 'PATCH') {
+      const input = JSON.parse(options.body);
+      const target = path === '/api/projects/7' ? project : tasks.find((task) => path.endsWith(`/tasks/${task.id}`));
+      if (input.destination_project_id) {
+        tasks = tasks.filter((task) => task !== target);
+        target.project_id = input.destination_project_id;
+      } else Object.assign(target, input);
+      return jsonResponse(target);
+    }
+    if (options.method === 'POST') {
+      const task = { id: 3, project_id: 7, title: JSON.parse(options.body).title,
+        completed: false, priority: project.default_task_priority, due_date: '' };
+      tasks.push(task);
+      return jsonResponse(task);
+    }
+    return jsonResponse(path === '/api/projects' ? [project, destinationProject] : path === '/api/projects/7' ? project : tasks);
+  };
+  const { app } = await renderUI('/projects/7', fetch);
+  const search = app.find((node) => node.id === 'task-search');
+  const completion = app.find((node) => node.id === 'task-filter');
+  const priority = app.find((node) => node.id === 'priority-filter');
+  const from = app.find((node) => node.id === 'due-from');
+  const through = app.find((node) => node.id === 'due-through');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  const titles = () => list.children.map((row) => row.children[0].textContent);
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  from.value = through.value = '2024-02-29';
+  await from.parent.fire('submit');
+  search.value = 'mAtCh';
+  await search.parent.fire('submit');
+  let expectedQuery = 'mAtCh';
+  const assertFilters = () => {
+    assert.equal(search.value, expectedQuery);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+    assert.equal(from.value, '2024-02-29');
+    assert.equal(through.value, '2024-02-29');
+  };
+  const submitInput = async (id, value) => {
+    const input = app.find((node) => node.id === id);
+    input.value = value;
+    await input.parent.fire('submit');
+    assertFilters();
+  };
+  await submitInput('new-project-name', 'Renamed project');
+  const defaultPriority = app.find((node) => node.id === 'default-task-priority');
+  defaultPriority.value = 'Low';
+  await defaultPriority.fire('change');
+  assertFilters();
+  assert.deepEqual(titles(), ['Match first']);
+  await submitInput('new-task-title-1', 'No longer matches');
+  // The substring still matches "matches".
+  assert.deepEqual(titles(), ['No longer matches']);
+  await submitInput('new-task-title-1', 'Removed');
+  assert.deepEqual(titles(), []);
+  search.value = '';
+  await search.parent.fire('submit');
+  expectedQuery = '';
+  await submitInput('new-task-title-2', 'Match second');
+  search.value = expectedQuery = 'mAtCh';
+  await search.parent.fire('submit');
+  assert.deepEqual(titles(), ['Match second']);
+  await submitInput('task-title', 'Match created');
+  assert.deepEqual(titles(), ['Match second']);
+  assert.equal(tasks[2].priority, 'Low');
+  await submitInput('task-due-date-2', '2024-03-01');
+  assert.deepEqual(titles(), []);
+  through.value = '2024-03-01';
+  await from.parent.fire('submit');
+  assert.deepEqual(titles(), ['Match second']);
+  // Restore the original boundary before subsequent edit checks.
+  through.value = '2024-02-29';
+  await from.parent.fire('submit');
+  search.value = expectedQuery = '';
+  await search.parent.fire('submit');
+  await submitInput('task-due-date-1', '2024-02-29');
+  search.value = expectedQuery = 'removed';
+  await search.parent.fire('submit');
+  const taskPriority = app.find((node) => node.id === 'task-priority-1');
+  taskPriority.value = 'Low';
+  await taskPriority.fire('change');
+  assertFilters();
+  assert.deepEqual(titles(), []);
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.deepEqual(titles(), ['Removed']);
+  const checkbox = list.children[0].children[1];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.equal(search.value, 'removed');
+  assert.deepEqual(titles(), []);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.deepEqual(titles(), ['Removed']);
+  const destination = app.find((node) => node.id === 'destination-project-1');
+  await destination.parent.fire('submit');
+  assert.deepEqual(titles(), []);
+  assert.equal(search.value, 'removed');
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'Low');
+  assert.equal(from.value, '2024-02-29');
+  assert.equal(through.value, '2024-02-29');
+  search.value = '';
+  await search.parent.fire('submit');
+  assert.deepEqual(titles(), []);
+});
