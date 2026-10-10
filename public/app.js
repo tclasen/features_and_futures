@@ -289,7 +289,37 @@ async function showProject(id) {
         }
       });
       priorityLabel.append(priority);
-      row.append(checkboxLabel, renameForm, priorityLabel);
+      const dueDateForm = element('form', undefined, 'create-form due-date-form');
+      const dueDateLabel = element('label', 'Task due date');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      const dueDateInput = element('input');
+      dueDateInput.id = `task-due-date-${task.id}`;
+      dueDateInput.type = 'text';
+      dueDateInput.value = task.dueDate || '';
+      dueDateInput.disabled = project.archived;
+      const saveDueDate = element('button', 'Save due date');
+      saveDueDate.type = 'submit';
+      saveDueDate.disabled = project.archived;
+      dueDateForm.append(dueDateLabel, dueDateInput, saveDueDate);
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        alert.hidden = true;
+        saveDueDate.disabled = true;
+        try {
+          await request(`/api/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ dueDate: dueDateInput.value }),
+          });
+          await renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        } finally {
+          saveDueDate.disabled = project.archived;
+        }
+      });
+      row.append(checkboxLabel, renameForm, priorityLabel, dueDateForm);
       taskList.append(row);
     }
   };
