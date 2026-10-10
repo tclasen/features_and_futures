@@ -20,6 +20,11 @@ function showError(message) {
 
 async function renderList() {
   app.replaceChildren(element('h1', 'Workboard'));
+  const filterLabel = element('label', 'Project filter', { for: 'project-filter' });
+  const filter = element('select', undefined, { id: 'project-filter', name: 'filter' });
+  for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value: value.toLowerCase() }));
+  filterLabel.append(filter);
+  app.append(filterLabel);
   const form = element('form');
   const label = element('label', 'Project name', { for: 'project-name' });
   const input = element('input', undefined, { id: 'project-name', name: 'name', type: 'text' });
@@ -30,14 +35,28 @@ async function renderList() {
   app.append(list);
   try {
     const projects = await getProjects();
-    for (const project of projects) {
+    const renderProjects = () => {
+      list.replaceChildren();
+      for (const project of projects.filter(item => item.archived === (filter.value === 'archived'))) {
       const row = element('article', undefined, { 'data-testid': 'project-row', class: 'project-row' });
       row.append(element('span', project.name));
+      row.append(element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary' }));
       const open = element('button', 'Open project', { type: 'button' });
       open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
       row.append(open);
+      const action = project.archived ? 'Restore project' : 'Archive project';
+      const archive = element('button', action, { type: 'button' });
+      archive.addEventListener('click', async () => {
+        const response = await fetch(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+        if (!response.ok) return showError(`Could not ${project.archived ? 'restore' : 'archive'} project`);
+        renderList();
+      });
+      row.append(archive);
       list.append(row);
-    }
+      }
+    };
+    renderProjects();
+    filter.addEventListener('change', renderProjects);
   } catch {
     showError('Could not load projects');
   }
@@ -70,10 +89,13 @@ async function renderProject(id) {
     if (!response.ok) throw new Error('Project not found');
     const project = await response.json();
     app.append(element('h1', project.name));
+    if (project.archived) app.append(element('p', 'Archived project'));
     const form = element('form');
     const label = element('label', 'Task title', { for: 'task-title' });
     const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
-    form.append(label, input, element('button', 'Create task', { type: 'submit' }));
+    const createButton = element('button', 'Create task', { type: 'submit' });
+    createButton.disabled = project.archived;
+    form.append(label, input, createButton);
     app.append(form);
 
     const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
@@ -93,6 +115,7 @@ async function renderProject(id) {
         row.append(element('span', task.title));
         const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = task.completed;
+        checkbox.disabled = project.archived;
         checkbox.addEventListener('change', async () => {
           checkbox.disabled = true;
           try {
