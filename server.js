@@ -10,10 +10,11 @@ if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
-  CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
 `);
 db.exec('PRAGMA foreign_keys = ON');
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const send = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
@@ -39,7 +40,7 @@ const server = http.createServer(async (req, res) => {
     catch { return send(400, {error:'Invalid request'}); }
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
-  if (taskRoute && req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1])).map(task => ({...task, completed: Boolean(task.completed)})));
+  if (taskRoute && req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1])).map(task => ({...task, completed: Boolean(task.completed)})));
   if (taskRoute && req.method === 'POST') {
     try {
       const projectId = Number(taskRoute[1]);
@@ -60,6 +61,11 @@ const server = http.createServer(async (req, res) => {
       const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
       if (!project) return send(404, {error:'Project not found'});
       if (project.archived) return send(403, {error:'Archived project'});
+      if (Object.hasOwn(body, 'priority')) {
+        if (!['Low', 'Normal', 'High'].includes(body.priority)) return send(400, {error:'Invalid task priority'});
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?').run(body.priority, projectId, taskId);
+        return result.changes ? send(200, {ok:true, priority:body.priority}) : send(404, {error:'Task not found'});
+      }
       if (Object.hasOwn(body, 'title')) {
         const title = String(body.title ?? '').trim();
         if (!title) return send(400, {error:'Task title is required'});
