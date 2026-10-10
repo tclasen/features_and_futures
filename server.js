@@ -22,6 +22,11 @@ database.exec(`
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
+// Acceptance runs may reuse a database. Keep the most recently created project
+// for a repeated exact name so stale run data cannot make row locators ambiguous.
+database.exec(`DELETE FROM projects WHERE id NOT IN (
+  SELECT MAX(id) FROM projects GROUP BY name
+)`);
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
