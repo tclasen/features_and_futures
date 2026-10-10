@@ -78,6 +78,21 @@ const server = http.createServer((request, response) => {
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
       FROM projects p ORDER BY p.id`).all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (renameRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const name = String(JSON.parse(body).name ?? '').trim();
+        if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+        const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(renameRoute[1]));
+        return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active project not found' });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (archiveRoute && request.method === 'PATCH') {
     let body = '';
