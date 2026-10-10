@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High')),
+  due_date TEXT
 )`);
 // Upgrade databases created by earlier checkpoints.
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
@@ -29,6 +30,19 @@ try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT
 }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column')) throw error;
+}
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) throw error;
+}
+
+function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
 }
 
 const htmlPath = path.join(import.meta.dirname, 'index.html');
@@ -103,7 +117,7 @@ const server = http.createServer(async (req, res) => {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, JSON.stringify({ error: 'Project not found' }));
     if (req.method === 'GET') {
-      const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
       return send(200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
     }
     if (req.method === 'POST') {
@@ -118,6 +132,21 @@ const server = http.createServer(async (req, res) => {
         return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority }));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
+  }
+  const dueDateRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
+  if (dueDateRoute && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const date = String(JSON.parse(body).dueDate ?? '').trim();
+      if (date && !isValidDate(date)) return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+      const taskId = Number(dueDateRoute[1]);
+      const task = db.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+      if (!task) return send(404, JSON.stringify({ error: 'Task not found' }));
+      if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) return send(400, JSON.stringify({ error: 'Archived project' }));
+      db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(date || null, taskId);
+      return send(200, JSON.stringify({ dueDate: date || null }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const taskRename = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
   if (taskRename && req.method === 'PATCH') {
