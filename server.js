@@ -14,11 +14,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   archived INTEGER NOT NULL DEFAULT 0,
+  default_task_priority TEXT NOT NULL DEFAULT 'Normal',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 // Upgrade databases created by earlier checkpoints without losing project data.
 if (!db.prepare("PRAGMA table_info(projects)").all().some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +46,7 @@ async function handle(req, res) {
   const completionRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/?$/);
   const taskRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename\/?$/);
   const taskPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority\/?$/);
+  const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority\/?$/);
   async function readBody() {
     let body = '';
     for await (const chunk of req) {
@@ -73,15 +78,15 @@ async function handle(req, res) {
   }
   if (taskRoute && req.method === 'POST') {
     const projectId = Number(taskRoute[1]);
-    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    const project = db.prepare('SELECT archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(res, 404, { error: 'Project not found' });
     if (project.archived) return json(res, 400, { error: 'Archived project' });
     let body;
     try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
     const title = String(body.title ?? '').trim();
     if (!title) return json(res, 400, { error: 'Task title is required' });
-    const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
+    const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+    return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_task_priority });
   }
   if (taskRenameRoute && req.method === 'PATCH') {
     const projectId = Number(taskRenameRoute[1]);
@@ -111,6 +116,17 @@ async function handle(req, res) {
     return json(res, 200, { id: taskId, projectId, completed: body.completed });
   }
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok' });
+  if (defaultPriorityRoute && req.method === 'PATCH') {
+    const id = Number(defaultPriorityRoute[1]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(id);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
+    let body;
+    try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
+    if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(res, 400, { error: 'Invalid task priority' });
+    db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?').run(body.priority, id);
+    return json(res, 200, { id, defaultTaskPriority: body.priority });
+  }
   const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)\/?$/);
   const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/?$/);
   if (renameRoute && req.method === 'PATCH') {
@@ -133,7 +149,7 @@ async function handle(req, res) {
     return json(res, 200, { id, archived: Boolean(archived) });
   }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
       FROM projects p ORDER BY p.id ASC`).all().map((p) => ({
