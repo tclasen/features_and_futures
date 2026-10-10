@@ -115,6 +115,7 @@ test('launch contract, project and task validation, ownership, completion, and r
     const firstTask = await taskResponse.json();
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.priority, 'Normal');
     const secondTask = await (await createTask(first.id, '<script> & Second task')).json();
     const otherTask = await (await createTask(second.id, 'Other project task')).json();
     assert.deepEqual(await taskList(first.id), [firstTask, secondTask]);
@@ -131,6 +132,33 @@ test('launch contract, project and task validation, ownership, completion, and r
     first.completed_count = 1;
     second.total_count = 1;
     assert.deepEqual(await list(), [first, second]);
+    // Simulate a populated Task 005 database, then verify migration preserves its data.
+    await stop();
+    const previousSchema = new DatabaseSync(databasePath);
+    previousSchema.exec('ALTER TABLE tasks DROP COLUMN priority');
+    previousSchema.close();
+    await start();
+    assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
+    assert.deepEqual(await taskList(second.id), [otherTask]);
+    const setPriority = (projectId, taskId, priority) => fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    });
+    assert.equal((await setPriority(second.id, firstTask.id, 'High')).status, 404);
+    assert.equal((await setPriority(first.id, 999999, 'High')).status, 404);
+    for (const priority of ['', 'high', 'Urgent', null, 1]) {
+      assert.equal((await setPriority(first.id, firstTask.id, priority)).status, 400);
+    }
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await setPriority(first.id, firstTask.id, priority);
+      assert.equal(response.status, 200);
+      firstTask.priority = priority;
+      assert.deepEqual(await response.json(), { ...firstTask, completed: true });
+      assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
+      assert.deepEqual(await taskList(second.id), [otherTask]);
+      assert.deepEqual(await list(), [first, second]);
+    }
     const renameTask = (projectId, taskId, title) => fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -185,6 +213,7 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
     assert.equal((await renameTask(first.id, firstTask.id, 'Blocked task rename')).status, 409);
+    assert.equal((await setPriority(first.id, firstTask.id, 'Low')).status, 409);
     assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
     await stop();
     await start();
@@ -197,6 +226,10 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal(restored.status, 200);
     first.archived = 0;
     assert.deepEqual(await restored.json(), first);
+    const priorityAfterRestore = await setPriority(first.id, firstTask.id, 'Low');
+    assert.equal(priorityAfterRestore.status, 200);
+    firstTask.priority = 'Low';
+    assert.deepEqual(await priorityAfterRestore.json(), { ...firstTask, completed: true });
     const renamedAfterRestore = await renameProject(first.id, '  Restored first  ');
     assert.equal(renamedAfterRestore.status, 200);
     first.name = 'Restored first';
@@ -214,6 +247,7 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.deepEqual(await list(), [first, second]);
     assert.deepEqual(await taskList(first.id), [firstTask, secondTask]);
     const thirdTask = await (await createTask(first.id, 'Third task')).json();
+    assert.equal(thirdTask.priority, 'Normal');
     assert.ok(thirdTask.id > otherTask.id);
     assert.deepEqual(await taskList(first.id), [firstTask, secondTask, thirdTask]);
     first.total_count = 3;
