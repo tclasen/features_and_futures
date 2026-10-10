@@ -24,7 +24,7 @@ const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND proje
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
-const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS next FROM tasks WHERE project_id = ?');
+const nextTaskOrder = db.prepare('SELECT MAX(created_at) AS latest FROM tasks WHERE project_id = ?');
 const app = await readFile(new URL('./index.html', import.meta.url));
 
 const server = http.createServer((req, res) => {
@@ -107,7 +107,8 @@ async function handleRequest(req, res) {
     const destination = getProject.get(destinationId);
     if (!source || !getTask.get(taskId, sourceId) || !destination) return send(404, JSON.stringify({ error: 'Not found' }));
     if (source.archived || destination.archived || sourceId === destinationId) return send(403, JSON.stringify({ error: 'Invalid move' }));
-    moveTask.run(destinationId, nextTaskOrder.get(destinationId).next, taskId, sourceId);
+    const latest = nextTaskOrder.get(destinationId).latest ?? 0;
+    moveTask.run(destinationId, Math.max(Date.now(), latest + 1), taskId, sourceId);
     return send(200, JSON.stringify({ ok: true }));
   }
   const dueDateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/due-date$/);
