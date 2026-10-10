@@ -20,6 +20,8 @@ Each task row has New task title and Rename task controls. Renaming trims the ti
 
 Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority is saved independently for each task and persists across restarts and renaming. Archived projects disable priority changes until restored.
 
+Each project page also has a Priority filter with All, Low, Normal, and High options, initially All. It combines with Task filter to show tasks matching both selections in creation order. Edits and validation keep both filter selections; priority and completion changes immediately update the matching rows. Filters remain usable in archived projects and never change the completion summary.
+
 Health check:
 
 ```sh
