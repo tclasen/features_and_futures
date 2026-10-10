@@ -93,6 +93,14 @@ const server = http.createServer(async (req, res) => {
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (req.method === 'PATCH' && taskRenameMatch) {
+    const data = await readJson(req);
+    const title = typeof data?.title === 'string' ? data.title.trim() : '';
+    if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+    const result = db.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(title, Number(taskRenameMatch[1]));
+    return result.changes ? send(res, 200, JSON.stringify({ id: Number(taskRenameMatch[1]), title })) : send(res, 404, JSON.stringify({ error: 'Task not found or project archived' }));
+  }
   if (req.method === 'PATCH' && taskMatch) {
     const data = await readJson(req);
     if (typeof data?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Completion state is required' }));

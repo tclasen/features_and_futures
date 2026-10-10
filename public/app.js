@@ -136,6 +136,29 @@ async function render() {
         });
         checkboxLabel.append(checkbox);
         row.append(title, checkboxLabel);
+        const renameInput = document.createElement('input');
+        renameInput.type = 'text';
+        renameInput.setAttribute('aria-label', 'New task title');
+        renameInput.autocomplete = 'off';
+        renameInput.disabled = project.archived;
+        const renameButton = document.createElement('button');
+        renameButton.type = 'button';
+        renameButton.textContent = 'Rename task';
+        renameButton.disabled = project.archived;
+        renameButton.addEventListener('click', async () => {
+          alertBox.hidden = true;
+          const newTitle = renameInput.value.trim();
+          if (!newTitle) {
+            alertBox.textContent = 'Task title is required';
+            alertBox.hidden = false;
+            return;
+          }
+          const renamed = await fetch(`/api/tasks/${task.id}/rename`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle })
+          });
+          if (renamed.ok) await loadTasks();
+        });
+        row.append(renameInput, renameButton);
         list.append(row);
       }
     }
