@@ -241,7 +241,11 @@ async function showProject(id) {
 
 async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list) {
   const project = await request(`/api/projects/${encodeURIComponent(projectId)}`);
-  const tasks = await request(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
+  const [tasks, projects] = await Promise.all([
+    request(`/api/projects/${encodeURIComponent(projectId)}/tasks`),
+    request('/api/projects'),
+  ]);
+  const destinations = projects.filter((item) => !item.archived && item.id !== Number(projectId));
   list.replaceChildren();
   for (const task of tasks) {
     if (taskFilter === 'Open' && task.completed || taskFilter === 'Completed' && !task.completed) continue;
@@ -346,6 +350,32 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
       }
     });
     row.append(dueDateForm, dueDateAlert);
+
+    const moveForm = element('form', { class: 'task-move-form' });
+    const destinationId = `task-destination-${task.id}`;
+    const destinationLabel = element('label', { for: destinationId }, 'Destination project');
+    const destination = element('select', { id: destinationId });
+    for (const candidate of destinations) {
+      const option = element('option', { value: String(candidate.id) }, candidate.name);
+      destination.append(option);
+    }
+    const moveButton = element('button', { type: 'submit' }, 'Move task');
+    destination.disabled = project.archived || destinations.length === 0;
+    moveButton.disabled = project.archived || destinations.length === 0;
+    moveForm.append(destinationLabel, destination, moveButton);
+    moveForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/${task.id}/move`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+        });
+        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, list);
+      } catch (error) {
+        console.error(error);
+      }
+    });
+    row.append(moveForm);
     list.append(row);
   }
 }
