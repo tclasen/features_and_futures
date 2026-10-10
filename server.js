@@ -19,13 +19,19 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   );
 `);
 // Older databases from Task 001/002 have no archive column.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+// Add the Task 006 field to databases created by earlier checkpoints.
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -98,7 +104,7 @@ const server = createServer(async (request, response) => {
     const projectExists = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
     if (!projectExists) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
         .map((task) => ({ ...task, completed: Boolean(task.completed) }));
       return sendJson(response, 200, tasks);
     }
@@ -112,6 +118,7 @@ const server = createServer(async (request, response) => {
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  const taskPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority$/);
   const taskNameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/title$/);
   if (taskNameMatch && request.method === 'PATCH') {
     const projectId = Number(taskNameMatch[1]);
@@ -125,6 +132,18 @@ const server = createServer(async (request, response) => {
     const result = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
     if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
     return sendJson(response, 200, { id: taskId, projectId, title });
+  }
+  if (taskPriorityMatch && request.method === 'PATCH') {
+    const projectId = Number(taskPriorityMatch[1]);
+    const taskId = Number(taskPriorityMatch[2]);
+    const body = await readJson(request);
+    if (!['Low', 'Normal', 'High'].includes(body?.priority)) return sendJson(response, 400, { error: 'Task priority is invalid' });
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+    const result = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(body.priority, taskId, projectId);
+    if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+    return sendJson(response, 200, { id: taskId, projectId, priority: body.priority });
   }
   if (taskMatch && request.method === 'PATCH') {
     const projectId = Number(taskMatch[1]);

@@ -167,6 +167,26 @@ async function renderProject(id) {
           }
         });
         row.append(renameForm);
+        const priority = element('select', undefined, { 'aria-label': 'Task priority' });
+        for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', value, { value }));
+        priority.value = task.priority;
+        priority.disabled = project.archived;
+        priority.addEventListener('change', async () => {
+          const previous = task.priority;
+          priority.disabled = true;
+          try {
+            await request(`/api/projects/${id}/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+            task.priority = priority.value;
+            alert.hidden = true;
+          } catch (error) {
+            priority.value = previous;
+            alert.textContent = error.message;
+            alert.hidden = false;
+          } finally {
+            priority.disabled = project.archived;
+          }
+        });
+        row.append(priority);
         const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = task.completed;
         checkbox.disabled = project.archived;
