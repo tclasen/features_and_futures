@@ -177,6 +177,41 @@ const server = createServer(async (request, response) => {
   }
 
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveMatch && request.method === 'POST') {
+    try {
+      const sourceId = Number(moveMatch[1]);
+      const taskId = Number(moveMatch[2]);
+      const body = await readJson(request);
+      const destinationId = Number(body?.destinationProjectId);
+      const source = database.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+      const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+      const task = database.prepare('SELECT title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+      if (!source || !destination || !task) {
+        sendJson(response, 404, { error: 'Project or task not found' });
+        return;
+      }
+      if (source.archived || destination.archived || sourceId === destinationId) {
+        sendJson(response, 400, { error: 'Tasks can only move between different active projects' });
+        return;
+      }
+      database.exec('BEGIN');
+      try {
+        database.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES (?, ?, ?, ?, ?)')
+          .run(destinationId, task.title, task.completed, task.priority, task.due_date);
+        database.prepare('DELETE FROM tasks WHERE id = ? AND project_id = ?').run(taskId, sourceId);
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+      sendJson(response, 200, { moved: true, destinationProjectId: destinationId });
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+
   if (taskMatch && request.method === 'PATCH') {
     try {
       const projectId = Number(taskMatch[1]);

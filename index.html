@@ -281,6 +281,8 @@
           renameAlert.hidden = true;
         });
 
+        const allProjects = await loadProjects();
+        const destinations = allProjects.filter((item) => !item.archived && item.id !== project.id);
         let tasks = await loadTasks(project.id);
         function renderTasks() {
           list.replaceChildren();
@@ -293,8 +295,11 @@
                 && (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
                 && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through)),
           );
-          for (const task of matching) appendTask(list, task, project.id, project.archived, (updated) => {
+          for (const task of matching) appendTask(list, task, project.id, project.archived, destinations, (updated) => {
             tasks = tasks.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
+            renderTasks();
+          }, () => {
+            tasks = tasks.filter((item) => item.id !== task.id);
             renderTasks();
           });
         }
@@ -351,7 +356,7 @@
         return response.json();
       }
 
-      function appendTask(list, task, projectId, archived, onUpdate) {
+      function appendTask(list, task, projectId, archived, destinations, onUpdate, onMove) {
         const row = element('li', undefined, 'task-row');
         row.dataset.testid = 'task-row';
         const label = document.createElement('label');
@@ -464,6 +469,29 @@
           onUpdate({ ...task, dueDate: result.dueDate });
         });
         row.append(dueDateForm, dueDateAlert);
+        const destinationLabel = element('label', 'Destination project');
+        const destination = document.createElement('select');
+        for (const project of destinations) {
+          const option = element('option', project.name);
+          option.value = project.id;
+          destination.append(option);
+        }
+        const moveButton = element('button', 'Move task');
+        moveButton.type = 'button';
+        destination.disabled = archived || destinations.length === 0;
+        moveButton.disabled = archived || destinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          moveButton.disabled = true;
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}/move`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+          });
+          if (response.ok) {
+            onMove();
+          } else moveButton.disabled = archived || destinations.length === 0;
+        });
+        destinationLabel.append(destination);
+        row.append(destinationLabel, moveButton);
         list.append(row);
       }
 
