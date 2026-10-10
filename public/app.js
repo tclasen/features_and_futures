@@ -275,6 +275,8 @@ async function render() {
           renameInput.value = title;
           row.querySelector('span').textContent = title;
           checkbox.setAttribute('aria-label', `Complete ${title}`);
+          // Rebuild from the saved task list so an updated title immediately
+          // enters or leaves the currently applied search result set.
           await loadTasks();
         });
         row.append(renameForm, renameAlert);
