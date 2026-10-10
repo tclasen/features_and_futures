@@ -18,6 +18,11 @@
     [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
     .alert { margin: 0 0 12px; color: #a31f2b; }
     .back { margin-bottom: 24px; background: #465367; }
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .task-row input { flex: 0 0 auto; width: 18px; height: 18px; }
+    .task-row.completed span { color: #687385; text-decoration: line-through; }
+    .filters { margin: 20px 0 12px; display: flex; align-items: center; gap: 10px; }
+    select { padding: 9px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; background: white; }
     @media (max-width: 480px) { form { flex-direction: column; } }
   </style>
 </head>
@@ -63,8 +68,51 @@
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (!response.ok) { history.replaceState({}, '', '/'); return showList(); }
       const project = await response.json();
-      app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>`;
-      app.querySelector('button').addEventListener('click', () => navigate('/'));
+      app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>
+        <p id="task-alert" class="alert" role="alert" hidden></p>
+        <form id="task-form"><input id="task-title" aria-label="Task title" placeholder="Task title"><button type="submit">Create task</button></form>
+        <div class="filters"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
+        <section class="rows" id="task-list" aria-label="Tasks"></section>`;
+      app.querySelector('.back').addEventListener('click', () => navigate('/'));
+      const list = app.querySelector('#task-list');
+      const filter = app.querySelector('#task-filter');
+      const alert = app.querySelector('#task-alert');
+      async function renderTasks() {
+        const tasksResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+        const tasks = await tasksResponse.json();
+        list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed) continue;
+          if (filter.value === 'Completed' && !task.completed) continue;
+          const row = document.createElement('div');
+          row.className = `task-row${task.completed ? ' completed' : ''}`;
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            renderTasks();
+          });
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          row.append(checkbox, title);
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', renderTasks);
+      app.querySelector('#task-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = app.querySelector('#task-title').value.trim();
+        if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+        const created = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
+        alert.hidden = true;
+        app.querySelector('#task-title').value = '';
+        await renderTasks();
+      });
+      await renderTasks();
     }
 
     function navigate(path) {
