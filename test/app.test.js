@@ -78,7 +78,14 @@ test('projects validate, escape, navigate, and persist across process restarts',
     const paths = [...html.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]);
     assert.equal(paths.length, 2);
     assert.ok(html.indexOf('Alpha') < html.indexOf('Beta'));
+    await fetch(server.url + paths[0] + '/tasks', {
+      method: 'POST', body: new URLSearchParams({ title: 'Persisted task' }),
+    });
+    await fetch(server.url + paths[0] + '/tasks/1', {
+      method: 'POST', body: new URLSearchParams({ completed: '1' }),
+    });
     const detail = await (await get(paths[0])).text();
+    assert.match(detail, /aria-label="Complete Persisted task" checked/);
     assert.match(detail, /<h1>Alpha<\/h1>/);
     assert.match(detail, /action="\/" method="get"><button type="submit">Projects/);
     assert.equal((await get('/projects/999999')).status, 404);
