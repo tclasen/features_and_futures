@@ -25,20 +25,24 @@ try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL D
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
+const addTaskWithPriority = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 
 function send(response, status, body, contentType = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
@@ -224,6 +228,22 @@ function page() {
         });
         if (result.ok) { renameInput.value = name; app.querySelector('h1').textContent = name; }
       });
+      const defaultPriorityLabel = element('label', 'Default task priority');
+      defaultPriorityLabel.htmlFor = 'default-task-priority';
+      const defaultPriority = document.createElement('select');
+      defaultPriority.id = 'default-task-priority';
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', value); option.value = value; defaultPriority.append(option);
+      }
+      defaultPriority.value = project.default_task_priority || 'Normal';
+      defaultPriority.disabled = Boolean(project.archived);
+      defaultPriority.addEventListener('change', async () => {
+        await fetch('/api/projects/' + encodeURIComponent(id) + '/default-priority', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority: defaultPriority.value })
+        });
+      });
+      app.append(defaultPriorityLabel, defaultPriority);
       const form = document.createElement('form');
       const field = element('div', undefined, 'field');
       const label = element('label', 'Task title');
@@ -367,7 +387,7 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return send(response, 400, JSON.stringify({ error: 'Task title is required' }));
-      const result = addTask.run(projectId, title);
+      const result = addTaskWithPriority.run(projectId, title, project.default_task_priority || 'Normal');
       return send(response, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
     }
   }
@@ -378,6 +398,17 @@ const server = createServer(async (request, response) => {
     if (typeof body?.archived !== 'boolean') return send(response, 400, JSON.stringify({ error: 'Archive state is required' }));
     const result = setProjectArchived.run(body.archived ? 1 : 0, projectId);
     return result.changes ? send(response, 200, JSON.stringify({ status: 'ok' })) : send(response, 404, JSON.stringify({ error: 'Project not found' }));
+  }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority$/);
+  if (request.method === 'PATCH' && defaultPriorityMatch) {
+    const projectId = Number(defaultPriorityMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+    if (project.archived) return send(response, 409, JSON.stringify({ error: 'Archived project' }));
+    const body = await readJson(request);
+    if (!['Low', 'Normal', 'High'].includes(body?.priority)) return send(response, 400, JSON.stringify({ error: 'Valid priority is required' }));
+    updateProjectDefaultPriority.run(body.priority, projectId);
+    return send(response, 200, JSON.stringify({ status: 'ok' }));
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (request.method === 'PATCH' && taskMatch) {
