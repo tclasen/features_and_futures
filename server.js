@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+  due_date TEXT
 )`);
 for (const migration of [
   'ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))',
@@ -31,7 +32,20 @@ for (const migration of [
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 const html = await readFile(path.join(root, 'public', 'index.html'));
+
+function validDate(value) {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -47,7 +61,7 @@ const server = http.createServer((request, response) => {
   if (taskRoute && request.method === 'GET') {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (taskRoute && request.method === 'POST') {
     let body = '';
@@ -63,6 +77,22 @@ const server = http.createServer((request, response) => {
         if (project.archived) return sendJson(response, 409, { error: 'Project is archived' });
         const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
         return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
+  const dueDateRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
+  if (dueDateRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const raw = JSON.parse(body).dueDate;
+        const dueDate = String(raw ?? '').trim();
+        if (dueDate && !validDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(dueDate || null, Number(dueDateRoute[1]));
+        return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active task not found' });
       } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
     });
     return;
