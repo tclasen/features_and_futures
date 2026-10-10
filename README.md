@@ -23,6 +23,14 @@ and can show Open or Completed tasks. Each project owns its tasks, which appear
 in creation order. Task titles and completion states persist across restarts.
 Existing project databases are extended automatically when the server starts.
 
+The Project filter starts at Active and can show Archived projects. Archive a
+project from its row, or restore it from the Archived list. Archived projects
+remain accessible with task filtering, but task creation and completion changes
+are disabled. The server also rejects these changes for archived projects.
+Restoring preserves all tasks and completion states. Every project row shows
+the completed/total task count, including all tasks regardless of filtering.
+Archive state persists in SQLite; existing databases migrate automatically.
+
 Run integration tests:
 
 ```sh
@@ -31,4 +39,5 @@ npm test
 
 Tests use a temporary database outside the repository and check validation,
 creation order, the health endpoint, detail routes, project isolation, completion
-validation, and restart persistence for both projects and tasks.
+validation, archive/restore protections, completion summaries, migration from
+existing databases, and restart persistence for projects and tasks.
