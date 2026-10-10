@@ -75,6 +75,8 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
       ${dueFields}`;
+  // HTML discards the first newline after <textarea>; the extra newline below
+  // ensures that a leading newline in saved notes remains part of the value.
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -171,6 +173,13 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
               <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
               <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
             </div>
+          </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/notes" class="task-notes">
+            ${filterFields}
+            <label for="task-notes-${task.id}">Task notes</label>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
           </form>
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/move" class="task-move">
             ${filterFields}

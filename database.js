@@ -22,6 +22,7 @@ export function openWorkboard(databasePath) {
       completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
       priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
       due_date TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
       sort_position INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
@@ -37,6 +38,9 @@ export function openWorkboard(databasePath) {
   }
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
   }
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'sort_position')) {
     // Preserve the previous ID order when upgrading existing tasks.
@@ -82,7 +86,7 @@ export function openWorkboard(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_position, id');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY sort_position, id');
   const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, sort_position)
     VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))`);
   const rememberCreatedTask = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
@@ -106,6 +110,8 @@ export function openWorkboard(databasePath) {
   const updatePriority = database.prepare(`UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
   const updateDueDate = database.prepare(`UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
+  const updateNotes = database.prepare(`UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
 
   return {
@@ -146,7 +152,7 @@ export function openWorkboard(databasePath) {
           rememberCreatedTask.run(created.lastInsertRowid);
           return created;
         });
-        return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority, due_date: '' };
+        return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority, due_date: '', notes: '' };
       },
       setCompleted(projectId, taskId, completed) {
         return updateTask.run(completed ? 1 : 0, projectId, taskId).changes > 0;
@@ -164,6 +170,10 @@ export function openWorkboard(databasePath) {
         const date = normalizeDueDate(value);
         if (date === null) return false;
         return updateDueDate.run(date, projectId, taskId).changes > 0;
+      },
+      setNotes(projectId, taskId, notes) {
+        if (typeof notes !== 'string') return false;
+        return updateNotes.run(notes, projectId, taskId).changes > 0;
       },
       move(projectId, taskId, destinationId) {
         if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return false;

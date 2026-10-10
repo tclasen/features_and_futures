@@ -42,7 +42,7 @@ test('return positions survive reverse returns, new arrivals, edits, archive and
     assert.equal(store.tasks.move(second, a, first), true);
     assert.deepEqual(ids(first), [a, b, c, e, d]);
     assert.deepEqual({ ...store.tasks.list(first)[0] }, {
-      id: a, title: 'Current A', completed: 1, priority: 'high', due_date: '2024-02-29',
+      id: a, title: 'Current A', completed: 1, priority: 'high', due_date: '2024-02-29', notes: '',
     });
     assert.deepEqual(store.list().map((project) => [project.completed_count, project.total_count]),
       [[1, 5], [0, 0], [0, 0]]);

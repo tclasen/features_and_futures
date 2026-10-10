@@ -347,7 +347,7 @@ test('archive migration preserves existing task IDs and completion state', async
     `);
     database.close();
     store = openWorkboard(databasePath);
-    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'normal', due_date: '' });
+    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'normal', due_date: '', notes: '' });
     assert.equal(store.list()[0].completed_count, 1);
     assert.equal(store.list()[0].total_count, 1);
     assert.equal(store.tasks.setPriority(7, 12, 'high'), true);
@@ -553,7 +553,7 @@ test('task rename storage rejects invalid titles, wrong ownership and archived p
     store.setArchived(project.id, false);
     assert.equal(store.tasks.rename(project.id, task.id, '  Renamed  '), true);
     assert.deepEqual({ ...store.tasks.list(project.id)[0] }, {
-      id: task.id, title: 'Renamed', completed: 1, priority: 'normal', due_date: '',
+      id: task.id, title: 'Renamed', completed: 1, priority: 'normal', due_date: '', notes: '',
     });
   } finally {
     store.close();
@@ -879,7 +879,7 @@ test('project defaults migrate without altering existing priorities or project d
     database.close();
     store = openWorkboard(databasePath);
     assert.deepEqual({ ...store.find(7) }, { id: 7, name: 'Existing', archived: 1, default_task_priority: 'normal' });
-    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'high', due_date: '' });
+    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1, priority: 'high', due_date: '', notes: '' });
     store.setArchived(7, false);
     assert.equal(store.tasks.create(7, 'Next').priority, 'normal');
     store.setDefaultPriority(7, 'low');
@@ -1000,7 +1000,7 @@ test('due dates migrate existing tasks without changing their identities or stat
     database.close();
     store = openWorkboard(databasePath);
     assert.deepEqual({ ...store.tasks.list(7)[0] }, {
-      id: 12, title: 'Existing task', completed: 1, priority: 'high', due_date: '',
+      id: 12, title: 'Existing task', completed: 1, priority: 'high', due_date: '', notes: '',
     });
     assert.equal(store.find(7).default_task_priority, 'low');
     store.setArchived(7, false);
@@ -1561,6 +1561,77 @@ test('search forms intersect filters and preserve applied queries through edits,
     assert.match(await get('/'), /id="project-search"[^>]*value=""/);
     const escaped = await get('/projects/1?query=%22%3E%3Cscript%3E%26');
     assert.match(escaped, /id="task-search"[^>]*value="&quot;&gt;&lt;script&gt;&amp;"/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('notes render as plain text, retain combined filters, travel with tasks and survive restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Source' });
+    await post('/projects', { name: 'Destination' });
+    await post('/projects/1/tasks', { title: 'Matching title' });
+    await post('/projects/1/tasks', { title: 'Other title' });
+    await post('/projects/1/tasks/1/priority', { priority: 'high' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    const state = { filter: 'open', priorityFilter: 'high', dueFrom: '2024-02-01', dueThrough: '2024-03-01', query: 'matching' };
+    const path = `/projects/1?${new URLSearchParams(state)}`;
+    const notes = '\n  café 日本語 😀\n</textarea><script>alert("x")</script> & literal markup\n  ';
+    const escaped = '\n  café 日本語 😀\n&lt;/textarea&gt;&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; literal markup\n  ';
+    const action = '/projects/1/tasks/1/notes';
+    let page = await get(path);
+    assert.match(page, /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(page, /<textarea id="task-notes-1" name="notes" rows="4">\n<\/textarea>/);
+    const form = [...page.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)]
+      .find((match) => match[1] === action)[2];
+    const fields = Object.fromEntries([...form.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)]
+      .map((match) => [match[1], match[2]]));
+    assert.deepEqual(fields, state);
+    const result = await post(action, { ...fields, notes });
+    assert.equal(result.status, 303);
+    assert.deepEqual(Object.fromEntries(new URL(result.headers.get('location'), server.baseUrl).searchParams), state);
+    page = await get(result.headers.get('location'));
+    assert.ok(page.includes(`name="notes" rows="4">\n${escaped}</textarea>`));
+    assert.equal((page.match(/data-testid="task-row"/g) ?? []).length, 1);
+    // Notes never add title or project-name search matches.
+    assert.doesNotMatch(await get('/projects/1?query=caf%C3%A9'), /data-testid="task-row"/);
+    assert.doesNotMatch(await get('/?query=caf%C3%A9'), /data-testid="project-row"/);
+    assert.equal((await post('/projects/2/tasks/1/notes', { notes: 'Wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/notes', { notes: 'Missing' })).status, 404);
+    await post('/projects/1/tasks/1/rename', { ...state, title: 'Matching renamed' });
+    await post('/projects/1/tasks/1/completion', { ...state, completed: 'true' });
+    assert.doesNotMatch(await get(path), /data-testid="task-row"/);
+    await post('/projects/1/tasks/1/move', { ...state, destinationId: '2' });
+    assert.ok((await get('/projects/2')).includes(escaped));
+    await post('/projects/2/tasks/1/move', { destinationId: '1' });
+    page = await get('/projects/1');
+    assert.ok(page.indexOf('<span>Matching renamed</span>') < page.indexOf('<span>Other title</span>'));
+    assert.ok(page.includes(escaped));
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await post('/projects/1/archive');
+    page = await get('/projects/1');
+    assert.ok(page.includes(`name="notes" rows="4" disabled>\n${escaped}</textarea>`));
+    assert.match(page, /<button type="submit" disabled>Save notes<\/button>/);
+    assert.equal((await post(action, { notes: 'Blocked' })).status, 409);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/1'), page);
+    await post('/projects/1/restore');
+    page = await get('/projects/1');
+    assert.ok(page.includes(`name="notes" rows="4">\n${escaped}</textarea>`));
+    await post(action, { notes: ' \t\n ' });
+    assert.ok((await get('/projects/1')).includes('name="notes" rows="4">\n \t\n </textarea>'));
+    await post(action, { notes: '' });
+    assert.match(await get('/projects/1'), /<textarea id="task-notes-1" name="notes" rows="4">\n<\/textarea>/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
