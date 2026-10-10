@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 720px; margin: 4rem auto; padding: 0 1.25rem; }
+    h1 { margin: 0 0 1.5rem; font-size: 2rem; }
+    form, .project-row { display: flex; gap: .75rem; align-items: end; }
+    form { margin-bottom: 1.5rem; }
+    label { display: grid; gap: .35rem; flex: 1; font-weight: 600; }
+    input, button { font: inherit; padding: .6rem .8rem; border-radius: .4rem; }
+    input { border: 1px solid #aab4c0; min-width: 0; }
+    button { border: 0; color: white; background: #2457c5; cursor: pointer; }
+    button:hover { background: #1946a8; }
+    .project-row { justify-content: space-between; align-items: center; background: white; border: 1px solid #d9e0e8; border-radius: .5rem; padding: .8rem 1rem; margin: .6rem 0; }
+    .alert { color: #a32323; margin: .5rem 0; }
+    .back { margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    function button(label, onClick, className = '') {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.textContent = label;
+      element.className = className;
+      element.addEventListener('click', onClick);
+      return element;
+    }
+
+    async function showProjects() {
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Workboard';
+      app.append(heading);
+
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.textContent = 'Project name';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = 'name';
+      label.append(input);
+      const create = document.createElement('button');
+      create.textContent = 'Create project';
+      form.append(label, create);
+      const alert = document.createElement('p');
+      alert.className = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+          alert.textContent = 'Project name is required';
+          alert.hidden = false;
+          return;
+        }
+        const response = await fetch('/api/projects', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (response.ok) showProjects();
+      });
+      app.append(form, alert);
+
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      for (const project of projects) {
+        const row = document.createElement('section');
+        row.dataset.testid = 'project-row';
+        row.className = 'project-row';
+        const name = document.createElement('span');
+        name.textContent = project.name;
+        row.append(name, button('Open project', () => { window.location.href = `/projects/${encodeURIComponent(project.id)}`; }));
+        app.append(row);
+      }
+    }
+
+    async function showProject(id) {
+      app.replaceChildren();
+      app.append(button('Projects', () => { window.location.href = '/'; }, 'back'));
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      const project = projects.find((item) => item.id === id);
+      const heading = document.createElement('h1');
+      heading.textContent = project ? project.name : 'Project not found';
+      app.append(heading);
+    }
+
+    const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+    if (match) showProject(decodeURIComponent(match[1]));
+    else showProjects();
+  </script>
+</body>
+</html>
