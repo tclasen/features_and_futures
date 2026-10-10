@@ -120,21 +120,22 @@ function page() {
         const response = await fetch('/api/projects', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
         });
-        if (response.ok) { input.value = ''; await loadRows(rows, filter.value); }
+        if (response.ok) { input.value = ''; await loadRows(rows, filter); }
       });
-      filter.addEventListener('change', () => loadRows(rows, filter.value));
-      await loadRows(rows, filter.value);
+      filter.addEventListener('change', () => loadRows(rows, filter));
+      await loadRows(rows, filter);
     }
 
     const projectRowElements = new WeakMap();
     const projectRowRequests = new WeakMap();
 
-    async function loadRows(rows, filter = 'Active') {
+    async function loadRows(rows, filterSelect) {
+      const filter = filterSelect.value;
       const requestId = (projectRowRequests.get(rows) || 0) + 1;
       projectRowRequests.set(rows, requestId);
       const response = await fetch('/api/projects?filter=' + filter.toLowerCase());
       const projects = await response.json();
-      if (projectRowRequests.get(rows) !== requestId) return;
+      if (projectRowRequests.get(rows) !== requestId || filterSelect.value !== filter) return;
       let rowElements = projectRowElements.get(rows);
       if (!rowElements) {
         rowElements = new Map();
@@ -177,7 +178,7 @@ function page() {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ archived: filter !== 'Archived' })
           });
-          await loadRows(rows, filter);
+          await loadRows(rows, filterSelect);
         };
         if (isNew) rows.append(row);
       }
