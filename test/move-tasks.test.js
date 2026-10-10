@@ -89,7 +89,7 @@ test('task moves append, preserve data and filters, reject archived projects, an
     await start();
     assert.deepEqual(saved(1), moved);
     assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'First', 'New after move']);
-    // Move an undated task and move the original back: each appends to its destination.
+    // Move an undated task and return the original to its remembered position.
     await post('/projects/1/tasks/2/move', { destination: '2' });
     assert.equal(saved(2).due_date, '');
     await post('/projects/2/tasks/1/move', { destination: '1' });
@@ -123,7 +123,7 @@ test('task moves append, preserve data and filters, reject archived projects, an
     html = await get('/projects/1');
     assert.match(html, /id="destination-project-1" name="destination">/);
     assert.equal((await post('/projects/1/tasks/1/move', { destination: '2' })).status, 303);
-    assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'New after move', 'First']);
+    assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'First', 'New after move']);
     // A stale source URL must not move a task now owned by another project.
     assert.equal((await post('/projects/1/tasks/1/move', { destination: '2' })).status, 404);
   } finally {
