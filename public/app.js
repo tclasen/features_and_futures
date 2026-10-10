@@ -110,7 +110,34 @@ async function loadTasks() {
       await loadTasks();
     });
     label.append(checkbox);
-    row.append(title, label);
+    const renameForm = document.createElement('form');
+    renameForm.className = 'task-rename-form';
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.disabled = activeProjectArchived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = activeProjectArchived;
+    renameForm.append(renameInput, renameButton);
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      error.hidden = true;
+      const update = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/title`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: renameInput.value })
+      });
+      const result = await update.json();
+      if (!update.ok) {
+        showError(result.error || 'Unable to rename task');
+        return;
+      }
+      await loadTasks();
+    });
+    row.append(title, label, renameForm);
     taskContainer.append(row);
   }
 }

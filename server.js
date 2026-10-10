@@ -41,6 +41,7 @@ const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE proje
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
 const updateTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
+const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 
 async function readJson(request) {
   return new Promise((resolve, reject) => {
@@ -141,6 +142,18 @@ const server = createServer(async (request, response) => {
     if (getProject.get(task.project_id).archived) return sendJson(response, 409, { error: 'Archived project' });
     updateTaskCompletion.run(body.completed ? 1 : 0, task.id);
     return sendJson(response, 200, { ...task, completed: body.completed ? 1 : 0 });
+  }
+  const taskTitleMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/title\/?$/);
+  if (request.method === 'PATCH' && taskTitleMatch) {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    const title = typeof body?.title === 'string' ? body.title.trim() : '';
+    if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+    const task = getTask.get(decodeURIComponent(taskTitleMatch[1]));
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (getProject.get(task.project_id).archived) return sendJson(response, 409, { error: 'Archived project' });
+    updateTaskTitle.run(title, task.id);
+    return sendJson(response, 200, { ...task, title });
   }
   if (request.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
     const project = getProject.get(decodeURIComponent(url.pathname.slice('/api/projects/'.length)));
