@@ -134,6 +134,7 @@ async function renderTasks() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ priority: priority.value })
         });
+        await renderTasks();
       } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
     });
     row.append(title, checkbox, renameInput, renameButton, priority);
