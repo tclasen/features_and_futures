@@ -32,6 +32,8 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const css = readFileSync(new URL('./public/style.css', import.meta.url));
 
 function escapeHtml(value) {
@@ -93,6 +95,12 @@ function projectPage(project, filter = 'All', error = '') {
         <label class="task-label"><input type="checkbox" name="completed" value="1"
           aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}
           onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+      </form>
+      <form action="${path}/tasks/${task.id}/rename" method="post" class="task-rename-form">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-task-title-${task.id}">New task title</label>
+        <div class="input-line"><input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
       </form>
     </li>`).join('');
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -196,7 +204,7 @@ const server = http.createServer(async (request, response) => {
         return sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
       }
     }
-    const taskRoute = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/completion)?$/);
+    const taskRoute = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/);
     if (request.method === 'POST' && taskRoute) {
       const projectId = Number(taskRoute[1]);
       const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : null;
@@ -208,8 +216,15 @@ const server = http.createServer(async (request, response) => {
         const filter = taskFilter(form.get('filter'));
         if (taskRoute[2]) {
           const taskId = Number(taskRoute[2]);
-          if (!Number.isSafeInteger(taskId) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId).changes) {
+          if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, projectId)) {
             return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
+          }
+          if (taskRoute[3] === 'rename') {
+            const title = (form.get('title') || '').trim();
+            if (!title) return sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
+            renameTask.run(title, taskId, projectId);
+          } else {
+            updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId);
           }
         } else {
           const title = (form.get('title') || '').trim();
