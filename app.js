@@ -9,6 +9,8 @@ const taskForm = document.querySelector('#create-task-form');
 const taskInput = document.querySelector('#task-title');
 const taskError = document.querySelector('#task-error');
 const taskFilter = document.querySelector('#task-filter');
+const projectFilter = document.querySelector('#project-filter');
+const createTaskButton = taskForm.querySelector('button[type="submit"]');
 let activeProject = null;
 let tasks = [];
 
@@ -31,6 +33,8 @@ function showProject(project) {
   listView.hidden = true;
   detailView.hidden = false;
   document.querySelector('#project-title').textContent = project.name;
+  document.querySelector('#archived-notice').hidden = !project.archived;
+  createTaskButton.disabled = Boolean(project.archived);
   document.title = `${project.name} · Workboard`;
   taskFilter.value = 'All';
   refreshTasks();
@@ -52,6 +56,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(task.completed);
+    checkbox.disabled = Boolean(activeProject.archived);
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       try {
@@ -86,7 +91,8 @@ async function refreshTasks() {
 
 function renderProjects(projects) {
   projectContainer.replaceChildren();
-  for (const project of projects) {
+  const archivedView = projectFilter.value === 'Archived';
+  for (const project of projects.filter((item) => Boolean(item.archived) === archivedView)) {
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -97,9 +103,23 @@ function renderProjects(projects) {
     open.textContent = 'Open project';
     open.addEventListener('click', () => {
       history.pushState({}, '', `/projects/${project.id}`);
-      showProject(project);
+      showProject({ ...project, archived: Boolean(project.archived) });
     });
-    row.append(name, open);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+    row.append(name, summary, open);
+    const archive = document.createElement('button');
+    archive.type = 'button';
+    archive.textContent = archivedView ? 'Restore project' : 'Archive project';
+    archive.addEventListener('click', async () => {
+      await request(`/api/projects/${project.id}/archive`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: !archivedView })
+      });
+      await refreshProjects();
+    });
+    row.append(archive);
     projectContainer.append(row);
   }
 }
@@ -124,7 +144,7 @@ async function renderRoute() {
       await refreshProjects();
       return;
     }
-    showProject(project);
+    showProject({ ...project, archived: Boolean(project.archived) });
   } catch {
     showList();
   }
@@ -164,6 +184,7 @@ taskForm.addEventListener('submit', async (event) => {
 });
 
 taskFilter.addEventListener('change', renderTasks);
+projectFilter.addEventListener('change', refreshProjects);
 
 document.querySelector('#back-to-projects').addEventListener('click', () => {
   history.pushState({}, '', '/');
