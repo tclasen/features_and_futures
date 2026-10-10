@@ -191,7 +191,7 @@ test('projects and tasks validate, isolate, archive, rename, summarize, and pers
     assert.equal((await post('/projects/99999/rename', { name: 'Missing' })).status, 404);
     const renamedResponse = await post(`${projectPath}/rename`, { name: '  Renamed <project> & team  ', filter: 'Completed' });
     assert.equal(renamedResponse.status, 303);
-    assert.equal(renamedResponse.headers.get('location'), `${projectPath}?filter=Completed`);
+    assert.equal(renamedResponse.headers.get('location'), `${projectPath}?filter=Completed&priorityFilter=All`);
     const renamedPage = await (await fetch(base + projectPath)).text();
     assert.match(renamedPage, /<h1>Renamed &lt;project&gt; &amp; team<\/h1>/);
     assert.equal((renamedPage.match(/data-testid="task-row"/g) || []).length, 2);
@@ -241,7 +241,7 @@ test('projects and tasks validate, isolate, archive, rename, summarize, and pers
     assert.equal((await post(`${tasksPath}/99999/rename`, { title: 'Missing' })).status, 404);
     const taskRename = await post(renamePath, { title: '  Renamed <task> & title  ', filter: 'Completed' });
     assert.equal(taskRename.status, 303);
-    assert.equal(taskRename.headers.get('location'), `${projectPath}?filter=Completed`);
+    assert.equal(taskRename.headers.get('location'), `${projectPath}?filter=Completed&priorityFilter=All`);
     const renamedTasks = await (await fetch(base + projectPath)).text();
     assert.match(renamedTasks, /<span>Renamed &lt;task&gt; &amp; title<\/span>/);
     assert.match(renamedTasks, /aria-label="Complete Renamed &lt;task&gt; &amp; title" checked/);
@@ -291,7 +291,7 @@ test('projects and tasks validate, isolate, archive, rename, summarize, and pers
     assert.equal((await post(taskPath, { completed: '1' })).status, 303);
     const priorityChange = await post(priorityPath, { priority: 'High', filter: 'Completed' });
     assert.equal(priorityChange.status, 303);
-    assert.equal(priorityChange.headers.get('location'), `${projectPath}?filter=Completed`);
+    assert.equal(priorityChange.headers.get('location'), `${projectPath}?filter=Completed&priorityFilter=All`);
     const highPage = await (await fetch(base + projectPath)).text();
     assert.match(rows(highPage)[0], /<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
     assert.match(rows(highPage)[0], /aria-label="Complete Restored task" checked/);
@@ -321,6 +321,50 @@ test('projects and tasks validate, isolate, archive, rename, summarize, and pers
     await stop();
     await start();
     assert.equal(await (await fetch(base + projectPath)).text(), lowPage);
+
+    // Combined filters retain selections through edits, errors and archived viewing.
+    const filtered = (filter, priorityFilter) => fetch(`${base}${projectPath}?${new URLSearchParams({ filter, priorityFilter })}`).then(response => response.text());
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
+        const html = await filtered(filter, priorityFilter);
+        const firstMatches = filter !== 'Open' && ['All', 'Low'].includes(priorityFilter);
+        const secondMatches = filter !== 'Completed' && ['All', 'Normal'].includes(priorityFilter);
+        assert.equal(rows(html).length, Number(firstMatches) + Number(secondMatches));
+        assert.equal(html.includes('Complete Priority preserved'), firstMatches);
+        assert.match(html, new RegExp(`<option selected>${filter}</option>`));
+        assert.match(html, new RegExp(`<option selected>${priorityFilter}</option>`));
+      }
+    }
+    assert.match(lowPage, /id="priority-filter"[\s\S]*?<option selected>All<\/option><option>Low<\/option><option>Normal<\/option><option>High<\/option>/);
+    const selections = { filter: 'Completed', priorityFilter: 'Low' };
+    const renamedFiltered = await post(renamePath, { ...selections, title: '  Filtered rename  ' });
+    assert.equal(renamedFiltered.headers.get('location'), `${projectPath}?filter=Completed&priorityFilter=Low`);
+    assert.match(await filtered('Completed', 'Low'), /Complete Filtered rename" checked/);
+    const invalidFiltered = await post(renamePath, { ...selections, title: '  ' });
+    const invalidHtml = await invalidFiltered.text();
+    assert.match(invalidHtml, /Task title is required/);
+    assert.match(invalidHtml, /<option selected>Completed/);
+    assert.match(invalidHtml, /<option selected>Low/);
+    const moved = await post(priorityPath, { ...selections, priority: 'High' });
+    assert.equal(rows(await (await fetch(base + moved.headers.get('location'))).text()).length, 0);
+    assert.equal(rows(await filtered('Completed', 'High')).length, 1);
+    const completedChange = await post(taskPath, { filter: 'Completed', priorityFilter: 'High' });
+    assert.equal(rows(await (await fetch(base + completedChange.headers.get('location'))).text()).length, 0);
+    assert.equal(rows(await filtered('Open', 'High')).length, 1);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
+    await post(`${projectPath}/archive`, {});
+    const archivedFiltered = await filtered('Open', 'High');
+    assert.equal(rows(archivedFiltered).length, 1);
+    assert.match(archivedFiltered, /id="task-priority-\d+"[^>]* disabled/);
+    assert.doesNotMatch(archivedFiltered, /id="(?:task-filter|priority-filter)"[^>]* disabled/);
+    await stop();
+    await start();
+    assert.equal(await filtered('Open', 'High'), archivedFiltered);
+    await post(`${projectPath}/restore`, {});
+    assert.equal(rows(await filtered('Open', 'High')).length, 1);
+    // Restore the prior values for the legacy migration checks below.
+    await post(renamePath, { title: 'Priority preserved' });
+    await post(taskPath, { completed: '1' });
 
     // Simulate a pre-priority database containing existing tasks.
     await stop();

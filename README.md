@@ -16,6 +16,8 @@ Each task row provides New task title and Rename task. Titles are trimmed and ca
 
 Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priorities persist independently across reloads and restarts, survive renames, and cannot be edited while the project is archived.
 
+Priority filter offers All, Low, Normal, and High alongside Task filter. Both filters apply together, retain their selections during task edits, and remain usable for archived projects. Summaries always count all tasks.
+
 Health: `GET /health` returns `{"status":"ok"}`.
 
 Run the isolated integration tests (including process-restart persistence):
