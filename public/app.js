@@ -193,6 +193,8 @@ async function showProject(id) {
     }
   });
   const headingElement = view.querySelector('h1');
+  const activeProjects = await request('/api/projects');
+  const destinations = activeProjects.filter((candidate) => candidate.id !== id);
   const form = document.createElement('form');
   form.className = 'task-form';
   const label = document.createElement('label');
@@ -360,7 +362,29 @@ async function showProject(id) {
           await refresh();
         } catch (error) { showTaskError(error); }
       });
-      row.append(checkbox, title, priority, renameInput, renameButton, dueDateInput, saveDueDate);
+      const destination = document.createElement('select');
+      destination.setAttribute('aria-label', 'Destination project');
+      for (const candidate of destinations) {
+        const option = document.createElement('option');
+        option.value = candidate.id;
+        option.textContent = candidate.name;
+        destination.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'button';
+      moveButton.textContent = 'Move task';
+      destination.disabled = project.archived || destinations.length === 0;
+      moveButton.disabled = project.archived || destinations.length === 0;
+      moveButton.addEventListener('click', async () => {
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}/move`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: destination.value }),
+          });
+          await refresh();
+        } catch (error) { showTaskError(error); }
+      });
+      row.append(checkbox, title, priority, renameInput, renameButton, dueDateInput, saveDueDate, destination, moveButton);
       return row;
     }));
   }

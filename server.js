@@ -57,6 +57,8 @@ const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WH
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
+const latestTaskTime = database.prepare('SELECT MAX(created_at) AS latest FROM tasks WHERE project_id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
@@ -154,6 +156,20 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 201, task);
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (moveMatch && req.method === 'POST') {
+    const source = findProject.get(moveMatch[1]);
+    if (!source) return sendJson(res, 404, { error: 'Project not found' });
+    if (source.archived) return sendJson(res, 409, { error: 'Archived project' });
+    const body = await readJson(req);
+    const destination = typeof body?.destinationProjectId === 'string' ? findProject.get(body.destinationProjectId) : null;
+    if (!destination || destination.archived || destination.id === source.id) return sendJson(res, 400, { error: 'Invalid destination project' });
+    const latest = latestTaskTime.get(destination.id).latest;
+    const appendedAt = Math.max(Date.now(), latest === null ? 0 : Number(latest) + 1);
+    const result = moveTask.run(destination.id, appendedAt, moveMatch[2], source.id);
+    if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+    return sendJson(res, 200, { id: moveMatch[2], projectId: destination.id });
+  }
   if (taskMatch && req.method === 'PATCH') {
     const project = findProject.get(taskMatch[1]);
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
