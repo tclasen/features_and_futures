@@ -33,9 +33,21 @@
     async function showList() {
       const projects = await fetch('/api/projects').then(response => response.json());
       app.innerHTML = `<h1>Workboard</h1>
+        <label for="project-filter">Project filter</label><select id="project-filter" aria-label="Project filter"><option>Active</option><option>Archived</option></select>
         <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" aria-label="Project name"><button type="submit">Create project</button></form>
         <div id="alert" role="alert" hidden></div>
-        <section class="project-list" aria-label="Projects">${projects.map(project => `<div data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-open="${project.id}">Open project</button></div>`).join('')}</section>`;
+        <section class="project-list" aria-label="Projects"></section>`;
+      const filter = app.querySelector('#project-filter'), list = app.querySelector('.project-list');
+      function renderProjects() {
+        const archived = filter.value === 'Archived';
+        list.innerHTML = projects.filter(p => Boolean(p.archived) === archived).map(project => `<div data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-state="${project.id}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
+        list.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => { history.pushState({}, '', `/projects/${button.dataset.open}`); showRoute(); }));
+        list.querySelectorAll('[data-state]').forEach(button => button.addEventListener('click', async () => {
+          await fetch(`/api/projects/${button.dataset.state}/${archived ? 'restore' : 'archive'}`, { method: 'POST' });
+          const p = projects.find(p => p.id === Number(button.dataset.state)); p.archived = archived ? 0 : 1; renderProjects();
+        }));
+      }
+      filter.addEventListener('change', renderProjects); renderProjects();
       app.querySelector('#create-form').addEventListener('submit', async event => {
         event.preventDefault();
         const name = app.querySelector('#project-name').value.trim();
@@ -59,7 +71,8 @@
       if (!response.ok) { history.replaceState({}, '', '/'); return showList(); }
       const project = await response.json();
       app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>
-        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" aria-label="Task title"><button type="submit">Create task</button></form>
+        ${project.archived ? '<p>Archived project</p>' : ''}
+        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" aria-label="Task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
         <div id="task-alert" role="alert" hidden></div>
         <label for="task-filter">Task filter</label><select id="task-filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select>
         <section class="task-list" aria-label="Tasks"></section>`;
@@ -72,7 +85,7 @@
       async function renderTasks() {
         const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(r => r.json());
         const visible = tasks.filter(task => filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed));
-        list.innerHTML = visible.map(task => `<div data-testid="task-row"><input type="checkbox" data-task="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('');
+        list.innerHTML = visible.map(task => `<div data-testid="task-row"><input type="checkbox" data-task="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('');
         list.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
           await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${box.dataset.task}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
           renderTasks();
