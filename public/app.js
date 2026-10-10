@@ -210,11 +210,23 @@ async function showProject(id) {
       renameInput.disabled = checkbox.disabled;
       renameButton.disabled = checkbox.disabled;
       renameForm.append(renameLabel, renameInput, renameButton);
+      const priorityLabel = document.createElement('label');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      priorityLabel.textContent = 'Task priority';
+      const priority = document.createElement('select');
+      priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = checkbox.disabled;
 
       async function saveTask(update) {
         if (project.archived || pendingUpdates.has(task.id)) return;
         pendingUpdates.add(task.id);
-        checkbox.disabled = renameInput.disabled = renameButton.disabled = true;
+        checkbox.disabled = renameInput.disabled = renameButton.disabled = priority.disabled = true;
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
             method: 'PATCH',
@@ -238,7 +250,8 @@ async function showProject(id) {
         if (!title) return showError('Task title is required');
         saveTask({ title });
       });
-      row.append(title, checkbox, renameForm);
+      priority.addEventListener('change', () => saveTask({ priority: priority.value }));
+      row.append(title, checkbox, renameForm, priorityLabel, priority);
       return row;
     }));
   }

@@ -16,6 +16,8 @@ Active project pages also offer New project name and Rename project. Names are t
 
 Each task row offers New task title and Rename task. Titles are trimmed and cannot be blank. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries. Task titles persist across restarts. Archived projects disable task renaming until restored.
 
+Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority changes affect only that task and persist across restarts, including after renaming, archiving, and restoring. Archived projects disable priority edits until restored.
+
 `GET /health` returns `{"status":"ok"}`.
 
-Run integration tests with `npm test`. Tests use an isolated temporary database and verify schema migration, project/task validation, rename identity and data preservation, ordering, project isolation, completion summaries, archive write protection, restoration, page serving, and persistence across process restarts.
+Run integration tests with `npm test`. Tests use an isolated temporary database and verify schema migration, project/task validation, rename identity and data preservation, ordering, project isolation, completion summaries, priority defaults and migration, independent priority edits and validation, archive write protection, restoration, page serving, and persistence across process restarts.

@@ -105,6 +105,7 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     const task = await taskResponse.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
+    assert.equal(task.priority, 'Normal');
     const nextTask = await (await createTask('Second task')).json();
     assert.notEqual(task.id, nextTask.id);
     assert.deepEqual(await tasks(), [task, nextTask]);
@@ -127,6 +128,38 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
     assert.equal((await createTask('Missing project', `${base}/api/projects/999999/tasks`)).status, 404);
     assert.equal((await complete({ id: 999999 }, true)).status, 404);
+    // Simulate the pre-priority schema with saved open and completed tasks.
+    await stop();
+    const prePriority = new DatabaseSync(join(directory, 'nested', 'projects.sqlite'));
+    prePriority.exec('ALTER TABLE tasks DROP COLUMN priority');
+    prePriority.close();
+    await start();
+    assert.deepEqual(await tasks(), [task, nextTask]);
+    assert.deepEqual(await tasks(otherTasksUrl), [otherTask]);
+    const setPriority = (task, priority, url = tasksUrl) => fetch(`${url}/${task.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+    });
+    for (const priority of ['', 'low', 'Urgent', null, 1]) {
+      assert.equal((await setPriority(task, priority)).status, 400);
+    }
+    assert.equal((await setPriority(task, 'High', otherTasksUrl)).status, 404);
+    assert.equal((await setPriority({ id: 999999 }, 'Low')).status, 404);
+    for (const update of [{ priority: 'High', title: 'Mixed' }, { priority: 'High', completed: false }]) {
+      assert.equal((await fetch(`${tasksUrl}/${task.id}`, {
+        method: 'PATCH', body: JSON.stringify(update),
+      })).status, 400);
+    }
+    assert.deepEqual(await tasks(), [task, nextTask]);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const saved = await setPriority(task, priority);
+      assert.equal(saved.status, 200);
+      task.priority = priority;
+      assert.deepEqual(await saved.json(), task);
+    }
+    assert.equal((await setPriority(nextTask, 'Low')).status, 200);
+    nextTask.priority = 'Low';
+    assert.deepEqual(await tasks(), [task, nextTask]);
+    assert.deepEqual(await tasks(otherTasksUrl), [otherTask]);
     const renameTask = (task, title, url = tasksUrl) => fetch(`${url}/${task.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
@@ -190,6 +223,7 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     assert.equal((await complete(task, false)).status, 409);
     assert.equal((await rename('Blocked rename')).status, 409);
     assert.equal((await renameTask(task, 'Blocked task rename')).status, 409);
+    assert.equal((await setPriority(task, 'Normal')).status, 409);
     assert.deepEqual(await tasks(), [task, nextTask]);
     assert.deepEqual(await list(), [first, second]);
     await stop();
@@ -203,6 +237,8 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     first.archived = 0;
     assert.deepEqual(await restored.json(), first);
     assert.deepEqual(await tasks(), [task, nextTask]);
+    assert.equal((await setPriority(task, 'Low')).status, 200);
+    task.priority = 'Low';
     const renamedAfterRestore = await rename('  Restored project name  ');
     assert.equal(renamedAfterRestore.status, 200);
     first.name = 'Restored project name';
