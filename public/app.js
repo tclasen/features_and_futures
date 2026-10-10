@@ -8,6 +8,7 @@ const taskContainer = document.querySelector('#tasks');
 const taskForm = document.querySelector('#create-task');
 const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project');
@@ -80,9 +81,11 @@ async function loadTasks() {
   if (!response.ok) throw new Error('Unable to load tasks');
   const tasks = await response.json();
   const filter = taskFilter.value;
+  const selectedPriority = priorityFilter.value;
   taskContainer.replaceChildren();
   for (const task of tasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'project-row';
@@ -131,6 +134,7 @@ async function loadTasks() {
         return;
       }
       error.hidden = true;
+      await loadTasks();
     });
     const renameForm = document.createElement('form');
     renameForm.className = 'task-rename-form';
@@ -219,6 +223,10 @@ taskForm.addEventListener('submit', async event => {
   await loadTasks();
 });
 taskFilter.addEventListener('change', () => loadTasks().catch(() => {
+  error.textContent = 'Unable to load tasks';
+  error.hidden = false;
+}));
+priorityFilter.addEventListener('change', () => loadTasks().catch(() => {
   error.textContent = 'Unable to load tasks';
   error.hidden = false;
 }));
