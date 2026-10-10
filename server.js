@@ -19,8 +19,18 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
 `);
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Existing project databases gain archive state without changing IDs or tasks.
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const listProjects = database.prepare(`
+  SELECT projects.id, projects.name, projects.archived,
+    COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+  WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id
+`);
+const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -51,17 +61,26 @@ function page(title, content) {
 </html>`;
 }
 
-function projectsPage(error = '') {
-  const rows = listProjects.all().map((project) => `
+function projectFilter(value) {
+  return value === 'Archived' ? 'Archived' : 'Active';
+}
+
+function projectsPage(error = '', filter = 'Active') {
+  const rows = listProjects.all(filter === 'Archived' ? 1 : 0).map((project) => `
     <li data-testid="project-row" class="project-row">
       <span>${escapeHtml(project.name)}</span>
+      <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
       <form action="/projects/${project.id}" method="get">
         <button type="submit">Open project</button>
+      </form>
+      <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+        <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
       </form>
     </li>`).join('');
   return page('Projects', `
     <h1>Workboard</h1>
     <form action="/projects" method="post" class="create-project">
+      <input type="hidden" name="filter" value="${filter}">
       <label for="project-name">Project name</label>
       <div class="input-group">
         <input id="project-name" name="name" type="text" autocomplete="off">
@@ -70,6 +89,12 @@ function projectsPage(error = '') {
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     </form>
     <h2>Projects</h2>
+    <form action="/" method="get" class="project-filter">
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter" name="filter" data-submit-on-change>
+        ${['Active', 'Archived'].map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+    </form>
     ${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No projects yet.</p>'}`);
 }
 
@@ -86,11 +111,12 @@ function projectPage(project, filter = 'All', error = '') {
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="checkbox" name="completed" value="1"
-            aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} data-submit-on-change>
+            aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-submit-on-change>
         </form>
       </li>`).join('');
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h2>Tasks</h2>
     <form action="/projects/${project.id}/tasks" method="post">
@@ -98,7 +124,7 @@ function projectPage(project, filter = 'All', error = '') {
       <label for="task-title">Task title</label>
       <div class="input-group">
         <input id="task-title" name="title" type="text" autocomplete="off">
-        <button type="submit">Create task</button>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
       </div>
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     </form>
@@ -144,15 +170,16 @@ const stylesheet = `
   input, button, select { font: inherit; border-radius: 6px; padding: 10px 14px; }
   input { min-width: 0; flex: 1; border: 1px solid #8798a6; }
   button { border: 1px solid #205b9d; background: #205b9d; color: white; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: default; }
   button:hover { background: #174575; }
   :focus-visible { outline: 3px solid #cf7900; outline-offset: 3px; }
   .projects, .tasks { padding: 0; list-style: none; }
   .project-row, .task-row { display: flex; align-items: center; justify-content: space-between;
-    gap: 20px; padding: 16px 0; border-bottom: 1px solid #dce4ea; }
+    flex-wrap: wrap; gap: 20px; padding: 16px 0; border-bottom: 1px solid #dce4ea; }
   .project-row span, .task-row span { overflow-wrap: anywhere; min-width: 0; }
   .project-row button { white-space: nowrap; }
   .task-row input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; }
-  .task-filter { margin-top: 24px; }
+  .task-filter, .project-filter { margin-top: 24px; }
   [role="alert"] { color: #a32121; }
   .empty { color: #536574; }
   @media (max-width: 600px) {
@@ -175,7 +202,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/') {
-      sendHtml(response, 200, projectsPage());
+      sendHtml(response, 200, projectsPage('', projectFilter(url.searchParams.get('filter'))));
       return;
     }
     if (request.method === 'POST' && url.pathname === '/projects') {
@@ -186,18 +213,24 @@ const server = createServer(async (request, response) => {
       }
       const name = (body.get('name') || '').trim();
       if (!name) {
-        sendHtml(response, 422, projectsPage('Project name is required'));
+        sendHtml(response, 422, projectsPage('Project name is required', projectFilter(body.get('filter'))));
         return;
       }
       insertProject.run(name);
       redirect(response, '/');
       return;
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*))?)?$/.exec(url.pathname);
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*))?|archive|restore))?$/.exec(url.pathname);
     if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (project) {
+        if (request.method === 'POST' && (url.pathname === `/projects/${id}/archive` || url.pathname === `/projects/${id}/restore`)) {
+          const archived = url.pathname.endsWith('/archive');
+          updateProjectArchive.run(archived ? 1 : 0, id);
+          redirect(response, archived ? '/' : '/?filter=Archived');
+          return;
+        }
         if (request.method === 'GET' && url.pathname === `/projects/${id}`) {
           sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
           return;
@@ -209,6 +242,11 @@ const server = createServer(async (request, response) => {
             return;
           }
           const filter = taskFilter(body.get('filter'));
+          const currentProject = findProject.get(id);
+          if (currentProject.archived) {
+            sendHtml(response, 403, projectPage(currentProject, filter, 'Archived project'));
+            return;
+          }
           if (projectRoute[2]) {
             const taskId = Number(projectRoute[2]);
             const result = Number.isSafeInteger(taskId)
