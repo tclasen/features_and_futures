@@ -41,6 +41,11 @@ options, initially Normal. Changing it saves a default for future tasks in that
 project without changing existing tasks or either filter. Defaults persist across
 restarts, renaming, archiving, and restoration. Archived projects display their
 saved default with the selector disabled until restored.
+Each task has an optional Task due date textbox and Save due date button.
+Dates must be real Gregorian calendar dates in YYYY-MM-DD format, with years
+0001 through 9999. Whitespace is trimmed; a blank value clears the date.
+Invalid dates leave saved data unchanged. Dates persist across restarts and
+renaming, and archived projects disable date edits until restored.
 
 Run the integration checks:
 

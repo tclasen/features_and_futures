@@ -60,6 +60,8 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   assert.match(migratedPage, /<label for="default-task-priority">Default task priority<\/label>/);
   assert.match(migratedPage, /<option value="Low">Low<\/option><option value="Normal" selected>Normal<\/option><option value="High">High<\/option>/);
   assert.match(migratedPage, /aria-label="Complete Existing task" checked/);
+  assert.match(migratedPage, /<label for="task-due-date-1">Task due date<\/label>/);
+  assert.match(migratedPage, /id="task-due-date-1" name="dueDate" type="text" value=""/);
   assert.match(migratedPage, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
   assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
   assert.match(initial, /<option selected>Active<\/option><option>Archived<\/option>/);
@@ -552,4 +554,80 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   assert.match(defaultOptions(await taskPage()), /value="Low" selected/);
   assert.equal(taskSection(await taskPage()), taskSection(defaultSaved));
   assert.equal(await (await fetch(base)).text(), defaultSavedList);
+
+  // Due dates use calendar arithmetic, preserve all other data, and carry both filters.
+  const duePath = `${taskPaths[0]}/due-date`;
+  const dueInput = (value, disabled = false) =>
+    `id="task-due-date-${taskPaths[0].split('/').at(-1)}" name="dueDate" type="text" value="${value}"${disabled ? ' disabled' : ''}`;
+  const beforeDates = await taskPage();
+  const beforeDatesList = await (await fetch(base)).text();
+  const otherBeforeDates = await taskPage(paths[1]);
+  assert.match(beforeDates, new RegExp(dueInput('')));
+  const dateFilters = { filter: 'Open', priorityFilter: 'High' };
+  for (const date of ['0001-01-01', '0096-02-29', '2000-02-29', '2024-02-29', '9999-12-31']) {
+    const response = await postTask(duePath, { ...dateFilters, dueDate: `  ${date} \t` });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), `${paths[0]}?filter=Open&priorityFilter=High`);
+    assert.equal(await taskPage(), beforeDates.replace(dueInput(''), dueInput(date)));
+    assert.equal(await (await fetch(base)).text(), beforeDatesList);
+    assert.equal(await taskPage(paths[1]), otherBeforeDates);
+    const filtered = await combinedPage('Open', 'High');
+    assert.equal(taskCount(filtered), 1);
+    assert.match(filterOptions(filtered, 'task-filter'), /<option selected>Open<\/option>/);
+    assert.match(filterOptions(filtered, 'priority-filter'), /<option selected>High<\/option>/);
+  }
+  const savedDatePage = await taskPage();
+  for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2023-02-29',
+    '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01',
+    '24-01-01', '2024/01/01', '2024-01-01T00:00:00Z', 'tomorrow']) {
+    const response = await postTask(duePath, { ...dateFilters, dueDate: date });
+    assert.equal(response.status, 400, date);
+    const html = await response.text();
+    assert.match(html, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+    assert.match(html, new RegExp(dueInput('9999-12-31')));
+    assert.match(filterOptions(html, 'task-filter'), /<option selected>Open<\/option>/);
+    assert.match(filterOptions(html, 'priority-filter'), /<option selected>High<\/option>/);
+    assert.equal(await taskPage(), savedDatePage);
+  }
+  assert.equal((await postTask(`${wrongProjectPath}/due-date`, { dueDate: '2026-10-10' })).status, 404);
+  assert.equal((await postTask(`${paths[0]}/tasks/99999/due-date`, { dueDate: '' })).status, 404);
+  assert.equal((await postTask(`${taskPaths[1]}/due-date`, { dueDate: '2026-10-10' })).status, 303);
+  assert.match(await taskPage(), new RegExp(dueInput('9999-12-31')));
+  assert.equal((await postTask(`${taskPaths[0]}/rename`, { ...dateFilters, title: 'Dated task' })).status, 303);
+  const datedRenamed = await taskPage();
+  assert.match(datedRenamed, /aria-label="Complete Dated task"/);
+  assert.match(datedRenamed, new RegExp(dueInput('9999-12-31')));
+  assert.equal(await (await fetch(base)).text(), beforeDatesList);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), datedRenamed);
+  assert.equal(await taskPage(paths[1]), otherBeforeDates);
+
+  assert.equal((await postTask(`${paths[0]}/archive`, {})).status, 303);
+  const archivedDates = await taskPage();
+  assert.equal((archivedDates.match(/id="task-due-date-\d+"[^>]* disabled/g) || []).length, 5);
+  assert.equal((archivedDates.match(/disabled>Save due date<\/button>/g) || []).length, 5);
+  assert.match(archivedDates, new RegExp(dueInput('9999-12-31', true)));
+  assert.equal((await postTask(duePath, { dueDate: '' })).status, 403);
+  assert.equal(await taskPage(), archivedDates);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), archivedDates);
+  assert.equal((await postTask(`${paths[0]}/restore`, {})).status, 303);
+  assert.equal(await taskPage(), datedRenamed);
+  for (const dueDate of ['', ' \t\n ']) {
+    assert.equal((await postTask(duePath, { dueDate: '2026-10-10' })).status, 303);
+    const response = await postTask(duePath, { ...dateFilters, dueDate });
+    assert.equal(response.headers.get('location'), `${paths[0]}?filter=Open&priorityFilter=High`);
+    assert.equal(await taskPage(), datedRenamed.replace(dueInput('9999-12-31'), dueInput('')));
+  }
+  const clearedDates = await taskPage();
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), clearedDates);
+  assert.equal(await (await fetch(base)).text(), beforeDatesList);
+  assert.equal((await postTask(`${paths[0]}/tasks`, { title: 'New undated task' })).status, 303);
+  const newDateRow = [...(await taskPage()).matchAll(/<div class="task-row" data-testid="task-row">[\s\S]*?<\/div>/g)]
+    .find(([html]) => html.includes('aria-label="Complete New undated task"'))[0];
+  assert.match(newDateRow, /name="dueDate" type="text" value=""/);
 });
