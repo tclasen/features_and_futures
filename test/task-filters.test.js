@@ -61,7 +61,7 @@ class Element {
   }
 }
 
-async function page(archived = false, hasDestination = true) {
+async function page(archived = false, hasDestination = true, extraDestinations = []) {
   const app = new Element('main');
   const alert = new Element('p');
   const tasks = [];
@@ -71,6 +71,12 @@ async function page(archived = false, hasDestination = true) {
     }
   }
   const project = { id: 1, archived, default_priority: 'Normal' };
+  let pendingEdit;
+  function deferNextEdit() {
+    let release;
+    pendingEdit = new Promise(resolve => { release = resolve; });
+    return release;
+  }
   const context = vm.createContext({
     validDueDate,
     document: {
@@ -79,7 +85,7 @@ async function page(archived = false, hasDestination = true) {
     },
     fetch: async (path, options) => {
       if (!options) return { ok: true, json: async () => structuredClone(path === '/api/projects'
-        ? [project, ...(hasDestination ? [{ id: 2, name: 'Destination', archived: false }] : []), { id: 3, name: 'Archived', archived: true }]
+        ? [project, ...(hasDestination ? [{ id: 2, name: 'Destination', archived: false }] : []), { id: 3, name: 'Archived', archived: true }, ...extraDestinations]
         : tasks) };
       const input = JSON.parse(options.body);
       if (path === '/api/projects/1') {
@@ -92,6 +98,9 @@ async function page(archived = false, hasDestination = true) {
         return { ok: true, json: async () => structuredClone(task) };
       }
       const task = tasks.find(task => path.endsWith(`/${task.id}`));
+      const wait = pendingEdit;
+      pendingEdit = undefined;
+      if (wait) await wait;
       Object.assign(task, input);
       return { ok: true, json: async () => structuredClone(task) };
     },
@@ -104,7 +113,7 @@ async function page(archived = false, hasDestination = true) {
   const rows = () => app.querySelector('#tasks').children;
   const titles = () => rows().map(row => row.querySelector('span').textContent);
   async function select(control, value) { control.value = value; await control.fire('change'); }
-  return { app, alert, tasks, completion, priority, rows, titles, select };
+  return { app, alert, tasks, completion, priority, rows, titles, select, deferNextEdit };
 }
 
 test('all combinations intersect in creation order and do not change task data', async () => {
@@ -369,6 +378,24 @@ test('moving removes only the selected row and retains both filters and the appl
   await p.select(p.priority, 'All');
   assert.deepEqual(p.titles(), ['Low done', 'Normal done']);
   assert.equal(p.tasks[2].destination_project_id, 2);
+});
+
+test('a pending edit does not reset a chosen move destination when rows refresh', async () => {
+  const p = await page(false, true, [{ id: 4, name: 'Intended destination', archived: false }]);
+  const release = p.deferNextEdit();
+  const editing = p.select(p.rows()[0].querySelector('select'), 'High');
+  const moveForm = row => row.querySelectorAll('form')[2];
+  await p.select(moveForm(p.rows()[0]).querySelector('select'), '4');
+  await p.select(moveForm(p.rows()[1]).querySelector('select'), '4');
+  release();
+  await editing;
+  assert.equal(moveForm(p.rows()[0]).querySelector('select').value, '4');
+  assert.equal(moveForm(p.rows()[1]).querySelector('select').value, '4');
+  await moveForm(p.rows()[0]).fire('submit');
+  assert.equal(p.tasks[0].destination_project_id, 4);
+  assert.equal(p.tasks[0].priority, 'High');
+  assert.equal(moveForm(p.rows()[0]).querySelector('select').value, '4');
+  assert.deepEqual(p.titles(), ['Low done', 'Normal open', 'Normal done', 'High open', 'High done']);
 });
 
 test('move controls have no placeholder and are disabled without eligible destinations', async () => {

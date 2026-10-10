@@ -168,6 +168,9 @@ async function renderTasks(project) {
   const destinations = (await api('/api/projects'))
     .filter(candidate => !candidate.archived && candidate.id !== project.id);
 
+  // Keep each row's destination choice when another saved edit refreshes the list.
+  const selectedDestinations = new Map();
+
   function displayTasks() {
     const visible = tasks.filter(task =>
       (filter.value === 'All' ||
@@ -306,6 +309,12 @@ async function renderTasks(project) {
         option.textContent = candidate.name;
         destination.append(option);
       }
+      if (selectedDestinations.has(task.id)) {
+        destination.value = selectedDestinations.get(task.id);
+      }
+      destination.addEventListener('change', () => {
+        selectedDestinations.set(task.id, destination.value);
+      });
       const moveButton = document.createElement('button');
       moveButton.type = 'submit';
       moveButton.textContent = 'Move task';
@@ -323,6 +332,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ destination_project_id: Number(destination.value) }),
           });
           tasks = tasks.filter(candidate => candidate.id !== task.id);
+          selectedDestinations.delete(task.id);
           displayTasks();
         } catch (error) { showAlert(error.message); }
         finally { moveButton.disabled = Boolean(project.archived) || destinations.length === 0; }
