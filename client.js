@@ -292,6 +292,7 @@ async function showProject(id) {
             });
             task.dueDate = updated.dueDate;
             dueDateInput.value = task.dueDate || '';
+            drawTasks();
           } catch (error) {
             dueDateInput.value = task.dueDate || '';
             showError(error.message);
