@@ -7,6 +7,10 @@ function element(tag, text, attributes = {}) {
   return node;
 }
 
+function searchText(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
@@ -19,6 +23,10 @@ async function renderProjects() {
   const filterLabel = element('label', 'Project filter', { for: 'project-filter' });
   const filter = element('select', undefined, { id: 'project-filter', 'aria-label': 'Project filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
+  const searchLabel = element('label', 'Project search', { for: 'project-search' });
+  const searchInput = element('input', undefined, { id: 'project-search', type: 'text', 'aria-label': 'Project search' });
+  const searchButton = element('button', 'Search projects', { type: 'button' });
+  let appliedProjectQuery = '';
   app.append(filterLabel, filter);
   const form = element('form');
   const label = element('label', 'Project name', { for: 'project-name' });
@@ -47,7 +55,8 @@ async function renderProjects() {
   async function loadProjects() {
     const projects = await request(`/api/projects?filter=${filter.value}`);
     list.replaceChildren();
-    for (const project of projects) {
+    const query = searchText(appliedProjectQuery);
+    for (const project of projects.filter((item) => searchText(item.name).includes(query))) {
       const row = element('li', undefined, { 'data-testid': 'project-row' });
       const name = element('span', project.name, { class: 'project-name' });
       const summary = element('span', `${project.completedCount || 0}/${project.totalCount} completed`, { 'data-testid': 'project-summary' });
@@ -70,7 +79,11 @@ async function renderProjects() {
     }
   }
   filter.addEventListener('change', loadProjects);
-  app.append(form, alert, list);
+  searchButton.addEventListener('click', () => {
+    appliedProjectQuery = searchInput.value.trim();
+    loadProjects();
+  });
+  app.append(searchLabel, searchInput, searchButton, form, alert, list);
   await loadProjects();
 }
 
@@ -158,6 +171,10 @@ async function renderProject(id) {
     const dueThroughLabel = element('label', 'Due through', { for: 'due-through' });
     const dueThrough = element('input', undefined, { id: 'due-through', type: 'text', 'aria-label': 'Due through' });
     const applyDueRange = element('button', 'Apply due range', { type: 'button' });
+    const taskSearchLabel = element('label', 'Task search', { for: 'task-search' });
+    const taskSearchInput = element('input', undefined, { id: 'task-search', type: 'text', 'aria-label': 'Task search' });
+    const taskSearchButton = element('button', 'Search tasks', { type: 'button' });
+    let appliedTaskQuery = '';
     let appliedDueRange = { from: '', through: '' };
     const list = element('ul');
     let tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -185,7 +202,8 @@ async function renderProject(id) {
           || Boolean(task.dueDate)
             && (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
             && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
-        return matchesCompletion && matchesPriority && matchesDueRange;
+        const matchesSearch = searchText(task.title).includes(searchText(appliedTaskQuery));
+        return matchesCompletion && matchesPriority && matchesDueRange && matchesSearch;
       });
       list.replaceChildren();
       for (const task of matching) {
@@ -334,6 +352,10 @@ async function renderProject(id) {
       dueThrough.value = through;
       renderTasks();
     });
+    taskSearchButton.addEventListener('click', () => {
+      appliedTaskQuery = taskSearchInput.value.trim();
+      renderTasks();
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       alert.hidden = true;
@@ -353,6 +375,7 @@ async function renderProject(id) {
     });
     renderTasks();
     app.append(renameForm, alert, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter,
+      taskSearchLabel, taskSearchInput, taskSearchButton,
       dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
   } catch {
     app.append(element('h1', 'Project not found'));
