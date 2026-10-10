@@ -6,9 +6,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
 
 test('projects and tasks validate input, stay isolated, and survive a server restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
+  // Start with the original project schema to exercise upgrades of existing databases.
+  const databasePath = join(directory, 'projects.sqlite');
+  const database = new DatabaseSync(databasePath);
+  database.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  database.close();
   const reservation = net.createServer();
   reservation.listen(0, '127.0.0.1');
   await once(reservation, 'listening');
@@ -21,7 +27,7 @@ test('projects and tasks validate input, stay isolated, and survive a server res
   async function start() {
     child = spawn(process.execPath, ['server.js'], {
       cwd: new URL('..', import.meta.url),
-      env: { ...process.env, PORT: String(port), DB_PATH: join(directory, 'nested', 'projects.sqlite') },
+      env: { ...process.env, PORT: String(port), DB_PATH: databasePath },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.on('data', (chunk) => { output += chunk; });
@@ -63,6 +69,9 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     assert.match(html, /<label for="project-name">Project name<\/label>/);
     assert.match(html, /<button type="submit">Create project<\/button>/);
     assert.match(html, /role="alert"/);
+    assert.match(html, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(html, /<option>Active<\/option>/);
+    assert.match(html, /<option>Archived<\/option>/);
     assert.deepEqual(await (await get('/api/projects')).json(), []);
 
     for (const name of ['', ' \t\n ']) {
@@ -75,6 +84,7 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.deepEqual(first, { id: first.id, name: 'First project', archived: 0, total: 0, completed: 0 });
     const second = await (await create('Second <project>')).json();
     assert.notEqual(first.id, second.id);
     const expected = [first, second];
@@ -115,6 +125,17 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     const completedTask = await (await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: true })).json();
     assert.deepEqual(completedTask, { ...firstTask, completed: true });
     assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
+    first.total = 2;
+    first.completed = 1;
+    assert.deepEqual(await (await get('/api/projects')).json(), expected);
+    const projectPath = `/api/projects/${first.id}`;
+    assert.equal((await write(projectPath, 'PATCH', { archived: 'true' })).status, 400);
+    assert.equal((await write('/api/projects/99999', 'PATCH', { archived: true })).status, 404);
+    first.archived = 1;
+    assert.deepEqual(await (await write(projectPath, 'PATCH', { archived: true })).json(), first);
+    assert.equal((await write(tasksPath, 'POST', { title: 'Blocked task' })).status, 409);
+    assert.equal((await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
 
     await stop();
     await start();
@@ -123,8 +144,12 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
     assert.deepEqual(await (await get(otherTasksPath)).json(), []);
     assert.equal((await get(`/projects/${first.id}`)).status, 200);
+    first.archived = 0;
+    assert.deepEqual(await (await write(projectPath, 'PATCH', { archived: false })).json(), first);
+    assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
     const reopenedTask = await (await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: false })).json();
     assert.deepEqual(reopenedTask, firstTask);
+    first.completed = 0;
     await stop();
     await start();
     assert.deepEqual(await (await get(tasksPath)).json(), [firstTask, secondTask]);
