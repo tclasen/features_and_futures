@@ -16,6 +16,7 @@ const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -80,6 +81,19 @@ const server = http.createServer(async (req, res) => {
     }
   }
   const match = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (req.method === 'PATCH' && match) {
+    const project = findProject.get(decodeURIComponent(match[1]));
+    if (!project) return send(404, JSON.stringify({ error: 'Project not found' }));
+    if (project.archived) return send(409, JSON.stringify({ error: 'Archived project' }));
+    try {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      const name = String(JSON.parse(raw).name ?? '').trim();
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      if (name.length > 500) return send(400, JSON.stringify({ error: 'Project name is too long' }));
+      renameProject.run(name, project.id);
+      return send(200, JSON.stringify({ id: project.id, name }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
   if (req.method === 'GET' && match) {
     const item = findProject.get(decodeURIComponent(match[1]));
     return item ? send(200, JSON.stringify(item)) : send(404, JSON.stringify({ error: 'Project not found' }));
