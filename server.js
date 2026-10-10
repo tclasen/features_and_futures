@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 // Upgrade databases created before archive support without changing existing IDs.
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
@@ -58,7 +59,10 @@ function page(title, content) {
     select { font: inherit; padding: 8px; margin-bottom: 16px; }
     .task-row { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid #dce1e8; overflow-wrap: anywhere; }
     .task-row[hidden] { display: none; }
+    .task-row { flex-wrap: wrap; }
     .task-row input { width: auto; margin: 0; flex-shrink: 0; }
+    .task-row form { margin: 0; width: 100%; }
+    .task-row form input { max-width: 100%; margin-bottom: 12px; }
     button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #bd7600; outline-offset: 3px; }
     button:disabled, input:disabled { cursor: not-allowed; opacity: 0.6; }
     .project-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; border-top: 1px solid #dce1e8; }
@@ -122,6 +126,11 @@ function projectPage(project, error = '') {
         <input type="checkbox" aria-label="${escapeHtml(`Complete ${task.title}`)}"
           data-completion-url="/projects/${project.id}/tasks/${task.id}/completion"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
         <span>${escapeHtml(task.title)}</span>
+        <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post" data-task-rename>
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
       </div>`).join('')}</section>
     <script>
       const filter = document.getElementById('task-filter');
@@ -148,6 +157,37 @@ function projectPage(project, error = '') {
           } finally {
             checkbox.disabled = false;
             applyFilter();
+          }
+        });
+      });
+    </script>
+    <script>
+      document.querySelectorAll('[data-task-rename]').forEach(form => {
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          const input = form.elements.title;
+          const title = input.value.trim();
+          const alert = document.getElementById('task-error');
+          alert.textContent = '';
+          if (!title) {
+            alert.textContent = 'Task title is required';
+            return;
+          }
+          const button = form.querySelector('button');
+          button.disabled = true;
+          try {
+            const response = await fetch(form.action, {
+              method: 'POST', body: new URLSearchParams({ title })
+            });
+            if (!response.ok) throw new Error('Rename failed');
+            const row = form.closest('[data-testid="task-row"]');
+            row.querySelector('span').textContent = title;
+            row.querySelector('[data-completion-url]').setAttribute('aria-label', 'Complete ' + title);
+            input.value = title;
+          } catch {
+            alert.textContent = 'Could not rename task. Please try again.';
+          } finally {
+            button.disabled = false;
           }
         });
       });
@@ -224,7 +264,7 @@ const server = http.createServer(async (req, res) => {
       renameProject.run(name, project.id);
       res.writeHead(303, { Location: `/projects/${project.id}` });
       res.end();
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/completion)?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(Number(parts[2]));
       if (!project) {
@@ -243,6 +283,19 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         createTask.run(project.id, title);
+        res.writeHead(303, { Location: `/projects/${project.id}` });
+        res.end();
+      } else if (parts[5] === 'rename') {
+        const title = (form.get('title') || '').trim();
+        if (!title) {
+          html(res, 422, projectPage(project, 'Task title is required'));
+          return;
+        }
+        const result = renameTask.run(title, Number(parts[4]), project.id);
+        if (!result.changes) {
+          html(res, 404, page('Not found', '<h1>Task not found</h1>'));
+          return;
+        }
         res.writeHead(303, { Location: `/projects/${project.id}` });
         res.end();
       } else {
