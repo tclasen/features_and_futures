@@ -49,10 +49,11 @@ function heading(text) {
 async function renderList() {
   app.replaceChildren(heading('Workboard'));
   const form = document.createElement('form');
-  const label = document.createElement('label'); label.textContent = 'Project name';
+  const label = document.createElement('label');
   const input = document.createElement('input');
-  input.type = 'text'; input.name = 'projectName'; input.setAttribute('aria-label', 'Project name');
-  label.append(input);
+  input.type = 'text'; input.name = 'projectName'; input.id = 'project-name';
+  label.htmlFor = input.id;
+  label.append(document.createTextNode('Project name '), input);
   const button = document.createElement('button'); button.type = 'submit'; button.textContent = 'Create project';
   const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.hidden = true;
   form.append(label, button); app.append(form, alert);
