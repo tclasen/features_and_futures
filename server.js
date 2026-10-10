@@ -36,6 +36,7 @@ const listProjects = database.prepare(`${projectQuery} ORDER BY p.id`);
 const findProject = database.prepare(`${projectQuery} WHERE p.id = ?`);
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const projectData = project => ({ ...project, archived: Boolean(project.archived) });
 
 function json(response, status, value) {
@@ -122,10 +123,22 @@ const server = createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const input = await readJson(request);
-        if (typeof input?.archived !== 'boolean') {
-          return json(response, 400, { error: 'Archived must be a boolean' });
+        if (input && Object.hasOwn(input, 'name')) {
+          if (Object.hasOwn(input, 'archived')) {
+            return json(response, 400, { error: 'Rename and archive must be separate requests' });
+          }
+          if (findProject.get(projectId).archived) {
+            return json(response, 409, { error: 'Archived project is read-only' });
+          }
+          const name = typeof input.name === 'string' ? input.name.trim() : '';
+          if (!name) return json(response, 400, { error: 'Project name is required' });
+          renameProject.run(name, projectId);
+        } else {
+          if (typeof input?.archived !== 'boolean') {
+            return json(response, 400, { error: 'Archived must be a boolean' });
+          }
+          updateProject.run(Number(input.archived), projectId);
         }
-        updateProject.run(Number(input.archived), projectId);
       }
       return json(response, 200, projectData(findProject.get(projectId)));
     }
