@@ -1,0 +1,43 @@
+# Prospective continuation after repeated accounting gaps
+
+Status: reviewable proposal, not adopted. No active run imports the proposed analysis helpers. The original research-v001 plan, runs, measurements and missing counters remain unchanged.
+
+Both eval-001 and its fresh exact discovery replacement stopped during task003 after an upstream HTTP503with no native counters. They retain350and371requests respectively, one unknown cost each, and35accepted checkpoints each. Neither can support research-v001findings. Repeatedly selecting only trajectories with complete usage can also condition results on provider reliability and request exposure; keeping the failed archives does not remove that selection limitation.
+
+The current execution procedure says: “an incomplete native-cost trajectory cannot support a candidate or confirmation claim.” Changing that rule requires a new prospective experiment revision and a new run. This proposal does not turn either failed trajectory into a successful experiment.
+
+## Proposed design
+
+Keep the twelve hosted configurations, instruction bytes, stack, launch interfaces, common ordered workload, native usage observation, reference prices, shared barriers and archive-before-remove policy. A new revision must recheck latest stable harness availability and document any required runtime variation before freezing. Never switch to paid API access.
+
+Retain every attempt and request, including provider failures. After an original accounting incident has drained, archive its source/history and raw request/response, classify it as infrastructure, then resume the same requirement in a fresh native context under the assigned treatment. Preserve the original task clock and all measured invocation time. Never synthesize usage, repair generated tool arguments, or silently retry transport inside the gateway.
+
+Represent unknown reference cost as a bound, not a point estimate. If K is the sum of verified native-token reference costs and any request has unknown usage, total reference cost lies in [K, infinity). Otherwise its bounds are [K,K]. Cache-aware cost remains a separately labelled secondary bound. Invoice costs and PM conversation usage remain unavailable.
+
+Keep complete acceptance, upgrade, restart, deployment, packet/profile delivery, timing, source/history restoration and request reconciliation as gates. Every dispatched request must have an original terminal observation, even when its counters are unknown. A missing request/receipt, unfinished clock, corrupted archive or unresolved functional checkpoint still blocks analysis. Reports distinguish complete native measurement from analysis with partial identification; an interval-compatible analysis must never be described as complete token accounting.
+
+## Contrasts and uncertainty
+
+Retain the same ten-task late-window paired contrasts within each model/harness combination, practical bands,36primary decisions, exact median intervals, global repeated-look allocation and two disjoint confirmation batches. Independent fresh-root runs remain the replication unit; dependent tasks are never counted as replicates. All runs assigned to a confirmation batch remain in that batch, including runs with unknown costs. Provider/calendar/model changes still require an IID-assumption review, stratification or a new confirmation cohort.
+
+For stronger and weaker cost bounds [a,A] and [b,B], with b strictly positive, the ratio is contained in [a/B,A/b]. An infinite B gives lower bound0; an infinite A gives an infinite upper bound. If no positive denominator lower bound is known, leave the contrast unidentified rather than manufacture a ratio.
+
+Provider interruption before a validated first submission is neither demonstrated acceptance nor demonstrated builder rejection. Record that task's first-submission rejection indicator as unknown in [0,1], while retaining known Boolean outcomes for independently validated first submissions. Divide sums of the lower/upper indicators by10, then bound a rejection difference as [left_lower-right_upper,left_upper-right_lower]. Report provider incidents separately. Do not silently code a provider fault as a builder defect.
+
+Before adoption, freeze the precise submission-outcome definition. The current report calls its field `first_submission_accepted` but derives it from acceptance on `attempt-001`; a provider-interrupted first attempt therefore needs separate handling. Bounds cannot repair an undefined estimand or invent a counterfactual submission. The new report must distinguish first scheduled attempt, an actual submitted source tree, first functional validation and infrastructure interruption. Changes to that definition are part of the new revision, not corrections to old observations.
+
+For each independent run i, retain a contrast interval [l_i,u_i] containing its latent contrast. At confirmation look j use the existing alpha =0.05/(36*j*(j+1)). Choose exactly the existing binomial rank k. The median confidence interval becomes [l_(k),u_(n-k+1)], with infinite upper endpoints ordered after finite endpoints. Small samples remain unresolved. Declare improvement, regression or practical equivalence only when the whole outer interval lies in the corresponding existing region. Unknown values can prevent classification indefinitely.
+
+The containment proof is deterministic: coordinatewise l_i <= y_i <= u_i implies the same inequalities for each order statistic. Therefore the new interval contains the existing complete-data median interval for every possible completion of the unknown values. Its coverage cannot be smaller when the recorded bounds are valid. No missing-at-random assumption or independence of missingness from treatment/cost is needed. The IID latent-run assumption and the existing complete-data interval assumptions remain necessary. The union-bound repeated-look/family allocation and two-batch rule remain unchanged; do not reset a consumed look counter when changing candidates or revisions. There have been no confirmation looks in the two interrupted discovery trajectories.
+
+## Prospective candidate rule
+
+Continue the first inspection at20tasks and every10thereafter, selecting features before inspecting comparative outcomes. Require descriptive execution and first-submission rejection classifications to agree in two adjacent windows where their bounds identify a classification. Cost classifications must agree where identified; an unidentified cost contrast is carried into confirmation as unresolved and is never presented as a finding. A candidate is only a frozen workload prefix/window for independent confirmation. Stopping still requires all36primary confidence intervals classified and replicated in a second disjoint batch for that same prefix/window. This changes the descriptive candidate rule as well as missing-evidence handling and must be frozen before any new native discovery dispatch.
+
+## Evidence and adoption gate
+
+The prepared helpers are orchestrator/proposals/censored_cost_v1.py and orchestrator/proposals/contrast_bounds_v1.py. Twelve targeted checks pass: exact complete-data agreement, no point estimate for missing cost, unbounded unknowns, zero/unknown denominator rejection, signed rejection bounds, small-sample nonclassification, and interval containment over all64extreme completions of a six-run fixture. These checks establish properties of the proposed computations, not native execution readiness or research findings.
+
+Before adoption, create a new revision and run, implement a separate manifest-selected incident policy and bound-aware reports/confirmation path, and verify complete accounting and partial-accounting fixtures independently. Required fixtures must prove that an unknown request remains counted, known costs recompute, a provider fault is not a builder rejection, all-unknown contrasts remain unresolved, omitted runs are rejected, altered packets/prices are rejected, and both confirmation batches remain disjoint. Commit the frozen plan, definitions and tests before dispatch. Preserve and report both original failed trajectories and their reference-cost lower bounds alongside the new study.
+
+The alternative is to retain research-v001and continue fresh exact replacements. That preserves its literal accounting rule, but another permanently missing receipt invalidates an entire trajectory. Completion time is not guaranteed under either method. This proposal trades stronger missing-evidence retention for potentially wider or unbounded intervals; it does not relax functional acceptance or the primary confidence/stopping requirements.
