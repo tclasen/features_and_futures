@@ -11,6 +11,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT
 CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE projects ADD COLUMN renamed_at INTEGER'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const html = await readFile(new URL('./index.html', import.meta.url));
 const sendJson = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
 async function bodyJson(req) { let raw = ''; for await (const chunk of req) raw += chunk; return JSON.parse(raw); }
@@ -39,7 +40,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch) {
     const projectId = decodeURIComponent(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    if (req.method === 'GET') return sendJson(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id=? ORDER BY created_at,rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    if (req.method === 'GET') return sendJson(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id=? ORDER BY created_at,rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (db.prepare('SELECT archived FROM projects WHERE id=?').get(projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
       try { const body = await bodyJson(req); const title = typeof body.title === 'string' ? body.title.trim() : ''; if (!title) return sendJson(res, 400, { error: 'Task title is required' }); const task = { id: randomUUID(), projectId, title, completed: false }; db.prepare('INSERT INTO tasks (id,project_id,title,created_at) VALUES (?,?,?,?)').run(task.id, projectId, title, Date.now()); return sendJson(res, 201, task); }
@@ -54,6 +55,15 @@ const server = http.createServer(async (req, res) => {
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       const result = db.prepare('UPDATE tasks SET title=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(title, decodeURIComponent(taskRenameMatch[1]));
       return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Active task not found' });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
+  const priorityMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/priority$/);
+  if (req.method === 'PATCH' && priorityMatch) {
+    try {
+      const body = await bodyJson(req);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      const result = db.prepare('UPDATE tasks SET priority=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(body.priority, decodeURIComponent(priorityMatch[1]));
+      return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Task not found' });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
