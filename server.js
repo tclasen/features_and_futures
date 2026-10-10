@@ -9,14 +9,47 @@ mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA journal_mode = WAL;
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   );
 `);
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+
+function taskFilter(url) {
+  const value = url.searchParams.get('filter');
+  return ['Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function projectPage(project, filter, error = '') {
+  const tasks = listTasks.all(project.id).filter(task =>
+    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+  return renderProject(project, tasks, filter, error);
+}
+
+async function formData(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk.toString();
+    if (Buffer.byteLength(body) > 1024 * 1024) {
+      throw Object.assign(new Error('Request too large'), { status: 413 });
+    }
+  }
+  return new URLSearchParams(body);
+}
 
 function html(res, status, content) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -36,15 +69,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/projects') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk.toString();
-        if (Buffer.byteLength(body) > 1024 * 1024) {
-          html(res, 413, '<h1>Request too large</h1>');
-          return;
-        }
-      }
-      const name = (new URLSearchParams(body).get('name') || '').trim();
+      const name = ((await formData(req)).get('name') || '').trim();
       if (!name) {
         html(res, 400, renderProjects(listProjects.all(), 'Project name is required'));
         return;
@@ -58,14 +83,39 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && match) {
       const project = findProject.get(match[1]);
       if (project) {
-        html(res, 200, renderProject(project));
+        html(res, 200, projectPage(project, taskFilter(url)));
+        return;
+      }
+    }
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+))?$/.exec(url.pathname);
+    if (req.method === 'POST' && taskMatch) {
+      const project = findProject.get(taskMatch[1]);
+      if (project) {
+        const data = await formData(req);
+        const filter = taskFilter(url);
+        if (taskMatch[2]) {
+          const result = updateTask.run(data.get('completed') === 'on' ? 1 : 0, taskMatch[2], project.id);
+          if (!result.changes) {
+            html(res, 404, '<h1>Task not found</h1>');
+            return;
+          }
+        } else {
+          const title = (data.get('title') || '').trim();
+          if (!title) {
+            html(res, 400, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          createTask.run(project.id, title);
+        }
+        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.end();
         return;
       }
     }
     html(res, 404, '<h1>Page not found</h1><a href="/">Projects</a>');
   } catch (error) {
     console.error(error);
-    if (!res.headersSent) html(res, 500, '<h1>Something went wrong</h1>');
+    if (!res.headersSent) html(res, error.status || 500, error.status === 413 ? '<h1>Request too large</h1>' : '<h1>Something went wrong</h1>');
     else res.end();
   }
 });

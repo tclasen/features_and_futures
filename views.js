@@ -21,6 +21,9 @@ function page(title, content) {
     label { display: block; font-weight: 600; margin-bottom: 8px; }
     .create { display: flex; gap: 12px; flex-wrap: wrap; }
     input { flex: 1; min-width: 160px; padding: 11px; border: 1px solid #8693a8; border-radius: 6px; font: inherit; }
+    input[type="checkbox"] { flex: none; min-width: auto; width: 20px; height: 20px; }
+    .task label { margin: 0; display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; }
+    select { padding: 10px; font: inherit; margin-bottom: 12px; }
     button { padding: 11px 16px; border: 0; border-radius: 6px; background: #2357bd; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #174398; }
     :focus-visible { outline: 3px solid #a36b00; outline-offset: 3px; }
@@ -61,9 +64,35 @@ export function renderProjects(projects, error = '') {
   `);
 }
 
-export function renderProject(project) {
+export function renderProject(project, tasks = [], filter = 'All', error = '') {
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
+    <section class="panel" aria-label="Create a task">
+      <form method="post" action="/projects/${project.id}/tasks?filter=${filter}">
+        <label for="task-title">Task title</label>
+        <div class="create">
+          <input id="task-title" name="title" type="text" autocomplete="off"${error ? ' aria-invalid="true" aria-describedby="task-error"' : ''}>
+          <button type="submit">Create task</button>
+        </div>
+        ${error ? `<p id="task-error" role="alert">${escapeHtml(error)}</p>` : ''}
+      </form>
+    </section>
+    <h2>Tasks</h2>
+    <form method="get" action="/projects/${project.id}">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['All', 'Open', 'Completed'].map(value => `<option${filter === value ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+    </form>
+    ${tasks.length ? `<ul>${tasks.map(task => `
+      <li class="panel task" data-testid="task-row">
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}?filter=${filter}">
+          <label>
+            <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+            <span>${escapeHtml(task.title)}</span>
+          </label>
+        </form>
+      </li>`).join('')}</ul>` : '<p class="empty">No matching tasks.</p>'}
   `);
 }
