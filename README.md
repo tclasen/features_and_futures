@@ -22,4 +22,6 @@ Project pages let you create tasks, toggle completion, and filter by All, Open, 
 
 The project list filters Active or Archived projects and shows completion summaries. Archive/restore preserves tasks; archived project pages are read-only but still support task filtering.
 
-The built-in Node test verifies health, validation and trimming, creation order, project isolation, completion summaries, archive/restore, read-only enforcement, migration from the prior schema, and SQLite persistence across server restarts. Tests use a temporary database outside the repository.
+Active project pages also support renaming. Names are trimmed and required; renaming preserves the project's URL, list position, tasks, and completion summary. Archived projects cannot be renamed until restored.
+
+The built-in Node test verifies health, validation and trimming, creation order, project isolation, completion summaries, archive/restore, renaming, read-only enforcement, migration from the prior schema, and SQLite persistence across server restarts. Tests use a temporary database outside the repository.

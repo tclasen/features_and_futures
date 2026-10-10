@@ -91,6 +91,21 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     first.total = 2;
     first.completed = 1;
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
+    async function rename(name) {
+      return fetch(`${base}/api/projects/${first.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      });
+    }
+    const invalidRename = await rename(' \t ');
+    assert.equal(invalidRename.status, 400);
+    assert.match((await invalidRename.json()).error, /Project name is required/);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    const renamed = await rename('  Renamed project  ');
+    assert.equal(renamed.status, 200);
+    first.name = 'Renamed project';
+    assert.deepEqual(await renamed.json(), first);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
+    assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
     async function archive(archived) {
       return fetch(`${base}/api/projects/${first.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -99,6 +114,8 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.equal((await archive('true')).status, 400);
     assert.equal((await archive(true)).status, 200);
     first.archived = 1;
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.equal((await rename('Forbidden rename')).status, 409);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     assert.equal((await addTask('Forbidden')).status, 409);
     assert.equal((await complete(first.id, task.id, false)).status, 409);
@@ -110,6 +127,9 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
     assert.equal((await archive(false)).status, 200);
     first.archived = 0;
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.equal((await rename(' Restored project ')).status, 200);
+    first.name = 'Restored project';
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     const reopened = await complete(first.id, task.id, false);
     assert.equal((await reopened.json()).completed, false);

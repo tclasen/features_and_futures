@@ -42,6 +42,35 @@ function projectRow(project, onUpdate) {
     open, archive);
   return row;
 }
+function renderRename(project, heading) {
+  const form = element('form');
+  const input = element('input', '', { id: 'new-project-name', type: 'text', autocomplete: 'off' });
+  const rename = element('button', 'Rename project', { type: 'submit' });
+  input.value = project.name;
+  input.disabled = Boolean(project.archived);
+  rename.disabled = Boolean(project.archived);
+  form.append(element('label', 'New project name', { for: 'new-project-name' }), input, rename);
+  app.append(form);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    const name = input.value.trim();
+    if (!name) { alertMessage('Project name is required'); return; }
+    rename.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      project.name = saved.name;
+      heading.textContent = saved.name;
+      document.title = `${saved.name} — Workboard`;
+      input.value = saved.name;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) { alertMessage(error.message); }
+    finally { rename.disabled = Boolean(project.archived); }
+  });
+}
 async function renderTasks(project) {
   const path = `/api/projects/${project.id}/tasks`;
   const archived = Boolean(project.archived);
@@ -116,8 +145,10 @@ async function render() {
     try {
       const project = await request(`/api/projects/${match[1]}`);
       document.title = `${project.name} — Workboard`;
-      app.append(element('h1', project.name));
+      const heading = element('h1', project.name);
+      app.append(heading);
       if (project.archived) app.append(element('p', 'Archived project'));
+      renderRename(project, heading);
       await renderTasks(project);
     } catch (error) { alertMessage(error.message); }
     return;
