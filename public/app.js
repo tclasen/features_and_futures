@@ -161,6 +161,7 @@ async function renderProject(id) {
     let appliedDueRange = { from: '', through: '' };
     const list = element('ul');
     let tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const destinations = await request(`/api/projects/${encodeURIComponent(id)}/destinations`);
     const normalizeDateBoundary = (value) => {
       const trimmed = value.trim();
       if (!trimmed) return '';
@@ -288,7 +289,27 @@ async function renderProject(id) {
             alert.hidden = false;
           }
         });
-        row.append(title, checkbox, priority, renameForm, dueDateForm);
+        const destinationSelect = element('select', undefined, { 'aria-label': 'Destination project' });
+        for (const destination of destinations) {
+          destinationSelect.append(element('option', destination.name, { value: destination.id }));
+        }
+        const moveButton = element('button', 'Move task', { type: 'button' });
+        destinationSelect.disabled = archived || destinations.length === 0;
+        moveButton.disabled = archived || destinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          try {
+            await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ destinationProjectId: destinationSelect.value }),
+            });
+            tasks = tasks.filter((item) => item.id !== task.id);
+            renderTasks();
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
+        row.append(title, checkbox, priority, renameForm, dueDateForm, destinationSelect, moveButton);
         list.append(row);
       }
     };

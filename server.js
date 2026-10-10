@@ -61,6 +61,10 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const listMoveDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY created_at, rowid');
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, created_at =
+  COALESCE((SELECT MAX(created_at) + 1 FROM tasks WHERE project_id = ?), 0)
+  WHERE id = ? AND project_id = ?`);
 
 function canonicalDueDate(value) {
   const trimmed = value.trim();
@@ -100,6 +104,17 @@ const server = createServer(async (request, response) => {
 
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+    return;
+  }
+
+  const destinationsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/destinations$/);
+  if (destinationsMatch && request.method === 'GET') {
+    const projectId = decodeURIComponent(destinationsMatch[1]);
+    if (!getProject.get(projectId)) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    sendJson(response, 200, listMoveDestinations.all(projectId));
     return;
   }
 
@@ -214,6 +229,17 @@ const server = createServer(async (request, response) => {
       return;
     }
     const body = await readJson(request);
+    if (typeof body?.destinationProjectId === 'string') {
+      const source = getProject.get(projectId);
+      const destination = getProject.get(body.destinationProjectId);
+      if (source.archived || !destination || destination.archived || body.destinationProjectId === projectId) {
+        sendJson(response, 400, { error: 'Choose a different active destination project' });
+        return;
+      }
+      moveTask.run(destination.id, destination.id, taskId, projectId);
+      sendJson(response, 200, { ...existing, projectId: destination.id });
+      return;
+    }
     if (typeof body?.completed === 'boolean') {
       const project = getProject.get(projectId);
       if (project.archived) {
