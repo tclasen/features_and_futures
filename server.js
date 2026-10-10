@@ -22,13 +22,18 @@ database.exec(`
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'Normal'
   )
 `);
 // Upgrade databases created by earlier checkpoints without disturbing their data.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 const listProjects = database.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
@@ -38,10 +43,11 @@ const listProjects = database.prepare(`
 `);
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const insertTask = database.prepare("INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, 'Normal')");
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 
@@ -114,7 +120,7 @@ const server = createServer(async (req, res) => {
     const body = await readJson(req);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-    const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false };
+    const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false, priority: 'Normal' };
     insertTask.run(task.id, task.projectId, task.title, Date.now());
     return sendJson(res, 201, task);
   }
@@ -130,6 +136,12 @@ const server = createServer(async (req, res) => {
       const result = renameTask.run(title, taskMatch[2], taskMatch[1]);
       if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
       return sendJson(res, 200, { id: taskMatch[2], projectId: taskMatch[1], title });
+    }
+    if (typeof body?.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      const result = updateTaskPriority.run(body.priority, taskMatch[2], taskMatch[1]);
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: taskMatch[2], projectId: taskMatch[1], priority: body.priority });
     }
     if (typeof body?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     const result = updateTaskCompletion.run(body.completed ? 1 : 0, taskMatch[2], taskMatch[1]);

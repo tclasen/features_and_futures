@@ -217,6 +217,30 @@ async function showProject(id) {
       });
       const title = document.createElement('span');
       title.textContent = task.title;
+      const priority = document.createElement('select');
+      priority.setAttribute('aria-label', 'Task priority');
+      priority.disabled = project.archived;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          await refresh();
+        } catch (error) {
+          priority.value = task.priority;
+          showTaskError(error);
+          priority.disabled = project.archived;
+        }
+      });
       const renameInput = document.createElement('input');
       renameInput.type = 'text';
       renameInput.setAttribute('aria-label', 'New task title');
@@ -236,7 +260,7 @@ async function showProject(id) {
           await refresh();
         } catch (error) { showTaskError(error); }
       });
-      row.append(checkbox, title, renameInput, renameButton);
+      row.append(checkbox, title, priority, renameInput, renameButton);
       return row;
     }));
   }
