@@ -81,8 +81,11 @@ async function renderTasks(project) {
   form.append(element('label', 'Task title', { for: 'task-title' }), input, create);
   const filter = element('select', '', { id: 'task-filter' });
   for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+  const priorityFilter = element('select', '', { id: 'priority-filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
   const filters = element('div', '', { class: 'task-filters' });
-  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter);
+  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter,
+    element('label', 'Priority filter', { for: 'priority-filter' }), priorityFilter);
   const list = element('section', '', { 'aria-label': 'Tasks' });
   app.append(form, filters, list);
   function draw() {
@@ -90,6 +93,7 @@ async function renderTasks(project) {
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       const row = element('div', '', { 'data-testid': 'task-row', class: 'task-row' });
       const checkbox = element('input', '', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
       checkbox.checked = task.completed;
@@ -149,6 +153,7 @@ async function renderTasks(project) {
           });
           task.priority = saved.priority;
           app.querySelector('[role="alert"]')?.remove();
+          draw();
         } catch (error) { alertMessage(error.message); }
         finally {
           priority.value = task.priority;
@@ -161,6 +166,7 @@ async function renderTasks(project) {
     }
   }
   filter.addEventListener('change', draw);
+  priorityFilter.addEventListener('change', draw);
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (archived) return;
