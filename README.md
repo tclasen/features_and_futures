@@ -13,6 +13,6 @@ The server binds to `0.0.0.0`. `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. Projects and tasks are saved in SQLite.
+Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. The project list provides Active/Archived filtering, archive/restore controls, and completion summaries. Archived project pages are read-only. Projects, tasks, and archive state are saved in SQLite; existing databases are migrated automatically.
 
-Tests exercise health, project/task validation, creation order, project isolation, completion changes, detail routes, and SQLite persistence across process restarts using a temporary database.
+Tests exercise health, project/task validation, creation order, project isolation, completion changes, detail routes, schema migration, archive/restore, read-only enforcement, summaries, and SQLite persistence across process restarts using a temporary database.
