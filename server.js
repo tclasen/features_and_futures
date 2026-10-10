@@ -32,6 +32,8 @@ const projectFilter = value => value === 'Archived' ? 'Archived' : 'Active';
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const taskFilter = value => ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
@@ -129,6 +131,12 @@ function projectPage(project, filter = 'All', error = '') {
           <input type="hidden" name="filter" value="${filter}">
           <label><input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
         </form>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
       </div>`).join('')}
     </section>`);
 }
@@ -203,6 +211,33 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       renameProject.run(name, id);
+      response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
+      response.end();
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/rename$/.test(url.pathname)) {
+      const [, , projectId, , taskId] = url.pathname.split('/');
+      const id = Number(projectId);
+      const task = Number(taskId);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project) {
+        html(response, 404, page('<h1>Project not found</h1>'));
+        return;
+      }
+      if (!Number.isSafeInteger(task) || !findTask.get(task, id)) {
+        html(response, 404, page('<h1>Task not found</h1>'));
+        return;
+      }
+      const data = await formData(request);
+      const filter = taskFilter(data.get('filter'));
+      if (project.archived) {
+        html(response, 403, projectPage(project, filter, 'Archived project is read-only'));
+        return;
+      }
+      const title = (data.get('title') || '').trim();
+      if (!title) {
+        html(response, 400, projectPage(project, filter, 'Task title is required'));
+        return;
+      }
+      renameTask.run(title, task, id);
       response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
       response.end();
     } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+)?$/.test(url.pathname)) {
