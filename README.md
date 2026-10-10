@@ -32,6 +32,11 @@ Each project has a saved Default task priority, initially Normal. New tasks
 inherit that project's current default; changing it leaves existing tasks and
 both filters unchanged. Defaults survive renaming and restarts, and the default
 control is disabled while archived and enabled again after restoration.
+Each task supports an optional due date. Save a real Gregorian date in
+YYYY-MM-DD format (years 0001–9999), or leave it blank to clear it. Dates are
+saved as calendar days without timezone conversion. Invalid dates leave the
+saved date unchanged. Due-date controls are disabled while the project is
+archived; restoration preserves dates and enables editing again.
 `GET /health` returns
 `{"status":"ok"}`.
 

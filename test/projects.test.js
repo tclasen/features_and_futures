@@ -51,6 +51,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
       title: 'Legacy task', completed: 1, priority: 'Normal',
     });
     assert.equal(migrated.prepare('SELECT default_priority FROM projects').get().default_priority, 'Normal');
+    assert.equal(migrated.prepare('SELECT due_date FROM tasks').get().due_date, '');
     const legacyPage = await (await fetch(`${base}/projects/1`)).text();
     assert.match(legacyPage, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     migrated.exec('DELETE FROM tasks; DELETE FROM projects;');
@@ -562,6 +563,70 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     await stop();
     base = await start();
     assert.equal(await taskPage(), finalDefaultsPage);
+
+    // Calendar validation, clearing, independence, filters, archive, and persistence.
+    const dueInput = (row) => row.match(/<input id="task-due-date-\d+"[^>]*>/)[0];
+    const withoutDueForm = (row) => row.replace(/\s*<form[^>]*class="create-form task-due-date-form">[\s\S]*?<\/form>/, '');
+    const dueBeforeRows = rows(await taskPage());
+    const dueBeforeList = await projectList();
+    const dueOtherPage = await taskPage(ids[1]);
+    for (const row of dueBeforeRows) {
+      assert.match(row, /<label for="task-due-date-\d+">Task due date<\/label>/);
+      assert.match(dueInput(row), /type="text" value=""/);
+      assert.match(row, /<button type="submit">Save due date<\/button>/);
+    }
+    for (const value of [' 2024-02-29 ', '0001-01-01', '9999-12-31', '2000-02-29', '2400-02-29', '2025-04-30']) {
+      const edited = await followEdit('due-date', taskIds[0], { dueDate: value }, 'Open', 'Low');
+      assert.match(dueInput(rows(edited)[0]), new RegExp(`value="${value.trim()}"`));
+    }
+    const validDuePage = await taskPage();
+    for (const value of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29',
+      '2024-02-30', '2025-04-31', '2025-00-01', '2025-13-01', '2025-01-00', '2025-1-01',
+      '25-01-01', '2025/01/01', '2025-01-01T00:00:00Z', '<invalid>']) {
+      const edited = await followEdit('due-date', taskIds[0], { dueDate: value }, 'Open', 'Low', 422);
+      assert.match(edited, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.match(dueInput(rows(edited)[0]), /value="2025-04-30"/);
+      assert.equal(await taskPage(), validDuePage);
+    }
+    assert.deepEqual(rows(validDuePage).map(withoutDueForm), dueBeforeRows.map(withoutDueForm));
+    assert.deepEqual(rows(validDuePage).slice(1), dueBeforeRows.slice(1));
+    assert.equal(await taskPage(ids[1]), dueOtherPage);
+    assert.equal(await projectList(), dueBeforeList);
+    assert.equal((await editWithFilters('due-date', '999999', { dueDate: '2024-01-01' }, 'All', 'All')).status, 404);
+    const wrongOwner = await fetch(`${base}/projects/${ids[1]}/tasks/${taskIds[0]}/due-date`, {
+      method: 'POST', redirect: 'manual', body: new URLSearchParams({ dueDate: '2024-01-01' }),
+    });
+    assert.equal(wrongOwner.status, 404);
+    await followEdit('due-date', taskIds[1], { dueDate: '0001-12-31' }, 'Completed', 'Low');
+    await followEdit('rename', taskIds[0], { title: 'Dated task renamed' }, 'Open', 'Low');
+    assert.match(dueInput(rows(await taskPage())[0]), /value="2025-04-30"/);
+    const savedDatesPage = await taskPage();
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), savedDatesPage);
+    await archive('archive');
+    const archivedDatesPage = await taskPage();
+    for (const row of rows(archivedDatesPage)) {
+      assert.match(dueInput(row), / disabled/);
+      assert.match(row, /<button type="submit" disabled>Save due date<\/button>/);
+    }
+    await followEdit('due-date', taskIds[0], { dueDate: '' }, 'Open', 'Low', 403);
+    assert.equal(await taskPage(), archivedDatesPage);
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), archivedDatesPage);
+    await archive('restore');
+    assert.equal(await taskPage(), savedDatesPage);
+    for (const value of ['', ' \t\n ']) {
+      await followEdit('due-date', taskIds[0], { dueDate: value }, 'Open', 'Low');
+      assert.match(dueInput(rows(await taskPage())[0]), /value=""/);
+      assert.match(dueInput(rows(await taskPage())[1]), /value="0001-12-31"/);
+    }
+    assert.equal(await projectList(), dueBeforeList);
+    const clearedDatesPage = await taskPage();
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), clearedDatesPage);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
