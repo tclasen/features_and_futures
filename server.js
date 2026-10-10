@@ -20,6 +20,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+
+function canonicalDueDate(value) {
+  const date = value.trim();
+  if (!date) return { valid: true, value: null };
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return { valid: false };
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return { valid: false };
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (day < 1 || day > monthDays[month - 1]) return { valid: false };
+  return { valid: true, value: date };
+}
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 const projectHtml = await readFile(new URL('./project.html', import.meta.url));
@@ -95,7 +109,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) { json(response, 404, { error: 'Project not found' }); return; }
-    json(response, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    json(response, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     return;
   }
   if (tasksMatch && request.method === 'POST') {
@@ -130,6 +144,15 @@ const server = createServer(async (request, response) => {
       const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(priority, taskId, projectId);
       if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }
       json(response, 200, { id: taskId, priority });
+      return;
+    }
+    if (Object.hasOwn(body || {}, 'due_date')) {
+      if (typeof body.due_date !== 'string') { json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' }); return; }
+      const dueDate = canonicalDueDate(body.due_date);
+      if (!dueDate.valid) { json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' }); return; }
+      const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate.value, taskId, projectId);
+      if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }
+      json(response, 200, { id: taskId, due_date: dueDate.value });
       return;
     }
     if (typeof body?.completed !== 'boolean') { json(response, 400, { error: 'Completion state is required' }); return; }
