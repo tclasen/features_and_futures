@@ -24,7 +24,10 @@ persist independently and are disabled while archived. Priorities persist indepe
 and survive renaming. Priority filter (All, Low, Normal, High) combines with
 Task filter; both selections are retained through task edits. Matching tasks stay
 in creation order. Archived task rename and priority controls are disabled,
-but both filters remain usable.
+but both filters remain usable. Each task has a Task due date textbox and Save due date
+button. Dates accept real Gregorian days in YYYY-MM-DD format (years 0001–9999);
+blank values clear the date. Invalid dates leave the saved value unchanged. Due dates
+persist independently, survive renaming, and are read-only while archived.
 Project rows show completed/total task counts. Existing
 SQLite databases are migrated automatically to preserve projects and tasks.
 
@@ -40,5 +43,6 @@ filtering, archive/restore, completion summaries, database migration, read-only
 archived pages, project and task rename validation and identity preservation,
 task priority defaults, migration, independence and validation, combined filters
 and selection preservation through edits, project default migration and inheritance,
-independence and archive/restore behavior, and persistence
+independence and archive/restore behavior, due-date calendar validation, clearing,
+migration, filter preservation and archived controls, and persistence
 across restarts.
