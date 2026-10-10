@@ -6,7 +6,7 @@ from pathlib import Path
 from . import pilot
 from .prepare import ROOT, InfrastructureError
 from .evidence import digest_bytes, read_jsonl
-from .task_stream import verify_replay, stream_input_hash
+from .task_stream import verify_replay, verify_discovery_recovery, stream_input_hash
 from .confirmation import confirmed_stop
 
 def validate_research_manifest(run):
@@ -25,7 +25,8 @@ def validate_research_manifest(run):
     if manifest['purpose']=='research-confirmation' or 'recovery_source' in manifest['research']:
         source=ROOT/manifest['research']['replay_source' if manifest['purpose']=='research-confirmation' else 'recovery_source']
         if source.resolve()==run.resolve():raise InfrastructureError('Confirmation must use a fresh independent run')
-        verify_replay(source,run)
+        if manifest['purpose']=='research-confirmation':verify_replay(source,run)
+        else:verify_discovery_recovery(source,run)
         original=json.loads((source/'manifest.json').read_text())
         for key in ('image_digest','harness_versions','model_mappings','harness_context','storage_policy'):
             if original['runtime'].get(key)!=manifest['runtime'].get(key):

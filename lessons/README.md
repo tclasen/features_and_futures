@@ -38,3 +38,4 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L032 | Successful HTTP status does not prove complete inference accounting | observed |
 | L033 | Stop and remove archived sandboxes, including PM fixtures | verified |
 | L034 | Require executed-test counts for negative fixture verification | verified |
+| L035 | Preserve recovery prefix while allowing new discovery rounds | verified |

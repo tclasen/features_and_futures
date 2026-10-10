@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from orchestrator.evidence import digest_bytes
-from orchestrator.task_stream import freeze_round,task_stream,suite_for_stage,verify_replay
+from orchestrator.task_stream import freeze_round,task_stream,suite_for_stage,verify_replay,verify_discovery_recovery
 
 class TaskStreamTests(unittest.TestCase):
     def setUp(self):
@@ -38,6 +38,23 @@ class TaskStreamTests(unittest.TestCase):
         manifest=json.loads((self.run/'manifest.json').read_text());manifest['execution']={}
         (self.run/'manifest.json').write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError,'authorize'):freeze_round(self.run,'next',self.suite,self.counts)
+
+    def test_discovery_recovery_extends_exact_prefix_but_confirmation_cannot(self):
+        freeze_round(self.run,'shared second task',self.suite,self.counts)
+        recovery=self.root/'recovery';shutil.copytree(self.run,recovery)
+        freeze_round(recovery,'new third discovery task',self.suite,self.counts)
+        result=verify_discovery_recovery(self.run,recovery)
+        self.assertEqual(result['inherited_checkpoints'],2)
+        self.assertEqual(result['new_discovery_checkpoints'],1)
+        with self.assertRaisesRegex(ValueError,'omits or adds'):verify_replay(self.run,recovery)
+
+    def test_discovery_recovery_refuses_changed_or_omitted_inherited_tasks(self):
+        recovery=self.root/'recovery';shutil.copytree(self.run,recovery)
+        freeze_round(self.run,'shared second task',self.suite,self.counts)
+        with self.assertRaisesRegex(ValueError,'omits inherited'):verify_discovery_recovery(self.run,recovery)
+        shutil.rmtree(recovery);shutil.copytree(self.run,recovery)
+        (recovery/'tasks/task-002/suite/checks.mjs').write_text('weakened inherited suite')
+        with self.assertRaisesRegex(ValueError,'suite changed'):verify_discovery_recovery(self.run,recovery)
 
 class StreamSealTests(TaskStreamTests):
     def test_seal_cannot_truncate_or_extend_declared_pilot(self):

@@ -96,6 +96,18 @@ def verify_replay(source, replay):
     return {'verified':True,'checkpoints':len(left),'input_sha256':stream_input_hash(source)}
 
 
+def verify_discovery_recovery(source, recovery):
+    """Preserve the inherited exact prefix while discovery appends new frozen rounds."""
+    left=task_stream(source);right=task_stream(recovery)
+    if len(right)<len(left):raise ValueError('Recovery omits inherited checkpoints')
+    for original,copy in zip(left,right):
+        if any(original[k]!=copy[k] for k in ('task_id','stage','packet_sha256','suite_hash')):
+            raise ValueError('Recovery differs from inherited source task/suite')
+        if phase_expectations(original)!=phase_expectations(copy):
+            raise ValueError('Recovery changes inherited cumulative phase counts')
+    return {'verified':True,'inherited_checkpoints':len(left),'new_discovery_checkpoints':len(right)-len(left),'source_input_sha256':stream_input_hash(source)}
+
+
 def effective_manifest(run):
     manifest=json.loads((Path(run)/'manifest.json').read_text())
     if manifest['execution'].get('task_stream_revision')=='append-only-rounds-v1':
