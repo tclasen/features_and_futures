@@ -69,7 +69,26 @@ async function loadTasks(projectId, archived = false) {
       await loadTasks(projectId, archived);
     });
     label.append(checkbox);
-    row.append(title, label);
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.disabled = archived;
+    priority.addEventListener('change', async () => {
+      try {
+        await request(`/api/tasks/${encodeURIComponent(task.id)}/priority`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+      } catch (error) {
+        alert.textContent = error.message;
+        alert.hidden = false;
+        await loadTasks(projectId, archived);
+      }
+    });
+    row.append(title, label, priority);
     const renameInput = document.createElement('input');
     renameInput.type = 'text';
     renameInput.setAttribute('aria-label', 'New task title');

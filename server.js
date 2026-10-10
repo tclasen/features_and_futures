@@ -17,11 +17,14 @@ db.exec(`
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     created_at INTEGER NOT NULL
   );
 `);
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const server = http.createServer(async (req, res) => {
@@ -34,7 +37,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = decodeURIComponent(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return json(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
     try {
@@ -59,6 +62,16 @@ const server = http.createServer(async (req, res) => {
       const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(title, decodeURIComponent(renameTaskMatch[1]));
       if (!result.changes) return json(res, 404, { error: 'Task not found' });
       return json(res, 200, { title });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
+  const priorityMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/priority\/?$/);
+  if (priorityMatch && req.method === 'PATCH') {
+    try {
+      const body = await readBody(req);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(res, 400, { error: 'Invalid task priority' });
+      const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(body.priority, decodeURIComponent(priorityMatch[1]));
+      if (!result.changes) return json(res, 404, { error: 'Task not found' });
+      return json(res, 200, { priority: body.priority });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/?$/);
