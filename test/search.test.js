@@ -31,18 +31,22 @@ test('ASCII substring search intersects filters, survives edits, and resets on f
   const post = (path, fields = {}) => fetch(base + path, { method: 'POST', body: new URLSearchParams(fields), redirect: 'manual' });
   try {
     await start();
-    for (const name of ['Alpha  Team', 'alpha Team', 'ALPHA archive', 'Älpha']) await post('/projects', { name });
+    for (const name of ['Alpha  Team', 'alpha\t \tTeam', 'ALPHA archive', 'Älpha']) await post('/projects', { name });
     await post('/projects/3/archive');
-    assert.deepEqual(rows(await get('/?query=%20ALPHA%20'), 'project'), ['Alpha  Team', 'alpha Team']);
-    assert.deepEqual(rows(await get('/?query=alpha%20%20team'), 'project'), ['Alpha  Team']);
+    const projectNames = ['Alpha  Team', 'alpha\t \tTeam'];
+    assert.deepEqual(rows(await get('/?query=%20ALPHA%20'), 'project'), projectNames);
+    for (const query of ['alpha team', 'alpha  team', '\t ALPHA\t \tTEAM \t']) {
+      assert.deepEqual(rows(await get(`/?${new URLSearchParams({ query })}`), 'project'), projectNames);
+    }
+    assert.deepEqual(rows(await get('/?query=alpha%0Ateam'), 'project'), []);
     assert.deepEqual(rows(await get('/?query=alpha&filter=Archived'), 'project'), ['ALPHA archive']);
-    assert.deepEqual(rows(await get('/?query=%20%20'), 'project'), ['Alpha  Team', 'alpha Team', 'Älpha']);
+    assert.deepEqual(rows(await get('/?query=%20%20'), 'project'), ['Alpha  Team', 'alpha\t \tTeam', 'Älpha']);
     assert.deepEqual(rows(await get('/?query=älpha'), 'project'), []);
     const list = await get('/?query=alpha');
     assert.match(list, /name="query" value="alpha"/);
     assert.match(list, /action="\/projects\/1" method="get"><button[^>]*>Open project/);
 
-    for (const title of ['Ship  Now', 'SHIP Now', 'Other', 'Ship later']) await post('/projects/1/tasks', { title });
+    for (const title of ['Ship  Now', 'SHIP\t \tNow', 'Other', 'Ship later']) await post('/projects/1/tasks', { title });
     for (const id of [1, 2]) {
       await post(`/projects/1/tasks/${id}/priority`, { priority: 'High' });
       await post(`/projects/1/tasks/${id}/due-date`, { dueDate: '2024-02-29' });
@@ -51,7 +55,10 @@ test('ASCII substring search intersects filters, survives edits, and resets on f
     const state = { query: 'ship', filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-01' };
     const view = `/projects/1?${new URLSearchParams(state)}`;
     assert.deepEqual(rows(await get(view), 'task'), ['Ship  Now']);
-    assert.deepEqual(rows(await get('/projects/1?query=ship%20%20now'), 'task'), ['Ship  Now']);
+    for (const query of ['ship now', 'ship  now', '\t SHIP\t \tNOW \t']) {
+      assert.deepEqual(rows(await get(`/projects/1?${new URLSearchParams({ query })}`), 'task'), ['Ship  Now', 'SHIP\t \tNow']);
+    }
+    assert.deepEqual(rows(await get('/projects/1?query=ship%0Anow'), 'task'), []);
     for (const form of (await get(view)).matchAll(/<form[^>]*action="\/projects\/1[^\"]*"[^>]*>([\s\S]*?)<\/form>/g)) {
       assert.match(form[1], /name="query"/);
       assert.match(form[1], /name="dueFrom" value="2024-02-29"/);
@@ -63,6 +70,8 @@ test('ASCII substring search intersects filters, survives edits, and resets on f
       for (const [key, value] of Object.entries(state)) assert.equal(url.searchParams.get(key), value);
       assert.deepEqual(rows(await get(url.pathname + url.search), 'task'), expected);
     };
+    await edit('/projects/1/tasks/1/rename', { title: '  Ship\t  Now  ' }, ['Ship\t  Now']);
+    assert.deepEqual(rows(await get('/projects/1?query=ship%20now'), 'task'), ['Ship\t  Now', 'SHIP\t \tNow']);
     await edit('/projects/1/tasks/1/rename', { title: '  SHIP revised  ' }, ['SHIP revised']);
     await edit('/projects/1/rename', { name: 'Renamed' }, ['SHIP revised']);
     await edit('/projects/1/default-priority', { priority: 'Low' }, ['SHIP revised']);
@@ -90,7 +99,9 @@ test('ASCII substring search intersects filters, survives edits, and resets on f
     await start();
     assert.deepEqual(rows(await get(view), 'task'), ['SHIP revised']);
     await post('/projects/1/restore');
-    assert.deepEqual(rows(await get('/projects/1'), 'task'), ['SHIP revised', 'SHIP Now', 'Other', 'Ship later', 'Ship new']);
+    assert.deepEqual(rows(await get('/projects/1'), 'task'), ['SHIP revised', 'SHIP\t \tNow', 'Other', 'Ship later', 'Ship new']);
+    assert.deepEqual(rows(await get('/projects/1?query=ship%20now'), 'task'), ['SHIP\t \tNow']);
+    assert.deepEqual(rows(await get('/?query=alpha%20team'), 'project'), ['alpha\t \tTeam']);
     assert.match(await get('/projects/1'), /id="task-search"[^>]*value=""/);
     assert.match(await get('/'), /id="project-search"[^>]*value=""/);
     const escaped = await get('/projects/1?query=%22%3E%3Cscript%3E');
