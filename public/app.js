@@ -141,6 +141,32 @@ async function renderProject(id) {
         if (selected === 'open' && task.completed || selected === 'completed' && !task.completed) continue;
         const row = element('article', undefined, { 'data-testid': 'task-row' });
         row.append(element('span', task.title));
+        const renameForm = element('form');
+        const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', value: task.title });
+        const renameButton = element('button', 'Rename task', { type: 'submit' });
+        renameInput.disabled = project.archived;
+        renameButton.disabled = project.archived;
+        renameForm.append(renameInput, renameButton);
+        renameForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const title = renameInput.value.trim();
+          if (!title) {
+            alert.textContent = 'Task title is required';
+            alert.hidden = false;
+            renameInput.focus();
+            return;
+          }
+          try {
+            await request(`/api/projects/${id}/tasks/${task.id}/title`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+            task.title = title;
+            alert.hidden = true;
+            showTasks();
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
+        row.append(renameForm);
         const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = task.completed;
         checkbox.disabled = project.archived;
