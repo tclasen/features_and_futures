@@ -60,6 +60,10 @@ test('normalized searches preserve original names, titles, and task data across 
     await send(taskPath, 'PATCH', { completed: true });
     await send(taskPath, 'PATCH', { priority: 'High' });
     const savedTask = await send(taskPath, 'PATCH', { dueDate: '2026-10-10' });
+    const second = await send('/api/projects', 'POST', { name: 'MiXeD  Project second' });
+    const archivedProject = await send('/api/projects', 'POST', { name: 'MiXeD \t Project archived' });
+    const savedArchived = await send(`/api/projects/${archivedProject.id}`, 'PATCH', { archived: true });
+    const unrelated = await send('/api/projects', 'POST', { name: 'Unrelated sentinel' });
     assert.equal(project.name, 'MiXeD \t  Project');
     assert.equal(savedTask.title, 'MiXeD\t \t Task');
     const range = { from: '2026-10-10', through: '2026-10-10' };
@@ -70,17 +74,20 @@ test('normalized searches preserve original names, titles, and task data across 
       server = await start(dbPath);
       const projects = await list('/api/projects');
       const tasks = await list(tasksPath);
-      assert.deepEqual(projects, [savedProject]);
+      assert.deepEqual(projects, [savedProject, second, savedArchived, unrelated]);
       assert.deepEqual(tasks, [savedTask]);
       assert.deepEqual(projects.filter((entry) => matchesProjectFilters(
         entry, archived ? 'Archived' : 'Active', ' mixed\t project ',
-      )), [savedProject]);
+      )), archived ? [savedProject, savedArchived] : [savedProject, second]);
+      assert.deepEqual(projects.filter((entry) => matchesProjectFilters(
+        entry, archived ? 'Active' : 'Archived', 'mixed project',
+      )), archived ? [second] : [savedArchived]);
       assert.deepEqual(tasks.filter((entry) => matchesTaskFilters(
         entry, 'Completed', 'High', range, ' mixed  task ',
       )), [savedTask]);
       assert.deepEqual(tasks.filter((entry) => matchesTaskFilters(entry, 'All', 'All')), [savedTask]);
       // Matching must not mutate the fetched objects used for display.
-      assert.deepEqual(projects, [savedProject]);
+      assert.deepEqual(projects, [savedProject, second, savedArchived, unrelated]);
       assert.deepEqual(tasks, [savedTask]);
     }
   } finally {

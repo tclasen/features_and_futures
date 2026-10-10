@@ -22,6 +22,7 @@ function addProjectRow(project, onArchiveChange) {
   row.className = 'project-row';
   row.dataset.testid = 'project-row';
   const name = document.createElement('span');
+  name.className = 'saved-text';
   name.textContent = project.name;
   const open = document.createElement('button');
   open.type = 'button';
@@ -56,7 +57,7 @@ function addProjectRow(project, onArchiveChange) {
 
 async function renderProject(projectId) {
   app.innerHTML = `
-    <button id="back" type="button">Projects</button><h1></h1>
+    <button id="back" type="button">Projects</button><h1 class="saved-text"></h1>
     <p id="archive-notice" hidden>Archived project</p>
     <form id="rename-project">
       <label for="new-project-name">New project name</label>
@@ -200,6 +201,7 @@ async function renderProject(projectId) {
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
       const title = document.createElement('span');
+      title.className = 'saved-text';
       title.textContent = task.title;
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
