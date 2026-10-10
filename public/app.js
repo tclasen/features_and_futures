@@ -133,6 +133,43 @@ async function showProject(id) {
     notice.textContent = 'Archived project';
     app.append(notice);
   }
+  const renameForm = document.createElement('form');
+  renameForm.innerHTML = `
+    <label for="new-project-name">New project name</label>
+    <div class="form-controls">
+      <input id="new-project-name" name="name" type="text" autocomplete="off">
+      <button type="submit">Rename project</button>
+    </div>
+  `;
+  const renameInput = renameForm.querySelector('input');
+  const renameButton = renameForm.querySelector('button');
+  renameInput.value = project.name;
+  renameInput.disabled = project.archived;
+  renameButton.disabled = project.archived;
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    const name = renameInput.value.trim();
+    if (!name) return showAlert('Project name is required');
+    renameButton.disabled = true;
+    showAlert('');
+    try {
+      const saved = await api(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      project.name = saved.name;
+      heading.textContent = saved.name;
+      document.title = `${saved.name} · Workboard`;
+      renameInput.value = saved.name;
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      renameButton.disabled = project.archived;
+    }
+  });
+  app.append(renameForm);
   const controls = document.createElement('div');
   controls.innerHTML = `
     <form>

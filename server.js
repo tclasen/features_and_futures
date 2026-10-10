@@ -31,7 +31,8 @@ const projectQuery = `
 const listProjects = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -102,10 +103,22 @@ const server = createServer(async (request, response) => {
       const projectId = Number(projectMatch[1]);
       if (!findProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
       const input = await readJson(request);
+      if (input && Object.hasOwn(input, 'name')) {
+        if (Object.hasOwn(input, 'archived')) {
+          return sendJson(response, 400, { error: 'Rename and archive changes must be separate requests' });
+        }
+        if (findProject.get(projectId).archived) {
+          return sendJson(response, 409, { error: 'Archived project is read-only' });
+        }
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+        renameProject.run(name, projectId);
+        return sendJson(response, 200, projectValue(findProject.get(projectId)));
+      }
       if (typeof input?.archived !== 'boolean') {
         return sendJson(response, 400, { error: 'Archive state must be a boolean' });
       }
-      updateProject.run(Number(input.archived), projectId);
+      updateProjectArchive.run(Number(input.archived), projectId);
       return sendJson(response, 200, projectValue(findProject.get(projectId)));
     }
     const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);

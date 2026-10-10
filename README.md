@@ -31,6 +31,13 @@ Restoring preserves all tasks and completion states. Every project row shows
 the completed/total task count, including all tasks regardless of filtering.
 Archive state persists in SQLite; existing databases migrate automatically.
 
+Use New project name and Rename project on an active project page to rename it.
+Names are trimmed and must not be empty. Renaming preserves the project's URL,
+creation order, tasks, and completion summary, and persists across restarts.
+Archived projects cannot be renamed; restoring enables renaming again.
+The project API accepts `PATCH /api/projects/:id` with `{ "name": "New name" }`;
+send archive changes separately from renames.
+
 Run integration tests:
 
 ```sh
@@ -40,4 +47,5 @@ npm test
 Tests use a temporary database outside the repository and check validation,
 creation order, the health endpoint, detail routes, project isolation, completion
 validation, archive/restore protections, completion summaries, migration from
-existing databases, and restart persistence for projects and tasks.
+existing databases, renaming and its read-only protections, and restart
+persistence for projects and tasks.
