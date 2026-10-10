@@ -262,7 +262,7 @@
             && (priorityFilter.value === 'All' || priorityFilter.value === task.priority),
           );
           for (const task of matching) appendTask(list, task, project.id, project.archived, (updated) => {
-            tasks = tasks.map((item) => item.id === updated.id ? updated : item);
+            tasks = tasks.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
             renderTasks();
           });
         }
@@ -382,6 +382,38 @@
           onUpdate(await response.json());
         });
         row.append(renameForm, renameAlert);
+        const dueDateForm = document.createElement('form');
+        const dueDateLabel = element('label', 'Task due date');
+        const dueDateInput = document.createElement('input');
+        dueDateInput.type = 'text';
+        dueDateInput.value = task.dueDate || '';
+        dueDateInput.disabled = archived;
+        dueDateLabel.append(dueDateInput);
+        const saveDueDate = element('button', 'Save due date');
+        saveDueDate.type = 'submit';
+        saveDueDate.disabled = archived;
+        dueDateForm.append(dueDateLabel, saveDueDate);
+        const dueDateAlert = element('p');
+        dueDateAlert.setAttribute('role', 'alert');
+        dueDateAlert.hidden = true;
+        dueDateForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ dueDate: dueDateInput.value }),
+          });
+          if (!response.ok) {
+            const result = await response.json();
+            dueDateAlert.textContent = result.error || 'Due date must be a valid YYYY-MM-DD date';
+            dueDateAlert.hidden = false;
+            return;
+          }
+          const result = await response.json();
+          dueDateAlert.hidden = true;
+          onUpdate({ ...task, dueDate: result.dueDate });
+        });
+        row.append(dueDateForm, dueDateAlert);
         list.append(row);
       }
 
