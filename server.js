@@ -15,6 +15,7 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 }
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +118,11 @@ function projectPage(project, filter = 'All', error = '') {
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form class="navigation" method="get" action="/"><button type="submit">Projects</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create navigation" method="post" action="/projects/${project.id}/rename">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="fields"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+    </form>
     <form class="create" method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -173,6 +179,31 @@ const server = http.createServer(async (request, response) => {
       }
       insertProject.run(name);
       response.writeHead(303, { Location: filter === 'Archived' ? '/?filter=Archived' : '/' });
+      response.end();
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/rename$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
+      if (!project) {
+        sendHtml(response, 404, page('Project not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const form = await readForm(request);
+      if (!form) {
+        sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
+      }
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) {
+        sendHtml(response, 403, projectPage(project, filter, 'Archived project cannot be changed'));
+        return;
+      }
+      const name = (form.get('name') || '').trim();
+      if (!name) {
+        sendHtml(response, 400, projectPage(project, filter, 'Project name is required'));
+        return;
+      }
+      renameProject.run(name, id);
+      response.writeHead(303, { Location: `/projects/${id}${filter === 'All' ? '' : `?filter=${filter}`}` });
       response.end();
     } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/(archive|restore)$/.test(url.pathname)) {
       const [, , rawId, action] = url.pathname.split('/');

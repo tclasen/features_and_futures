@@ -16,6 +16,11 @@ Open a project to create tasks, toggle their completion checkboxes, and choose
 All, Open, or Completed in the Task filter. Tasks belong to their project and
 appear in creation order.
 
+Use New project name and Rename project on an active project page to rename it.
+Names are trimmed and must not be blank. Renaming preserves the project's URL,
+creation order, tasks, and completion state, and persists across restarts.
+Archived projects cannot be renamed until restored.
+
 The Project filter starts with Active projects. Archive a project to move it to
 Archived, or restore it to return it to Active. Each project shows its completed
 and total task counts. Archived projects remain readable with working task
@@ -38,4 +43,4 @@ The integration tests start real server processes, use temporary SQLite
 databases, and check project and task validation, ordering, navigation, HTML
 escaping, task filtering and ownership, completion changes, and persistence
 after restarts, legacy database migration, archive/restore, summaries, and
-archived-project mutation protection.
+archived-project mutation protection, and renaming with identity and data preservation.
