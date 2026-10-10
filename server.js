@@ -46,6 +46,16 @@ const server = http.createServer(async (req, res) => {
       catch { return sendJson(res, 400, { error: 'Invalid request' }); }
     }
   }
+  const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/rename$/);
+  if (req.method === 'POST' && taskRenameMatch) {
+    try {
+      const body = await bodyJson(req);
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      const result = db.prepare('UPDATE tasks SET title=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(title, decodeURIComponent(taskRenameMatch[1]));
+      return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Active task not found' });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
   if (req.method === 'PATCH' && taskMatch) {
     try { const body = await bodyJson(req); const result = db.prepare('UPDATE tasks SET completed=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(body.completed ? 1 : 0, decodeURIComponent(taskMatch[1])); if (!result.changes) return sendJson(res, 404, { error: 'Task not found' }); return sendJson(res, 200, { ok: true }); }
