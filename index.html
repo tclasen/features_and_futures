@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    body { margin: 0; }
+    main { width: min(720px, calc(100% - 40px)); margin: 64px auto; }
+    h1 { font-size: 2rem; margin: 0 0 28px; }
+    form { display: flex; gap: 10px; margin-bottom: 20px; }
+    input { flex: 1; min-width: 0; padding: 11px 12px; border: 1px solid #aab5c2; border-radius: 6px; font: inherit; }
+    button { padding: 10px 15px; border: 0; border-radius: 6px; background: #215fc3; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #184b9c; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid #d9e0e8; }
+    .error { color: #b42318; margin: 0 0 14px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 480px) { form { flex-direction: column; } main { margin-top: 36px; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const projectMatch = location.pathname.match(/^\/projects\/(\d+)$/);
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+    async function load() {
+      if (projectMatch) {
+        const projects = await fetch('/api/projects').then(response => response.json());
+        const project = projects.find(item => String(item.id) === projectMatch[1]);
+        if (!project) {
+          app.innerHTML = '<h1>Project not found</h1><button id="back">Projects</button>';
+        } else {
+          app.innerHTML = `<button id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+        }
+        document.querySelector('#back').addEventListener('click', () => location.assign('/'));
+        return;
+      }
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form"><input id="project-name" aria-label="Project name" placeholder="Project name"><button type="submit">Create project</button></form>
+        <p class="error" role="alert" hidden></p><section id="projects" aria-label="Projects"></section>`;
+      const form = document.querySelector('#create-form');
+      const input = document.querySelector('#project-name');
+      const error = document.querySelector('.error');
+      const list = document.querySelector('#projects');
+      async function refresh() {
+        const projects = await fetch('/api/projects').then(response => response.json());
+        list.innerHTML = projects.map(project => `<div class="row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-project-id="${project.id}">Open project</button></div>`).join('');
+        list.querySelectorAll('button').forEach(button => button.addEventListener('click', () => location.assign(`/projects/${button.dataset.projectId}`)));
+      }
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        error.hidden = true;
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+        const result = await response.json();
+        if (!response.ok) { error.textContent = result.error; error.hidden = false; return; }
+        input.value = '';
+        await refresh();
+      });
+      await refresh();
+    }
+    load().catch(() => { app.innerHTML = '<h1>Unable to load Workboard</h1>'; });
+  </script>
+</body>
+</html>
