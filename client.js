@@ -163,6 +163,15 @@ async function showProject(id) {
       option.value = value;
       filter.append(option);
     }
+    const priorityFilterLabel = element('label', { text: 'Priority filter' });
+    priorityFilterLabel.htmlFor = 'priority-filter';
+    const priorityFilter = element('select');
+    priorityFilter.id = 'priority-filter';
+    for (const value of ['All', 'Low', 'Normal', 'High']) {
+      const option = element('option', { text: value });
+      option.value = value;
+      priorityFilter.append(option);
+    }
     const list = element('div', { className: 'task-list' });
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     const drawTasks = () => {
@@ -171,6 +180,7 @@ async function showProject(id) {
         const completed = Boolean(task.completed);
         if (filter.value === 'Open' && completed) continue;
         if (filter.value === 'Completed' && !completed) continue;
+        if (priorityFilter.value !== 'All' && (task.priority || 'Normal') !== priorityFilter.value) continue;
         const row = element('article', { className: 'task-row' });
         row.dataset.testid = 'task-row';
         row.append(element('span', { text: task.title }));
@@ -214,6 +224,7 @@ async function showProject(id) {
               body: JSON.stringify({ priority: priority.value })
             });
             task.priority = updated.priority;
+            drawTasks();
           } catch (error) {
             priority.value = previous;
             showError(error.message);
@@ -242,6 +253,7 @@ async function showProject(id) {
       }
     };
     filter.addEventListener('change', drawTasks);
+    priorityFilter.addEventListener('change', drawTasks);
     drawTasks();
     form.addEventListener('submit', async event => {
       event.preventDefault();
@@ -270,7 +282,7 @@ async function showProject(id) {
       status.className = 'archived-status';
       app.append(status);
     }
-    app.append(form, filterLabel, filter, list);
+    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
   } catch {
     app.replaceChildren(element('h1', { text: 'Project not found' }));
     const back = element('button', { type: 'button', text: 'Projects' });
