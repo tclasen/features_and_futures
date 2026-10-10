@@ -75,7 +75,91 @@ async function showProject(id) {
   const back = element('button', 'Projects', 'back-button');
   back.type = 'button';
   back.addEventListener('click', () => { location.href = '/'; });
-  content.append(back, element('h1', project.name));
+  const heading = element('h1', project.name);
+  const form = element('form', undefined, 'create-form');
+  const label = element('label', 'Task title');
+  label.htmlFor = 'task-title';
+  const input = element('input');
+  input.id = 'task-title';
+  input.name = 'title';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  const submit = element('button', 'Create task');
+  submit.type = 'submit';
+  const alert = element('p', undefined, 'alert');
+  alert.setAttribute('role', 'alert');
+  alert.hidden = true;
+  form.append(label, input, submit);
+
+  const filterLabel = element('label', 'Task filter');
+  filterLabel.htmlFor = 'task-filter';
+  const filter = element('select');
+  filter.id = 'task-filter';
+  for (const value of ['All', 'Open', 'Completed']) {
+    const option = element('option', value);
+    option.value = value;
+    filter.append(option);
+  }
+  filterLabel.append(filter);
+  const taskList = element('div', undefined, 'task-list');
+  taskList.setAttribute('aria-label', 'Tasks');
+  content.append(back, heading, form, alert, filterLabel, taskList);
+
+  const renderTasks = async () => {
+    const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    taskList.replaceChildren();
+    const matchingTasks = tasks.filter((task) => filter.value === 'All'
+      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    for (const task of matchingTasks) {
+      const row = element('article', undefined, 'task-row');
+      row.dataset.testid = 'task-row';
+      const checkboxLabel = element('label', undefined, 'task-check');
+      const checkbox = element('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        try {
+          await request(`/api/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          await renderTasks();
+        } catch (error) {
+          checkbox.checked = !checkbox.checked;
+          alert.textContent = error.message;
+          alert.hidden = false;
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+      checkboxLabel.append(checkbox, element('span', task.title, 'task-title'));
+      row.append(checkboxLabel);
+      taskList.append(row);
+    }
+  };
+
+  filter.addEventListener('change', () => { renderTasks().catch(() => {}); });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    try {
+      await request(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      });
+      input.value = '';
+      filter.value = 'All';
+      await renderTasks();
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+    }
+  });
+  await renderTasks();
 }
 
 const route = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
