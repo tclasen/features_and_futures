@@ -25,6 +25,10 @@ database.exec(`
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
@@ -129,7 +133,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
       sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
       return;
     }
@@ -176,6 +180,15 @@ const server = createServer(async (request, response) => {
         }
         database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskMatch[1]));
         sendJson(response, 200, { title });
+        return;
+      }
+      if (typeof body.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(body.priority)) {
+          sendJson(response, 400, { error: 'Invalid task priority' });
+          return;
+        }
+        database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(body.priority, Number(taskMatch[1]));
+        sendJson(response, 200, { priority: body.priority });
         return;
       }
       if (typeof body.completed !== 'boolean') {
