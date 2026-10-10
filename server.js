@@ -24,6 +24,10 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+}
+const taskPriorities = ['Low', 'Normal', 'High'];
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
@@ -35,11 +39,12 @@ const findProject = database.prepare('SELECT id, name, archived FROM projects WH
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -130,6 +135,14 @@ function projectPage(project, filter = 'All', error = '') {
             aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}
             onchange="this.form.requestSubmit()">
           <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+        </form>
+        <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}
+            onchange="this.form.requestSubmit()">
+            ${taskPriorities.map(priority => `<option${priority === task.priority ? ' selected' : ''}>${priority}</option>`).join('')}
+          </select>
         </form>
         <form class="create" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
           <input type="hidden" name="filter" value="${filter}">
@@ -253,7 +266,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(?:\/(rename|priority))?)?$/.exec(pathname);
     if (request.method === 'POST' && taskRoute) {
       const projectId = Number(taskRoute[1]);
       const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -264,7 +277,8 @@ const server = createServer(async (request, response) => {
           sendHtml(response, 403, projectPage(project, filter, 'Archived project cannot be changed'));
           return;
         }
-        if (!taskRoute[2]) {
+        const taskIdText = taskRoute[2];
+        if (!taskIdText) {
           const title = (form.get('title') || '').trim();
           if (!title) {
             sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
@@ -272,12 +286,19 @@ const server = createServer(async (request, response) => {
           }
           insertTask.run(projectId, title);
         } else {
-          const taskId = Number(taskRoute[2]);
+          const taskId = Number(taskIdText);
           if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, projectId)) {
             sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
             return;
           }
-          if (taskRoute[3]) {
+          if (taskRoute[3] === 'priority') {
+            const priority = form.get('priority');
+            if (!taskPriorities.includes(priority)) {
+              sendHtml(response, 400, projectPage(project, filter, 'Invalid task priority'));
+              return;
+            }
+            updateTaskPriority.run(priority, taskId, projectId);
+          } else if (taskRoute[3] === 'rename') {
             const title = (form.get('title') || '').trim();
             if (!title) {
               sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));

@@ -44,7 +44,14 @@ project, creation order, completion state, and filter membership remain unchange
 Checkbox labels reflect the new title. Archived projects disable task rename
 controls and reject rename requests; restoration enables them again.
 
+Each task row has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Priority changes persist independently
+without affecting ownership, ordering, completion, or summaries; renaming retains
+priority. Archived projects disable priority controls and reject priority edits
+with HTTP 403. Restoration re-enables them with saved values. Existing databases
+are upgraded automatically without changing task IDs or other task data.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
-completion toggles, archive/restore, project and task renaming, summaries, legacy schema migration, reloads,
-and persistence across process restarts.
+completion toggles, archive/restore, project and task renaming, priorities,
+summaries, legacy schema migration, reloads, and persistence across process restarts.
