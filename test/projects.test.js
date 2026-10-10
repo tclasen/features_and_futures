@@ -79,8 +79,8 @@ test('projects validate, navigate, and persist across restarts', async () => {
     async function post(route, values) {
       return fetch(base + route, { method: 'POST', body: new URLSearchParams(values), redirect: 'manual' });
     }
-    async function detailPage(filter = 'All') {
-      return (await fetch(`${base}${path}?filter=${filter}`)).text();
+    async function detailPage(filter = 'All', priority = 'All') {
+      return (await fetch(`${base}${path}?filter=${filter}&priorityFilter=${priority}`)).text();
     }
     for (const title of ['', '   ']) {
       const response = await post(`${path}/tasks`, { title });
@@ -282,6 +282,66 @@ test('projects validate, navigate, and persist across restarts', async () => {
     await stop();
     await start();
     assert.equal(await detailPage(), priorityPage);
+
+    // Combined filters intersect, preserve selections through edits, and never change summaries.
+    const prioritySelect = (value) => `<select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${['All', 'Low', 'Normal', 'High'].map(option => `<option${option === value ? ' selected' : ''}>${option}</option>`).join('')}</select>`;
+    const rows = html => [...html.matchAll(/<\/form><span>(.*?)<\/span>/g)].map(match => match[1]);
+    const expectedTasks = [
+      { title: 'Priority retained', completed: true, priority: 'Low' },
+      { title: 'Second &lt;task&gt;', completed: false, priority: 'Normal' },
+      { title: 'New normal task', completed: false, priority: 'Normal' }
+    ];
+    const summaryBeforeFilters = await (await fetch(base)).text();
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const filtered = await detailPage(filter, priority);
+        assert.deepEqual(rows(filtered), expectedTasks.filter(task =>
+          (filter === 'All' || task.completed === (filter === 'Completed')) &&
+          (priority === 'All' || task.priority === priority)).map(task => task.title));
+        assert.ok(filtered.includes(prioritySelect(priority)));
+        assert.match(filtered, new RegExp(`<option selected>${filter}</option>`));
+      }
+    }
+    assert.equal(await (await fetch(base)).text(), summaryBeforeFilters);
+    assert.ok((await (await fetch(base + path)).text()).includes(prioritySelect('All')));
+
+    const selected = { filter: 'Completed', priorityFilter: 'Low' };
+    const renamedWithFilters = await post(taskRename, { ...selected, title: '  Combined task  ' });
+    assert.equal(renamedWithFilters.headers.get('location'), `${path}?filter=Completed&priorityFilter=Low`);
+    assert.deepEqual(rows(await detailPage('Completed', 'Low')), ['Combined task']);
+    const invalidRename = await post(taskRename, { ...selected, title: '  ' });
+    const invalidPage = await invalidRename.text();
+    assert.match(invalidPage, /Task title is required/);
+    assert.ok(invalidPage.includes(prioritySelect('Low')));
+    assert.match(invalidPage, /<option selected>Completed<\/option>/);
+    const changedPriority = await post(priorityRoute, { ...selected, priority: 'High' });
+    assert.equal(changedPriority.headers.get('location'), `${path}?filter=Completed&priorityFilter=Low`);
+    assert.deepEqual(rows(await (await fetch(base + changedPriority.headers.get('location'))).text()), []);
+    assert.deepEqual(rows(await detailPage('Completed', 'High')), ['Combined task']);
+    assert.equal(await (await fetch(base)).text(), summaryBeforeFilters);
+    const changedCompletion = await post(completion, { filter: 'Completed', priorityFilter: 'High' });
+    const completionPage = await (await fetch(base + changedCompletion.headers.get('location'))).text();
+    assert.deepEqual(rows(completionPage), []);
+    assert.ok(completionPage.includes(prioritySelect('High')));
+    assert.match(completionPage, /<option selected>Completed<\/option>/);
+    assert.deepEqual(rows(await detailPage('Open', 'High')), ['Combined task']);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/3 completed/);
+    await stop();
+    await start();
+    assert.deepEqual(rows(await detailPage('Open', 'High')), ['Combined task']);
+    await post(`${path}/archive`, {});
+    const combinedArchived = await detailPage('Open', 'High');
+    assert.deepEqual(rows(combinedArchived), ['Combined task']);
+    assert.ok(combinedArchived.includes(prioritySelect('High')));
+    assert.match(combinedArchived, /name="priority" disabled/);
+    assert.match(combinedArchived, /name="title" disabled/);
+    assert.match(combinedArchived, /type="checkbox"[^>]* disabled/);
+    assert.deepEqual(rows(await detailPage('Completed', 'High')), []);
+    await post(`${path}/restore`, {});
+    assert.doesNotMatch(await detailPage('Open', 'High'), / disabled/);
+    // Return the task to the state expected by the legacy migration assertions below.
+    await post(taskRename, { title: 'Priority retained' });
+    await post(completion, { completed: '1' });
 
     // Upgrade a pre-priority database containing tasks without losing their data.
     await stop();
