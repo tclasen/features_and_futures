@@ -196,6 +196,47 @@ async function showProject(id) {
       option.value = value;
       priorityFilter.append(option);
     }
+    const dueRangeForm = element('form', { className: 'due-range-form' });
+    const dueFromLabel = element('label', { text: 'Due from' });
+    dueFromLabel.htmlFor = 'due-from';
+    const dueFrom = element('input', { type: 'text' });
+    dueFrom.id = 'due-from';
+    const dueThroughLabel = element('label', { text: 'Due through' });
+    dueThroughLabel.htmlFor = 'due-through';
+    const dueThrough = element('input', { type: 'text' });
+    dueThrough.id = 'due-through';
+    const applyDueRange = element('button', { type: 'submit', text: 'Apply due range' });
+    dueRangeForm.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
+    let appliedDueFrom = '';
+    let appliedDueThrough = '';
+    const isValidCalendarDate = value => {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (!match) return false;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+      const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      return day <= [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    };
+    dueRangeForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const from = dueFrom.value.trim();
+      const through = dueThrough.value.trim();
+      if ((from && !isValidCalendarDate(from)) || (through && !isValidCalendarDate(through))) {
+        showError('Due range must use valid YYYY-MM-DD dates');
+        return;
+      }
+      if (from && through && from > through) {
+        showError('Due from must not be after Due through');
+        return;
+      }
+      appliedDueFrom = from;
+      appliedDueThrough = through;
+      dueFrom.value = from;
+      dueThrough.value = through;
+      drawTasks();
+    });
     const list = element('div', { className: 'task-list' });
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     const drawTasks = () => {
@@ -205,6 +246,9 @@ async function showProject(id) {
         if (filter.value === 'Open' && completed) continue;
         if (filter.value === 'Completed' && !completed) continue;
         if (priorityFilter.value !== 'All' && (task.priority || 'Normal') !== priorityFilter.value) continue;
+        if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
+        if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
+        if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
         const row = element('article', { className: 'task-row' });
         row.dataset.testid = 'task-row';
         row.append(element('span', { text: task.title }));
@@ -328,7 +372,7 @@ async function showProject(id) {
       status.className = 'archived-status';
       app.append(status);
     }
-    app.append(form, defaultPriorityLabel, defaultPriority, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    app.append(form, defaultPriorityLabel, defaultPriority, filterLabel, filter, priorityFilterLabel, priorityFilter, dueRangeForm, list);
   } catch {
     app.replaceChildren(element('h1', { text: 'Project not found' }));
     const back = element('button', { type: 'button', text: 'Projects' });
