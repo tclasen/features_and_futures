@@ -76,11 +76,26 @@ function taskFilter(value) {
   return ['open', 'completed'].includes(value) ? value : 'all';
 }
 
+function dueRangeError(from, through) {
+  if (!validDueDate(from) || !validDueDate(through)) {
+    return 'Due range must use valid YYYY-MM-DD dates';
+  }
+  if (from && through && from > through) {
+    return 'Due from must not be after Due through';
+  }
+  return '';
+}
+
 function taskFilters(parameters) {
   const priority = parameters.get('priorityFilter');
+  const dueFrom = (parameters.get('dueFrom') ?? '').trim();
+  const dueThrough = (parameters.get('dueThrough') ?? '').trim();
+  const invalidRange = dueRangeError(dueFrom, dueThrough);
   return {
     completion: taskFilter(parameters.get('filter')),
     priority: taskPriorities.includes(priority) ? priority : 'All',
+    dueFrom: invalidRange ? '' : dueFrom,
+    dueThrough: invalidRange ? '' : dueThrough,
   };
 }
 
@@ -88,6 +103,8 @@ function projectUrl(projectId, filters) {
   const parameters = new URLSearchParams();
   if (filters.completion !== 'all') parameters.set('filter', filters.completion);
   if (filters.priority !== 'All') parameters.set('priorityFilter', filters.priority);
+  if (filters.dueFrom) parameters.set('dueFrom', filters.dueFrom);
+  if (filters.dueThrough) parameters.set('dueThrough', filters.dueThrough);
   const query = parameters.toString();
   return `/projects/${projectId}${query ? `?${query}` : ''}`;
 }
@@ -175,13 +192,18 @@ function projectsPage(error = '', filter = 'active') {
   `);
 }
 
-function projectPage(project, filters = { completion: 'all', priority: 'All' }, error = '', renameError = '', taskError = null) {
-  const { completion: filter, priority: priorityFilter } = filters;
+function projectPage(project, filters = { completion: 'all', priority: 'All', dueFrom: '', dueThrough: '' }, error = '', renameError = '', taskError = null, rangeError = '') {
+  const { completion: filter, priority: priorityFilter, dueFrom = '', dueThrough = '' } = filters;
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${dueFrom}">
+      <input type="hidden" name="dueThrough" value="${dueThrough}">`;
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
-      <input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      ${rangeFields}`;
   const tasks = listTasks.all(project.id).filter(task =>
     (filter === 'all' || Boolean(task.completed) === (filter === 'completed')) &&
-    (priorityFilter === 'All' || task.priority === priorityFilter));
+    (priorityFilter === 'All' || task.priority === priorityFilter) &&
+    ((!dueFrom && !dueThrough) || (task.due_date &&
+      (!dueFrom || task.due_date >= dueFrom) && (!dueThrough || task.due_date <= dueThrough))));
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
@@ -213,6 +235,7 @@ function projectPage(project, filters = { completion: 'all', priority: 'All' }, 
     </form>
     ${error ? `<p id="task-error" role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="task-filter" method="get" action="/projects/${project.id}">
+      ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
@@ -224,6 +247,16 @@ function projectPage(project, filters = { completion: 'all', priority: 'All' }, 
           `<option value="${priority}"${priorityFilter === priority ? ' selected' : ''}>${priority}</option>`).join('')}
       </select>
     </form>
+    <form class="task-filter" method="get" action="/projects/${project.id}">
+      ${filterFields}
+      <input type="hidden" name="applyDueRange" value="1">
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${dueFrom}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${dueThrough}">
+      <button type="submit">Apply due range</button>
+    </form>
+    ${rangeError ? `<p role="alert">${escapeHtml(rangeError)}</p>` : ''}
     ${tasks.length ? `<ul class="project-list" aria-label="Tasks">${tasks.map(task => `
       <li class="task-row" data-testid="task-row">
         <form class="task-completion" method="post" action="/projects/${project.id}/tasks/${task.id}">
@@ -445,7 +478,20 @@ const server = createServer(async (request, response) => {
       const id = Number(match[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (project && request.method === 'GET' && pathname === `/projects/${id}`) {
-        sendHtml(response, 200, projectPage(project, taskFilters(searchParams)));
+        const filters = taskFilters(searchParams);
+        // Draft boundaries are separate from the applied range so validation cannot change membership.
+        if (searchParams.get('applyDueRange') === '1') {
+          const from = (searchParams.get('rangeFrom') ?? '').trim();
+          const through = (searchParams.get('rangeThrough') ?? '').trim();
+          const error = dueRangeError(from, through);
+          if (error) {
+            sendHtml(response, 400, projectPage(project, filters, '', '', null, error));
+          } else {
+            redirect(response, projectUrl(id, { ...filters, dueFrom: from, dueThrough: through }));
+          }
+          return;
+        }
+        sendHtml(response, 200, projectPage(project, filters));
         return;
       }
       if (project && request.method === 'POST' && pathname.includes('/tasks')) {
