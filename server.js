@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const database = new DatabaseSync(process.env.DB_PATH || path.join(root, 'workboard.sqlite'));
+const database = new DatabaseSync(process.env.DB_PATH || path.join(root, 'data', 'workboard.sqlite'));
 database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
