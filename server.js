@@ -18,6 +18,7 @@ db.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT,
     created_at INTEGER NOT NULL
   );
 `);
@@ -26,6 +27,7 @@ if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER T
 if (!projectColumns.some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+if (!taskColumns.some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const server = http.createServer(async (req, res) => {
@@ -38,7 +40,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = decodeURIComponent(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return json(res, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
     try {
@@ -73,6 +75,18 @@ const server = http.createServer(async (req, res) => {
       const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(body.priority, decodeURIComponent(priorityMatch[1]));
       if (!result.changes) return json(res, 404, { error: 'Task not found' });
       return json(res, 200, { priority: body.priority });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/due-date\/?$/);
+  if (dueDateMatch && req.method === 'PATCH') {
+    try {
+      const body = await readBody(req);
+      if (typeof body.due_date !== 'string') return json(res, 400, { error: 'Invalid due date' });
+      const dueDate = body.due_date.trim();
+      if (dueDate && !isValidDate(dueDate)) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(dueDate || null, decodeURIComponent(dueDateMatch[1]));
+      if (!result.changes) return json(res, 404, { error: 'Task not found' });
+      return json(res, 200, { due_date: dueDate || null });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/?$/);
@@ -138,6 +152,16 @@ const server = http.createServer(async (req, res) => {
   }
   text(res, 404, 'Not found');
 });
+function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
 function json(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
 function text(res, status, value) { res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(value); }
 async function readBody(req) {

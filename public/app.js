@@ -103,6 +103,26 @@ async function loadTasks(projectId, archived = false) {
       }
     });
     row.append(title, label, priority);
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.value = task.due_date || '';
+    dueDateInput.disabled = archived;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'button';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = archived;
+    saveDueDate.addEventListener('click', async () => {
+      try {
+        await request(`/api/tasks/${encodeURIComponent(task.id)}/due-date`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date: dueDateInput.value }) });
+        await loadTasks(projectId, archived);
+      } catch (error) {
+        const alert = document.querySelector('#task-alert');
+        alert.textContent = error.message;
+        alert.hidden = false;
+      }
+    });
+    row.append(dueDateInput, saveDueDate);
     const renameInput = document.createElement('input');
     renameInput.type = 'text';
     renameInput.setAttribute('aria-label', 'New task title');
