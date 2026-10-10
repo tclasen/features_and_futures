@@ -116,6 +116,42 @@ async function showProject(id) {
   back.type = 'button';
   back.textContent = 'Projects';
   back.addEventListener('click', () => { window.location.href = '/'; });
+  const renameForm = document.createElement('form');
+  renameForm.className = 'project-form';
+  const renameLabel = document.createElement('label');
+  renameLabel.htmlFor = 'new-project-name';
+  renameLabel.textContent = 'New project name';
+  const renameInput = document.createElement('input');
+  renameInput.id = 'new-project-name';
+  renameInput.name = 'name';
+  renameInput.type = 'text';
+  renameInput.autocomplete = 'off';
+  renameInput.disabled = project.archived;
+  const renameButton = document.createElement('button');
+  renameButton.type = 'submit';
+  renameButton.textContent = 'Rename project';
+  renameButton.disabled = project.archived;
+  const renameAlert = document.createElement('p');
+  renameAlert.className = 'alert';
+  renameAlert.setAttribute('role', 'alert');
+  renameAlert.hidden = true;
+  renameForm.append(renameLabel, renameInput, renameButton, renameAlert);
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    renameAlert.hidden = true;
+    try {
+      const renamed = await request(`/api/projects/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: renameInput.value }),
+      });
+      headingElement.textContent = renamed.name;
+      renameInput.value = '';
+    } catch (error) {
+      renameAlert.textContent = error.message;
+      renameAlert.hidden = false;
+    }
+  });
+  const headingElement = view.querySelector('h1');
   const form = document.createElement('form');
   form.className = 'task-form';
   const label = document.createElement('label');
@@ -151,7 +187,7 @@ async function showProject(id) {
   const list = document.createElement('section');
   list.className = 'task-list';
   list.setAttribute('aria-label', 'Tasks');
-  view.append(back, form, filterLabel, filter, list);
+  view.append(back, renameForm, form, filterLabel, filter, list);
 
   async function refresh() {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
