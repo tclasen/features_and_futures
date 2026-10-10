@@ -135,6 +135,9 @@ async function renderRoute() {
   const renameForm = document.querySelector('#rename-form');
   renameForm.querySelectorAll('input, button').forEach(control => { control.disabled = project.archived; });
   document.querySelector('#new-project-name').value = project.name;
+  const defaultPriority = document.querySelector('#default-task-priority');
+  defaultPriority.value = project.defaultPriority || 'Normal';
+  defaultPriority.disabled = project.archived;
   document.querySelector('#rename-error').hidden = true;
   window.currentProjectArchived = project.archived;
   document.querySelector('#archived-message').hidden = !project.archived;
@@ -203,6 +206,11 @@ document.querySelector('#task-form').addEventListener('submit', async (event) =>
     input.value = '';
     await loadTasks();
   } catch { showTaskError('Unable to create task'); }
+});
+document.querySelector('#default-task-priority').addEventListener('change', async (event) => {
+  const priority = event.target.value;
+  const response = await fetch(`/api/projects/${activeProjectId}/default-priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority }) });
+  if (!response.ok) showTaskError('Unable to update default task priority');
 });
 document.querySelector('#task-filter').addEventListener('change', renderTasks);
 document.querySelector('#priority-filter').addEventListener('change', renderTasks);

@@ -10,9 +10,13 @@ database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 )`);
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+try { database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
@@ -70,11 +74,11 @@ const server = http.createServer(async (request, response) => {
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
       const projectId = Number(tasksMatch[1]);
-      const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      const project = database.prepare('SELECT archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!project) return sendJson(response, 404, { error: 'Project not found' });
       if (project.archived) return sendJson(response, 409, { error: 'Archived project' });
-      const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority });
     } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
@@ -125,6 +129,19 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, { priority: data.priority });
     } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
   }
+  const projectDefaultMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (request.method === 'PATCH' && projectDefaultMatch) {
+    try {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const data = JSON.parse(body);
+      if (!['Low', 'Normal', 'High'].includes(data.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+      const result = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(data.priority, Number(projectDefaultMatch[1]));
+      if (result.changes) return sendJson(response, 200, { defaultPriority: data.priority });
+      const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(projectDefaultMatch[1]));
+      return project ? sendJson(response, 409, { error: 'Archived project' }) : sendJson(response, 404, { error: 'Project not found' });
+    } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'PATCH' && projectMatch) {
     try {
@@ -140,7 +157,7 @@ const server = http.createServer(async (request, response) => {
     } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
   }
   if (request.method === 'GET' && projectMatch) {
-    const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (project) project.archived = Boolean(project.archived);
     return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
   }
