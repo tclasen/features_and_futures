@@ -44,6 +44,17 @@
         return node;
       }
 
+      function isValidCalendarDate(value) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return false;
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+      }
+
       async function loadProjects() {
         const response = await fetch('/api/projects');
         if (!response.ok) throw new Error('Could not load projects');
@@ -202,6 +213,22 @@
         priorityFilterLabel.append(priorityFilter);
         const filters = element('div', undefined, 'filters');
         filters.append(filterLabel, priorityFilterLabel);
+        const dueRangeForm = document.createElement('form');
+        const dueFromLabel = element('label', 'Due from');
+        const dueFromInput = document.createElement('input');
+        dueFromInput.type = 'text';
+        dueFromLabel.append(dueFromInput);
+        const dueThroughLabel = element('label', 'Due through');
+        const dueThroughInput = document.createElement('input');
+        dueThroughInput.type = 'text';
+        dueThroughLabel.append(dueThroughInput);
+        const applyDueRange = element('button', 'Apply due range');
+        applyDueRange.type = 'submit';
+        dueRangeForm.append(dueFromLabel, dueThroughLabel, applyDueRange);
+        const dueRangeAlert = element('p');
+        dueRangeAlert.setAttribute('role', 'alert');
+        dueRangeAlert.hidden = true;
+        let appliedDueRange = { from: '', through: '' };
         const defaultPriorityLabel = element('label', 'Default task priority');
         const defaultPriority = document.createElement('select');
         for (const value of ['Low', 'Normal', 'High']) {
@@ -213,7 +240,7 @@
         defaultPriority.disabled = project.archived;
         defaultPriorityLabel.append(defaultPriority);
         const list = element('ul');
-        panel.append(renameForm, renameAlert, form, alert, defaultPriorityLabel, filters, list);
+        panel.append(renameForm, renameAlert, form, alert, defaultPriorityLabel, filters, dueRangeForm, dueRangeAlert, list);
         app.append(back, heading, panel);
 
         defaultPriority.addEventListener('change', async () => {
@@ -259,7 +286,12 @@
           list.replaceChildren();
           const matching = tasks.filter((task) =>
             (filter.value === 'All' || (filter.value === 'Completed') === task.completed)
-            && (priorityFilter.value === 'All' || priorityFilter.value === task.priority),
+            && (priorityFilter.value === 'All' || priorityFilter.value === task.priority)
+            && (!appliedDueRange.from && !appliedDueRange.through
+              ? true
+              : Boolean(task.dueDate)
+                && (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
+                && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through)),
           );
           for (const task of matching) appendTask(list, task, project.id, project.archived, (updated) => {
             tasks = tasks.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
@@ -268,6 +300,24 @@
         }
         filter.addEventListener('change', renderTasks);
         priorityFilter.addEventListener('change', renderTasks);
+        dueRangeForm.addEventListener('submit', (event) => {
+          event.preventDefault();
+          const from = dueFromInput.value.trim();
+          const through = dueThroughInput.value.trim();
+          if ((from && !isValidCalendarDate(from)) || (through && !isValidCalendarDate(through))) {
+            dueRangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+            dueRangeAlert.hidden = false;
+            return;
+          }
+          if (from && through && from > through) {
+            dueRangeAlert.textContent = 'Due from must not be after Due through';
+            dueRangeAlert.hidden = false;
+            return;
+          }
+          appliedDueRange = { from, through };
+          dueRangeAlert.hidden = true;
+          renderTasks();
+        });
         form.addEventListener('submit', async (event) => {
           event.preventDefault();
           const title = input.value.trim();
