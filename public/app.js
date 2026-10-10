@@ -10,6 +10,7 @@ const taskAlert = document.querySelector('#task-alert');
 const taskList = document.querySelector('#task-list');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
 const taskCreateButton = taskForm.querySelector('button');
 const renameForm = document.querySelector('#rename-form');
@@ -153,6 +154,8 @@ async function renderRoute() {
     document.querySelector('#project-title').textContent = project.name;
     renameInput.value = project.name;
     window.currentProjectArchived = Boolean(project.archived);
+    defaultPriority.value = project.default_priority || 'Normal';
+    defaultPriority.disabled = window.currentProjectArchived;
     renameInput.disabled = window.currentProjectArchived;
     renameButton.disabled = window.currentProjectArchived;
     document.querySelector('#archived-notice').hidden = !window.currentProjectArchived;
@@ -236,6 +239,17 @@ renameForm.addEventListener('submit', async event => {
   } catch (error) {
     renameAlert.textContent = error.message;
     renameAlert.hidden = false;
+  }
+});
+defaultPriority.addEventListener('change', async () => {
+  try {
+    await request(`/api/projects/${currentProjectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_priority: defaultPriority.value })
+    });
+  } catch (error) {
+    taskAlert.textContent = error.message;
+    taskAlert.hidden = false;
   }
 });
 document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
