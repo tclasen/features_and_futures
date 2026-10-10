@@ -1,0 +1,1 @@
+The declared includes-deleted mutant retained the ordinary live-only predicate and therefore did not actually mutate a deleted task. Its zero-failure result is retained as a fixture defect, not a test-suite acceptance result. All three68-check positive modes passed before this gate stopped. Postrestart phase did not yet assert bulk-specific sentinels. Zero native task020 calls.

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { stage, projectRow, taskRow, openProject, isolateBrowser } from './helpers.mjs';
+import { stage, projectName, projectRow, taskRow, openProject, isolateBrowser } from './helpers.mjs';
 
 test('012 data survives a real server-process restart', async ({ page, context }) => {
   await isolateBrowser(context);
@@ -54,5 +54,7 @@ test('012 data survives a real server-process restart', async ({ page, context }
   if(stage>=16){await page.goto('/');await expect(projectRow(page,'Deletion restart').getByTestId('project-summary')).toHaveText('0/0 completed');await openProject(page,'Deletion restart');await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Deleted'});await expect(taskRow(page,'Deleted memory').getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Original deleted note\nretained');await expect(taskRow(page,'Deleted memory').getByRole('button',{name:'Restore task',exact:true})).toBeEnabled();await expect(taskRow(page,'Deleted memory').getByRole('textbox',{name:'Task notes',exact:true})).toBeDisabled();}
 
   if(stage>=18){await page.goto('/');await expect(projectRow(page,'Import restart').getByTestId('project-summary')).toHaveText('0/1 completed');await openProject(page,'Import restart');await expect(taskRow(page,'Imported live').getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Live import');await expect(taskRow(page,'Imported live').getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2044-02-29');await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Deleted'});await expect(taskRow(page,'Imported deleted').getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Import Ω\nretained');await expect(taskRow(page,'Imported deleted').getByRole('button',{name:'Restore task',exact:true})).toBeEnabled();await expect(page.getByRole('checkbox',{name:'Complete Imported deleted',exact:true})).toBeChecked();}
+
+  if(stage>=20){for(const owner of ['Bulk restart first','Bulk restart second']){await page.goto('/');await expect(projectRow(page,owner).getByTestId('project-summary')).toHaveText('1/1 completed');await openProject(page,owner);const title=projectName('Bulk restart record')+' '+owner;await expect(page.getByRole('checkbox',{name:'Complete '+title,exact:true})).toBeChecked();await expect(taskRow(page,title).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('High');await expect(taskRow(page,title).getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2052-02-29');await expect(taskRow(page,title).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Bulk restart Ω\noriginal');}}
 
 });
