@@ -21,7 +21,8 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-    due_date TEXT NOT NULL DEFAULT ''
+    due_date TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT ''
   );
   CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
 `);
@@ -36,6 +37,9 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 }
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   database.exec(`
@@ -65,8 +69,8 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
-const getTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const getTask = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const rememberCreatedTask = database.prepare(`INSERT INTO task_positions (task_id, project_id, position)
@@ -80,6 +84,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 
 function transaction(action) {
   database.exec('BEGIN IMMEDIATE');
@@ -163,6 +168,11 @@ const server = http.createServer(async (request, response) => {
         if (project.archived) return json(response, 409, { error: 'Archived project' });
         if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readInput(request);
+        if (Object.hasOwn(input ?? {}, 'notes')) {
+          if (typeof input.notes !== 'string') return json(response, 400, { error: 'Notes must be text' });
+          updateTaskNotes.run(input.notes, projectId, taskId);
+          return json(response, 200, taskData(getTask.get(projectId, taskId)));
+        }
         if (Object.hasOwn(input ?? {}, 'destination_project_id')) {
           const destinationId = input.destination_project_id;
           if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === projectId) {

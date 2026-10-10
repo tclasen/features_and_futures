@@ -299,7 +299,44 @@ function taskRow(task) {
       destination.disabled = movingDisabled;
     }
   });
-  row.append(checkbox, title, renameTaskForm, priorityControls, dueDateForm, moveForm);
+  const notesForm = document.createElement('form');
+  notesForm.className = 'task-notes';
+  const notesLabel = document.createElement('label');
+  const notes = document.createElement('textarea');
+  notes.id = `task-notes-${task.id}`;
+  notes.rows = 4;
+  notes.value = task.notes || '';
+  notes.disabled = archived;
+  notesLabel.htmlFor = notes.id;
+  notesLabel.textContent = 'Task notes';
+  const saveNotes = document.createElement('button');
+  saveNotes.type = 'submit';
+  saveNotes.textContent = 'Save notes';
+  saveNotes.disabled = archived;
+  const notesControls = document.createElement('div');
+  notesControls.className = 'form-controls';
+  notesControls.append(notes, saveNotes);
+  notesForm.append(notesLabel, notesControls);
+  notesForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (archived) return;
+    showError();
+    saveNotes.disabled = true;
+    try {
+      const saved = await request(`${tasksPath}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notes.value }),
+      });
+      tasks = tasks.map((item) => item.id === saved.id ? saved : item);
+      renderTasks();
+    } catch (failure) {
+      showError(failure.message);
+    } finally {
+      saveNotes.disabled = archived;
+    }
+  });
+  row.append(checkbox, title, renameTaskForm, priorityControls, dueDateForm, moveForm, notesForm);
   return row;
 }
 

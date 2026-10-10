@@ -1179,3 +1179,91 @@ test('task search intersects all filters and re-evaluates edits while preserving
     }
   }
 });
+
+test('notes save exact plain text, retain combined filters, and respect archive state', async () => {
+  const elements = pageElements();
+  const element = (id) => elements.get(`#${id}`);
+  const exactNotes = '  Leading space\n\t雪 😀\n<script>literal markup</script>  ';
+  let savedTasks = [
+    { id: 1, title: 'Alpha  match', completed: true, priority: 'High', due_date: '2028-02-29', notes: '' },
+    { id: 2, title: 'Different title', completed: true, priority: 'High', due_date: '2028-02-29', notes: 'Alpha match' },
+    { id: 3, title: 'Alpha match', completed: false, priority: 'Low', due_date: '', notes: '' },
+  ];
+  const writes = [];
+  let failSave = false;
+  const project = { id: 7, name: 'Project', archived: 0, default_priority: 'Normal', total: 3, completed: 2 };
+  const fetch = async (path, options) => {
+    let data;
+    if (options) {
+      const body = JSON.parse(options.body);
+      writes.push(body);
+      if (failSave) return { ok: false, json: async () => ({ error: 'Unable to save notes' }) };
+      const id = Number(path.split('/').at(-1));
+      data = { ...savedTasks.find((task) => task.id === id), ...body };
+      savedTasks = savedTasks.map((task) => task.id === id ? data : task);
+    } else {
+      data = path.endsWith('/tasks') ? savedTasks : project;
+    }
+    return { ok: true, json: async () => structuredClone(data) };
+  };
+  await loadPage(elements, '/projects/7', fetch);
+  const rows = () => element('tasks').children;
+  const notesControls = (row) => {
+    const form = row.children.find((child) => child.className === 'task-notes');
+    return { form, label: form.children[0], textarea: form.children[1].children[0], button: form.children[1].children[1] };
+  };
+  const initial = notesControls(rows()[0]);
+  assert.equal(initial.textarea.tag, 'textarea');
+  assert.equal(initial.textarea.value, '');
+  assert.equal(initial.label.textContent, 'Task notes');
+  assert.equal(initial.label.htmlFor, initial.textarea.id);
+  assert.equal(initial.button.textContent, 'Save notes');
+  element('task-filter').value = 'Completed';
+  await element('task-filter').fire('change');
+  element('priority-filter').value = 'High';
+  await element('priority-filter').fire('change');
+  element('due-from').value = '2028-02-29';
+  element('due-through').value = '2028-02-29';
+  await element('due-range').fire('submit');
+  element('task-search').value = 'ALPHA\tmatch';
+  await element('search-tasks').fire('submit');
+  assert.deepEqual(rows().map((row) => row.children[1].textContent), ['Alpha  match'], 'Notes do not add search matches');
+  const original = structuredClone(savedTasks[0]);
+  for (const value of [exactNotes, ' \t\n ', '', exactNotes]) {
+    const controls = notesControls(rows()[0]);
+    controls.textarea.value = value;
+    await controls.form.fire('submit');
+    assert.deepEqual(writes.at(-1), { notes: value });
+    assert.deepEqual(savedTasks[0], { ...original, notes: value });
+    assert.equal(rows().length, 1);
+    assert.equal(notesControls(rows()[0]).textarea.value, value);
+    assert.equal(element('task-filter').value, 'Completed');
+    assert.equal(element('priority-filter').value, 'High');
+    assert.equal(element('due-from').value, '2028-02-29');
+    assert.equal(element('due-through').value, '2028-02-29');
+    assert.equal(element('task-search').value, 'ALPHA\tmatch');
+  }
+  failSave = true;
+  const failed = notesControls(rows()[0]);
+  failed.textarea.value = 'Unsaved draft';
+  await failed.form.fire('submit');
+  assert.equal(savedTasks[0].notes, exactNotes);
+  assert.equal(failed.textarea.value, 'Unsaved draft');
+  assert.equal(failed.button.disabled, false);
+  assert.equal(element('error').textContent, 'Unable to save notes');
+  failSave = false;
+  for (const archived of [1, 0]) {
+    project.archived = archived;
+    const reopened = pageElements();
+    await loadPage(reopened, '/projects/7', fetch);
+    const controls = notesControls(reopened.get('#tasks').children[0]);
+    assert.equal(controls.textarea.value, exactNotes);
+    assert.equal(controls.textarea.disabled, Boolean(archived));
+    assert.equal(controls.button.disabled, Boolean(archived));
+    const before = writes.length;
+    controls.textarea.value = 'Restored notes';
+    await controls.form.fire('submit');
+    assert.equal(writes.length, before + (archived ? 0 : 1));
+  }
+  assert.equal(savedTasks[0].notes, 'Restored notes');
+});
