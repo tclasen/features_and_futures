@@ -26,6 +26,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
+const setTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -86,11 +87,18 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let update;
     try { update = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
-    if (typeof update.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
     const id = Number(completionMatch[1]);
-    if (!getTask.get(id)) return sendJson(res, 404, { error: 'Task not found' });
-    if (getProject.get(getTask.get(id).projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
-    setTaskCompleted.run(update.completed ? 1 : 0, id);
+    const existing = getTask.get(id);
+    if (!existing) return sendJson(res, 404, { error: 'Task not found' });
+    if (getProject.get(existing.projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
+    if (typeof update.title === 'string') {
+      const title = update.title.trim();
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      setTaskTitle.run(title, id);
+    } else {
+      if (typeof update.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
+      setTaskCompleted.run(update.completed ? 1 : 0, id);
+    }
     const task = getTask.get(id);
     return sendJson(res, 200, { ...task, completed: Boolean(task.completed) });
   }
