@@ -88,6 +88,26 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'PATCH' && projectMatch) {
+    try {
+      const body = await readBody(request);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) {
+        sendJson(response, 400, { error: 'Project name is required' });
+        return;
+      }
+      const result = database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, Number(projectMatch[1]));
+      if (!result.changes) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      sendJson(response, 200, { id: Number(projectMatch[1]), name });
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (request.method === 'POST' && archiveMatch) {
     const projectId = Number(archiveMatch[1]);

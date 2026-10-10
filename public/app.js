@@ -96,6 +96,19 @@ async function showProject(id) {
   back.addEventListener('click', () => { location.href = '/'; });
   const heading = element('h1', project.name);
   const archivedNotice = project.archived ? element('p', 'Archived project', 'archived-notice') : null;
+  const renameForm = element('form', undefined, 'create-form rename-form');
+  const renameLabel = element('label', 'New project name');
+  renameLabel.htmlFor = 'new-project-name';
+  const renameInput = element('input');
+  renameInput.id = 'new-project-name';
+  renameInput.name = 'name';
+  renameInput.type = 'text';
+  renameInput.autocomplete = 'off';
+  renameInput.disabled = project.archived;
+  const renameButton = element('button', 'Rename project');
+  renameButton.type = 'submit';
+  renameButton.disabled = project.archived;
+  renameForm.append(renameLabel, renameInput, renameButton);
   const form = element('form', undefined, 'create-form');
   const label = element('label', 'Task title');
   label.htmlFor = 'task-title';
@@ -125,8 +138,25 @@ async function showProject(id) {
   filterLabel.append(filter);
   const taskList = element('div', undefined, 'task-list');
   taskList.setAttribute('aria-label', 'Tasks');
-  if (archivedNotice) content.append(back, heading, archivedNotice, form, alert, filterLabel, taskList);
-  else content.append(back, heading, form, alert, filterLabel, taskList);
+  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, form, alert, filterLabel, taskList);
+  else content.append(back, heading, renameForm, form, alert, filterLabel, taskList);
+
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    try {
+      const renamed = await request(`/api/projects/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: renameInput.value }),
+      });
+      heading.textContent = renamed.name;
+      renameInput.value = '';
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+    }
+  });
 
   const renderTasks = async () => {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
