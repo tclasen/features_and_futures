@@ -10,7 +10,7 @@
     body { margin: 0; padding: 48px 20px; }
     main { max-width: 760px; margin: 0 auto; }
     h1 { margin: 0 0 28px; font-size: 2rem; }
-    form, .project-row { background: white; border: 1px solid #dce1e8; border-radius: 10px; padding: 20px; }
+    form, .project-row, .task-row { background: white; border: 1px solid #dce1e8; border-radius: 10px; padding: 20px; }
     form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
     label { display: grid; gap: 7px; font-weight: 600; flex: 1 1 280px; }
     input { min-height: 42px; border: 1px solid #aab3c0; border-radius: 6px; padding: 8px 10px; font: inherit; }
@@ -19,7 +19,13 @@
     button:focus-visible, input:focus-visible { outline: 3px solid #96b4ff; outline-offset: 2px; }
     #message { min-height: 24px; margin: 12px 0; color: #a12727; }
     #projects { display: grid; gap: 10px; margin-top: 20px; }
+    #tasks { display: grid; gap: 10px; margin-top: 16px; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .task-row { display: flex; align-items: center; gap: 12px; }
+    .task-row label { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .task-row input { min-height: 20px; width: 20px; }
+    #task-form { margin-top: 24px; }
+    #task-message { min-height: 24px; color: #a12727; }
     .project-name { overflow-wrap: anywhere; }
     .back { margin-bottom: 20px; background: #465365; }
     [hidden] { display: none !important; }
@@ -40,6 +46,17 @@
     <section id="project-view" hidden>
       <button class="back" id="back-button" type="button">Projects</button>
       <h1 id="project-title"></h1>
+      <form id="task-form">
+        <label for="task-title">Task title</label>
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit">Create task</button>
+      </form>
+      <p id="task-message" role="alert" aria-live="polite"></p>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter">
+        <option>All</option><option>Open</option><option>Completed</option>
+      </select>
+      <div id="tasks" aria-label="Tasks"></div>
     </section>
   </main>
   <script>
@@ -47,8 +64,13 @@
     const projectView = document.querySelector('#project-view');
     const projectList = document.querySelector('#projects');
     const message = document.querySelector('#message');
+    const tasks = document.querySelector('#tasks');
+    const taskFilter = document.querySelector('#task-filter');
+    let activeProjectId = null;
+    let projectTasks = [];
 
     function showList() {
+      activeProjectId = null;
       listView.hidden = false;
       projectView.hidden = true;
       document.title = 'Workboard';
@@ -59,10 +81,51 @@
       const response = await fetch(`/api/projects/${id}`);
       if (!response.ok) { history.replaceState({}, '', '/'); showList(); return; }
       const project = await response.json();
+      activeProjectId = String(id);
       document.querySelector('#project-title').textContent = project.name;
       document.title = `${project.name} · Workboard`;
       listView.hidden = true;
       projectView.hidden = false;
+      await loadTasks();
+    }
+
+    async function loadTasks() {
+      if (!activeProjectId) return;
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks`);
+      if (!response.ok) return;
+      projectTasks = await response.json();
+      renderTasks();
+    }
+
+    function renderTasks() {
+      tasks.replaceChildren();
+      const filter = taskFilter.value;
+      for (const task of projectTasks) {
+        if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+        const row = document.createElement('div');
+        row.dataset.testid = 'task-row';
+        row.className = 'task-row';
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(task.completed);
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        checkbox.addEventListener('change', async () => {
+          const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked })
+          });
+          if (response.ok) {
+            task.completed = checkbox.checked ? 1 : 0;
+            renderTasks();
+          }
+        });
+        const title = document.createElement('span');
+        title.textContent = task.title;
+        label.append(checkbox, title);
+        row.append(label);
+        tasks.append(row);
+      }
     }
 
     async function loadProjects() {
@@ -106,9 +169,27 @@
     });
 
     document.querySelector('#back-button').addEventListener('click', () => {
+      activeProjectId = null;
       history.pushState({}, '', '/');
       showList();
     });
+    document.querySelector('#task-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const input = document.querySelector('#task-title');
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: input.value })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        document.querySelector('#task-message').textContent = result.error || 'Task title is required';
+        return;
+      }
+      document.querySelector('#task-message').textContent = '';
+      input.value = '';
+      await loadTasks();
+    });
+    taskFilter.addEventListener('change', renderTasks);
     addEventListener('popstate', () => {
       const match = location.pathname.match(/^\/projects\/(\d+)$/);
       match ? openProject(match[1]) : showList();
