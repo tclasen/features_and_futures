@@ -43,6 +43,18 @@
       heading.textContent = 'Workboard';
       app.append(heading);
 
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Project filter';
+      const filter = document.createElement('select');
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      filterLabel.append(filter);
+      app.append(filterLabel);
+
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.textContent = 'Project name';
@@ -72,17 +84,36 @@
       });
       app.append(form, alert);
 
-      const response = await fetch('/api/projects');
-      const projects = await response.json();
-      for (const project of projects) {
-        const row = document.createElement('section');
-        row.dataset.testid = 'project-row';
-        row.className = 'project-row';
-        const name = document.createElement('span');
-        name.textContent = project.name;
-        row.append(name, button('Open project', () => { window.location.href = `/projects/${encodeURIComponent(project.id)}`; }));
-        app.append(row);
+      const projects = await (await fetch('/api/projects')).json();
+      const list = document.createElement('div');
+      app.append(list);
+      function renderProjects() {
+        list.replaceChildren();
+        for (const project of projects.filter((item) => item.archived === (filter.value === 'Archived'))) {
+          const row = document.createElement('section');
+          row.dataset.testid = 'project-row';
+          row.className = 'project-row';
+          const name = document.createElement('span');
+          name.textContent = project.name;
+          const summary = document.createElement('span');
+          summary.dataset.testid = 'project-summary';
+          summary.textContent = project.summary;
+          const actions = document.createElement('div');
+          actions.append(button('Open project', () => { window.location.href = `/projects/${encodeURIComponent(project.id)}`; }));
+          const archiveLabel = project.archived ? 'Restore project' : 'Archive project';
+          actions.append(button(archiveLabel, async () => {
+            const updated = await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ archived: !project.archived })
+            });
+            if (updated.ok) showProjects();
+          }));
+          row.append(name, summary, actions);
+          list.append(row);
+        }
       }
+      filter.addEventListener('change', renderProjects);
+      renderProjects();
     }
 
     async function showProject(id) {
@@ -96,6 +127,12 @@
       app.append(heading);
       if (!project) return;
 
+      if (project.archived) {
+        const archivedNotice = document.createElement('p');
+        archivedNotice.textContent = 'Archived project';
+        app.append(archivedNotice);
+      }
+
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.textContent = 'Task title';
@@ -105,6 +142,7 @@
       label.append(input);
       const create = document.createElement('button');
       create.textContent = 'Create task';
+      create.disabled = Boolean(project.archived);
       form.append(label, create);
       const alert = document.createElement('p');
       alert.className = 'alert';
@@ -139,6 +177,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = Boolean(project.archived);
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
