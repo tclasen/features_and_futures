@@ -198,6 +198,28 @@ async function showProject(id) {
           } catch (error) { showError(error.message); }
         });
         row.append(renameForm);
+        const priority = element('select', { label: 'Task priority' });
+        for (const value of ['Low', 'Normal', 'High']) {
+          const option = element('option', { text: value });
+          option.value = value;
+          priority.append(option);
+        }
+        priority.value = task.priority || 'Normal';
+        priority.disabled = archived;
+        priority.addEventListener('change', async () => {
+          const previous = task.priority || 'Normal';
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ priority: priority.value })
+            });
+            task.priority = updated.priority;
+          } catch (error) {
+            priority.value = previous;
+            showError(error.message);
+          }
+        });
+        row.append(priority);
         const checkbox = element('input', { type: 'checkbox', label: `Complete ${task.title}` });
         checkbox.checked = completed;
         checkbox.disabled = archived;

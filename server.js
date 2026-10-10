@@ -21,12 +21,17 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 
 const indexHtml = await readFile(join(root, 'index.html'));
@@ -91,7 +96,7 @@ const server = createServer(async (request, response) => {
     }
     if (route.length === 2 && route[1] === 'tasks') {
       if (request.method === 'GET') {
-        sendJson(response, 200, database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(id));
+        sendJson(response, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(id));
         return;
       }
       if (request.method === 'POST') {
@@ -109,7 +114,7 @@ const server = createServer(async (request, response) => {
             return;
           }
           const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(id, title);
-          sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId: id, title, completed: 0 });
+          sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId: id, title, completed: 0, priority: 'Normal' });
         } catch (error) {
           if (error instanceof SyntaxError) {
             sendJson(response, 400, { error: 'Invalid JSON' });
@@ -142,6 +147,11 @@ const server = createServer(async (request, response) => {
         if (typeof payload.completed === 'boolean') {
           database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(payload.completed ? 1 : 0, taskId, id);
           sendJson(response, 200, { id: taskId, projectId: id, title: task.title, completed: payload.completed ? 1 : 0 });
+          return;
+        }
+        if (['Low', 'Normal', 'High'].includes(payload.priority)) {
+          database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(payload.priority, taskId, id);
+          sendJson(response, 200, { id: taskId, projectId: id, title: task.title, completed: task.completed, priority: payload.priority });
           return;
         }
         if (typeof payload.title === 'string') {
