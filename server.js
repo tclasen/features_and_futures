@@ -18,9 +18,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const sendJson = (status, data) => {
@@ -76,7 +78,7 @@ const server = http.createServer(async (req, res) => {
     if (tasksPath && req.method === 'GET') {
       const projectId = Number(tasksPath[1]);
       if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(404, { error: 'Project not found' });
-      return sendJson(200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return sendJson(200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (tasksPath && req.method === 'POST') {
       let body = '';
@@ -88,7 +90,7 @@ const server = http.createServer(async (req, res) => {
       const projectId = Number(tasksPath[1]);
       if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(404, { error: 'Project not found' });
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+      return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
     }
     const taskRenamePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
     if (taskRenamePath && req.method === 'PATCH') {
@@ -108,8 +110,15 @@ const server = http.createServer(async (req, res) => {
       for await (const chunk of req) body += chunk;
       let payload;
       try { payload = JSON.parse(body); } catch { return sendJson(400, { error: 'Invalid request' }); }
+      if (typeof payload.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(payload.priority)) return sendJson(400, { error: 'Invalid task priority' });
+        const result = db.prepare(`UPDATE tasks SET priority = ? WHERE id = ? AND EXISTS
+          (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`).run(payload.priority, Number(taskPath[1]));
+        return result.changes ? sendJson(200, { ok: true }) : sendJson(404, { error: 'Task not found or project archived' });
+      }
       if (typeof payload.completed !== 'boolean') return sendJson(400, { error: 'Invalid completion state' });
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, Number(taskPath[1]));
+      const result = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND EXISTS
+        (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`).run(payload.completed ? 1 : 0, Number(taskPath[1]));
       return result.changes ? sendJson(200, { ok: true }) : sendJson(404, { error: 'Task not found' });
     }
     if (url.pathname.startsWith('/api/')) return sendJson(404, { error: 'Not found' });
