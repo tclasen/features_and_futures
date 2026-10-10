@@ -12,9 +12,10 @@ if (dbPath !== ':memory:') {
 }
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0)`);
+CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal')`);
 // Upgrade databases created by earlier checkpoints.
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
   COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id=p.id
   WHERE p.archived=? GROUP BY p.id ORDER BY p.id`);
@@ -22,11 +23,12 @@ const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id 
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name=? WHERE id=?');
 const setArchived = db.prepare('UPDATE projects SET archived=? WHERE id=?');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -96,8 +98,12 @@ const server = createServer(async (req, res) => {
       }
       if (taskRoute[2] && req.method === 'PATCH') {
         if (project.archived) return send(409, JSON.stringify({ error: 'Archived project' }));
-        updateTask.run(body.completed ? 1 : 0, Number(taskRoute[2]), projectId);
-        const task = getTask.get(Number(taskRoute[2]), projectId);
+        const taskId = Number(taskRoute[2]);
+        if (Object.hasOwn(body, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(body.priority)) return send(400, JSON.stringify({ error: 'Invalid priority' }));
+          updatePriority.run(body.priority, taskId, projectId);
+        } else updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+        const task = getTask.get(taskId, projectId);
         return task ? send(200, JSON.stringify(task)) : send(404, JSON.stringify({ error: 'Not found' }));
       }
       return send(405, JSON.stringify({ error: 'Method not allowed' }));

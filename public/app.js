@@ -71,6 +71,15 @@ async function render() {
           await loadTasks();
         });
         row.append(checkbox);
+        const priorityLabel = element('label', {}, 'Task priority');
+        const priority = element('select', { 'aria-label': 'Task priority' });
+        for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', { value }, value));
+        priority.value = task.priority || 'Normal';
+        priority.disabled = Boolean(project.archived);
+        priority.addEventListener('change', async () => {
+          await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+        });
+        row.append(priorityLabel, priority);
         const renameForm = element('form');
         const renameInput = element('input', { type: 'text', 'aria-label': 'New task title', value: task.title });
         const renameButton = element('button', { type: 'submit' }, 'Rename task');
