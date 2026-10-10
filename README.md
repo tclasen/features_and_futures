@@ -38,3 +38,10 @@ Each task row supports renaming in active projects. Titles are trimmed and canno
 be blank. Renaming preserves task identity, ownership, creation order, completion
 state and the selected filter. Archived projects disable task rename controls and
 reject rename requests until restored. Renamed titles persist across restarts.
+
+Each task has a Task priority selector with Low, Normal and High options. Existing
+and new tasks default to Normal. Priority changes save immediately and preserve
+the task's title, completion, ownership, order and current filter. Renaming also
+preserves priority. Archived projects disable priority changes until restored.
+Priorities persist in SQLite across restarts; existing databases are upgraded
+automatically.
