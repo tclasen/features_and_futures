@@ -100,6 +100,23 @@ const server = createServer(async (request, response) => {
       } else {
         redirect(response, projectLocation(id, filter, priority));
       }
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/default-priority$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? projects.find(id) : null;
+      if (!project) {
+        send(response, 404, notFoundPage());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      const priority = priorityFilter(form.get('priorityFilter'));
+      if (project.archived) {
+        send(response, 409, renderProject(project, filter, priority, 'Archived project'));
+      } else if (!projects.setDefaultPriority(id, form.get('priority'))) {
+        send(response, 400, renderProject(project, filter, priority, 'Invalid task priority'));
+      } else {
+        redirect(response, projectLocation(id, filter, priority));
+      }
     } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;
