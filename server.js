@@ -20,6 +20,7 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const html = await readFile(path.join(base, 'public', 'index.html'));
 
 const server = http.createServer(async (req, res) => {
@@ -74,8 +75,17 @@ const server = http.createServer(async (req, res) => {
       if (findProject.get(projectId).archived) return send(409, JSON.stringify({ error: 'Archived project' }));
       try {
         let raw = ''; for await (const chunk of req) raw += chunk;
-        const completed = JSON.parse(raw).completed ? 1 : 0;
-        const result = updateTask.run(completed, decodeURIComponent(taskMatch[2]), projectId);
+        const body = JSON.parse(raw);
+        const taskId = decodeURIComponent(taskMatch[2]);
+        if (Object.hasOwn(body, 'title')) {
+          const title = String(body.title ?? '').trim();
+          if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+          if (title.length > 500) return send(400, JSON.stringify({ error: 'Task title is too long' }));
+          const result = renameTask.run(title, taskId, projectId);
+          return Number(result.changes) ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Task not found' }));
+        }
+        const completed = body.completed ? 1 : 0;
+        const result = updateTask.run(completed, taskId, projectId);
         return Number(result.changes) ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Task not found' }));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
