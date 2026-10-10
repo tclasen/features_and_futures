@@ -61,7 +61,7 @@ test('projects and owned tasks validate, preserve order, and survive a server-pr
     const second = await (await create('<Second project>')).json();
     assert.notEqual(first.id, second.id);
     let expected = [first, second];
-    assert.deepEqual(first, { id: first.id, name: 'First project', archived: false, totalCount: 0, completedCount: 0 });
+    assert.deepEqual(first, { id: first.id, name: 'First project', archived: false, defaultTaskPriority: 'Normal', totalCount: 0, completedCount: 0 });
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/${first.id}`)).json(), first);
     for (const path of ['/', `/projects/${first.id}`]) {
@@ -378,7 +378,7 @@ test('migrates existing projects and tasks without changing IDs or completion', 
     for (let restart = 0; restart < 2; restart++) {
       server = await start(dbPath);
       assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), [
-        { id: 7, name: 'Existing project', archived: false, totalCount: 1, completedCount: 1 },
+        { id: 7, name: 'Existing project', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 },
       ]);
       assert.deepEqual(await (await fetch(`${server.url}/api/projects/7/tasks`)).json(), [
         { id: 11, title: 'Existing task', completed: true, priority: 'Normal' },
@@ -386,6 +386,92 @@ test('migrates existing projects and tasks without changing IDs or completion', 
       await server.stop();
       server = undefined;
     }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project defaults affect only future owned tasks and survive rename, archive, restoration, and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-priority-'));
+  const dbPath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const send = (path, method, body) => fetch(`${server.url}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const list = async (path) => (await fetch(`${server.url}${path}`)).json();
+    const first = await (await send('/api/projects', 'POST', { name: 'First' })).json();
+    const second = await (await send('/api/projects', 'POST', { name: 'Second' })).json();
+    assert.equal(first.defaultTaskPriority, 'Normal');
+    assert.equal(second.defaultTaskPriority, 'Normal');
+    const projectPath = `/api/projects/${first.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const otherProjectPath = `/api/projects/${second.id}`;
+    const otherTasksPath = `${otherProjectPath}/tasks`;
+    const original = await (await send(tasksPath, 'POST', { title: 'Original' })).json();
+    const completed = await (await send(`${tasksPath}/${original.id}`, 'PATCH', { completed: true })).json();
+    const summary = { ...first, totalCount: 1, completedCount: 1 };
+    for (const defaultTaskPriority of ['', 'high', ' High ', null, 1, true, {}, []]) {
+      assert.equal((await send(projectPath, 'PATCH', { defaultTaskPriority })).status, 400);
+      assert.deepEqual(await list(projectPath), summary);
+    }
+    for (const body of [
+      { defaultTaskPriority: 'High', name: 'Changed' },
+      { defaultTaskPriority: 'High', archived: true },
+    ]) {
+      assert.equal((await send(projectPath, 'PATCH', body)).status, 400);
+      assert.deepEqual(await list(projectPath), summary);
+    }
+    assert.equal((await send('/api/projects/999999', 'PATCH', { defaultTaskPriority: 'High' })).status, 404);
+    const expectedTasks = [completed];
+    for (const defaultTaskPriority of ['Low', 'Normal', 'High']) {
+      const response = await send(projectPath, 'PATCH', { defaultTaskPriority });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        ...summary, totalCount: expectedTasks.length, defaultTaskPriority,
+      });
+      assert.deepEqual(await list(tasksPath), expectedTasks);
+      assert.deepEqual(await list(otherProjectPath), second);
+      const inherited = await (await send(tasksPath, 'POST', { title: `${defaultTaskPriority} task` })).json();
+      assert.equal(inherited.priority, defaultTaskPriority);
+      assert.equal(inherited.completed, false);
+      expectedTasks.push(inherited);
+    }
+    await send(otherProjectPath, 'PATCH', { defaultTaskPriority: 'Low' });
+    const otherTask = await (await send(otherTasksPath, 'POST', { title: 'Other' })).json();
+    assert.equal(otherTask.priority, 'Low');
+    const renamed = {
+      ...summary, name: 'Renamed', totalCount: expectedTasks.length, defaultTaskPriority: 'High',
+    };
+    assert.deepEqual(await (await send(projectPath, 'PATCH', { name: ' Renamed ' })).json(), renamed);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(projectPath), renamed);
+    assert.deepEqual(await list(tasksPath), expectedTasks);
+    await send(projectPath, 'PATCH', { archived: true });
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(projectPath), { ...renamed, archived: true });
+    assert.equal((await send(projectPath, 'PATCH', { defaultTaskPriority: 'Low' })).status, 409);
+    assert.deepEqual(await list(tasksPath), expectedTasks);
+    assert.deepEqual(await (await send(projectPath, 'PATCH', { archived: false })).json(), renamed);
+    const restoredTask = await (await send(tasksPath, 'POST', { title: 'After restoration' })).json();
+    assert.equal(restoredTask.priority, 'High');
+    expectedTasks.push(restoredTask);
+    await send(projectPath, 'PATCH', { defaultTaskPriority: 'Normal' });
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(tasksPath), expectedTasks);
+    assert.deepEqual(await list(otherTasksPath), [otherTask]);
+    assert.deepEqual(await list(projectPath), {
+      ...renamed, defaultTaskPriority: 'Normal', totalCount: expectedTasks.length,
+    });
+    assert.equal((await list(otherProjectPath)).defaultTaskPriority, 'Low');
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

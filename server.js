@@ -49,18 +49,22 @@ export function createApplication(dbPath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
     database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
   }
-  const projectQuery = `SELECT projects.id, projects.name, projects.archived,
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'defaultTaskPriority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN defaultTaskPriority TEXT NOT NULL DEFAULT 'Normal' CHECK (defaultTaskPriority IN ('Low', 'Normal', 'High'))");
+  }
+  const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.defaultTaskPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
   const listProjects = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
   const getProject = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
   const archiveProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+  const updateDefaultTaskPriority = database.prepare('UPDATE projects SET defaultTaskPriority = ? WHERE id = ?');
   const projectData = (project) => ({ ...project, archived: Boolean(project.archived) });
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
   const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -97,10 +101,11 @@ export function createApplication(dbPath) {
         }
         if (request.method === 'POST' && taskId === null) {
           const input = await readJson(request);
-          if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
+          const project = getProject.get(projectId);
+          if (project.archived) return json(response, 409, { error: 'Archived project is read-only' });
           const title = typeof input?.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
-          const result = insertTask.run(projectId, title);
+          const result = insertTask.run(projectId, title, project.defaultTaskPriority);
           return json(response, 201, taskData(getTask.get(projectId, Number(result.lastInsertRowid))));
         }
         if (request.method === 'PATCH' && taskId !== null) {
@@ -134,14 +139,21 @@ export function createApplication(dbPath) {
         const projectId = Number(projectMatch[1]);
         if (!getProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
         const input = await readJson(request);
+        const fields = ['name', 'archived', 'defaultTaskPriority'].filter((field) => Object.hasOwn(input ?? {}, field));
+        if (fields.length > 1) {
+          return json(response, 400, { error: 'Update name, archive state, or default task priority separately' });
+        }
         if (Object.hasOwn(input ?? {}, 'name')) {
-          if (Object.hasOwn(input, 'archived')) {
-            return json(response, 400, { error: 'Update name or archive state separately' });
-          }
           if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
           const name = typeof input.name === 'string' ? input.name.trim() : '';
           if (!name) return json(response, 400, { error: 'Project name is required' });
           renameProject.run(name, projectId);
+        } else if (Object.hasOwn(input ?? {}, 'defaultTaskPriority')) {
+          if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
+          if (!['Low', 'Normal', 'High'].includes(input.defaultTaskPriority)) {
+            return json(response, 400, { error: 'Default task priority must be Low, Normal, or High' });
+          }
+          updateDefaultTaskPriority.run(input.defaultTaskPriority, projectId);
         } else {
           if (typeof input?.archived !== 'boolean') {
             return json(response, 400, { error: 'Archive state must be a boolean' });

@@ -30,8 +30,11 @@ until restored.
 Each task row supports renaming with a trimmed title. Renaming preserves task
 ownership, order, completion, and summaries, and updates its completion label.
 Archived projects disable task renaming until restored.
-Each task has a saved priority: Low, Normal, or High. New and existing tasks default
-to Normal. Priority changes preserve task order, completion, ownership, and summaries;
+Each task has a saved priority: Low, Normal, or High. Each project's Default task
+priority starts at Normal and is saved independently. New tasks inherit that saved
+default; changing it leaves existing tasks and both selected filters unchanged.
+Archived projects display their saved default but disable changes until restored.
+Priority changes preserve task order, completion, ownership, and summaries;
 renaming preserves priority. Archived projects disable priority edits until restored.
 Run `npm test` for HTTP integration tests, including persistence across separate
 server processes. Tests use temporary databases and clean them up afterward.

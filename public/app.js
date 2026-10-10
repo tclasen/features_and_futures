@@ -63,6 +63,10 @@ async function renderProject(projectId) {
         <button type="submit" disabled>Rename project</button>
       </div>
     </form>
+    <label for="default-task-priority">Default task priority</label>
+    <select id="default-task-priority" disabled>
+      <option>Low</option><option>Normal</option><option>High</option>
+    </select>
     <form id="create-task">
       <label for="task-title">Task title</label>
       <div class="create-controls">
@@ -85,6 +89,27 @@ async function renderProject(projectId) {
   app.querySelector('h1').textContent = project.name;
   document.title = `${project.name} · Workboard`;
   app.querySelector('#archive-notice').hidden = !project.archived;
+  const defaultPriority = app.querySelector('#default-task-priority');
+  defaultPriority.value = project.defaultTaskPriority;
+  defaultPriority.disabled = project.archived;
+  defaultPriority.addEventListener('change', async () => {
+    if (project.archived) return;
+    defaultPriority.disabled = true;
+    showAlert('');
+    try {
+      const saved = await request(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultTaskPriority: defaultPriority.value }),
+      });
+      Object.assign(project, saved);
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      defaultPriority.value = project.defaultTaskPriority;
+      defaultPriority.disabled = project.archived;
+    }
+  });
   const renameForm = app.querySelector('#rename-project');
   const renameInput = app.querySelector('#new-project-name');
   const renameButton = renameForm.querySelector('button');
