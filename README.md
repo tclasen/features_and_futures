@@ -10,6 +10,8 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open http://localhost:8080. Both environment variables are optional; the values above are the defaults. The configured SQLite file preserves projects, their tasks, and task completion across restarts. Open a project to create tasks, change completion, and filter by All, Open, or Completed.
 
+The project list initially shows Active projects. Each row includes its completed/total task summary and an Archive project button. Select Archived to open or restore archived projects. Archived project pages keep task filtering available and disable task creation and completion changes. Archive state persists, and existing databases are migrated automatically without losing projects or tasks.
+
 Health check:
 
 ```sh

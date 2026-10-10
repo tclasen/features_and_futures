@@ -4,12 +4,15 @@ const list = document.querySelector('#project-list');
 const error = document.querySelector('#error');
 const form = document.querySelector('#project-form');
 const input = document.querySelector('#project-name');
+const projectFilter = document.querySelector('#project-filter');
+const archivedNotice = document.querySelector('#archived-notice');
 const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const taskList = document.querySelector('#task-list');
 const detailError = document.querySelector('#detail-error');
 let activeProjectId = null;
+let archivedProject = false;
 let tasks = [];
 let renderVersion = 0;
 
@@ -38,6 +41,9 @@ async function render() {
   detailView.hidden = !match;
   document.title = 'Workboard';
   activeProjectId = null;
+  archivedProject = false;
+  archivedNotice.hidden = true;
+  taskForm.querySelector('button').disabled = true;
   tasks = [];
   taskList.replaceChildren();
   taskInput.value = '';
@@ -51,6 +57,9 @@ async function render() {
       const project = await request(`/api/projects/${match[1]}`);
       if (version !== renderVersion) return;
       title.textContent = project.name;
+      archivedProject = Boolean(project.archived);
+      archivedNotice.hidden = !archivedProject;
+      taskForm.querySelector('button').disabled = archivedProject;
       document.title = `${project.name} · Workboard`;
       const savedTasks = await request(`/api/projects/${project.id}/tasks`);
       if (version !== renderVersion) return;
@@ -66,21 +75,51 @@ async function render() {
     const projects = await request('/api/projects');
     if (version !== renderVersion) return;
     list.replaceChildren();
-    for (const project of projects) {
+    const visibleProjects = projects.filter((project) => Boolean(project.archived) === (projectFilter.value === 'Archived'));
+    for (const project of visibleProjects) {
       const row = document.createElement('div');
       row.className = 'project-row';
       row.dataset.testid = 'project-row';
       const name = document.createElement('span');
       name.textContent = project.name;
+      const summary = document.createElement('span');
+      summary.className = 'project-summary';
+      summary.dataset.testid = 'project-summary';
+      summary.textContent = `${project.completed}/${project.total} completed`;
+      const information = document.createElement('div');
+      information.className = 'project-information';
+      information.append(name, summary);
       const open = document.createElement('button');
       open.type = 'button';
       open.className = 'secondary';
       open.textContent = 'Open project';
       open.addEventListener('click', () => navigate(`/projects/${project.id}`));
-      row.append(name, open);
+      const archive = document.createElement('button');
+      archive.type = 'button';
+      archive.className = 'secondary';
+      archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+      archive.addEventListener('click', async () => {
+        archive.disabled = true;
+        showError(error, '');
+        try {
+          await request(`/api/projects/${project.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived: !project.archived }),
+          });
+          await render();
+        } catch (err) { showError(error, err.message); }
+        finally { archive.disabled = false; }
+      });
+      const actions = document.createElement('div');
+      actions.className = 'project-actions';
+      actions.append(open, archive);
+      row.append(information, actions);
       list.append(row);
     }
-    document.querySelector('#empty').hidden = projects.length > 0;
+    const empty = document.querySelector('#empty');
+    empty.hidden = visibleProjects.length > 0;
+    empty.textContent = projectFilter.value === 'Archived' ? 'No archived projects.' : 'No active projects. Create a project above.';
   } catch (err) { showError(error, err.message); }
 }
 
@@ -95,6 +134,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = archivedProject;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     const title = document.createElement('span');
     title.textContent = task.title;
@@ -116,7 +156,7 @@ function renderTasks() {
         if (version !== renderVersion) return;
         checkbox.checked = task.completed;
         showError(detailError, err.message);
-      } finally { checkbox.disabled = false; }
+      } finally { checkbox.disabled = archivedProject; }
     });
     row.append(checkbox, title);
     taskList.append(row);
@@ -124,8 +164,10 @@ function renderTasks() {
 }
 
 taskFilter.addEventListener('change', renderTasks);
+projectFilter.addEventListener('change', render);
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (archivedProject || activeProjectId === null) return;
   const title = taskInput.value.trim();
   if (!title) {
     showError(detailError, 'Task title is required');
@@ -149,7 +191,7 @@ taskForm.addEventListener('submit', async (event) => {
     taskInput.value = '';
     taskInput.focus();
   } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
-  finally { button.disabled = false; }
+  finally { button.disabled = archivedProject || activeProjectId === null; }
 });
 
 form.addEventListener('submit', async (event) => {
