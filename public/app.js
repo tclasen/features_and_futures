@@ -118,6 +118,15 @@ async function render() {
     dueThrough.type = 'text';
     dueThrough.setAttribute('aria-label', 'Due through');
     dueThroughLabel.append(dueThrough);
+    const taskSearchLabel = element('label', 'Task search');
+    const taskSearch = element('input');
+    taskSearch.type = 'text';
+    taskSearch.setAttribute('aria-label', 'Task search');
+    taskSearchLabel.append(taskSearch);
+    const applyTaskSearch = element('button', 'Search tasks');
+    applyTaskSearch.type = 'button';
+    let appliedTaskQuery = '';
+    applyTaskSearch.addEventListener('click', () => { appliedTaskQuery = taskSearch.value.trim(); loadTasks(); });
     const applyDueRange = element('button', 'Apply due range');
     applyDueRange.type = 'button';
     const dueRangeAlert = element('p', '', 'alert');
@@ -126,7 +135,7 @@ async function render() {
     let appliedFrom = '', appliedThrough = '';
     const list = element('section', undefined, 'task-list');
     app.append(form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter,
-      dueFromLabel, dueThroughLabel, applyDueRange, dueRangeAlert, list);
+      dueFromLabel, dueThroughLabel, applyDueRange, dueRangeAlert, taskSearchLabel, applyTaskSearch, list);
 
     function validDate(value) {
       const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -164,6 +173,7 @@ async function render() {
       for (const task of tasks.filter(t =>
         (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
         (priorityFilter.value === 'All' || priorityFilter.value === t.priority) &&
+        t.title.toLowerCase().includes(appliedTaskQuery.toLowerCase()) &&
         ((!appliedFrom && !appliedThrough) || (!!t.due_date && (!appliedFrom || t.due_date >= appliedFrom) && (!appliedThrough || t.due_date <= appliedThrough)))
       )) {
         const row = element('div', undefined, 'task-row');
@@ -300,15 +310,24 @@ async function render() {
   const filter = element('select');
   filter.id = 'project-filter';
   for (const value of ['Active', 'Archived']) filter.append(new Option(value, value));
+  const projectSearchLabel = element('label', 'Project search');
+  const projectSearch = element('input');
+  projectSearch.type = 'text';
+  projectSearch.setAttribute('aria-label', 'Project search');
+  projectSearchLabel.append(projectSearch);
+  const searchProjects = element('button', 'Search projects');
+  searchProjects.type = 'button';
+  let appliedProjectQuery = '';
+  searchProjects.addEventListener('click', () => { appliedProjectQuery = projectSearch.value.trim(); loadProjects(); });
   const list = element('section', undefined, 'project-list');
   list.setAttribute('aria-label', 'Projects');
-  app.append(form, alert, filterLabel, filter, list);
+  app.append(form, alert, filterLabel, filter, projectSearchLabel, searchProjects, list);
 
   async function loadProjects() {
     const response = await fetch('/api/projects');
     const projects = await response.json();
     list.replaceChildren();
-    for (const project of projects.filter(p => p.archived === (filter.value === 'Archived'))) {
+    for (const project of projects.filter(p => p.archived === (filter.value === 'Archived') && p.name.toLowerCase().includes(appliedProjectQuery.toLowerCase()))) {
       const row = element('div', undefined, 'project-row');
       row.dataset.testid = 'project-row';
       const details = element('div');
