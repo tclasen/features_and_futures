@@ -14,7 +14,8 @@ database.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    default_priority TEXT NOT NULL DEFAULT 'Normal'
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -31,25 +32,29 @@ const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some((column) => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 const listProjects = database.prepare(`
-  SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+  SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS totalCount,
     COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid
 `);
-const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = database.prepare("INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, 'Normal')");
+const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const mimeType = (path) => contentTypes[path.slice(path.lastIndexOf('.'))] || 'application/octet-stream';
@@ -93,6 +98,11 @@ const server = createServer(async (req, res) => {
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
     const body = await readJson(req);
+    if (typeof body?.defaultPriority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(body.defaultPriority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      updateProjectDefaultPriority.run(body.defaultPriority, project.id);
+      return sendJson(res, 200, { ...project, defaultPriority: body.defaultPriority });
+    }
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) return sendJson(res, 400, { error: 'Project name is required' });
     renameProject.run(name, project.id);
@@ -120,8 +130,8 @@ const server = createServer(async (req, res) => {
     const body = await readJson(req);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-    const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false, priority: 'Normal' };
-    insertTask.run(task.id, task.projectId, task.title, Date.now());
+    const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false, priority: project.defaultPriority };
+    insertTask.run(task.id, task.projectId, task.title, Date.now(), task.priority);
     return sendJson(res, 201, task);
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);

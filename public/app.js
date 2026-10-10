@@ -151,6 +151,35 @@ async function showProject(id) {
       renameAlert.hidden = false;
     }
   });
+  const defaultPriorityLabel = document.createElement('label');
+  defaultPriorityLabel.htmlFor = 'default-task-priority';
+  defaultPriorityLabel.textContent = 'Default task priority';
+  const defaultPriority = document.createElement('select');
+  defaultPriority.id = 'default-task-priority';
+  defaultPriority.disabled = project.archived;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.defaultPriority;
+  defaultPriority.addEventListener('change', async () => {
+    defaultPriority.disabled = true;
+    try {
+      const updatedProject = await request(`/api/projects/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ defaultPriority: defaultPriority.value }),
+      });
+      project.defaultPriority = updatedProject.defaultPriority;
+    } catch (error) {
+      defaultPriority.value = project.defaultPriority;
+      renameAlert.textContent = error.message;
+      renameAlert.hidden = false;
+    } finally {
+      defaultPriority.disabled = project.archived;
+    }
+  });
   const headingElement = view.querySelector('h1');
   const form = document.createElement('form');
   form.className = 'task-form';
@@ -198,7 +227,7 @@ async function showProject(id) {
   const list = document.createElement('section');
   list.className = 'task-list';
   list.setAttribute('aria-label', 'Tasks');
-  view.append(back, renameForm, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+  view.append(back, renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
 
   async function refresh() {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
