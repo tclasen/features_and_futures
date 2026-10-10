@@ -13,4 +13,6 @@ The server binds to `0.0.0.0`. `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-Tests exercise health, project validation, creation order, detail routes, and SQLite persistence across process restarts using a temporary database.
+Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. Projects and tasks are saved in SQLite.
+
+Tests exercise health, project/task validation, creation order, project isolation, completion changes, detail routes, and SQLite persistence across process restarts using a temporary database.
