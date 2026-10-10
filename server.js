@@ -42,7 +42,9 @@ function validDate(value) {
   if (!match) return false;
   const [, year, month, day] = match;
   if (+year < 1 || +month < 1 || +month > 12) return false;
-  const days = new Date(Date.UTC(+year, +month, 0)).getUTCDate();
+  const date = new Date(0);
+  date.setUTCFullYear(+year, +month, 0);
+  const days = date.getUTCDate();
   return +day >= 1 && +day <= days;
 }
 
