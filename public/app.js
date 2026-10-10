@@ -177,9 +177,18 @@ async function showProject(id) {
       option.value = name;
       filter.append(option);
     }
+    const priorityFilterLabel = element('label', 'Priority filter');
+    priorityFilterLabel.htmlFor = 'priority-filter';
+    const priorityFilter = element('select');
+    priorityFilter.id = 'priority-filter';
+    for (const name of ['All', 'Low', 'Normal', 'High']) {
+      const option = element('option', name);
+      option.value = name;
+      priorityFilter.append(option);
+    }
     const list = element('section');
     list.setAttribute('aria-label', 'Tasks');
-    app.append(form, filterLabel, filter, list);
+    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
     let tasks = [];
     function showError(error) {
       alert.textContent = error.message;
@@ -190,6 +199,7 @@ async function showProject(id) {
       for (const task of tasks) {
         if (filter.value === 'Open' && task.completed) continue;
         if (filter.value === 'Completed' && !task.completed) continue;
+        if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
         const row = element('div');
         row.className = 'task-row';
         row.dataset.testid = 'task-row';
@@ -268,6 +278,7 @@ async function showProject(id) {
               body: JSON.stringify({ priority: priority.value }),
             });
             task.priority = saved.priority;
+            render();
           } catch (error) { showError(error); }
           finally {
             priority.value = task.priority;
@@ -279,6 +290,7 @@ async function showProject(id) {
       }
     }
     filter.addEventListener('change', render);
+    priorityFilter.addEventListener('change', render);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (project.archived) return;
