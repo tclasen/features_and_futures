@@ -45,7 +45,8 @@ Checkbox labels reflect the new title. Archived projects disable task rename
 controls and reject rename requests; restoration enables them again.
 
 Each task row has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Priority changes persist independently
+Existing tasks default to Normal when migrating from databases without priorities.
+New tasks inherit their project's saved default priority. Priority changes persist independently
 without affecting ownership, ordering, completion, or summaries; renaming retains
 priority. Archived projects disable priority controls and reject priority edits
 with HTTP 403. Restoration re-enables them with saved values. Existing databases
@@ -57,8 +58,15 @@ are preserved through edits and validation errors; edits immediately re-evaluate
 visible rows. Filters remain usable when archived and never change saved data or
 completion summaries. Opening from the project list starts both filters at All.
 
+Each project page has a Default task priority selector (Low/Normal/High), initially
+Normal for existing and new projects. Changes apply only to subsequently created
+tasks in that project, leaving existing tasks, both filters, and summaries intact.
+Defaults persist through restarts, renaming, archival, and restoration. Archived
+projects disable this selector and reject default changes with HTTP 403.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
 completion toggles, archive/restore, project and task renaming, priorities,
-combined filter combinations and selection preservation,
+combined filter combinations and selection preservation, project default priorities
+and inheritance without changing existing tasks,
 summaries, legacy schema migration, reloads, and persistence across process restarts.
