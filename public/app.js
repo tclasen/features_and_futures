@@ -15,7 +15,7 @@ async function request(url, options) {
   return data;
 }
 
-async function renderList(archived = false) {
+async function renderList(archived = false, appliedQuery = '') {
   app.replaceChildren();
   app.append(element('h1', { text: 'Workboard' }));
   const form = element('form', { className: 'create-form' });
@@ -37,10 +37,20 @@ async function renderList(archived = false) {
   const filter = element('select'); filter.id = 'project-filter';
   for (const [value, text] of [['false', 'Active'], ['true', 'Archived']]) { const option = element('option', { text }); option.value = value; filter.append(option); }
   filter.value = String(archived);
-  filter.addEventListener('change', () => renderList(filter.value === 'true'));
+  filter.addEventListener('change', () => renderList(filter.value === 'true', appliedQuery));
   app.append(filterLabel, filter);
+  const searchForm = element('form', { className: 'create-form' });
+  const searchLabel = element('label', { text: 'Project search' }); searchLabel.htmlFor = 'project-search';
+  const searchInput = element('input'); searchInput.id = searchLabel.htmlFor; searchInput.type = 'text'; searchInput.value = appliedQuery;
+  const searchButton = element('button', { text: 'Search projects' }); searchButton.type = 'submit';
+  searchForm.append(searchLabel, searchInput, searchButton);
+  searchForm.addEventListener('submit', event => { event.preventDefault(); renderList(archived, searchInput.value.trim()); });
+  app.append(searchForm);
+  const normalizeSearch = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  const query = normalizeSearch(appliedQuery.trim());
   const list = element('section', { className: 'project-list' });
   for (const project of await request(`/api/projects?archived=${archived}`)) {
+    if (!normalizeSearch(project.name).includes(query)) continue;
     const row = element('article', { testId: 'project-row', className: 'project-row' });
     row.append(element('span', { text: project.name }));
     const summary = element('span', { text: `${project.completedCount}/${project.totalCount} completed`, testId: 'project-summary' });
@@ -106,6 +116,13 @@ async function renderProject(id) {
   const priorityFilterLabel = element('label', { text: 'Priority filter' }); priorityFilterLabel.htmlFor = 'priority-filter';
   const priorityFilter = element('select'); priorityFilter.id = 'priority-filter';
   for (const value of ['All', 'Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; priorityFilter.append(option); }
+  const taskSearchForm = element('form', { className: 'create-form' });
+  const taskSearchLabel = element('label', { text: 'Task search' }); taskSearchLabel.htmlFor = 'task-search';
+  const taskSearchInput = element('input'); taskSearchInput.type = 'text'; taskSearchInput.id = taskSearchLabel.htmlFor;
+  const taskSearchButton = element('button', { text: 'Search tasks' }); taskSearchButton.type = 'submit';
+  let appliedTaskQuery = '';
+  taskSearchForm.append(taskSearchLabel, taskSearchInput, taskSearchButton);
+  taskSearchForm.addEventListener('submit', event => { event.preventDefault(); appliedTaskQuery = taskSearchInput.value.trim(); refreshTasks(); });
   const dueFromLabel = element('label', { text: 'Due from' }); dueFromLabel.htmlFor = 'due-from';
   const dueFrom = element('input'); dueFrom.type = 'text'; dueFrom.id = 'due-from';
   const dueThroughLabel = element('label', { text: 'Due through' }); dueThroughLabel.htmlFor = 'due-through';
@@ -119,7 +136,9 @@ async function renderProject(id) {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     if (renderVersion !== taskRenderVersion) return;
     list.replaceChildren();
+    const normalizedTaskQuery = appliedTaskQuery.replace(/[A-Z]/g, letter => letter.toLowerCase());
     for (const task of tasks) {
+      if (!task.title.replace(/[A-Z]/g, letter => letter.toLowerCase()).includes(normalizedTaskQuery)) continue;
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed || priorityFilter.value !== 'All' && priorityFilter.value !== task.priority) continue;
       if ((appliedDueFrom || appliedDueThrough) && (!task.dueDate || (appliedDueFrom && task.dueDate < appliedDueFrom) || (appliedDueThrough && task.dueDate > appliedDueThrough))) continue;
       const row = element('article', { testId: 'task-row', className: 'task-row' });
@@ -216,7 +235,7 @@ async function renderProject(id) {
   });
   filter.addEventListener('change', refreshTasks);
   priorityFilter.addEventListener('change', refreshTasks);
-  app.append(renameForm, defaultLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
+  app.append(renameForm, defaultLabel, defaultPriority, form, taskSearchForm, filterLabel, filter, priorityFilterLabel, priorityFilter, dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
   await refreshTasks();
 }
 
