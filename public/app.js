@@ -119,8 +119,13 @@ async function renderProject(id) {
     const priorityFilterLabel = element('label', 'Priority filter', { for: 'priority-filter' });
     const priorityFilter = element('select', undefined, { id: 'priority-filter' });
     for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value: value.toLowerCase() }));
+    const dueFromLabel = element('label', 'Due from', { for: 'due-from' });
+    const dueFrom = element('input', undefined, { id: 'due-from', type: 'text' });
+    const dueThroughLabel = element('label', 'Due through', { for: 'due-through' });
+    const dueThrough = element('input', undefined, { id: 'due-through', type: 'text' });
+    const applyDueRange = element('button', 'Apply due range', { type: 'button' });
     const rows = element('section', undefined, { 'aria-label': 'Tasks' });
-    app.append(renameForm, defaultPriorityLabel, defaultPriority, form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
+    app.append(renameForm, defaultPriorityLabel, defaultPriority, form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rows);
 
     defaultPriority.addEventListener('change', async () => {
       const previous = project.defaultPriority;
@@ -159,6 +164,18 @@ async function renderProject(id) {
     });
 
     let tasks = [];
+    let appliedDueRange = { from: '', through: '' };
+    function isValidCalendarDate(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (!match) return false;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return day <= days[month - 1];
+    }
     function showTasks() {
       rows.replaceChildren();
       const selected = filter.value;
@@ -166,6 +183,9 @@ async function renderProject(id) {
       for (const task of tasks) {
         if (selected === 'open' && task.completed || selected === 'completed' && !task.completed) continue;
         if (selectedPriority !== 'all' && task.priority.toLowerCase() !== selectedPriority) continue;
+        if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
+        if (task.dueDate && appliedDueRange.from && task.dueDate < appliedDueRange.from) continue;
+        if (task.dueDate && appliedDueRange.through && task.dueDate > appliedDueRange.through) continue;
         const row = element('article', undefined, { 'data-testid': 'task-row' });
         row.append(element('span', task.title));
         const renameForm = element('form');
@@ -212,6 +232,7 @@ async function renderProject(id) {
             task.dueDate = updated.dueDate;
             dueDateInput.value = updated.dueDate || '';
             alert.hidden = true;
+            showTasks();
           } catch (error) {
             alert.textContent = error.message;
             alert.hidden = false;
@@ -265,6 +286,25 @@ async function renderProject(id) {
     }
     filter.addEventListener('change', showTasks);
     priorityFilter.addEventListener('change', showTasks);
+    applyDueRange.addEventListener('click', () => {
+      const from = dueFrom.value.trim();
+      const through = dueThrough.value.trim();
+      if ((from && !isValidCalendarDate(from)) || (through && !isValidCalendarDate(through))) {
+        alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+        alert.hidden = false;
+        return;
+      }
+      if (from && through && from > through) {
+        alert.textContent = 'Due from must not be after Due through';
+        alert.hidden = false;
+        return;
+      }
+      appliedDueRange = { from, through };
+      dueFrom.value = from;
+      dueThrough.value = through;
+      alert.hidden = true;
+      showTasks();
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const title = input.value.trim();
