@@ -8,7 +8,9 @@ function element(tag, text, attributes = {}) {
 }
 
 function searchText(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return value
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 async function request(path, options) {
