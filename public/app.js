@@ -4,11 +4,19 @@ const list = document.querySelector('#project-list');
 const error = document.querySelector('#error');
 const form = document.querySelector('#project-form');
 const input = document.querySelector('#project-name');
+const taskForm = document.querySelector('#task-form');
+const taskInput = document.querySelector('#task-title');
+const taskFilter = document.querySelector('#task-filter');
+const taskList = document.querySelector('#task-list');
+const detailError = document.querySelector('#detail-error');
+let activeProjectId = null;
+let tasks = [];
+let renderVersion = 0;
 
 async function request(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(data.error || 'Unable to complete request');
   return data;
 }
 
@@ -23,28 +31,40 @@ function navigate(path) {
 }
 
 async function render() {
+  const version = ++renderVersion;
   const currentPath = location.pathname;
   const match = currentPath.match(/^\/projects\/(\d+)$/);
   listView.hidden = Boolean(match);
   detailView.hidden = !match;
   document.title = 'Workboard';
+  activeProjectId = null;
+  tasks = [];
+  taskList.replaceChildren();
+  taskInput.value = '';
+  taskFilter.value = 'All';
+  document.querySelector('#task-controls').hidden = true;
   if (match) {
     const title = document.querySelector('#project-title');
-    const detailError = document.querySelector('#detail-error');
     title.textContent = '';
     showError(detailError, '');
     try {
       const project = await request(`/api/projects/${match[1]}`);
-      if (location.pathname !== currentPath) return;
+      if (version !== renderVersion) return;
       title.textContent = project.name;
       document.title = `${project.name} · Workboard`;
-    } catch (err) { showError(detailError, err.message); }
+      const savedTasks = await request(`/api/projects/${project.id}/tasks`);
+      if (version !== renderVersion) return;
+      activeProjectId = project.id;
+      tasks = savedTasks;
+      document.querySelector('#task-controls').hidden = false;
+      renderTasks();
+    } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
     return;
   }
   showError(error, '');
   try {
     const projects = await request('/api/projects');
-    if (location.pathname !== currentPath) return;
+    if (version !== renderVersion) return;
     list.replaceChildren();
     for (const project of projects) {
       const row = document.createElement('div');
@@ -63,6 +83,74 @@ async function render() {
     document.querySelector('#empty').hidden = projects.length > 0;
   } catch (err) { showError(error, err.message); }
 }
+
+function renderTasks() {
+  taskList.replaceChildren();
+  for (const task of tasks) {
+    if (taskFilter.value === 'Open' && task.completed) continue;
+    if (taskFilter.value === 'Completed' && !task.completed) continue;
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.dataset.testid = 'task-row';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = task.completed;
+    checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    const title = document.createElement('span');
+    title.textContent = task.title;
+    checkbox.addEventListener('change', async () => {
+      const projectId = activeProjectId;
+      const version = renderVersion;
+      checkbox.disabled = true;
+      showError(detailError, '');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        if (version !== renderVersion) return;
+        tasks = tasks.map((item) => item.id === saved.id ? saved : item);
+        renderTasks();
+      } catch (err) {
+        if (version !== renderVersion) return;
+        checkbox.checked = task.completed;
+        showError(detailError, err.message);
+      } finally { checkbox.disabled = false; }
+    });
+    row.append(checkbox, title);
+    taskList.append(row);
+  }
+}
+
+taskFilter.addEventListener('change', renderTasks);
+taskForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const title = taskInput.value.trim();
+  if (!title) {
+    showError(detailError, 'Task title is required');
+    taskInput.focus();
+    return;
+  }
+  const projectId = activeProjectId;
+  const version = renderVersion;
+  const button = taskForm.querySelector('button');
+  button.disabled = true;
+  showError(detailError, '');
+  try {
+    const task = await request(`/api/projects/${projectId}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (version !== renderVersion) return;
+    tasks.push(task);
+    renderTasks();
+    taskInput.value = '';
+    taskInput.focus();
+  } catch (err) { if (version === renderVersion) showError(detailError, err.message); }
+  finally { button.disabled = false; }
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();

@@ -8,7 +8,7 @@ Start the application:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open http://localhost:8080. Both environment variables are optional; the values above are the defaults. The configured SQLite file preserves projects across restarts.
+Open http://localhost:8080. Both environment variables are optional; the values above are the defaults. The configured SQLite file preserves projects, their tasks, and task completion across restarts. Open a project to create tasks, change completion, and filter by All, Open, or Completed.
 
 Health check:
 
