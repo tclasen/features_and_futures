@@ -37,6 +37,12 @@ YYYY-MM-DD format (years 0001–9999), or leave it blank to clear it. Dates are
 saved as calendar days without timezone conversion. Invalid dates leave the
 saved date unchanged. Due-date controls are disabled while the project is
 archived; restoration preserves dates and enables editing again.
+Project pages support inclusive Due from/Due through filtering with Apply due
+range. Blank boundaries are unbounded; undated tasks match only when both are
+blank. The range intersects completion and priority filters and stays applied
+through edits. Invalid dates or reversed ranges leave the applied range intact.
+All filters remain usable while archived. Reopening from the project list clears
+the range and selects All for both comboboxes.
 `GET /health` returns
 `{"status":"ok"}`.
 
