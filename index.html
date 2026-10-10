@@ -31,7 +31,7 @@
     const app = document.querySelector('#app');
     let renderVersion = 0;
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-    async function showList(error = '', selected = 'Active') {
+    async function showList(error = '', selected = 'Active', query = '') {
       const version = ++renderVersion;
       const response = await fetch(`/api/projects?filter=${selected}`);
       const projects = await response.json();
@@ -40,8 +40,12 @@
         ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
         <form id="create-form"><div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"></div><button type="submit">Create project</button></form>
         <label for="project-filter">Project filter</label><select id="project-filter"><option${selected === 'Active' ? ' selected' : ''}>Active</option><option${selected === 'Archived' ? ' selected' : ''}>Archived</option></select>
+        <form id="project-search-form"><div class="field"><label for="project-search">Project search</label><input id="project-search" type="text" value="${escapeHtml(query)}"></div><button type="submit">Search projects</button></form>
         <section aria-label="Projects">${projects.map(project => `<div class="row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span class="summary" data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-project-id="${project.id}">Open project</button><button type="button" data-archive-id="${project.id}" data-archived="${project.archived}">${project.archived ? 'Restore project' : 'Archive project'}</button></div>`).join('')}</section>`;
-      app.querySelector('#project-filter').addEventListener('change', event => showList('', event.target.value));
+      app.querySelector('#project-filter').addEventListener('change', event => showList('', event.target.value, query));
+      app.querySelector('#project-search-form').addEventListener('submit', event => { event.preventDefault(); showList('', app.querySelector('#project-filter').value, app.querySelector('#project-search').value.trim()); });
+      const projectQuery = query.trim().toLowerCase();
+      app.querySelectorAll('[data-testid="project-row"]').forEach(row => { if (!row.querySelector('span').textContent.toLowerCase().includes(projectQuery)) row.remove(); });
       app.querySelectorAll('[data-archive-id]').forEach(button => button.addEventListener('click', async () => {
         if (button.disabled) return;
         button.disabled = true;
@@ -70,7 +74,7 @@
         showProject(button.dataset.projectId);
       }));
     }
-    async function showProject(id, error = '', selectedFilter = 'All', selectedPriority = 'All', appliedRange = ['', ''], draftRange = appliedRange) {
+    async function showProject(id, error = '', selectedFilter = 'All', selectedPriority = 'All', appliedRange = ['', ''], draftRange = appliedRange, taskQuery = '') {
       const version = ++renderVersion;
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (version !== renderVersion) return;
@@ -89,21 +93,22 @@
           <form id="task-form"><div class="field"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" ${project.archived ? 'disabled' : ''}></div><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
           <label for="task-filter">Task filter</label><select id="task-filter"><option${selectedFilter === 'All' ? ' selected' : ''}>All</option><option${selectedFilter === 'Open' ? ' selected' : ''}>Open</option><option${selectedFilter === 'Completed' ? ' selected' : ''}>Completed</option></select>
           <label for="priority-filter">Priority filter</label><select id="priority-filter"><option${selectedPriority === 'All' ? ' selected' : ''}>All</option><option${selectedPriority === 'Low' ? ' selected' : ''}>Low</option><option${selectedPriority === 'Normal' ? ' selected' : ''}>Normal</option><option${selectedPriority === 'High' ? ' selected' : ''}>High</option></select>
+          <form id="task-search-form"><div class="field"><label for="task-search">Task search</label><input id="task-search" type="text" value="${escapeHtml(taskQuery)}"></div><button type="submit">Search tasks</button></form>
           <form id="due-range-form"><div class="field"><label for="due-from">Due from</label><input id="due-from" type="text" value="${escapeHtml(draftRange[0])}"></div><div class="field"><label for="due-through">Due through</label><input id="due-through" type="text" value="${escapeHtml(draftRange[1])}"></div><button type="submit">Apply due range</button></form>
           <section aria-label="Tasks">${tasks.map(task => `<div class="row task-row" data-testid="task-row" data-completed="${task.completed}" data-priority="${task.priority}" data-due-date="${escapeHtml(task.dueDate || '')}"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><select aria-label="Task priority" data-priority-task-id="${task.id}" ${project.archived ? 'disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select><form class="task-rename-form" data-task-id="${task.id}"><label class="visually-hidden" for="new-task-title-${task.id}">New task title</label><input id="new-task-title-${task.id}" name="title" type="text" aria-label="New task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><form class="due-date-form" data-task-id="${task.id}"><label class="visually-hidden" for="due-date-${task.id}">Task due date</label><input id="due-date-${task.id}" name="dueDate" type="text" aria-label="Task due date" value="${escapeHtml(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button></form><label class="visually-hidden" for="destination-${task.id}">Destination project</label><select id="destination-${task.id}" aria-label="Destination project" data-destination-task-id="${task.id}" ${project.archived || !destinations.length ? 'disabled' : ''}>${destinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${project.archived || !destinations.length ? 'disabled' : ''}>Move task</button></div>`).join('')}</section>`;
         const renameForm = app.querySelector('#rename-form');
         if (renameForm) renameForm.addEventListener('submit', async event => {
           event.preventDefault();
           const name = new FormData(renameForm).get('name').trim();
-          if (!name) return showProject(id, 'Project name is required', selectedFilter, selectedPriority, appliedRange, draftRange);
+          if (!name) return showProject(id, 'Project name is required', selectedFilter, selectedPriority, appliedRange, draftRange, taskQuery);
           const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-          if (!response.ok) return showProject(id, (await response.json()).error, selectedFilter, selectedPriority, appliedRange, draftRange);
-          showProject(id, '', selectedFilter, selectedPriority, appliedRange, draftRange);
+          if (!response.ok) return showProject(id, (await response.json()).error, selectedFilter, selectedPriority, appliedRange, draftRange, taskQuery);
+          showProject(id, '', selectedFilter, selectedPriority, appliedRange, draftRange, taskQuery);
         });
         const defaultPriority = app.querySelector('#default-task-priority');
         defaultPriority.addEventListener('change', async () => {
           const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultPriority: defaultPriority.value }) });
-          if (!response.ok) showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!response.ok) showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         });
         const filter = app.querySelector('#task-filter');
         const priorityFilter = app.querySelector('#priority-filter');
@@ -111,11 +116,12 @@
           const completionMatches = filter.value === 'All' || (filter.value === 'Open' ? row.dataset.completed !== 'true' : row.dataset.completed === 'true');
           const date = row.dataset.dueDate;
           const dateMatches = !appliedRange[0] && !appliedRange[1] ? true : Boolean(date) && (!appliedRange[0] || date >= appliedRange[0]) && (!appliedRange[1] || date <= appliedRange[1]);
-          row.hidden = !completionMatches || (priorityFilter.value !== 'All' && priorityFilter.value !== row.dataset.priority) || !dateMatches;
+          row.hidden = !completionMatches || (priorityFilter.value !== 'All' && priorityFilter.value !== row.dataset.priority) || !dateMatches || !row.querySelector('span').textContent.toLowerCase().includes(taskQuery.trim().toLowerCase());
         });
         applyFilters();
         filter.addEventListener('change', applyFilters);
         priorityFilter.addEventListener('change', applyFilters);
+        app.querySelector('#task-search-form').addEventListener('submit', event => { event.preventDefault(); showProject(id, '', filter.value, priorityFilter.value, appliedRange, appliedRange, app.querySelector('#task-search').value.trim()); });
         const showRangeError = message => {
           let alert = app.querySelector('#due-range-alert');
           if (!alert) {
@@ -139,45 +145,45 @@
             showRangeError('Due from must not be after Due through');
             return;
           }
-          showProject(id, '', filter.value, priorityFilter.value, [from, through]);
+          showProject(id, '', filter.value, priorityFilter.value, [from, through], [from, through], taskQuery);
         });
         app.querySelector('#task-form').addEventListener('submit', async event => {
           event.preventDefault();
           const title = new FormData(event.currentTarget).get('title').trim();
-          if (!title) return showProject(id, 'Task title is required', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!title) return showProject(id, 'Task title is required', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
           const created = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
-          if (!created.ok) return showProject(id, (await created.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange);
-          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!created.ok) return showProject(id, (await created.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
+          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         });
         app.querySelectorAll('input[type="checkbox"][data-task-id]').forEach(checkbox => checkbox.addEventListener('change', async () => {
           await fetch(`/api/tasks/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
-          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         }));
         app.querySelectorAll('[data-priority-task-id]').forEach(select => select.addEventListener('change', async () => {
           const response = await fetch(`/api/tasks/${select.dataset.priorityTaskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: select.value }) });
-          if (!response.ok) showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
-          else showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!response.ok) showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
+          else showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         }));
         app.querySelectorAll('.due-date-form').forEach(form => form.addEventListener('submit', async event => {
           event.preventDefault();
           const dueDate = new FormData(form).get('dueDate');
           const response = await fetch(`/api/tasks/${form.dataset.taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate }) });
-          if (!response.ok) return showProject(id, (await response.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange);
-          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!response.ok) return showProject(id, (await response.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
+          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         }));
         app.querySelectorAll('[data-move-task-id]').forEach(button => button.addEventListener('click', async () => {
           const destination = app.querySelector(`[data-destination-task-id="${button.dataset.moveTaskId}"]`).value;
           const response = await fetch(`/api/tasks/${button.dataset.moveTaskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: Number(destination) }) });
-          if (!response.ok) return showProject(id, (await response.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange);
-          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!response.ok) return showProject(id, (await response.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
+          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         }));
         app.querySelectorAll('.task-rename-form').forEach(form => form.addEventListener('submit', async event => {
           event.preventDefault();
           const title = new FormData(form).get('title').trim();
-          if (!title) return showProject(id, 'Task title is required', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!title) return showProject(id, 'Task title is required', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
           const response = await fetch(`/api/tasks/${form.dataset.taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
-          if (!response.ok) return showProject(id, (await response.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange);
-          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange);
+          if (!response.ok) return showProject(id, (await response.json()).error, filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
+          showProject(id, '', filter.value, priorityFilter.value, appliedRange, draftRange, taskQuery);
         }));
       }
       app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); showList(); });
