@@ -22,6 +22,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 const appJs = await readFile(new URL('./app.js', import.meta.url));
@@ -78,7 +82,7 @@ const server = createServer(async (req, res) => {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
     if (req.method === 'GET' && !taskRoute[2]) {
-      return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (req.method === 'POST' && !taskRoute[2]) {
       const data = await readBody(req);
@@ -86,7 +90,7 @@ const server = createServer(async (req, res) => {
       if (typeof title !== 'string' || !title.trim()) return json(res, 400, { error: 'Task title is required' });
       const cleanTitle = title.trim();
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, cleanTitle);
-      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title: cleanTitle, completed: false });
+      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title: cleanTitle, completed: false, priority: 'Normal' });
     }
     if (req.method === 'PATCH' && taskRoute[2]) {
       const data = await readBody(req);
@@ -96,6 +100,12 @@ const server = createServer(async (req, res) => {
         const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, Number(taskRoute[2]), projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
         return json(res, 200, { id: Number(taskRoute[2]), projectId, title });
+      }
+      if (typeof data?.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(data.priority)) return json(res, 400, { error: 'Invalid priority' });
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(data.priority, Number(taskRoute[2]), projectId);
+        if (!result.changes) return json(res, 404, { error: 'Task not found' });
+        return json(res, 200, { id: Number(taskRoute[2]), projectId, priority: data.priority });
       }
       if (typeof data?.completed !== 'boolean') return json(res, 400, { error: 'Invalid request' });
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(data.completed ? 1 : 0, Number(taskRoute[2]), projectId);

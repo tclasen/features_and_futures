@@ -203,6 +203,22 @@ async function renderTasks(projectId, archived) {
         if (response.ok) await refresh();
       });
       row.append(checkbox);
+      const priority = element('select');
+      priority.setAttribute('aria-label', 'Task priority');
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', value);
+        option.value = value;
+        priority.append(option);
+      }
+      priority.value = task.priority || 'Normal';
+      priority.disabled = archived;
+      priority.addEventListener('change', async () => {
+        const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }),
+        });
+        if (!response.ok) priority.value = task.priority || 'Normal';
+      });
+      row.append(priority);
       const renameInput = element('input');
       renameInput.type = 'text';
       renameInput.setAttribute('aria-label', 'New task title');
