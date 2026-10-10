@@ -27,6 +27,7 @@
     .project-actions button:last-child { background: #465367; }
     .filters { margin: 20px 0 12px; display: flex; align-items: center; gap: 10px; }
     select { padding: 9px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; background: white; }
+    #rename-form { margin: 0 0 16px; }
     @media (max-width: 480px) { form { flex-direction: column; } }
   </style>
 </head>
@@ -108,6 +109,8 @@
       const project = await response.json();
       app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>
         ${project.archived ? '<p>Archived project</p>' : ''}
+        <p id="rename-alert" class="alert" role="alert" hidden></p>
+        <form id="rename-form"><input id="new-project-name" aria-label="New project name" placeholder="New project name" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form>
         <p id="task-alert" class="alert" role="alert" hidden></p>
         <form id="task-form"><input id="task-title" aria-label="Task title" placeholder="Task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
         <div class="filters"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
@@ -116,6 +119,23 @@
       const list = app.querySelector('#task-list');
       const filter = app.querySelector('#task-filter');
       const alert = app.querySelector('#task-alert');
+      const renameAlert = app.querySelector('#rename-alert');
+      app.querySelector('#rename-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = app.querySelector('#new-project-name').value.trim();
+        if (!name) { renameAlert.textContent = 'Project name is required'; renameAlert.hidden = false; return; }
+        const renamed = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!renamed.ok) {
+          const result = await renamed.json();
+          renameAlert.textContent = result.error || 'Could not rename project';
+          renameAlert.hidden = false;
+          return;
+        }
+        project.name = name;
+        app.querySelector('h1').textContent = name;
+        app.querySelector('#new-project-name').value = '';
+        renameAlert.hidden = true;
+      });
       async function renderTasks() {
         const tasksResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
         const tasks = await tasksResponse.json();

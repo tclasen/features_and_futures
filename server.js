@@ -126,9 +126,24 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let input;
     try { input = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
+    const projectId = Number(projectMatch[1]);
+    const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (typeof input.name === 'string') {
+      if (project.archived) return json(res, 409, { error: 'Archived project' });
+      const name = input.name.trim();
+      if (!name) return json(res, 400, { error: 'Project name is required' });
+      try {
+        db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+      } catch (error) {
+        if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') return json(res, 409, { error: 'Project name already exists' });
+        throw error;
+      }
+      return json(res, 200, { ok: true, id: projectId, name });
+    }
     if (typeof input.archived !== 'boolean') return json(res, 400, { error: 'Archive state is required' });
-    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(input.archived ? 1 : 0, Number(projectMatch[1]));
-    return result.changes ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Project not found' });
+    db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(input.archived ? 1 : 0, projectId);
+    return json(res, 200, { ok: true });
   }
   if (req.method === 'GET' && projectMatch) {
     const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
