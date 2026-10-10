@@ -62,6 +62,14 @@ and total task counts. Archived projects remain readable with working task
 filters; task creation and completion changes are disabled until restoration.
 Existing database files are migrated automatically, preserving their data.
 
+Each task row has a Destination project selector and Move task button. Select
+another active project to move the task after its existing tasks, preserving
+the task's title, completion, priority, and optional due date. Moving keeps the
+source page open with its filters and applied due range. Both summaries update
+to reflect ownership. Destinations use current project names in project
+creation order. Moving is disabled when no destination is eligible or the source
+is archived. Moves and task order persist across restarts.
+
 Health check:
 
 ```sh
@@ -84,4 +92,6 @@ combined completion/priority filtering with edits and archive/restore, and
 project default priorities with migration, inheritance, and persistence, and
 optional due dates with calendar validation, clearing, migration, independence,
 filter preservation, and persistence through archive/restore and restarts, plus
-inclusive due-range intersections, validation, and preservation across edits.
+inclusive due-range intersections, validation, and preservation across edits,
+and task moves with migrated ordering, filter and data preservation, active
+destination validation, summaries, repeat moves, and restart persistence.
