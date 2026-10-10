@@ -12,6 +12,10 @@ function taskFilter(value) {
   return ['open', 'completed'].includes(value) ? value : 'all';
 }
 
+function projectFilter(value) {
+  return value === 'archived' ? 'archived' : 'active';
+}
+
 function redirect(response, location) {
   response.writeHead(303, { Location: location });
   response.end();
@@ -47,15 +51,26 @@ const server = createServer(async (request, response) => {
     } else if (request.method === 'GET' && url.pathname === '/app.js') {
       send(response, 200, appScript, 'text/javascript; charset=utf-8');
     } else if (request.method === 'GET' && url.pathname === '/') {
-      send(response, 200, projectsPage(projects.list()));
+      const filter = projectFilter(url.searchParams.get('filter'));
+      send(response, 200, projectsPage(projects.list(filter), '', filter));
     } else if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
       const project = projects.create(form.get('name'));
       if (!project) {
-        send(response, 400, projectsPage(projects.list(), 'Project name is required'));
+        const filter = projectFilter(form.get('filter'));
+        send(response, 400, projectsPage(projects.list(filter), 'Project name is required', filter));
       } else {
         redirect(response, '/');
       }
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/(archive|restore)$/.test(url.pathname)) {
+      const parts = url.pathname.split('/');
+      const id = Number(parts[2]);
+      const form = await readForm(request);
+      if (!Number.isSafeInteger(id) || !projects.setArchived(id, parts[3] === 'archive')) {
+        send(response, 404, notFoundPage());
+        return;
+      }
+      redirect(response, `/?filter=${projectFilter(form.get('filter'))}`);
     } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;
@@ -73,6 +88,10 @@ const server = createServer(async (request, response) => {
       }
       const form = await readForm(request);
       const filter = taskFilter(form.get('filter'));
+      if (project.archived) {
+        send(response, 409, projectPage(project, projects.tasks.list(projectId, filter), filter, 'Archived project'));
+        return;
+      }
       if (taskId === null) {
         if (!projects.tasks.create(projectId, form.get('title'))) {
           send(response, 400, projectPage(project, projects.tasks.list(projectId, filter), filter, 'Task title is required'));

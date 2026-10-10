@@ -9,7 +9,8 @@ export function openWorkboard(databasePath) {
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL CHECK (length(trim(name)) > 0)
+      name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+      archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
     );
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,16 +20,27 @@ export function openWorkboard(databasePath) {
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
   `);
-  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const find = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+  }
+  const list = database.prepare(`
+    SELECT projects.id, projects.name, projects.archived,
+      COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+    WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id
+  `);
+  const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const updateArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-  const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+  const updateTask = database.prepare(`UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
 
   return {
-    list: () => list.all(),
+    list: (filter = 'active') => list.all(filter === 'archived' ? 1 : 0),
     find: (id) => find.get(id),
+    setArchived: (id, archived) => updateArchived.run(archived ? 1 : 0, id).changes > 0,
     create(name) {
       const trimmedName = typeof name === 'string' ? name.trim() : '';
       if (!trimmedName) return null;
@@ -42,6 +54,7 @@ export function openWorkboard(databasePath) {
         ));
       },
       create(projectId, title) {
+        if (find.get(projectId)?.archived) return null;
         const trimmedTitle = typeof title === 'string' ? title.trim() : '';
         if (!trimmedTitle) return null;
         const result = insertTask.run(projectId, trimmedTitle);

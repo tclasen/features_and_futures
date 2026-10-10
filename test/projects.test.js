@@ -212,12 +212,153 @@ test('adding tasks preserves an existing projects database and enforces task own
     `);
     database.close();
     store = openWorkboard(databasePath);
-    assert.deepEqual({ ...store.find(7) }, { id: 7, name: 'Existing project' });
+    assert.deepEqual({ ...store.find(7) }, { id: 7, name: 'Existing project', archived: 0 });
     assert.deepEqual(store.tasks.list(7), []);
     assert.equal(store.tasks.create(7, '  Existing project task  ').title, 'Existing project task');
+    assert.equal(store.list()[0].total_count, 1);
+    assert.equal(store.setArchived(7, true), true);
+    assert.equal(store.tasks.create(7, 'Blocked task'), null);
+    assert.equal(store.tasks.setCompleted(7, 1, true), false);
+    assert.equal(store.list().length, 0);
+    assert.equal(store.list('archived')[0].total_count, 1);
+    assert.equal(store.setArchived(7, false), true);
+    assert.equal(store.tasks.setCompleted(7, 1, true), true);
+    assert.equal(store.list()[0].completed_count, 1);
     assert.throws(() => store.tasks.create(99, 'Orphan'), /FOREIGN KEY/);
     assert.equal(store.tasks.list(99).length, 0);
     assert.equal(store.create('Next project').id, 8);
+  } finally {
+    if (store) store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive and restore preserve summaries and tasks while archived projects reject changes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const getPage = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    const rowCount = (html, type) => (html.match(new RegExp(`data-testid="${type}-row"`, 'g')) ?? []).length;
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    let page = await getPage('/');
+    assert.match(page, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(page, /<option value="active" selected>Active<\/option>/);
+    assert.match(page, /<option value="archived">Archived<\/option>/);
+    assert.equal((page.match(/data-testid="project-summary">0\/0 completed/g) ?? []).length, 2);
+    assert.equal(rowCount(await getPage('/?filter=archived'), 'project'), 0);
+
+    await post('/projects/1/tasks', { title: 'Done' });
+    await post('/projects/1/tasks', { title: 'Pending' });
+    await post('/projects/1/tasks/1/completion', { completed: 'true' });
+    assert.match(await getPage('/'), /data-testid="project-summary">1\/2 completed/);
+    await getPage('/projects/1?filter=completed');
+    assert.match(await getPage('/'), /data-testid="project-summary">1\/2 completed/);
+
+    const archived = await post('/projects/1/archive', { filter: 'active' });
+    assert.equal(archived.status, 303);
+    assert.equal(archived.headers.get('location'), '/?filter=active');
+    page = await getPage('/');
+    assert.equal(rowCount(page, 'project'), 1);
+    assert.doesNotMatch(page, /<span>First<\/span>/);
+    const archivedList = await getPage('/?filter=archived');
+    assert.equal(rowCount(archivedList, 'project'), 1);
+    assert.match(archivedList, /<span>First<\/span>/);
+    assert.match(archivedList, /data-testid="project-summary">1\/2 completed/);
+    assert.match(archivedList, />Open project<\/button>/);
+    assert.match(archivedList, />Restore project<\/button>/);
+    assert.doesNotMatch(archivedList, />Archive project<\/button>/);
+    assert.match(archivedList, /<option value="archived" selected>Archived/);
+
+    const archivedDetail = await getPage('/projects/1');
+    assert.match(archivedDetail, /<p>Archived project<\/p>/);
+    assert.match(archivedDetail, /<button type="submit" disabled>Create task/);
+    assert.match(archivedDetail, /aria-label="Complete Done" checked disabled/);
+    assert.match(archivedDetail, /aria-label="Complete Pending" disabled/);
+    assert.equal(rowCount(archivedDetail, 'task'), 2);
+    assert.ok(archivedDetail.indexOf('<span>Done') < archivedDetail.indexOf('<span>Pending'));
+    assert.equal(rowCount(await getPage('/projects/1?filter=open'), 'task'), 1);
+    assert.equal(rowCount(await getPage('/projects/1?filter=completed'), 'task'), 1);
+    assert.equal((await post('/projects/1/tasks', { title: 'Blocked' })).status, 409);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 409);
+    assert.equal(await getPage('/projects/1'), archivedDetail);
+    assert.equal(await getPage('/?filter=archived'), archivedList);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+    assert.equal((await post('/projects/999/restore')).status, 404);
+    const invalid = await post('/projects', { name: '   ', filter: 'archived' });
+    assert.equal(invalid.status, 400);
+    const invalidPage = await invalid.text();
+    assert.match(invalidPage, /role="alert">Project name is required/);
+    assert.equal(rowCount(invalidPage, 'project'), 1);
+    assert.match(invalidPage, /<option value="archived" selected>Archived/);
+
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage('/projects/1'), archivedDetail);
+    assert.equal(await getPage('/?filter=archived'), archivedList);
+    const restored = await post('/projects/1/restore', { filter: 'archived' });
+    assert.equal(restored.status, 303);
+    assert.equal(restored.headers.get('location'), '/?filter=archived');
+    assert.equal(rowCount(await getPage('/?filter=archived'), 'project'), 0);
+    page = await getPage('/');
+    assert.equal(rowCount(page, 'project'), 2);
+    assert.ok(page.indexOf('<span>First') < page.indexOf('<span>Second'));
+    assert.match(page, /data-testid="project-summary">1\/2 completed/);
+    const restoredDetail = await getPage('/projects/1');
+    assert.doesNotMatch(restoredDetail, /Archived project| disabled/);
+    assert.match(restoredDetail, /aria-label="Complete Done" checked/);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage('/'), page);
+    assert.equal(await getPage('/projects/1'), restoredDetail);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 303);
+    assert.match(await getPage('/'), /data-testid="project-summary">0\/2 completed/);
+    assert.equal((await post('/projects/1/tasks', { title: 'After restore' })).status, 303);
+    assert.match(await getPage('/'), /data-testid="project-summary">0\/3 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive migration preserves existing task IDs and completion state', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-upgrade-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let store;
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO projects (id, name) VALUES (7, 'Existing project');
+      INSERT INTO tasks (id, project_id, title, completed) VALUES (12, 7, 'Existing task', 1);
+    `);
+    database.close();
+    store = openWorkboard(databasePath);
+    assert.deepEqual({ ...store.tasks.list(7)[0] }, { id: 12, title: 'Existing task', completed: 1 });
+    assert.equal(store.list()[0].completed_count, 1);
+    assert.equal(store.list()[0].total_count, 1);
+    store.setArchived(7, true);
+    store.close();
+    store = undefined;
+    store = openWorkboard(databasePath);
+    assert.equal(store.find(7).archived, 1);
+    assert.equal(store.list('archived')[0].completed_count, 1);
+    store.setArchived(7, false);
+    assert.equal(store.tasks.create(7, 'Next task').id, 13);
+    assert.equal(store.tasks.list(7)[0].completed, 1);
   } finally {
     if (store) store.close();
     await rm(directory, { recursive: true, force: true });
