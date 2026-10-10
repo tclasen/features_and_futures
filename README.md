@@ -37,6 +37,11 @@ undated tasks are excluded. The range intersects the completion and priority
 filters, stays applied during edits, and remains usable while archived. Invalid
 ranges keep the previous applied range. Reopening from the project list resets
 both boundaries to empty.
+Each task row can move its task to another active project. Destinations use current
+project names in project creation order. Moving appends the task after the
+destination’s existing tasks, preserves its completion, priority and due date,
+and retains the source page’s filters. Both project summaries reflect the new
+ownership. Archived projects cannot send or receive moved tasks.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
