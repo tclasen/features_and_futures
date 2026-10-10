@@ -58,9 +58,15 @@ if (!taskColumns.includes('due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due
 if (!projectColumns.includes('default_task_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
 
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
-  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
-  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
-  FROM projects p WHERE p.archived = ? ORDER BY p.created_at, p.rowid`);
+  COALESCE(counts.completed_count, 0) AS completed_count,
+  COALESCE(counts.total_count, 0) AS total_count
+  FROM projects p
+  LEFT JOIN (
+    SELECT project_id, COUNT(*) AS total_count,
+      SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) AS completed_count
+    FROM tasks GROUP BY project_id
+  ) counts ON counts.project_id = p.id
+  WHERE p.archived = ? ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateProjectArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');

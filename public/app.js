@@ -47,6 +47,7 @@ async function loadProjects() {
   if (!response.ok) throw new Error('Unable to load projects');
   const projects = await response.json();
   projectContainer.replaceChildren();
+  const rows = document.createDocumentFragment();
   for (const project of projects.filter(item => matchesSearch(item.name, appliedProjectQuery))) {
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
@@ -72,8 +73,9 @@ async function loadProjects() {
       await loadProjects();
     });
     row.append(name, summary, open, archive);
-    projectContainer.append(row);
+    rows.append(row);
   }
+  projectContainer.append(rows);
 }
 
 async function showRoute() {
