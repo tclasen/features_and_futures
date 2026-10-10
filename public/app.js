@@ -165,6 +165,8 @@ async function renderTasks(project) {
   });
   const path = `/api/projects/${project.id}/tasks`;
   let tasks = await api(path);
+  const destinations = (await api('/api/projects'))
+    .filter(candidate => !candidate.archived && candidate.id !== project.id);
 
   function displayTasks() {
     const visible = tasks.filter(task =>
@@ -292,7 +294,40 @@ async function renderTasks(project) {
         } catch (error) { showAlert(error.message); }
         finally { dueButton.disabled = Boolean(project.archived); }
       });
-      row.append(checkbox, title, renameForm, priorityLabel, priority, dueForm);
+      const moveForm = document.createElement('form');
+      const destinationLabel = document.createElement('label');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      destinationLabel.textContent = 'Destination project';
+      const destination = document.createElement('select');
+      destination.id = destinationLabel.htmlFor;
+      for (const candidate of destinations) {
+        const option = document.createElement('option');
+        option.value = String(candidate.id);
+        option.textContent = candidate.name;
+        destination.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      destination.disabled = moveButton.disabled = Boolean(project.archived) || destinations.length === 0;
+      moveForm.append(destinationLabel, destination, moveButton);
+      moveForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (moveButton.disabled) return;
+        moveButton.disabled = true;
+        showAlert('');
+        try {
+          await api(`${path}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+          });
+          tasks = tasks.filter(candidate => candidate.id !== task.id);
+          displayTasks();
+        } catch (error) { showAlert(error.message); }
+        finally { moveButton.disabled = Boolean(project.archived) || destinations.length === 0; }
+      });
+      row.append(checkbox, title, renameForm, priorityLabel, priority, dueForm, moveForm);
       return row;
     }));
   }

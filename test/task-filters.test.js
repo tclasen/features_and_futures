@@ -61,7 +61,7 @@ class Element {
   }
 }
 
-async function page(archived = false) {
+async function page(archived = false, hasDestination = true) {
   const app = new Element('main');
   const alert = new Element('p');
   const tasks = [];
@@ -78,7 +78,9 @@ async function page(archived = false) {
       createElement: tag => new Element(tag),
     },
     fetch: async (path, options) => {
-      if (!options) return { ok: true, json: async () => structuredClone(tasks) };
+      if (!options) return { ok: true, json: async () => structuredClone(path === '/api/projects'
+        ? [project, ...(hasDestination ? [{ id: 2, name: 'Destination', archived: false }] : []), { id: 3, name: 'Archived', archived: true }]
+        : tasks) };
       const input = JSON.parse(options.body);
       if (path === '/api/projects/1') {
         Object.assign(project, input);
@@ -344,4 +346,37 @@ test('archived pages allow due-range applications and a fresh page has no range'
   assert.equal(reopened.app.querySelector('#due-from').value, '');
   assert.equal(reopened.app.querySelector('#due-through').value, '');
   assert.equal(reopened.rows().length, 6);
+});
+
+test('moving removes only the selected row and retains both filters and the applied range', async () => {
+  const p = await datedPage();
+  await applyRange(p, '2024-02-28', '2024-03-01');
+  await p.select(p.completion, 'Open');
+  await p.select(p.priority, 'Normal');
+  const moveForm = p.rows()[0].querySelectorAll('form')[2];
+  const destination = moveForm.querySelector('select');
+  assert.equal(moveForm.querySelector('label').textContent, 'Destination project');
+  assert.equal(moveForm.querySelector('button').textContent, 'Move task');
+  assert.deepEqual(destination.children.map(option => option.textContent), ['Destination']);
+  assert.deepEqual(destination.children.map(option => option.value), ['2']);
+  await moveForm.fire('submit');
+  assert.deepEqual(p.titles(), []);
+  assert.equal(p.completion.value, 'Open');
+  assert.equal(p.priority.value, 'Normal');
+  assert.equal(p.app.querySelector('#due-from').value, '2024-02-28');
+  assert.equal(p.app.querySelector('#due-through').value, '2024-03-01');
+  await p.select(p.completion, 'All');
+  await p.select(p.priority, 'All');
+  assert.deepEqual(p.titles(), ['Low done', 'Normal done']);
+  assert.equal(p.tasks[2].destination_project_id, 2);
+});
+
+test('move controls have no placeholder and are disabled without eligible destinations', async () => {
+  const p = await page(false, false);
+  for (const row of p.rows()) {
+    const form = row.querySelectorAll('form')[2];
+    assert.equal(form.querySelector('select').children.length, 0);
+    assert.equal(form.querySelector('select').disabled, true);
+    assert.equal(form.querySelector('button').disabled, true);
+  }
 });
