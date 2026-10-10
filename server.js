@@ -11,6 +11,9 @@ const configuredDbPath = process.env.DB_PATH;
 const dbPath = resolve(configuredDbPath || join(process.cwd(), 'data', 'workboard.sqlite'));
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
+// WAL keeps committed writes recoverable if the process is restarted while
+// SQLite still has recent changes in its write-ahead log.
+db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA synchronous = FULL');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +117,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
   if (shuttingDown) return;
   shuttingDown = true;
   server.close(() => {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     db.close();
     process.exit(0);
   });
