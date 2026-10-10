@@ -193,7 +193,9 @@ async function renderProject(id) {
       const notesLabel = element('label', { text: 'Task notes' });
       const notes = element('textarea');
       notes.id = `task-notes-${task.id}`; notesLabel.htmlFor = notes.id;
-      notes.value = task.notes ?? ''; notes.disabled = Boolean(project.archived);
+      // Assign through the DOM value property: notes are arbitrary plain text and
+      // must never be parsed as textarea/HTML markup.
+      notes.value = typeof task.notes === 'string' ? task.notes : ''; notes.disabled = Boolean(project.archived);
       const notesButton = element('button', { text: 'Save notes' });
       notesButton.type = 'submit'; notesButton.disabled = Boolean(project.archived);
       notesForm.append(notesLabel, notes, notesButton);
