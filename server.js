@@ -11,21 +11,23 @@ if (dbPath !== ':memory:') {
   await mkdir(path.dirname(path.resolve(dbPath)), { recursive: true });
 }
 const db = new DatabaseSync(dbPath);
-db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
 CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal')`);
 // Upgrade databases created by earlier checkpoints.
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS totalCount,
   COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id=p.id
   WHERE p.archived=? GROUP BY p.id ORDER BY p.id`);
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name=? WHERE id=?');
 const setArchived = db.prepare('UPDATE projects SET archived=? WHERE id=?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
-const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority=? WHERE id=?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -56,6 +58,18 @@ const server = createServer(async (req, res) => {
       const name = String((await readBody()).name ?? '').trim();
       if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
       renameProject.run(name, project.id);
+      return send(200, JSON.stringify(getProject.get(project.id)));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
+  const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultPriorityRoute && req.method === 'PATCH') {
+    const project = getProject.get(Number(defaultPriorityRoute[1]));
+    if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (project.archived) return send(409, JSON.stringify({ error: 'Archived project' }));
+    try {
+      const { priority } = await readBody();
+      if (!['Low', 'Normal', 'High'].includes(priority)) return send(400, JSON.stringify({ error: 'Invalid priority' }));
+      updateDefaultPriority.run(priority, project.id);
       return send(200, JSON.stringify(getProject.get(project.id)));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -93,7 +107,7 @@ const server = createServer(async (req, res) => {
         if (project.archived) return send(409, JSON.stringify({ error: 'Archived project' }));
         const title = String(body.title ?? '').trim();
         if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
-        const result = addTask.run(projectId, title);
+        const result = addTask.run(projectId, title, project.defaultPriority);
         return send(201, JSON.stringify(getTask.get(Number(result.lastInsertRowid), projectId)));
       }
       if (taskRoute[2] && req.method === 'PATCH') {

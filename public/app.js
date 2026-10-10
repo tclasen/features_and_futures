@@ -26,6 +26,18 @@ async function render() {
     app.append(back);
     if (project.archived) app.append(element('p', {}, 'Archived project'));
 
+    const defaultLabel = element('label', { for: 'default-task-priority' }, 'Default task priority');
+    const defaultPriority = element('select', { id: 'default-task-priority' });
+    for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(element('option', { value }, value));
+    defaultPriority.value = project.defaultPriority || 'Normal';
+    defaultPriority.disabled = Boolean(project.archived);
+    defaultPriority.addEventListener('change', async () => {
+      const response = await fetch(`/api/projects/${match[1]}/default-priority`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
+      if (!response.ok) defaultPriority.value = project.defaultPriority || 'Normal';
+      else project.defaultPriority = defaultPriority.value;
+    });
+    app.append(defaultLabel, defaultPriority);
+
     const renameForm = element('form');
     const renameLabel = element('label', { for: 'new-project-name' }, 'New project name');
     const renameInput = element('input', { id: 'new-project-name', type: 'text' });
