@@ -1,3 +1,4 @@
+import { validDueDate } from './public/date.js';
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -54,16 +55,6 @@ const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 
-function validDueDate(value) {
-  if (value === '') return true;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  if (year < 1 || month < 1 || month > 12) return false;
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return day >= 1 && day <= daysInMonth[month - 1];
-}
-
 function taskData(task) {
   return { ...task, completed: Boolean(task.completed) };
 }
@@ -82,6 +73,7 @@ async function readInput(request) {
 }
 
 const assets = new Map([
+  ['/date.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/date.js', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
   ['/styles.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/styles.css', import.meta.url))]],
 ]);

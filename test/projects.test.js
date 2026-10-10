@@ -95,7 +95,7 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     const detail = await get(`/projects/${first.id}`);
     assert.equal(detail.status, 200);
     assert.match(await detail.text(), />Projects<\/button>/);
-    for (const path of ['/app.js', '/styles.css']) {
+    for (const path of ['/app.js', '/date.js', '/styles.css']) {
       assert.equal((await get(path)).status, 200);
     }
     assert.equal((await get('/api/projects/99999')).status, 404);

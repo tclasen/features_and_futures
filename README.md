@@ -22,6 +22,8 @@ The Priority filter offers All, Low, Normal, and High and starts at All when ope
 
 Each task row has a Task due date textbox and Save due date button. Save a real Gregorian date in YYYY-MM-DD format (years 0001–9999), or leave it blank to clear it. Surrounding whitespace is trimmed. Invalid dates show an alert and preserve the saved date. Dates persist independently without timezone conversion and leave other task data, filters, and summaries unchanged. Archived projects disable both date controls until restored.
 
+Due from and Due through accept the same calendar-date format. Apply due range intersects inclusive boundaries with both task filters. A blank boundary is unbounded; both blank include undated tasks, while any boundary excludes them. Invalid or reversed ranges show an alert and retain the previous applied range. Task edits immediately update matching rows; renames, creation, and default changes retain the applied range and selected filters. Range controls remain usable in archived projects. Reopening a project resets the range fields to empty. Filtering never changes saved tasks or completion summaries.
+
 Run the integration checks:
 
 ```sh
@@ -35,3 +37,5 @@ Priority checks cover migration of existing tasks, independent saved values, inv
 Default-priority checks cover project migration, independent defaults, inheritance by new tasks only, unchanged existing tasks and filters, failed-save recovery, archived controls, restoration, and restart persistence.
 
 Due-date checks cover schema migration, calendar and leap-year validation, trimming and clearing, independent dates, unchanged task data and summaries, rename preservation, filters, archived controls, restoration, and restart persistence.
+
+Due-range UI checks cover inclusive and one-sided boundaries, undated tasks, calendar validation, reversed ranges, combined filters, immediate updates after edits, preserved selections, archived controls, and reset on reopening. The HTTP checks also verify the shared calendar-validation module is served.

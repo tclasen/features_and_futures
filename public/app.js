@@ -1,3 +1,5 @@
+import { validDueDate } from './date.js';
+
 const list = document.querySelector('#project-list');
 const detail = document.querySelector('#project-detail');
 const projects = document.querySelector('#projects');
@@ -11,10 +13,15 @@ const taskForm = document.querySelector('#create-task');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueRangeForm = document.querySelector('#due-range');
+const dueFrom = document.querySelector('#due-from');
+const dueThrough = document.querySelector('#due-through');
 const defaultPriority = document.querySelector('#default-task-priority');
 const tasksContainer = document.querySelector('#tasks');
 const projectMatch = window.location.pathname.match(/^\/projects\/(\d+)$/);
 const tasksPath = projectMatch ? `/api/projects/${projectMatch[1]}/tasks` : null;
+let appliedDueFrom = '';
+let appliedDueThrough = '';
 let tasks = [];
 let projectData = [];
 let archived = false;
@@ -229,10 +236,32 @@ function renderTasks() {
     const matchesCompletion = taskFilter.value === 'All'
       || (taskFilter.value === 'Completed' ? task.completed : !task.completed);
     const matchesPriority = priorityFilter.value === 'All' || task.priority === priorityFilter.value;
-    return matchesCompletion && matchesPriority;
+    const matchesDueRange = (!appliedDueFrom && !appliedDueThrough)
+      || (Boolean(task.due_date)
+        && (!appliedDueFrom || task.due_date >= appliedDueFrom)
+        && (!appliedDueThrough || task.due_date <= appliedDueThrough));
+    return matchesCompletion && matchesPriority && matchesDueRange;
   });
   tasksContainer.replaceChildren(...filtered.map(taskRow));
 }
+
+dueRangeForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const from = dueFrom.value.trim();
+  const through = dueThrough.value.trim();
+  if (!validDueDate(from) || !validDueDate(through)) {
+    return showError('Due range must use valid YYYY-MM-DD dates');
+  }
+  if (from && through && from > through) {
+    return showError('Due from must not be after Due through');
+  }
+  appliedDueFrom = from;
+  appliedDueThrough = through;
+  dueFrom.value = from;
+  dueThrough.value = through;
+  showError();
+  renderTasks();
+});
 
 taskFilter.addEventListener('change', renderTasks);
 priorityFilter.addEventListener('change', renderTasks);
