@@ -277,6 +277,61 @@ test('projects and tasks validate, isolate, archive, rename, summarize, and pers
     await start();
     assert.equal(await (await fetch(base + projectPath)).text(), restoredTask);
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
+
+    // Priorities are independent, validated, read-only when archived, and persistent.
+    const priorityPath = `${taskPath}/priority`;
+    const rows = html => html.split('data-testid="task-row"').slice(1);
+    const normalOptions = /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/;
+    assert.equal(rows(restoredTask).length, 2);
+    for (const row of rows(restoredTask)) assert.match(row, normalOptions);
+    assert.equal((await post(`${paths[1]}/tasks/${taskId}/priority`, { priority: 'High' })).status, 404);
+    assert.equal((await post(`${tasksPath}/99999/priority`, { priority: 'High' })).status, 404);
+    assert.equal((await post(priorityPath, { priority: 'Urgent' })).status, 400);
+    assert.equal(await (await fetch(base + projectPath)).text(), restoredTask);
+    assert.equal((await post(taskPath, { completed: '1' })).status, 303);
+    const priorityChange = await post(priorityPath, { priority: 'High', filter: 'Completed' });
+    assert.equal(priorityChange.status, 303);
+    assert.equal(priorityChange.headers.get('location'), `${projectPath}?filter=Completed`);
+    const highPage = await (await fetch(base + projectPath)).text();
+    assert.match(rows(highPage)[0], /<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
+    assert.match(rows(highPage)[0], /aria-label="Complete Restored task" checked/);
+    assert.match(rows(highPage)[1], normalOptions);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
+    assert.doesNotMatch(await (await fetch(`${base}${projectPath}?filter=Open`)).text(), /Complete Restored task/);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + projectPath)).text(), highPage);
+    assert.equal((await post(renamePath, { title: 'Priority preserved' })).status, 303);
+    const priorityRenamed = await (await fetch(base + projectPath)).text();
+    assert.match(rows(priorityRenamed)[0], /<option selected>High<\/option>/);
+    assert.match(rows(priorityRenamed)[0], /aria-label="Complete Priority preserved" checked/);
+    assert.equal((await post(`${projectPath}/archive`, {})).status, 303);
+    const priorityArchived = await (await fetch(base + projectPath)).text();
+    assert.equal((priorityArchived.match(/id="task-priority-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((await post(priorityPath, { priority: 'Low' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + projectPath)).text(), priorityArchived);
+    assert.equal((await post(`${projectPath}/restore`, {})).status, 303);
+    assert.equal(await (await fetch(base + projectPath)).text(), priorityRenamed);
+    assert.equal((await post(priorityPath, { priority: 'Low' })).status, 303);
+    const lowPage = await (await fetch(base + projectPath)).text();
+    assert.match(rows(lowPage)[0], /<option selected>Low<\/option>/);
+    assert.match(rows(lowPage)[1], normalOptions);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + projectPath)).text(), lowPage);
+
+    // Simulate a pre-priority database containing existing tasks.
+    await stop();
+    const legacyDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+    legacyDatabase.exec('ALTER TABLE tasks DROP COLUMN priority');
+    legacyDatabase.close();
+    await start();
+    const migrated = await (await fetch(base + projectPath)).text();
+    for (const row of rows(migrated)) assert.match(row, normalOptions);
+    assert.match(migrated, /aria-label="Complete Priority preserved" checked/);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });

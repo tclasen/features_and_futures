@@ -14,6 +14,8 @@ On active project pages, use New project name and Rename project to rename witho
 
 Each task row provides New task title and Rename task. Titles are trimmed and cannot be blank. Renaming preserves task order, ownership and completion; archived projects disable task renaming until restored. Titles persist across restarts.
 
+Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priorities persist independently across reloads and restarts, survive renames, and cannot be edited while the project is archived.
+
 Health: `GET /health` returns `{"status":"ok"}`.
 
 Run the isolated integration tests (including process-restart persistence):
