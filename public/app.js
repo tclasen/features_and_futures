@@ -361,12 +361,11 @@ async function showProject(id) {
       renameInput.autocomplete = 'off';
       renameInput.disabled = project.archived;
       const renameButton = document.createElement('button');
-      renameButton.type = 'submit';
+      renameButton.type = 'button';
       renameButton.textContent = 'Rename task';
       renameButton.disabled = project.archived;
       renameForm.append(renameInput, renameButton);
-      renameForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
+      async function saveTaskTitle() {
         alert.hidden = true;
         renameButton.disabled = true;
         try {
@@ -379,6 +378,11 @@ async function showProject(id) {
           showTaskError(error);
           renameButton.disabled = project.archived;
         }
+      }
+      renameButton.addEventListener('click', saveTaskTitle);
+      renameForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveTaskTitle();
       });
       const dueDateInput = document.createElement('input');
       dueDateInput.type = 'text';
