@@ -31,6 +31,7 @@ const projectSelect = `SELECT projects.id, projects.name, projects.archived,
 const listProjects = database.prepare(`${projectSelect} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectSelect} WHERE projects.id = ? GROUP BY projects.id`);
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
@@ -121,11 +122,24 @@ const server = createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const input = await readJson(request);
-        if (typeof input?.archived !== 'boolean') {
-          return json(response, 400, { error: 'Archived must be a boolean' });
+        if (Object.hasOwn(input ?? {}, 'name')) {
+          if (Object.hasOwn(input, 'archived')) {
+            return json(response, 400, { error: 'Rename and archive must be separate requests' });
+          }
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project is read-only' });
+          }
+          const name = typeof input.name === 'string' ? input.name.trim() : '';
+          if (!name) return json(response, 400, { error: 'Project name is required' });
+          renameProject.run(name, project.id);
+          project.name = name;
+        } else {
+          if (typeof input?.archived !== 'boolean') {
+            return json(response, 400, { error: 'Archived must be a boolean' });
+          }
+          updateProject.run(Number(input.archived), project.id);
+          project.archived = input.archived;
         }
-        updateProject.run(Number(input.archived), project.id);
-        project.archived = input.archived;
       }
       return json(response, 200, projectJson(project));
     }

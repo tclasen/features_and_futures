@@ -5,6 +5,8 @@ const detail = document.querySelector('#project-detail');
 const projects = document.querySelector('#projects');
 const form = document.querySelector('#create-project');
 const nameInput = document.querySelector('#project-name');
+const renameForm = document.querySelector('#rename-project');
+const newNameInput = document.querySelector('#new-project-name');
 const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
@@ -103,6 +105,37 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
+function showProjectName(name) {
+  heading.textContent = name;
+  document.title = `${name} — Workboard`;
+}
+
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (archived) return;
+  alert.hidden = true;
+  const name = newNameInput.value.trim();
+  if (!name) {
+    showError('Project name is required');
+    return;
+  }
+  const button = renameForm.querySelector('button');
+  button.disabled = true;
+  try {
+    const project = await request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    showProjectName(project.name);
+    newNameInput.value = '';
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = archived;
+  }
+});
+
 function renderTasks() {
   tasksElement.replaceChildren();
   for (const task of tasks) {
@@ -178,8 +211,9 @@ async function loadPage() {
     archived = project.archived;
     document.querySelector('#archived-notice').hidden = !archived;
     taskForm.querySelector('button').disabled = archived;
-    heading.textContent = project.name;
-    document.title = `${project.name} — Workboard`;
+    newNameInput.disabled = archived;
+    renameForm.querySelector('button').disabled = archived;
+    showProjectName(project.name);
     tasks = await request(`/api/projects/${projectId}/tasks`);
     renderTasks();
     detail.hidden = false;
