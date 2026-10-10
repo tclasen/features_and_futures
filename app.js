@@ -295,6 +295,7 @@ async function renderTasks(projectId, archived) {
       const dueDateError = element('span');
       dueDateError.setAttribute('role', 'alert');
       saveDueDate.addEventListener('click', async () => {
+        saveDueDate.disabled = true;
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dueDate: dueDate.value }),
@@ -305,6 +306,7 @@ async function renderTasks(projectId, archived) {
         } else {
           const result = await response.json().catch(() => ({}));
           dueDateError.textContent = result.error || 'Could not save due date';
+          saveDueDate.disabled = archived;
         }
       });
       row.append(dueDate, saveDueDate, dueDateError);
@@ -342,11 +344,14 @@ async function renderTasks(projectId, archived) {
       destination.disabled = archived || destinations.length === 0;
       moveButton.disabled = archived || destinations.length === 0;
       moveButton.addEventListener('click', async () => {
+        if (!destination.value) return;
+        moveButton.disabled = true;
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}/move`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
         });
         if (response.ok) await refresh();
+        else moveButton.disabled = archived || destinations.length === 0;
       });
       row.append(destination, moveButton);
       rows.append(row);

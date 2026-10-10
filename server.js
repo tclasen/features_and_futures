@@ -114,7 +114,8 @@ const server = createServer(async (req, res) => {
     if (!source || !destination || !task) return json(res, 404, { error: 'Project or task not found' });
     if (source.archived || destination.archived || sourceId === destinationId) return json(res, 400, { error: 'Invalid destination project' });
     const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next;
-    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, order, taskId, sourceId);
+    const result = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, order, taskId, sourceId);
+    if (!result.changes) return json(res, 404, { error: 'Project or task not found' });
     return json(res, 200, { id: taskId, projectId: destinationId });
   }
   if (taskRoute) {
