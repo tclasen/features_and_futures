@@ -242,12 +242,12 @@ test('projects validate, navigate, and persist across restarts', async () => {
     // Priorities default independently and edits preserve all other task fields.
     const priorityRoute = completion.replace('/completion', '/priority');
     const defaultOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
-    assert.equal((await detailPage()).split(defaultOptions).length - 1, 2);
+    assert.equal((await detailPage()).split(defaultOptions).length - 1, 3);
     const beforePriorityList = await (await fetch(base)).text();
     assert.equal((await post(priorityRoute, { priority: 'High', filter: 'Open' })).headers.get('location'), `${path}?filter=Open`);
     let priorityPage = await detailPage();
     assert.match(priorityPage, /<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
-    assert.equal(priorityPage.split(defaultOptions).length - 1, 1);
+    assert.equal(priorityPage.split(defaultOptions).length - 1, 2);
     assert.match(priorityPage, /aria-label="Complete Restored task" onchange/);
     assert.ok(priorityPage.indexOf('<span>Restored task') < priorityPage.indexOf('<span>Second &lt;task&gt;'));
     assert.equal(await (await fetch(base)).text(), beforePriorityList);
@@ -266,7 +266,7 @@ test('projects validate, navigate, and persist across restarts', async () => {
     assert.doesNotMatch(await detailPage('Open'), /<option selected>High<\/option>/);
     await post(`${path}/archive`, {});
     priorityPage = await detailPage();
-    assert.equal((priorityPage.match(/name="priority" disabled/g) || []).length, 2);
+    assert.equal((priorityPage.match(/name="priority" disabled/g) || []).length, 3);
     assert.equal((await post(priorityRoute, { priority: 'Low' })).status, 403);
     await stop();
     await start();
@@ -277,7 +277,7 @@ test('projects validate, navigate, and persist across restarts', async () => {
     assert.equal((await post(priorityRoute, { priority: 'Low' })).status, 303);
     assert.match(await detailPage(), /<option selected>Low<\/option>/);
     await post(`${path}/tasks`, { title: 'New normal task' });
-    assert.equal((await detailPage()).split(defaultOptions).length - 1, 2);
+    assert.equal((await detailPage()).split(defaultOptions).length - 1, 3);
     priorityPage = await detailPage();
     await stop();
     await start();
@@ -349,9 +349,66 @@ test('projects validate, navigate, and persist across restarts', async () => {
     previous.exec('ALTER TABLE tasks DROP COLUMN priority');
     previous.close();
     await start();
-    assert.equal((await detailPage()).split(defaultOptions).length - 1, 3);
+    assert.equal((await detailPage()).split(defaultOptions).length - 1, 4);
     assert.match(await detailPage(), /aria-label="Complete Priority retained" checked/);
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/3 completed/);
+
+    // Defaults migrate to Normal and affect only subsequent tasks in their project.
+    const defaultSelect = (value, disabled = false) => `<select id="default-task-priority" name="priority"${disabled ? ' disabled' : ''} onchange="this.form.requestSubmit()">${['Low', 'Normal', 'High'].map(option => `<option${option === value ? ' selected' : ''}>${option}</option>`).join('')}</select>`;
+    assert.ok((await detailPage()).includes(defaultSelect('Normal')));
+    const summaryBeforeDefault = await (await fetch(base)).text();
+    const oldRows = rows(await detailPage('Open', 'Normal'));
+    const defaultRoute = `${path}/default-priority`;
+    const defaultChange = await post(defaultRoute, { priority: 'High', filter: 'Open', priorityFilter: 'Normal' });
+    assert.equal(defaultChange.status, 303);
+    assert.equal(defaultChange.headers.get('location'), `${path}?filter=Open&priorityFilter=Normal`);
+    const defaultPage = await (await fetch(base + defaultChange.headers.get('location'))).text();
+    assert.deepEqual(rows(defaultPage), oldRows);
+    assert.ok(defaultPage.includes(defaultSelect('High')));
+    assert.ok(defaultPage.includes(prioritySelect('Normal')));
+    assert.match(defaultPage, /<option selected>Open<\/option>/);
+    assert.equal(await (await fetch(base)).text(), summaryBeforeDefault);
+    assert.ok((await (await fetch(`${base}/projects/2`)).text()).includes(defaultSelect('Normal')));
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(defaultRoute, { priority })).status, 400);
+      assert.ok((await detailPage()).includes(defaultSelect('High')));
+    }
+    assert.equal((await post('/projects/999999/default-priority', { priority: 'Low' })).status, 404);
+    await post(`${path}/tasks`, { title: 'Inherited high' });
+    assert.deepEqual(rows(await detailPage('Open', 'High')), ['Inherited high']);
+    await post(defaultRoute, { priority: 'Low' });
+    await post(`${path}/tasks`, { title: 'Inherited low' });
+    assert.deepEqual(rows(await detailPage('Open', 'High')), ['Inherited high']);
+    assert.deepEqual(rows(await detailPage('Open', 'Low')), ['Inherited low']);
+    await post('/projects/2/tasks', { title: 'Independent normal' });
+    assert.match(await (await fetch(`${base}/projects/2?priorityFilter=Normal`)).text(), /<span>Independent normal<\/span>/);
+    await post(`${path}/rename`, { name: 'Default preserved' });
+    assert.ok((await detailPage()).includes(defaultSelect('Low')));
+    const savedDefaultPage = await detailPage();
+    await stop();
+    await start();
+    assert.equal(await detailPage(), savedDefaultPage);
+    await post(`${path}/archive`, {});
+    assert.ok((await detailPage()).includes(defaultSelect('Low', true)));
+    assert.equal((await post(defaultRoute, { priority: 'High' })).status, 403);
+    await stop();
+    await start();
+    assert.ok((await detailPage()).includes(defaultSelect('Low', true)));
+    await post(`${path}/restore`, {});
+    assert.equal(await detailPage(), savedDefaultPage);
+    await post(`${path}/tasks`, { title: 'After restoration' });
+    assert.deepEqual(rows(await detailPage('Open', 'Low')), ['Inherited low', 'After restoration']);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/6 completed/);
+
+    // Upgrade an existing project with tasks from before project defaults existed.
+    await stop();
+    const preDefaults = new DatabaseSync(join(directory, 'projects.sqlite'));
+    preDefaults.exec('ALTER TABLE projects DROP COLUMN default_priority');
+    preDefaults.close();
+    await start();
+    assert.ok((await detailPage()).includes(defaultSelect('Normal')));
+    assert.deepEqual(rows(await detailPage('Open', 'Low')), ['Inherited low', 'After restoration']);
+    assert.deepEqual(rows(await detailPage('Open', 'High')), ['Inherited high']);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
