@@ -47,6 +47,19 @@ if (needsTaskOrderMigration) {
     ordered.forEach((task, index) => updateOrder.run(index, task.id));
   }
 }
+// Remember every task's position in each project it has belonged to. The
+// current task order seeds this history when upgrading from Task 011.
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, sort_order)
+)`);
+for (const task of db.prepare('SELECT id, project_id, sort_order FROM tasks').all()) {
+  db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)')
+    .run(task.id, task.project_id, task.sort_order);
+}
 
 const json = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -116,8 +129,29 @@ async function handle(req, res) {
     if (sourceId === destinationId) return json(res, 400, { error: 'Choose another project' });
     const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
     if (!task) return json(res, 404, { error: 'Task not found' });
-    const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next);
-    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+    const known = db.prepare('SELECT sort_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      let destinationOrder;
+      if (known) {
+        destinationOrder = Number(known.sort_order);
+        // Make room at the remembered position while preserving the order of
+        // every task currently in the destination.
+        // Shift through a temporary high range to avoid UNIQUE collisions.
+        db.prepare('UPDATE task_project_positions SET sort_order = sort_order + 1000000000 WHERE project_id = ? AND sort_order >= ? AND task_id != ?')
+          .run(destinationId, destinationOrder, taskId);
+        db.prepare('UPDATE task_project_positions SET sort_order = sort_order - 999999999 WHERE project_id = ? AND sort_order >= ? AND task_id != ?')
+          .run(destinationId, destinationOrder + 1000000000, taskId);
+      } else {
+        destinationOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(destinationId).next);
+        db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(taskId, destinationId, destinationOrder);
+      }
+      db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, destinationOrder, taskId, sourceId);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
     return json(res, 200, { id: taskId, sourceProjectId: sourceId, destinationProjectId: destinationId });
   }
   if (taskPriorityRoute && req.method === 'PATCH') {
@@ -142,8 +176,17 @@ async function handle(req, res) {
     try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
     const title = String(body.title ?? '').trim();
     if (!title) return json(res, 400, { error: 'Task title is required' });
-    const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next);
-    const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_task_priority, nextOrder);
+    const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(projectId).next);
+    db.exec('BEGIN IMMEDIATE');
+    let result;
+    try {
+      result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_task_priority, nextOrder);
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, nextOrder);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
     return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_task_priority });
   }
   if (taskRenameRoute && req.method === 'PATCH') {
