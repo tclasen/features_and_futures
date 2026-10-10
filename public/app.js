@@ -218,6 +218,35 @@ async function renderProject(id) {
           }
         });
         row.append(priorityLabel, priority);
+        const dueDateForm = element('form');
+        const dueDateLabel = element('label', 'Task due date', { for: `task-due-date-${task.id}` });
+        const dueDateInput = element('input', undefined, { id: `task-due-date-${task.id}`, name: 'dueDate', type: 'text', value: task.dueDate || '' });
+        const dueDateButton = element('button', 'Save due date', { type: 'submit' });
+        dueDateInput.disabled = project.archived;
+        dueDateButton.disabled = project.archived;
+        dueDateForm.append(dueDateLabel, dueDateInput, dueDateButton);
+        dueDateForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const dueDate = dueDateInput.value.trim();
+          dueDateButton.disabled = true;
+          try {
+            const update = await fetch(`/api/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate })
+            });
+            if (!update.ok) {
+              const result = await update.json();
+              throw new Error(result.error || 'Could not save due date');
+            }
+            const saved = await update.json();
+            tasks = tasks.map(item => item.id === saved.id ? saved : item);
+            dueDateInput.value = saved.dueDate || '';
+          } catch (error) {
+            showError(error.message === 'Due date must be a valid YYYY-MM-DD date' ? error.message : 'Could not save due date');
+          } finally {
+            dueDateButton.disabled = project.archived;
+          }
+        });
+        row.append(dueDateForm);
         const renameForm = element('form');
         const renameLabel = element('label', 'New task title', { for: `new-task-title-${task.id}` });
         const renameInput = element('input', undefined, { id: `new-task-title-${task.id}`, name: 'title', type: 'text', value: task.title });

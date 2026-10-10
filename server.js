@@ -31,6 +31,21 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+function isValidDueDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return day <= daysInMonth;
+}
 
 const indexHtml = await readFile(path.join(directory, 'public', 'index.html'));
 const clientJs = await readFile(path.join(directory, 'public', 'app.js'));
@@ -110,7 +125,7 @@ const server = http.createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
     return sendJson(response, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && request.method === 'POST') {
@@ -139,10 +154,14 @@ const server = http.createServer(async (request, response) => {
     } else if (typeof input?.priority === 'string') {
       if (!['Low', 'Normal', 'High'].includes(input.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
       database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(input.priority, Number(taskMatch[1]));
+    } else if (typeof input?.dueDate === 'string') {
+      const dueDate = input.dueDate.trim();
+      if (dueDate && !isValidDueDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, Number(taskMatch[1]));
     } else {
-      return sendJson(response, 400, { error: 'A task title, completion value, or priority is required' });
+      return sendJson(response, 400, { error: 'A task title, completion value, priority, or due date is required' });
     }
-    const task = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
+    const task = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
     return sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
   }
   if (request.method === 'GET' && url.pathname === '/') {
