@@ -96,19 +96,26 @@ async function renderTasks(project) {
     <select id="task-filter">
       <option>All</option><option>Open</option><option>Completed</option>
     </select>
+    <label for="priority-filter" class="filter-label">Priority filter</label>
+    <select id="priority-filter">
+      <option>All</option><option>Low</option><option>Normal</option><option>High</option>
+    </select>
     <section id="tasks" aria-label="Tasks"></section>`;
   app.append(section);
   const form = section.querySelector('form');
   const input = section.querySelector('#task-title');
   const submit = form.querySelector('button');
   const filter = section.querySelector('#task-filter');
+  const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('#tasks');
   const path = `/api/projects/${project.id}/tasks`;
   let tasks = await api(path);
 
   function displayTasks() {
-    const visible = tasks.filter(task => filter.value === 'All' ||
-      (filter.value === 'Completed' ? task.completed : !task.completed));
+    const visible = tasks.filter(task =>
+      (filter.value === 'All' ||
+        (filter.value === 'Completed' ? task.completed : !task.completed)) &&
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('div');
       row.className = 'task-row';
@@ -191,7 +198,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ priority: priority.value }),
           });
           Object.assign(task, saved);
-          priority.value = task.priority;
+          displayTasks();
         } catch (error) {
           priority.value = task.priority;
           showAlert(error.message);
@@ -203,6 +210,7 @@ async function renderTasks(project) {
   }
   displayTasks();
   filter.addEventListener('change', displayTasks);
+  priorityFilter.addEventListener('change', displayTasks);
   submit.disabled = Boolean(project.archived);
   form.addEventListener('submit', async event => {
     event.preventDefault();
