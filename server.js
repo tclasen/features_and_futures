@@ -29,6 +29,14 @@ db.exec(`
     task_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
+  ;
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (project_id, task_id),
+    UNIQUE (project_id, position)
+  )
 `);
 // Keep databases created by earlier task checkpoints compatible.
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
@@ -50,6 +58,10 @@ if (!taskColumns.some(column => column.name === 'task_order')) {
   db.exec('UPDATE tasks SET task_order = id');
 }
 db.exec('PRAGMA foreign_keys = ON');
+// A task keeps a stable position in every project it has visited. Seed existing
+// ownership so introducing this table preserves the current visible order.
+db.exec(`INSERT OR IGNORE INTO task_project_positions (project_id, task_id, position)
+  SELECT project_id, id, task_order FROM tasks ORDER BY task_order, id`);
 
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
@@ -146,6 +158,7 @@ const server = http.createServer(async (req, res) => {
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
       const nextOrder = db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(projectId).nextOrder;
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, nextOrder);
+      db.prepare('INSERT INTO task_project_positions (project_id, task_id, position) VALUES (?, ?, ?)').run(projectId, Number(result.lastInsertRowid), nextOrder);
       return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority }));
     } catch {
       return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
@@ -166,9 +179,14 @@ const server = http.createServer(async (req, res) => {
         if (!destination || destination.archived || destinationProjectId === sourceProjectId) {
           return send(res, 400, JSON.stringify({ error: 'Invalid destination project' }));
         }
-        const nextOrder = db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(destinationProjectId).nextOrder;
-        const result = db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE project_id = ? AND id = ?').run(destinationProjectId, nextOrder, sourceProjectId, taskId);
-        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        const task = db.prepare('SELECT id FROM tasks WHERE project_id = ? AND id = ?').get(sourceProjectId, taskId);
+        if (!task) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        let destinationPosition = db.prepare('SELECT position FROM task_project_positions WHERE project_id = ? AND task_id = ?').get(destinationProjectId, taskId)?.position;
+        if (destinationPosition === undefined) {
+          destinationPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS nextPosition FROM task_project_positions WHERE project_id = ?').get(destinationProjectId).nextPosition;
+          db.prepare('INSERT INTO task_project_positions (project_id, task_id, position) VALUES (?, ?, ?)').run(destinationProjectId, taskId, destinationPosition);
+        }
+        db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE project_id = ? AND id = ?').run(destinationProjectId, destinationPosition, sourceProjectId, taskId);
         return send(res, 200, JSON.stringify({ id: taskId, projectId: destinationProjectId }));
       }
       if (typeof input.title === 'string') {
