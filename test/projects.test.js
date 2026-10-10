@@ -7,6 +7,76 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
+test('rename preserves project identity, order, tasks, archive rules, and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async path => (await fetch(server.baseUrl + path)).text();
+    const post = (path, values = {}) => fetch(server.baseUrl + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Original' });
+    await post('/projects', { name: 'Second project' });
+    await post('/projects/1/tasks', { title: 'Finished task' });
+    await post('/projects/1/tasks', { title: 'Open task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const original = await get('/projects/1');
+    assert.match(original, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(original, /<input id="new-project-name" name="name" type="text" autocomplete="off">/);
+    assert.match(original, /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', ' \t\n ']) {
+      const invalid = await post('/projects/1/rename', { name });
+      assert.equal(invalid.status, 400);
+      const body = await invalid.text();
+      assert.match(body, /role="alert">Project name is required/);
+      assert.match(body, /<h1>Original<\/h1>/);
+      assert.equal(await get('/projects/1'), original);
+    }
+    const renamed = await post('/projects/1/rename', { name: '  Renamed <project> & "notes"  ', filter: 'Open' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Open');
+    const savedPage = await get('/projects/1');
+    assert.match(savedPage, /<h1>Renamed &lt;project&gt; &amp; &quot;notes&quot;<\/h1>/);
+    // Only the title and heading change; task markup, IDs, state, and forms stay identical.
+    assert.equal(savedPage, original.replaceAll('Original', 'Renamed &lt;project&gt; &amp; &quot;notes&quot;'));
+    const listing = await get('/');
+    assert.ok(listing.indexOf('Renamed &lt;project&gt;') < listing.indexOf('Second project'));
+    assert.match(listing, /data-testid="project-summary">1\/2 completed/);
+    assert.deepEqual([...listing.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]), ['/projects/1', '/projects/2']);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/1'), savedPage);
+    assert.equal(await get('/'), listing);
+
+    await post('/projects/1/archive');
+    const archivedPage = await get('/projects/1');
+    assert.match(archivedPage, /<input id="new-project-name"[^>]* disabled>/);
+    assert.match(archivedPage, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await post('/projects/1/rename', { name: 'Forbidden' })).status, 403);
+    assert.equal(await get('/projects/1'), archivedPage);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/1'), archivedPage);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), savedPage);
+    assert.equal((await post('/projects/1/rename', { name: 'Restored name' })).status, 303);
+    const restoredPage = await get('/projects/1');
+    assert.match(restoredPage, /<h1>Restored name<\/h1>/);
+    assert.match(restoredPage, /aria-label="Complete Finished task" checked/);
+    assert.match(restoredPage, /aria-label="Complete Open task" onchange/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/1'), restoredPage);
+    assert.equal((await post('/projects/999/rename', { name: 'Missing' })).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: databasePath },
