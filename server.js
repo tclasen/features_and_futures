@@ -82,7 +82,7 @@ const server = http.createServer(async (req, res) => {
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' }));
     }
     if (taskRoute[2] && req.method === 'PATCH') {
       if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
