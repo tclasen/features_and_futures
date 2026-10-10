@@ -28,19 +28,22 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
 }
-const projectQuery = `SELECT projects.id, projects.name, projects.archived,
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
+}
+const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.default_task_priority,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
 const listProjects = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
-const updateProject = database.prepare('UPDATE projects SET archived = ?, name = ? WHERE id = ?');
+const updateProject = database.prepare('UPDATE projects SET archived = ?, name = ?, default_task_priority = ? WHERE id = ?');
 function projectValue(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ?, title = ?, priority = ? WHERE project_id = ? AND id = ?');
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -105,7 +108,7 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const title = typeof body?.title === 'string' ? body.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title);
+        const result = insertTask.run(projectId, title, project.default_task_priority);
         return json(response, 201, taskValue(findTask.get(projectId, result.lastInsertRowid)));
       }
       if (taskId && request.method === 'PATCH') {
@@ -137,18 +140,23 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const renaming = Object.hasOwn(body ?? {}, 'name');
         const changingArchive = Object.hasOwn(body ?? {}, 'archived');
-        if ((changingArchive || !renaming) && typeof body?.archived !== 'boolean') {
+        const changingDefault = Object.hasOwn(body ?? {}, 'default_task_priority');
+        if ((changingArchive || (!renaming && !changingDefault)) && typeof body?.archived !== 'boolean') {
           return json(response, 400, { error: 'Archived must be a boolean' });
+        }
+        if (project.archived && (renaming || changingDefault)) {
+          return json(response, 409, { error: 'Archived project cannot be changed' });
+        }
+        const defaultPriority = changingDefault ? body.default_task_priority : project.default_task_priority;
+        if (!['Low', 'Normal', 'High'].includes(defaultPriority)) {
+          return json(response, 400, { error: 'Default task priority must be Low, Normal, or High' });
         }
         let name = project.name;
         if (renaming) {
-          if (project.archived) {
-            return json(response, 409, { error: 'Archived project cannot be changed' });
-          }
           name = typeof body.name === 'string' ? body.name.trim() : '';
           if (!name) return json(response, 400, { error: 'Project name is required' });
         }
-        updateProject.run(changingArchive ? Number(body.archived) : project.archived, name, projectId);
+        updateProject.run(changingArchive ? Number(body.archived) : project.archived, name, defaultPriority, projectId);
       }
       return json(response, 200, projectValue(findProject.get(projectId)));
     }
