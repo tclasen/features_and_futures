@@ -1,6 +1,6 @@
 # Workboard
 
-A project workspace using Node.js 22.22.1, built-in HTTP and SQLite, and browser HTML/CSS. No external dependencies or install step are needed.
+A project and task workspace using Node.js 22.22.1, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript. No external dependencies or install step are needed.
 
 Run:
 
@@ -8,7 +8,9 @@ Run:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. The server binds to `0.0.0.0`; `PORT` defaults to `8080` and `DB_PATH` defaults to `./data/workboard.sqlite`. Keep the SQLite file to preserve projects between server restarts. `GET /health` returns `{"status":"ok"}`.
+Open `http://localhost:8080`. The server binds to `0.0.0.0`; `PORT` defaults to `8080` and `DB_PATH` defaults to `./data/workboard.sqlite`. Keep the SQLite file to preserve projects, tasks, and completion states between server restarts. `GET /health` returns `{"status":"ok"}`.
+
+Open a project to create tasks, check or uncheck their completion, and filter by All, Open, or Completed. Task titles and project names are trimmed and must not be blank. Each project shows only its own tasks in creation order.
 
 Verify:
 
@@ -16,4 +18,4 @@ Verify:
 npm test
 ```
 
-The integration test uses a temporary database and checks the health endpoint, form labels, blank-name validation, trimming, creation order, HTML escaping, project navigation, and persistence across process restarts.
+The integration tests use temporary databases and check health, form labels, validation, trimming, creation order, HTML escaping, navigation, task filtering, completion changes, project isolation, and persistence across process restarts.
