@@ -88,8 +88,36 @@ async function renderProject(id) {
     const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
     if (!response.ok) throw new Error('Project not found');
     const project = await response.json();
-    app.append(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.append(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
+    const renameForm = element('form');
+    const renameLabel = element('label', 'New project name', { for: 'new-project-name' });
+    const renameInput = element('input', undefined, { id: 'new-project-name', name: 'name', type: 'text' });
+    const renameButton = element('button', 'Rename project', { type: 'submit' });
+    renameInput.disabled = project.archived;
+    renameButton.disabled = project.archived;
+    renameForm.append(renameLabel, renameInput, renameButton);
+    app.append(renameForm);
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) {
+        showError('Project name is required');
+        return;
+      }
+      try {
+        const renamed = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (!renamed.ok) throw new Error('Could not rename project');
+        const saved = await renamed.json();
+        heading.textContent = saved.name;
+        renameInput.value = '';
+      } catch {
+        showError('Could not rename project');
+      }
+    });
     const form = element('form');
     const label = element('label', 'Task title', { for: 'task-title' });
     const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
