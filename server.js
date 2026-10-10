@@ -78,15 +78,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
   if (req.method === 'GET') {
-    const path = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
-    if (path === 'index.html' || path === 'app.js' || path === 'style.css') {
-      try {
-        const { readFileSync } = await import('node:fs');
-        const content = readFileSync(join(root, 'public', path));
-        const type = path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8';
-        res.writeHead(200, { 'Content-Type': type }); return res.end(content);
-      } catch { return send(res, 404, 'Not found', 'text/plain; charset=utf-8'); }
-    }
+    const requested = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
+    const path = ['app.js', 'style.css'].includes(requested) ? requested : 'index.html';
+    try {
+      const { readFileSync } = await import('node:fs');
+      const content = readFileSync(join(root, 'public', path));
+      const type = path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8';
+      res.writeHead(200, { 'Content-Type': type }); return res.end(content);
+    } catch { return send(res, 404, 'Not found', 'text/plain; charset=utf-8'); }
   }
   send(res, 404, 'Not found', 'text/plain; charset=utf-8');
 });
