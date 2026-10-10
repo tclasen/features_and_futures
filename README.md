@@ -20,6 +20,11 @@ The project list provides Active/Archived filters and completion summaries.
 Each task has an optional saved due date. Enter a real Gregorian date in
 `YYYY-MM-DD` format (years 0001–9999), or leave it blank to clear it. Due dates
 persist across restarts and are read-only while the project is archived.
+Use Due from and Due through with Apply due range to intersect an inclusive date
+range with both task filters. Blank boundaries are unbounded; any nonblank boundary
+excludes undated tasks. Invalid ranges preserve the last applied range. Edits retain
+the applied range, and reopening a project from the list clears it. Range controls
+remain available in archived projects.
 Archive projects to make their names and tasks read-only; restore them to resume editing.
 Existing databases are upgraded automatically. `GET /health` returns `{"status":"ok"}`.
 
