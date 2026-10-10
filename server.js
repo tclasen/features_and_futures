@@ -17,7 +17,15 @@ const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, complet
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const app = await readFile(new URL('./index.html', import.meta.url));
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch(error => {
+    console.error('Request failed:', error);
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+    if (!res.writableEnded) res.end(JSON.stringify({ error: 'Internal server error' }));
+  });
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const send = (status, body, type = 'application/json; charset=utf-8') => {
     res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -80,5 +88,5 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) return send(200, app, 'text/html; charset=utf-8');
   send(404, JSON.stringify({ error: 'Not found' }));
-});
+}
 server.listen(Number(process.env.PORT || 8080), '0.0.0.0');
