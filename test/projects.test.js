@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 
-test('project validation, navigation, ordering, and restart persistence', async () => {
+test('projects and tasks: validation, filtering, ownership, completion, and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const socket = net.createServer();
   socket.listen(0, '127.0.0.1');
@@ -88,10 +88,64 @@ test('project validation, navigation, ordering, and restart persistence', async 
     assert.match(detail, /<h1>First project<\/h1>/);
     assert.match(detail, /action="\/".*>Projects<\/button>/);
 
+    async function post(path, fields) {
+      return fetch(`${base}${path}`, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+    }
+    async function projectHtml(id, filter = 'All') {
+      return (await fetch(`${base}/projects/${id}?filter=${filter}`)).text();
+    }
+    const rows = page => [...page.matchAll(/<div class="task-row" data-testid="task-row">([\s\S]*?)<\/div>/g)].map(match => match[1]);
+    assert.match(detail, /<label for="task-title">Task title<\/label>/);
+    assert.match(detail, />Create task<\/button>/);
+    assert.match(detail, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(detail, /<option selected>All<\/option>/);
+    for (const title of ['', '  \t\n ']) {
+      const response = await post(`/projects/${ids[0]}/tasks`, { title });
+      assert.equal(response.status, 422);
+      const invalid = await response.text();
+      assert.match(invalid, /role="alert">Task title is required/);
+      assert.equal(rows(invalid).length, 0);
+    }
+    for (const title of ['  First task  ', 'Second <task> "quoted" 🎉']) {
+      assert.equal((await post(`/projects/${ids[0]}/tasks`, { title })).status, 303);
+    }
+    assert.equal((await post(`/projects/${ids[1]}/tasks`, { title: 'Other project task' })).status, 303);
+    const openHtml = await projectHtml(ids[0]);
+    const openRows = rows(openHtml);
+    assert.equal(openRows.length, 2);
+    assert.match(openRows[0], /<span>First task<\/span>/);
+    assert.match(openRows[0], /aria-label="Complete First task"/);
+    assert.match(openRows[1], /Second &lt;task&gt; &quot;quoted&quot; 🎉/);
+    assert.ok(openRows.every(row => !row.includes(' checked')));
+    assert.equal(rows(await projectHtml(ids[0], 'Open')).length, 2);
+    assert.equal(rows(await projectHtml(ids[0], 'Completed')).length, 0);
+    assert.equal(rows(await projectHtml(ids[1])).length, 1);
+    assert.doesNotMatch(await projectHtml(ids[1]), /First task/);
+    const taskId = /action="\/projects\/\d+\/tasks\/(\d+)"/.exec(openRows[0])[1];
+    assert.equal((await post(`/projects/${ids[1]}/tasks/${taskId}`, { completed: '1' })).status, 404);
+    assert.equal((await post(`/projects/${ids[0]}/tasks/${taskId}`, [['completed', '0'], ['completed', '1']])).status, 303);
+    const completedHtml = await projectHtml(ids[0]);
+    assert.match(rows(completedHtml)[0], / checked/);
+    assert.doesNotMatch(rows(completedHtml)[1], / checked/);
+    assert.match(rows(await projectHtml(ids[0], 'Open'))[0], /Second &lt;task&gt;/);
+    const completedRows = rows(await projectHtml(ids[0], 'Completed'));
+    assert.equal(completedRows.length, 1);
+    assert.match(completedRows[0], /First task/);
+
     await stop();
     await start();
+    assert.equal(await projectHtml(ids[0]), completedHtml);
+    assert.equal(rows(await projectHtml(ids[1])).length, 1);
+    assert.equal((await post(`/projects/${ids[0]}/tasks/${taskId}`, { completed: '0', filter: 'Completed' })).status, 303);
+    assert.equal(rows(await projectHtml(ids[0], 'Completed')).length, 0);
+    assert.equal(rows(await projectHtml(ids[0], 'Open')).length, 2);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), openHtml);
     assert.equal(await (await fetch(base)).text(), html);
-    assert.equal(await (await fetch(`${base}/projects/${ids[0]}`)).text(), detail);
+    assert.equal(await (await fetch(`${base}/projects/${ids[0]}`)).text(), openHtml);
     assert.equal((await fetch(`${base}/projects/999999`)).status, 404);
   } finally {
     await stop();
