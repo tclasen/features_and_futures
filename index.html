@@ -29,23 +29,30 @@
   <script>
     const app = document.querySelector('#app');
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    async function projects() {
-      const response = await fetch('/api/projects');
+    async function projects(filter) {
+      const response = await fetch(`/api/projects?filter=${filter}`);
       if (!response.ok) throw new Error('Unable to load projects');
       return response.json();
     }
     async function renderList() {
       app.innerHTML = `<h1>Workboard</h1>
+        <label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select>
         <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" aria-label="Project name"><button type="submit">Create project</button></form>
         <div id="message" role="alert" hidden></div><section id="project-list" aria-label="Projects"></section>`;
       const list = app.querySelector('#project-list');
       const renderRows = async () => {
-        list.innerHTML = (await projects()).map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(project.name)}</span><button type="button" data-open="${project.id}">Open project</button></div>`).join('');
+        const filter = app.querySelector('#project-filter').value;
+        list.innerHTML = (await projects(filter)).map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-archive="${project.id}">${filter === 'Active' ? 'Archive project' : 'Restore project'}</button></div>`).join('');
         list.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
           window.location.href = `/projects/${encodeURIComponent(button.dataset.open)}`;
         }));
+        list.querySelectorAll('[data-archive]').forEach(button => button.addEventListener('click', async () => {
+          await fetch(`/api/projects/${button.dataset.archive}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: filter === 'Active' }) });
+          await renderRows();
+        }));
       };
       await renderRows();
+      app.querySelector('#project-filter').addEventListener('change', renderRows);
       app.querySelector('#create-form').addEventListener('submit', async event => {
         event.preventDefault();
         const input = app.querySelector('#project-name');
@@ -63,7 +70,8 @@
       const project = await fetch(`/api/projects/${encodeURIComponent(id)}`).then(async response => response.ok ? response.json() : null);
       if (!project) { app.innerHTML = '<h1>Project not found</h1><button id="back">Projects</button>'; }
       else app.innerHTML = `<div class="detail-header"><button id="back" type="button">Projects</button></div><h1>${escapeHtml(project.name)}</h1>
-        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" type="text" aria-label="Task title"><button type="submit">Create task</button></form>
+        ${project.archived ? '<p>Archived project</p>' : ''}
+        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" type="text" aria-label="Task title"><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
         <div id="task-message" role="alert" hidden></div>
         <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
         <section id="task-list" aria-label="Tasks"></section>`;
@@ -73,7 +81,7 @@
         const refresh = async () => {
           const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(response => response.json());
           const filter = app.querySelector('#task-filter').value;
-          list.innerHTML = tasks.filter(task => filter === 'All' || (filter === 'Completed') === Boolean(task.completed)).map(task => `<div class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}></div>`).join('');
+          list.innerHTML = tasks.filter(task => filter === 'All' || (filter === 'Completed') === Boolean(task.completed)).map(task => `<div class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}></div>`).join('');
           list.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${box.dataset.task}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
             await refresh();

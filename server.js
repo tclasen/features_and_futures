@@ -9,7 +9,8 @@ const db = new DatabaseSync(process.env.DB_PATH || path.join(root, 'workboard.sq
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,8 +19,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+  COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id ASC`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -38,9 +43,17 @@ const server = http.createServer(async (req, res) => {
       return send(200, 'application/json; charset=utf-8', JSON.stringify({ status: 'ok' }));
     }
     if (url.pathname === '/api/projects' && req.method === 'GET') {
-      return send(200, 'application/json; charset=utf-8', JSON.stringify(listProjects.all()));
+      return send(200, 'application/json; charset=utf-8', JSON.stringify(listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0)));
     }
     const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+    if (projectMatch && req.method === 'PATCH') {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      let data; try { data = JSON.parse(raw); } catch { data = {}; }
+      const project = getProject.get(Number(projectMatch[1]));
+      if (!project) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+      setArchived.run(data.archived ? 1 : 0, project.id);
+      return send(200, 'application/json; charset=utf-8', JSON.stringify(getProject.get(project.id)));
+    }
     if (projectMatch && req.method === 'GET') {
       const project = getProject.get(Number(projectMatch[1]));
       if (!project) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
@@ -55,7 +68,9 @@ const server = http.createServer(async (req, res) => {
       let raw = ''; for await (const chunk of req) raw += chunk;
       let data; try { data = JSON.parse(raw); } catch { data = {}; }
       const projectId = Number(tasksMatch[1]);
-      if (!getProject.get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+      const owningProject = getProject.get(projectId);
+      if (!owningProject) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+      if (owningProject.archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
       const result = addTask.run(projectId, title);
@@ -67,6 +82,7 @@ const server = http.createServer(async (req, res) => {
       let data; try { data = JSON.parse(raw); } catch { data = {}; }
       const projectId = Number(taskMatch[1]), taskId = Number(taskMatch[2]);
       if (!getTask.get(taskId, projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
+      if (getProject.get(projectId).archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
       setTaskCompleted.run(data.completed ? 1 : 0, taskId, projectId);
       return send(200, 'application/json; charset=utf-8', JSON.stringify(getTask.get(taskId, projectId)));
     }
