@@ -182,6 +182,38 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
   });
   app.append(renameForm);
 
+  const defaultPriorityField = document.createElement('div');
+  defaultPriorityField.className = 'filter-field';
+  const defaultPriorityLabel = document.createElement('label');
+  defaultPriorityLabel.htmlFor = 'default-task-priority';
+  defaultPriorityLabel.textContent = 'Default task priority';
+  const defaultPriority = document.createElement('select');
+  defaultPriority.id = 'default-task-priority';
+  defaultPriority.disabled = project.archived;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.default_task_priority || 'Normal';
+  defaultPriority.addEventListener('change', async () => {
+    const previousValue = project.default_task_priority || 'Normal';
+    defaultPriority.disabled = true;
+    const response = await fetch(`/api/projects/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_task_priority: defaultPriority.value }),
+    });
+    if (response.ok) {
+      project.default_task_priority = defaultPriority.value;
+    } else {
+      defaultPriority.value = previousValue;
+    }
+    defaultPriority.disabled = project.archived;
+  });
+  defaultPriorityField.append(defaultPriorityLabel, defaultPriority);
+  app.append(defaultPriorityField);
+
   const form = document.createElement('form');
   form.className = 'task-form';
   const field = document.createElement('div');

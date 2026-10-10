@@ -12,13 +12,17 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))
   )
 `);
 // Existing Task 001/002 databases gain the archive field without losing data.
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
 }
 db.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
@@ -73,7 +77,7 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     const projects = db.prepare(`
-      SELECT p.id, p.name, p.archived,
+      SELECT p.id, p.name, p.archived, p.default_task_priority,
         COUNT(t.id) AS total_count,
         COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -99,6 +103,16 @@ const server = createServer(async (request, response) => {
       db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, Number(projectRoute[1]));
       return sendJson(response, 200, { id: Number(projectRoute[1]), name });
     }
+    if (Object.hasOwn(body || {}, 'default_task_priority')) {
+      if (!['Low', 'Normal', 'High'].includes(body.default_task_priority)) {
+        return sendJson(response, 400, { error: 'Invalid default task priority' });
+      }
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(projectRoute[1]));
+      if (!project) return sendJson(response, 404, { error: 'Project not found' });
+      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+      db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?').run(body.default_task_priority, Number(projectRoute[1]));
+      return sendJson(response, 200, { id: Number(projectRoute[1]), default_task_priority: body.default_task_priority });
+    }
     if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
     const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, Number(projectRoute[1]));
     if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
@@ -115,7 +129,7 @@ const server = createServer(async (request, response) => {
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
     const taskId = taskRoute[2] ? Number(taskRoute[2]) : null;
-    const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    const project = db.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (!taskId && request.method === 'GET') {
       const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
@@ -127,8 +141,8 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
     }
     if (taskId && request.method === 'PATCH') {
       if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
