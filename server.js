@@ -24,15 +24,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id ASC`);
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const priorities = ['Low', 'Normal', 'High'];
 
 function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
@@ -176,6 +181,13 @@ function projectPage(project, filter = 'All', error = '', value = '', renameErro
           <input type="hidden" name="filter" value="${filter}">
           <label class="completion-label"><input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
         </form>
+        <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${priorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+          </select>
+        </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           <input type="hidden" name="filter" value="${filter}">
           ${taskRename?.id === task.id ? `<p role="alert">${escapeHtml(taskRename.error)}</p>` : ''}
@@ -241,6 +253,27 @@ const server = http.createServer(async (request, response) => {
       const result = setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
       if (result.changes) {
         redirect(response, archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived');
+        return;
+      }
+    }
+    const priorityMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/priority$/);
+    if (request.method === 'POST' && priorityMatch) {
+      const form = await readForm(request);
+      const project = getProject.get(priorityMatch[1]);
+      const task = project && getTask.get(priorityMatch[2], project.id);
+      if (task) {
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed'));
+          return;
+        }
+        const priority = form.get('priority');
+        if (!priorities.includes(priority)) {
+          sendHtml(response, 400, projectPage(project, filter, 'Choose Low, Normal, or High priority'));
+          return;
+        }
+        setTaskPriority.run(priority, task.id, project.id);
+        redirect(response, `/projects/${project.id}?filter=${filter}`);
         return;
       }
     }
