@@ -641,3 +641,102 @@ test('combined filters retain selections, re-evaluate edits, and remain usable w
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('project defaults migrate, affect only future tasks, retain filters, and survive archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Existing done', 1, 'High'), (1, 'Existing open', 0, 'Normal');`);
+  legacy.close();
+  let server;
+  let database;
+  try {
+    server = await start(databasePath);
+    database = new DatabaseSync(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const read = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const snapshot = () => database.prepare('SELECT * FROM tasks ORDER BY id').all().map((task) => ({ ...task }));
+    const select = (html, id) => html.match(new RegExp(`<select id="${id}"([^>]*)>([\\s\\S]*?)</select>`));
+    const selected = (html, id) => select(html, id)[2].match(/<option selected>(\w+)<\/option>/)[1];
+    const titles = (html) => [...html.matchAll(/<span>([^<]*)<\/span>/g)].map((match) => match[1]);
+    await post('/projects', { name: 'New project' });
+    for (const id of [1, 2]) {
+      const html = await read(`/projects/${id}`);
+      assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+      assert.equal(selected(html, 'default-task-priority'), 'Normal');
+      assert.deepEqual([...select(html, 'default-task-priority')[2].matchAll(/<option(?: selected)?>(\w+)<\/option>/g)].map((match) => match[1]), ['Low', 'Normal', 'High']);
+      assert.match(select(html, 'default-task-priority')[1], /onchange="this.form.requestSubmit\(\)"/);
+    }
+    const originalTasks = snapshot();
+    const summary = await read('/');
+    const filters = { filter: 'Completed', priorityFilter: 'High' };
+    const filteredPath = '/projects/1?filter=Completed&priorityFilter=High';
+    for (const priority of ['Low', 'High', 'Normal', 'Low']) {
+      const response = await post('/projects/1/default-priority', { ...filters, priority });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), filteredPath);
+      const html = await read(filteredPath);
+      assert.equal(selected(html, 'task-filter'), 'Completed');
+      assert.equal(selected(html, 'priority-filter'), 'High');
+      assert.equal(selected(html, 'default-task-priority'), priority);
+      assert.deepEqual(titles(html), ['Existing done']);
+      assert.deepEqual(snapshot(), originalTasks);
+      assert.equal(await read('/'), summary);
+      assert.equal(selected(await read('/projects/2'), 'default-task-priority'), 'Normal');
+    }
+    for (const priority of ['', 'Urgent', 'low']) {
+      assert.equal((await post('/projects/1/default-priority', { priority })).status, 400);
+    }
+    assert.equal((await post('/projects/999/default-priority', { priority: 'High' })).status, 404);
+    await post('/projects/1/tasks', { title: '  Inherited low  ', priority: 'High' });
+    await post('/projects/2/tasks', { title: 'Independent normal' });
+    assert.deepEqual(snapshot().map((task) => task.priority), ['High', 'Normal', 'Low', 'Normal']);
+    await post('/projects/1/default-priority', { priority: 'High' });
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/1/tasks/3', { completed: '1' });
+    await post('/projects/1/tasks/3/rename', { title: '  Renamed inherited  ' });
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    const savedTasks = snapshot();
+    assert.deepEqual(savedTasks.map((task) => task.priority), ['High', 'Normal', 'Low', 'Normal', 'High']);
+    assert.equal(savedTasks[2].title, 'Renamed inherited');
+    assert.equal(savedTasks[2].completed, 1);
+    const savedPage = await read(filteredPath);
+    const savedSummary = await read('/');
+    assert.match(savedSummary, /data-testid="project-summary">2\/4 completed/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await read(filteredPath), savedPage);
+    assert.deepEqual(snapshot(), savedTasks);
+    await post('/projects/1/archive');
+    const archived = await read(filteredPath);
+    assert.equal(selected(archived, 'default-task-priority'), 'High');
+    assert.match(select(archived, 'default-task-priority')[1], / disabled/);
+    assert.doesNotMatch(select(archived, 'task-filter')[1], / disabled/);
+    assert.doesNotMatch(select(archived, 'priority-filter')[1], / disabled/);
+    assert.equal((await post('/projects/1/default-priority', { ...filters, priority: 'Low' })).status, 403);
+    assert.equal(await read(filteredPath), archived);
+    assert.deepEqual(snapshot(), savedTasks);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await read(filteredPath), archived);
+    await post('/projects/1/restore');
+    assert.equal(await read(filteredPath), savedPage);
+    assert.equal(await read('/'), savedSummary);
+    await post('/projects/1/tasks', { title: 'After restoration' });
+    assert.equal(snapshot().at(-1).priority, 'High');
+    assert.deepEqual(snapshot().slice(0, -1), savedTasks);
+    await post('/projects/1/default-priority', { priority: 'Normal' });
+    assert.equal(selected(await read('/projects/1'), 'default-task-priority'), 'Normal');
+    assert.equal(snapshot().at(-1).priority, 'High');
+  } finally {
+    if (database) database.close();
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
