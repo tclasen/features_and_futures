@@ -32,6 +32,7 @@ const listProjects = database.prepare(`
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -129,13 +130,22 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter = 'All', error = '') {
+function projectPage(project, filter = 'All', error = '', renameError = '') {
   const tasks = listTasks.all(project.id).filter(task =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
+    <form class="task-create" method="post" action="/projects/${project.id}/rename">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="create-controls">
+        <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}${renameError ? ' aria-invalid="true" aria-describedby="rename-error"' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+      ${renameError ? `<p id="rename-error" role="alert">${escapeHtml(renameError)}</p>` : ''}
+    </form>
     <form class="task-create" method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -212,15 +222,15 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const projectMatch = /^\/projects\/([1-9]\d*)(?:\/(tasks)(?:\/([1-9]\d*)\/completion)?)?$/.exec(url.pathname);
+    const projectMatch = /^\/projects\/([1-9]\d*)(?:\/(?:(tasks)(?:\/([1-9]\d*)\/completion)?|(rename)))?$/.exec(url.pathname);
     if (projectMatch) {
       const id = Number(projectMatch[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
-      if (project && request.method === 'GET' && !projectMatch[2]) {
+      if (project && request.method === 'GET' && !projectMatch[2] && !projectMatch[4]) {
         sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
         return;
       }
-      if (project && request.method === 'POST' && projectMatch[2]) {
+      if (project && request.method === 'POST' && (projectMatch[2] || projectMatch[4])) {
         const form = await readForm(request);
         if (!form) {
           sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
@@ -232,7 +242,14 @@ const server = http.createServer(async (request, response) => {
           sendHtml(response, 403, projectPage(currentProject, filter, 'Archived project cannot be changed'));
           return;
         }
-        if (projectMatch[3]) {
+        if (projectMatch[4]) {
+          const name = (form.get('name') || '').trim();
+          if (!name) {
+            sendHtml(response, 422, projectPage(currentProject, filter, '', 'Project name is required'));
+            return;
+          }
+          renameProject.run(name, id);
+        } else if (projectMatch[3]) {
           const taskId = Number(projectMatch[3]);
           if (!Number.isSafeInteger(taskId) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id).changes) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));

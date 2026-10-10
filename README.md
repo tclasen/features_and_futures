@@ -14,6 +14,8 @@ Open a project to create tasks, check or uncheck completion, and filter the task
 
 The project list starts with Active projects. Archive a project to move it to the Archived filter, then restore it there when needed. Archived projects remain readable with task filtering, but task creation and completion changes are disabled. Each project shows its completed/total task summary. Archive state and tasks persist in SQLite; existing databases are migrated automatically.
 
+Use New project name and Rename project on an active project's page to change its name. Renaming preserves its URL, list position, tasks, and completion summary. Archived projects cannot be renamed until restored.
+
 Health check:
 
 ```sh
