@@ -23,6 +23,18 @@ async function renderList() {
   content.replaceChildren();
   content.append(element('h1', '', 'Workboard'));
 
+  const filterField = element('div', 'filter-field');
+  const filterLabel = element('label', '', 'Project filter');
+  filterLabel.htmlFor = 'project-filter';
+  const filter = element('select');
+  filter.id = 'project-filter';
+  for (const value of ['Active', 'Archived']) {
+    const option = element('option', '', value);
+    option.value = value.toLowerCase();
+    filter.append(option);
+  }
+  filterField.append(filterLabel, filter);
+
   const form = element('form', 'create-form');
   const field = element('div', 'field');
   const label = element('label', '', 'Project name');
@@ -44,21 +56,43 @@ async function renderList() {
   const projects = await request('/api/projects');
   const title = element('h2', 'section-title', 'Projects');
   const list = element('div', 'project-list');
-  if (projects.length === 0) {
-    list.append(element('p', 'empty', 'No projects yet. Create one to get started.'));
-  } else {
-    for (const project of projects) {
+  function drawProjects() {
+    list.replaceChildren();
+    const shown = projects.filter(project => project.archived === (filter.value === 'archived'));
+    if (!shown.length) {
+      list.append(element('p', 'empty', projects.length ? 'No projects in this filter.' : 'No projects yet. Create one to get started.'));
+      return;
+    }
+    for (const project of shown) {
       const row = element('div', 'project-row');
       row.dataset.testid = 'project-row';
       row.append(element('span', 'project-name', project.name));
+      const summary = element('span', 'project-summary', `${project.completedCount}/${project.totalCount} completed`);
+      summary.dataset.testid = 'project-summary';
+      row.append(summary);
       const open = element('button', '', 'Open project');
       open.type = 'button';
       open.addEventListener('click', () => navigate(`/projects/${project.id}`));
       row.append(open);
+      const archive = element('button', 'archive-button', project.archived ? 'Restore project' : 'Archive project');
+      archive.type = 'button';
+      archive.addEventListener('click', async () => {
+        try {
+          await request(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+          project.archived = !project.archived;
+          drawProjects();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      row.append(archive);
       list.append(row);
     }
   }
-  content.append(title, list);
+  filter.addEventListener('change', drawProjects);
+  drawProjects();
+  content.append(filterField, title, list);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -76,7 +110,7 @@ async function renderList() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      await renderList();
+      navigate('/');
     } catch (error) {
       alert.textContent = error.message;
       alert.hidden = false;
@@ -92,6 +126,7 @@ async function renderProject(id) {
   back.type = 'button';
   back.addEventListener('click', () => navigate('/'));
   content.append(back, element('h1', '', project.name));
+  if (project.archived) content.append(element('p', 'archived-notice', 'Archived project'));
 
   const form = element('form', 'create-form');
   const field = element('div', 'field');
@@ -105,6 +140,7 @@ async function renderProject(id) {
   field.append(label, input);
   const submit = element('button', '', 'Create task');
   submit.type = 'submit';
+  submit.disabled = project.archived;
   form.append(field, submit);
   const alert = element('p', 'alert');
   alert.hidden = true;
@@ -132,6 +168,7 @@ async function renderProject(id) {
       const checkbox = element('input', 'task-checkbox');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         try {
@@ -164,6 +201,7 @@ async function renderProject(id) {
       input.focus();
       return;
     }
+    if (project.archived) return;
     try {
       tasks.push(await request(`/api/projects/${id}/tasks`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
