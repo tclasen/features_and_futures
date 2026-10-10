@@ -1,5 +1,9 @@
 const content = document.querySelector('#content');
 
+function normalizedSearch(value) {
+  return value.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 async function getProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
@@ -62,6 +66,16 @@ async function renderList() {
   form.append(label, input, submit);
   const list = document.createElement('div');
   list.className = 'project-list';
+  const searchLabel = document.createElement('label');
+  searchLabel.htmlFor = 'project-search';
+  searchLabel.textContent = 'Project search';
+  const searchInput = document.createElement('input');
+  searchInput.id = 'project-search';
+  searchInput.type = 'text';
+  const searchButton = document.createElement('button');
+  searchButton.type = 'button';
+  searchButton.textContent = 'Search projects';
+  let appliedProjectQuery = '';
   const filterLabel = document.createElement('label');
   filterLabel.htmlFor = 'project-filter';
   filterLabel.textContent = 'Project filter';
@@ -73,14 +87,22 @@ async function renderList() {
     option.textContent = value;
     filter.append(option);
   }
-  content.append(heading, form, filterLabel, filter, list);
+  content.append(heading, form, searchLabel, searchInput, searchButton, filterLabel, filter, list);
   let projects = await getProjects();
   function drawProjects() {
     list.replaceChildren();
     const archived = filter.value === 'Archived';
-    for (const project of projects) if (project.archived === archived) list.append(projectRow(project));
+    for (const project of projects) {
+      const name = normalizedSearch(project.name);
+      if (project.archived === archived && name.includes(appliedProjectQuery)) list.append(projectRow(project));
+    }
   }
   filter.addEventListener('change', drawProjects);
+  searchButton.addEventListener('click', () => {
+    appliedProjectQuery = normalizedSearch(searchInput.value);
+    content.querySelector('[role="alert"]')?.remove();
+    drawProjects();
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = input.value.trim();
@@ -246,6 +268,16 @@ async function renderProject(id) {
     let appliedDueThrough = '';
     const list = document.createElement('div');
     list.className = 'task-list';
+    const taskSearchLabel = document.createElement('label');
+    taskSearchLabel.htmlFor = 'task-search';
+    taskSearchLabel.textContent = 'Task search';
+    const taskSearchInput = document.createElement('input');
+    taskSearchInput.id = 'task-search';
+    taskSearchInput.type = 'text';
+    const taskSearchButton = document.createElement('button');
+    taskSearchButton.type = 'button';
+    taskSearchButton.textContent = 'Search tasks';
+    let appliedTaskQuery = '';
     const tasksResponse = await fetch(`/api/projects/${id}/tasks`);
     if (!tasksResponse.ok) throw new Error('Could not load tasks');
     let tasks = await tasksResponse.json();
@@ -255,6 +287,7 @@ async function renderProject(id) {
         if (filter.value === 'Open' && task.completed) continue;
         if (filter.value === 'Completed' && !task.completed) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+        if (!normalizedSearch(task.title).includes(appliedTaskQuery)) continue;
         if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
         if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
         if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
@@ -385,6 +418,11 @@ async function renderProject(id) {
     }
     filter.addEventListener('change', drawTasks);
     priorityFilter.addEventListener('change', drawTasks);
+    taskSearchButton.addEventListener('click', () => {
+      appliedTaskQuery = normalizedSearch(taskSearchInput.value);
+      content.querySelector('[role="alert"]')?.remove();
+      drawTasks();
+    });
     applyDueRange.addEventListener('click', () => {
       const from = dueFrom.value.trim();
       const through = dueThrough.value.trim();
@@ -433,7 +471,8 @@ async function renderProject(id) {
       drawTasks();
       input.focus();
     });
-    content.append(renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter,
+    content.append(renameForm, defaultPriorityLabel, defaultPriority, form, taskSearchLabel, taskSearchInput, taskSearchButton,
+      filterLabel, filter, priorityFilterLabel, priorityFilter,
       dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, list);
     drawTasks();
   } else {
