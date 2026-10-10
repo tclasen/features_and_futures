@@ -132,11 +132,20 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title: trimmedTitle, completed: false });
       }
       if (request.method === 'PATCH' && taskId !== null) {
-        const { completed } = await readBody(request);
-        if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
-        const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(completed ? 1 : 0, taskId, projectId);
-        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
-        return sendJson(response, 200, { id: taskId, projectId, completed });
+        const update = await readBody(request);
+        if (typeof update.completed === 'boolean') {
+          const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(update.completed ? 1 : 0, taskId, projectId);
+          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          return sendJson(response, 200, { id: taskId, projectId, completed: update.completed });
+        }
+        if (typeof update.title === 'string') {
+          const title = update.title.trim();
+          if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+          const result = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          return sendJson(response, 200, { id: taskId, projectId, title });
+        }
+        return sendJson(response, 400, { error: 'Invalid task update' });
       }
     } catch {
       return sendJson(response, 400, { error: 'Invalid request' });
