@@ -187,6 +187,50 @@ test('projects and tasks: validation, order, isolation, completion, filtering an
     await start();
     assert.equal(await detailHtml(), tasksBeforeRestart);
     assert.equal(await (await fetch(base)).text(), beforeRestart);
+
+    assert.match(await detailHtml(), /<label for="new-project-name">New project name<\/label>/);
+    assert.match(await detailHtml(), /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', ' \t\n ']) {
+      const response = await post(`${paths[0]}/rename`, { name });
+      assert.equal(response.status, 422);
+      const invalidHtml = await response.text();
+      assert.match(invalidHtml, /role="alert"[^>]*>Project name is required/);
+      assert.match(invalidHtml, /<h1>First project<\/h1>/);
+      assert.equal(await detailHtml(), tasksBeforeRestart);
+    }
+    const renamed = await post(`${paths[0]}/rename`, { name: '  Renamed <project>  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), `${paths[0]}?filter=Completed`);
+    const renamedDetail = await detailHtml();
+    assert.match(renamedDetail, /<h1>Renamed &lt;project&gt;<\/h1>/);
+    assert.equal(taskCount(renamedDetail), 2);
+    assert.match(renamedDetail, /aria-label="Complete Second &lt;task&gt;" checked/);
+    assert.equal(taskCount(await detailHtml(`${paths[0]}?filter=Completed`)), 1);
+    const renamedList = await (await fetch(base)).text();
+    assert.ok(renamedList.indexOf('Renamed &lt;project&gt;') < renamedList.indexOf('Second &lt;project&gt;'));
+    assert.match(renamedList, /data-testid="project-summary">1\/2 completed/);
+    assert.deepEqual([...renamedList.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]), paths);
+    await stop();
+    await start();
+    assert.equal(await detailHtml(), renamedDetail);
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    await post(`${paths[0]}/archive`, {});
+    html = await detailHtml();
+    assert.match(html, /id="new-project-name"[^>]* disabled/);
+    assert.match(html, /<button type="submit" disabled>Rename project/);
+    assert.equal((await post(`${paths[0]}/rename`, { name: 'Forbidden' })).status, 403);
+    assert.equal(await detailHtml(), html);
+    await post(`${paths[0]}/restore`, {});
+    assert.equal(await detailHtml(), renamedDetail);
+    assert.equal((await post(`${paths[0]}/rename`, { name: 'Restored name' })).status, 303);
+    const restoredDetail = await detailHtml();
+    assert.match(restoredDetail, /<h1>Restored name<\/h1>/);
+    assert.equal(taskCount(restoredDetail), 2);
+    await stop();
+    await start();
+    assert.equal(await detailHtml(), restoredDetail);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
+    assert.equal((await post('/projects/99999/rename', { name: 'Missing' })).status, 404);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
