@@ -1,5 +1,6 @@
 const app = document.querySelector('#app');
 let listRenderId = 0;
+let projectRenderId = 0;
 
 async function getProjects() {
   const response = await fetch('/api/projects');
@@ -145,7 +146,9 @@ async function renderList(errorMessage = '', selectedFilter = 'active') {
 }
 
 async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all', dueRange = { from: '', through: '' }) {
+  const renderId = ++projectRenderId;
   const projects = await getProjects();
+  if (renderId !== projectRenderId) return;
   const project = projects.find((item) => String(item.id) === id);
   if (!project) return renderList('Project not found');
   app.replaceChildren();
@@ -348,10 +351,12 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
   try {
     tasks = await getTasks(id);
   } catch {
+    if (renderId !== projectRenderId) return;
     taskList.textContent = 'Unable to load tasks';
     taskList.className = 'alert';
     return;
   }
+  if (renderId !== projectRenderId) return;
   const renderTasks = () => {
     taskList.replaceChildren();
     for (const task of tasks) {
