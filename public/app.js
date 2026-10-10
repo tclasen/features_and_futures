@@ -8,6 +8,15 @@ function element(tag, text) {
   return node;
 }
 
+function updateRows(list, rows) {
+  const unchangedPrefix = Array.from(list.children).every((row, index) => row === rows[index]);
+  if (unchangedPrefix) {
+    list.append(...rows.slice(list.children.length));
+  } else {
+    list.replaceChildren(...rows);
+  }
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
   const body = await response.json();
@@ -73,6 +82,7 @@ function projectRow(project, drawProjects) {
         body: JSON.stringify({ archived: !project.archived }),
       });
       Object.assign(project, saved);
+      archive.textContent = project.archived ? 'Restore project' : 'Archive project';
       drawProjects();
       app.querySelector('[role="alert"]')?.remove();
     } catch (error) {
@@ -81,7 +91,9 @@ function projectRow(project, drawProjects) {
       archive.disabled = false;
     }
   });
-  row.append(element('span', project.name), summary, open, archive);
+  const name = element('span', project.name);
+  name.className = 'saved-name';
+  row.append(name, summary, open, archive);
   return row;
 }
 
@@ -181,6 +193,7 @@ async function renderTasks(project) {
   app.append(form, defaultControls, filterControls, priorityFilterControls, dueRangeForm, search.form, list);
   const [tasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
   const destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== project.id);
+  const taskRows = new Map();
 
   function matchesFilter(task) {
     const matchesCompletion = filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed);
@@ -192,8 +205,11 @@ async function renderTasks(project) {
   }
 
   function taskRow(task) {
+    if (taskRows.has(task.id)) return taskRows.get(task.id);
     const row = element('li');
     row.dataset.testid = 'task-row';
+    const taskTitle = element('span', task.title);
+    taskTitle.className = 'saved-name';
     const checkbox = element('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
@@ -235,6 +251,7 @@ async function renderTasks(project) {
       if (project.archived) return;
       const title = renameInput.value.trim();
       if (!title) return showError('Task title is required');
+      const submittedTitle = renameInput.value;
       renameButton.disabled = true;
       try {
         const saved = await request(`${endpoint}/${task.id}`, {
@@ -243,6 +260,9 @@ async function renderTasks(project) {
           body: JSON.stringify({ title }),
         });
         task.title = saved.title;
+        taskTitle.textContent = task.title;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        if (renameInput.value === submittedTitle) renameInput.value = '';
         drawTasks();
         app.querySelector('[role="alert"]')?.remove();
       } catch (error) {
@@ -301,13 +321,15 @@ async function renderTasks(project) {
       event.preventDefault();
       if (project.archived) return;
       dueDateButton.disabled = true;
+      const submittedDate = dueDateInput.value;
       try {
         const saved = await request(`${endpoint}/${task.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ due_date: dueDateInput.value.trim() }),
+          body: JSON.stringify({ due_date: submittedDate.trim() }),
         });
         task.due_date = saved.due_date;
+        if (dueDateInput.value === submittedDate) dueDateInput.value = task.due_date;
         drawTasks();
         app.querySelector('[role="alert"]')?.remove();
       } catch (error) {
@@ -342,6 +364,7 @@ async function renderTasks(project) {
           body: JSON.stringify({ destination_project_id: Number(destination.value) }),
         });
         tasks.splice(tasks.indexOf(task), 1);
+        taskRows.delete(task.id);
         drawTasks();
         app.querySelector('[role="alert"]')?.remove();
       } catch (error) {
@@ -350,12 +373,15 @@ async function renderTasks(project) {
         destination.disabled = moveButton.disabled = Boolean(project.archived) || !destinations.length;
       }
     });
-    row.append(element('span', task.title), checkbox, renameForm, priorityControls, dueDateForm, moveForm);
+    row.append(taskTitle, checkbox, renameForm, priorityControls, dueDateForm, moveForm);
+    taskRows.set(task.id, row);
     return row;
   }
 
   function drawTasks() {
-    list.replaceChildren(...tasks.filter(matchesFilter).map(taskRow));
+    const rows = tasks.filter(matchesFilter).map(taskRow);
+    // Avoid replacing unchanged rows while another edit or selection is pending.
+    updateRows(list, rows);
   }
 
   drawTasks();
@@ -491,11 +517,15 @@ async function render() {
   const search = searchControls('Project search', 'Search projects', 'project-search');
   app.append(form, filterControls, search.form, list);
   const projects = await request('/api/projects');
+  const projectRows = new Map();
   function drawProjects() {
-    list.replaceChildren(...projects
+    updateRows(list, projects
       .filter((project) => Boolean(project.archived) === (filter.value === 'Archived'))
       .filter((project) => search.matches(project.name))
-      .map((project) => projectRow(project, drawProjects)));
+      .map((project) => {
+        if (!projectRows.has(project.id)) projectRows.set(project.id, projectRow(project, drawProjects));
+        return projectRows.get(project.id);
+      }));
   }
   drawProjects();
   search.onApply(drawProjects);

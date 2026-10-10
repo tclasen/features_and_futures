@@ -226,6 +226,112 @@ async function renderUI(pathname, fetch) {
 
 const jsonResponse = (body) => ({ ok: true, json: async () => JSON.parse(JSON.stringify(body)) });
 
+test('delayed task edits and reverse moves retain other rows and selected destinations', async () => {
+  const project = { id: 7, name: 'Holding', archived: 0, default_task_priority: 'Normal' };
+  const projects = [
+    { id: 1, name: 'Unrelated', archived: 0 },
+    project,
+    { id: 8, name: 'Original owner', archived: 0 },
+  ];
+  const tasks = [1, 2].map((id) => ({ id, project_id: 7, title: `Task ${id}`,
+    completed: false, priority: 'Normal', due_date: '' }));
+  let finishEdit;
+  const moves = [];
+  const fetch = async (path, options = {}) => {
+    if (options.method === 'PATCH') {
+      const input = JSON.parse(options.body);
+      const task = tasks.find((candidate) => path.endsWith(`/${candidate.id}`));
+      if (input.destination_project_id) {
+        moves.push([task.id, input.destination_project_id]);
+        return jsonResponse({ ...task, project_id: input.destination_project_id });
+      }
+      if (input.priority) await new Promise((resolve) => { finishEdit = resolve; });
+      Object.assign(task, input);
+      return jsonResponse(task);
+    }
+    return jsonResponse(path === '/api/projects' ? projects : path === '/api/projects/7' ? project : tasks);
+  };
+  const { app } = await renderUI('/projects/7', fetch);
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  const originalRows = [...list.children];
+  const destination1 = app.find((node) => node.id === 'destination-project-1');
+  const destination2 = app.find((node) => node.id === 'destination-project-2');
+  destination1.value = destination2.value = '8';
+  const priority = app.find((node) => node.id === 'task-priority-1');
+  priority.value = 'High';
+  const pendingEdit = priority.fire('change');
+  const due = app.find((node) => node.id === 'task-due-date-1');
+  due.value = '2024-02-29';
+  const rename = app.find((node) => node.id === 'new-task-title-2');
+  rename.value = 'Current title';
+  finishEdit();
+  await pendingEdit;
+  assert.deepEqual(list.children, originalRows);
+  assert.equal(due.value, '2024-02-29');
+  assert.equal(rename.value, 'Current title');
+  assert.equal(destination1.value, '8');
+  assert.equal(destination2.value, '8');
+  await due.parent.fire('submit');
+  await rename.parent.fire('submit');
+  assert.equal(list.children[1].children[0].textContent, 'Current title');
+  await destination2.parent.fire('submit');
+  assert.equal(list.children[0], originalRows[0]);
+  assert.equal(destination1.value, '8');
+  await destination1.parent.fire('submit');
+  assert.deepEqual(moves, [[2, 8], [1, 8]]);
+  assert.equal(list.children.length, 0);
+  assert.equal(tasks[0].priority, 'High');
+  assert.equal(tasks[0].due_date, '2024-02-29');
+  assert.equal(tasks[1].title, 'Current title');
+});
+
+test('large project lists reuse rows during creation and preserve whitespace through archive searches', async () => {
+  const projects = Array.from({ length: 450 }, (_, index) => ({ id: index + 1,
+    name: `Existing ${index}`, archived: 0, completed_count: 0, total_count: 0 }));
+  const fetch = async (path, options = {}) => {
+    if (options.method === 'POST') {
+      const project = { id: projects.length + 1, name: JSON.parse(options.body).name.trim(),
+        archived: 0, completed_count: 0, total_count: 0 };
+      projects.push(project);
+      return jsonResponse(project);
+    }
+    if (options.method === 'PATCH') {
+      const project = projects.find((candidate) => path.endsWith(`/${candidate.id}`));
+      Object.assign(project, JSON.parse(options.body));
+      return jsonResponse(project);
+    }
+    return jsonResponse(projects);
+  };
+  const { app } = await renderUI('/', fetch);
+  const list = app.find((node) => node.attributes['aria-label'] === 'Projects');
+  const initialRows = [...list.children];
+  const input = app.find((node) => node.id === 'project-name');
+  input.value = 'Whitespace  Saved\t archived';
+  await input.parent.fire('submit');
+  assert.deepEqual(list.children.slice(0, 450), initialRows);
+  const row = list.children[450];
+  assert.equal(row.children[0].textContent, 'Whitespace  Saved\t archived');
+  await row.children[3].fire('click');
+  assert.equal(list.children.length, 450);
+  const search = app.find((node) => node.id === 'project-search');
+  search.value = ' whitespace\t saved ';
+  await search.parent.fire('submit');
+  assert.equal(list.children.length, 0);
+  const filter = app.find((node) => node.id === 'project-filter');
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.equal(list.children[0], row);
+  assert.equal(row.children[0].textContent, 'Whitespace  Saved\t archived');
+  assert.equal(row.children[3].textContent, 'Restore project');
+  await row.children[3].fire('click');
+  assert.equal(list.children.length, 0);
+  filter.value = 'Active';
+  await filter.fire('change');
+  assert.equal(list.children[0], row);
+  assert.equal(row.children[3].textContent, 'Archive project');
+  assert.equal(row.children[0].textContent, 'Whitespace  Saved\t archived');
+});
+
 test('due date UI saves, clears, reports invalid dates, and preserves filters and other task data', async () => {
   const project = { id: 7, name: 'Project', archived: 0 };
   const tasks = [

@@ -90,3 +90,6 @@ independent positions across projects, current field values, and archive/restore
 Search checks cover ASCII-only case matching, normalized spaces and tabs,
 combined filters, applied versus unsubmitted queries, mutation-driven membership,
 unchanged summaries, archived controls, and entry resets.
+Rendering checks cover delayed edits without losing row drafts or selected move
+destinations, reverse moves, and whitespace-preserving archive searches with a
+450-project list. Existing rows are reused during edits and project creation.
