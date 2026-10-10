@@ -251,6 +251,48 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.doesNotMatch(openRenamed, / checked/);
     assert.ok(openRenamed.indexOf('Second renamed') < openRenamed.indexOf('After restore'));
     assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+
+    // Priority edits preserve all other task data and respect project ownership.
+    const beforePriority = await (await fetch(base + paths[0])).text();
+    assert.equal((beforePriority.match(/>Task priority<\/label>/g) || []).length, 3);
+    assert.equal((beforePriority.match(/<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/g) || []).length, 3);
+    const priorityPath = completionPath + '/priority';
+    assert.equal((await postTask(priorityPath, { priority: 'High', filter: 'Completed' })).headers.get('location'), paths[0] + '?filter=Completed');
+    const highOptions = '<option>Low</option><option>Normal</option><option selected>High</option>';
+    const normalOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    const lowOptions = '<option selected>Low</option><option>Normal</option><option>High</option>';
+    const afterPriority = await (await fetch(base + paths[0])).text();
+    assert.equal(afterPriority, beforePriority.replace(normalOptions, highOptions));
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    assert.equal((await postTask(foreignTaskPath + '/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await postTask(taskPath + '/999999/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await postTask(priorityPath, { priority: 'Urgent' })).status, 400);
+    assert.equal(await (await fetch(base + paths[0])).text(), afterPriority);
+    await postTask(secondTaskPath + '/priority', { priority: 'Low', filter: 'Open' });
+    const independentPriorities = afterPriority.replace(normalOptions, lowOptions);
+    assert.equal(await (await fetch(base + paths[0])).text(), independentPriorities);
+    assert.match(await (await fetch(base + paths[0] + '?filter=Completed')).text(), new RegExp(highOptions));
+    assert.doesNotMatch(await (await fetch(base + paths[0] + '?filter=Open')).text(), new RegExp(highOptions));
+    await postTask(taskRenamePath, { title: 'Priority retained' });
+    const priorityRenamed = independentPriorities.replaceAll('&lt;Renamed &amp; task&gt;', 'Priority retained');
+    assert.equal(await (await fetch(base + paths[0])).text(), priorityRenamed);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), priorityRenamed);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    await postTask(paths[0] + '/archive', {});
+    const priorityArchived = await (await fetch(base + paths[0])).text();
+    assert.equal((priorityArchived.match(/name="priority" disabled/g) || []).length, 3);
+    assert.match(priorityArchived, new RegExp(highOptions));
+    assert.match(priorityArchived, new RegExp(lowOptions));
+    assert.equal((await postTask(priorityPath, { priority: 'Normal' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), priorityArchived);
+    await postTask(paths[0] + '/restore', {});
+    assert.equal(await (await fetch(base + paths[0])).text(), priorityRenamed);
+    await postTask(priorityPath, { priority: 'Normal' });
+    assert.equal(await (await fetch(base + paths[0])).text(), priorityRenamed.replace(highOptions, normalOptions));
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
