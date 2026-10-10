@@ -18,7 +18,7 @@
     button:focus-visible, input:focus-visible { outline: 3px solid #91b5ff; outline-offset: 2px; }
     #alert { min-height: 1.5em; color: #b42318; }
     #projects, #tasks { padding: 0; list-style: none; }
-    #task-filter, #project-filter { margin: 0 0 16px; padding: 8px; font: inherit; }
+    #task-filter, #priority-filter, #project-filter { margin: 0 0 16px; padding: 8px; font: inherit; }
     .project-actions { display: flex; align-items: center; gap: 8px; }
     .project-actions button { padding: 8px 10px; }
     [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #e2e7ec; }
@@ -117,12 +117,16 @@
       const filter = document.createElement('select'); filter.id = 'task-filter';
       for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
       app.append(filter);
+      const priorityFilterLabel = document.createElement('label'); priorityFilterLabel.htmlFor = 'priority-filter'; priorityFilterLabel.textContent = 'Priority filter'; app.append(priorityFilterLabel);
+      const priorityFilter = document.createElement('select'); priorityFilter.id = 'priority-filter'; priorityFilter.setAttribute('aria-label', 'Priority filter');
+      for (const value of ['All', 'Low', 'Normal', 'High']) { const option = document.createElement('option'); option.textContent = value; option.value = value; priorityFilter.append(option); }
+      app.append(priorityFilter);
       const list = document.createElement('ul'); list.id = 'tasks'; app.append(list);
       async function load() {
         const tasks = await request(`/api/projects/${escapePath(id)}/tasks`);
         list.replaceChildren();
         for (const task of tasks) {
-          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed) || (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value)) continue;
           const row = document.createElement('li'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived); checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => { try { await request(`/api/projects/${escapePath(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) }); await load(); } catch (error) { alert.textContent = error.message; } });
@@ -132,7 +136,7 @@
           const priority = document.createElement('select'); priority.id = `task-priority-${task.id}`; priority.setAttribute('aria-label', 'Task priority'); priority.disabled = Boolean(project.archived);
           for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; priority.append(option); }
           priority.value = task.priority || 'Normal';
-          priority.addEventListener('change', async () => { try { await request(`/api/projects/${escapePath(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) }); } catch (error) { alert.textContent = error.message; } });
+          priority.addEventListener('change', async () => { try { await request(`/api/projects/${escapePath(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) }); await load(); } catch (error) { alert.textContent = error.message; } });
           row.append(priorityLabel, priority);
           const taskRenameForm = document.createElement('form');
           const taskRenameLabel = document.createElement('label'); taskRenameLabel.htmlFor = `new-task-title-${task.id}`; taskRenameLabel.textContent = 'New task title';
@@ -149,6 +153,7 @@
         }
       }
       filter.addEventListener('change', () => load().catch(error => { alert.textContent = error.message; }));
+      priorityFilter.addEventListener('change', () => load().catch(error => { alert.textContent = error.message; }));
       form.addEventListener('submit', async event => {
         event.preventDefault(); alert.textContent = '';
         if (!input.value.trim()) { alert.textContent = 'Task title is required'; return; }
