@@ -32,6 +32,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER'); } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
 db.exec('UPDATE tasks SET position = id WHERE position IS NULL');
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -44,11 +45,12 @@ db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, posi
 const rememberPosition = db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const getRememberedPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 const nextProjectPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_project_positions WHERE project_id = ?');
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0))');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
-const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date, position FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes, position FROM tasks WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -176,6 +178,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof data.completed === 'boolean') updateTask.run(data.completed ? 1 : 0, taskId, projectId);
       else if (typeof data.title === 'string' && data.title.trim()) renameTask.run(data.title.trim(), taskId, projectId);
       else if (['Low', 'Normal', 'High'].includes(data.priority)) updatePriority.run(data.priority, taskId, projectId);
+      else if (typeof data.notes === 'string') updateNotes.run(data.notes, taskId, projectId);
       else if (typeof data.due_date === 'string') {
         const dueDate = data.due_date.trim();
         if (dueDate && !isValidDate(dueDate)) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
