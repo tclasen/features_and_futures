@@ -31,6 +31,7 @@ const listProjects = db.prepare(`
 `);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -113,12 +114,19 @@ function taskFilter(value) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter = 'All', error = '') {
+function projectPage(project, filter = 'All', error = '', renameError = '') {
   const tasks = listTasks.all(project.id).filter((task) =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
+    <form class="create" method="post" action="/projects/${project.id}/rename">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
+      <input type="hidden" name="filter" value="${filter}">
+      ${renameError ? `<p role="alert">${escapeHtml(renameError)}</p>` : ''}
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form class="create" method="post" action="/projects/${project.id}/tasks">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text">
@@ -174,6 +182,7 @@ const server = http.createServer(async (request, response) => {
     const { pathname, searchParams } = new URL(request.url, 'http://localhost');
     const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*))?)?$/);
     const archiveRoute = pathname.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
+    const renameRoute = pathname.match(/^\/projects\/([1-9]\d*)\/rename$/);
     if (request.method === 'GET' && pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -188,6 +197,26 @@ const server = http.createServer(async (request, response) => {
       }
       insertProject.run(name);
       redirect(response, '/');
+    } else if (request.method === 'POST' && renameRoute) {
+      const id = Number(renameRoute[1]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project) {
+        html(response, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) {
+        html(response, 403, projectPage(project, filter, '', 'Archived project is read-only'));
+        return;
+      }
+      const name = (form.get('name') || '').trim();
+      if (!name) {
+        html(response, 422, projectPage(project, filter, '', 'Project name is required'));
+        return;
+      }
+      renameProject.run(name, id);
+      redirect(response, `/projects/${id}${filter === 'All' ? '' : `?filter=${filter}`}`);
     } else if (request.method === 'POST' && archiveRoute) {
       const id = Number(archiveRoute[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
