@@ -1,4 +1,4 @@
-import { filterTasks } from './task-filters.js';
+import { filterTasks, normalizeDueRange } from './task-filters.js';
 
 const app = document.querySelector('#app');
 
@@ -201,6 +201,13 @@ async function showProject(id) {
       <option>Normal</option>
       <option>High</option>
     </select>
+    <form id="due-range-form">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <ul aria-label="Tasks"></ul>
   `;
   app.append(controls);
@@ -232,9 +239,26 @@ async function showProject(id) {
   const list = controls.querySelector('ul');
   const tasksPath = `/api/projects/${id}/tasks`;
   let tasks = [];
+  let dueRange = { from: '', through: '' };
+  const rangeForm = controls.querySelector('#due-range-form');
+  const dueFrom = controls.querySelector('#due-from');
+  const dueThrough = controls.querySelector('#due-through');
+  rangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    try {
+      const nextRange = normalizeDueRange(dueFrom.value, dueThrough.value);
+      dueRange = nextRange;
+      dueFrom.value = dueRange.from;
+      dueThrough.value = dueRange.through;
+      showAlert('');
+      renderTasks();
+    } catch (error) {
+      showAlert(error.message);
+    }
+  });
 
   function renderTasks() {
-    const visible = filterTasks(tasks, filter.value, priorityFilter.value);
+    const visible = filterTasks(tasks, filter.value, priorityFilter.value, dueRange);
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -365,7 +389,7 @@ async function showProject(id) {
             body: JSON.stringify({ due_date: dueDateInput.value }),
           });
           Object.assign(task, saved);
-          dueDateInput.value = task.due_date;
+          renderTasks();
         } catch (error) {
           showAlert(error.message);
         } finally {

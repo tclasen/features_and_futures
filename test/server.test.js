@@ -73,6 +73,10 @@ test('health, project validation, creation order, detail, and restart persistenc
       assert.match(await page.text(), /<script type="module" src="\/app.js">/);
     }
     assert.equal((await get('/app.js')).status, 200);
+    const dateModule = await get('/due-date.js');
+    assert.equal(dateModule.status, 200);
+    assert.match(dateModule.headers.get('content-type'), /text\/javascript/);
+    assert.match(await dateModule.text(), /export function normalizeDueDate/);
     const filtersModule = await get('/task-filters.js');
     assert.equal(filtersModule.status, 200);
     assert.match(filtersModule.headers.get('content-type'), /text\/javascript/);
