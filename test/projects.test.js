@@ -4,10 +4,18 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 test('projects and tasks: validation, ownership, filters, completion, and restart persistence', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
+  // Start from the Task 002 schema to exercise the archive migration.
+  const legacy = new DatabaseSync(resolve(directory, 'projects.sqlite'));
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));`);
+  legacy.close();
   let child;
   async function start() {
     child = spawn(process.execPath, ['server.js'], {
@@ -44,6 +52,8 @@ test('projects and tasks: validation, ownership, filters, completion, and restar
     assert.match(initial, /<label for="project-name">Project name<\/label>/);
     assert.match(initial, />Create project<\/button>/);
     assert.equal((initial.match(/data-testid="project-row"/g) || []).length, 0);
+    assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(initial, /<option selected>Active<\/option><option>Archived<\/option>/);
     const create = (name) => fetch(`${base}/projects`, {
       method: 'POST', body: new URLSearchParams({ name }), redirect: 'manual',
     });
@@ -61,6 +71,7 @@ test('projects and tasks: validation, ownership, filters, completion, and restar
     }
     const listing = await (await fetch(base)).text();
     assert.equal((listing.match(/data-testid="project-row"/g) || []).length, 2);
+    assert.equal((listing.match(/data-testid="project-summary">0\/0 completed/g) || []).length, 2);
     assert.match(listing, /<h3>First project<\/h3>/);
     assert.ok(listing.indexOf('First project') < listing.indexOf('&lt;Second &amp; project&gt;'));
     const ids = [...listing.matchAll(/action="\/projects\/(\d+)"/g)].map((match) => match[1]);
@@ -132,15 +143,61 @@ test('projects and tasks: validation, ownership, filters, completion, and restar
     assert.equal(invalid.status, 422);
     assert.equal(rows(await invalid.text()).length, 2);
     assert.equal(await taskPage(), savedTasks);
+    const savedListing = await (await fetch(base)).text();
+    assert.match(savedListing, /data-testid="project-summary">1\/2 completed/);
+    assert.match(savedListing, /data-testid="project-summary">0\/1 completed/);
     await stop();
     base = await start();
-    assert.equal(await (await fetch(base)).text(), listing);
+    assert.equal(await (await fetch(base)).text(), savedListing);
     assert.match(await (await fetch(`${base}/projects/${ids[0]}`)).text(), /<h1>First project<\/h1>/);
     assert.match(await (await fetch(`${base}/projects/${ids[1]}`)).text(), /<h1>&lt;Second &amp; project&gt;<\/h1>/);
     assert.equal(await taskPage(), savedTasks);
     assert.equal(await taskPage(ids[1]), savedOtherTasks);
     assert.equal(rows(await taskPage(ids[0], 'Completed')).length, 1);
     assert.match(rows(await taskPage(ids[0], 'Completed'))[0], /Second/);
+    const projectRows = (html) => [...html.matchAll(/<article class="project-row"[\s\S]*?<\/article>/g)].map((match) => match[0]);
+    const projectList = (filter = 'Active') => fetch(`${base}/?filter=${filter}`).then((response) => response.text());
+    const archive = (action, id = ids[0]) => fetch(`${base}/projects/${id}/${action}`, {
+      method: 'POST', redirect: 'manual',
+    });
+    assert.equal((await archive('archive', '999999')).status, 404);
+    assert.equal((await archive('archive')).status, 303);
+    assert.equal(projectRows(await projectList()).length, 1);
+    assert.doesNotMatch(await projectList(), /First project/);
+    const archivedListing = await projectList('Archived');
+    assert.equal(projectRows(archivedListing).length, 1);
+    assert.match(archivedListing, />Restore project<\/button>/);
+    assert.match(archivedListing, />Open project<\/button>/);
+    assert.doesNotMatch(archivedListing, />Archive project<\/button>/);
+    assert.match(archivedListing, /data-testid="project-summary">1\/2 completed/);
+    const archivedPage = await taskPage();
+    assert.match(archivedPage, /Archived project/);
+    assert.match(archivedPage, /<button type="submit" disabled>Create task<\/button>/);
+    assert.equal(rows(archivedPage).length, 2);
+    for (const row of rows(archivedPage)) assert.match(row, /disabled/);
+    assert.match(rows(archivedPage)[1], / checked/);
+    assert.equal(rows(await taskPage(ids[0], 'Completed')).length, 1);
+    assert.equal(rows(await taskPage(ids[0], 'Open')).length, 1);
+    assert.equal((await createTask('Cannot create')).status, 403);
+    assert.equal((await complete(taskIds[0], true)).status, 403);
+    assert.equal((await complete(taskIds[1], false)).status, 403);
+    assert.equal(await taskPage(), archivedPage);
+    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    await stop();
+    base = await start();
+    assert.equal(await projectList('Archived'), archivedListing);
+    assert.equal(await taskPage(), archivedPage);
+    assert.equal((await archive('restore')).status, 303);
+    assert.equal(projectRows(await projectList('Archived')).length, 0);
+    assert.equal(await projectList(), savedListing);
+    assert.equal(await taskPage(), savedTasks);
+    assert.equal((await complete(taskIds[0], true)).status, 303);
+    assert.match(await projectList(), /data-testid="project-summary">2\/2 completed/);
+    assert.equal((await complete(taskIds[0], false)).status, 303);
+    await stop();
+    base = await start();
+    assert.equal(await projectList(), savedListing);
+    assert.equal(await taskPage(), savedTasks);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

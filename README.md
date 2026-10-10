@@ -8,8 +8,11 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. The server binds to `0.0.0.0`; `PORT` defaults to
 8080 and `DB_PATH` defaults to `./data/workboard.sqlite`. Keep the database file
-to preserve projects, tasks, and completion state across server restarts. Each
-project supports task creation, completion, and All/Open/Completed filters.
+to preserve projects, archive state, tasks, and completion state across server
+restarts. Existing databases are migrated automatically. Each project supports
+task creation, completion, and All/Open/Completed filters. The project list has
+Active/Archived filters and completion summaries. Archive projects to make their
+tasks read-only; restore them from the Archived list to resume editing.
 `GET /health` returns
 `{"status":"ok"}`.
 
