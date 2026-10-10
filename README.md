@@ -12,6 +12,8 @@ Use the Project filter to switch between Active and Archived projects. Archive o
 
 On active project pages, use New project name and Rename project to rename without changing the URL, order, or tasks. Names are trimmed and cannot be blank. Archived projects cannot be renamed until restored. Renamed names persist across restarts.
 
+Each task row provides New task title and Rename task. Titles are trimmed and cannot be blank. Renaming preserves task order, ownership and completion; archived projects disable task renaming until restored. Titles persist across restarts.
+
 Health: `GET /health` returns `{"status":"ok"}`.
 
 Run the isolated integration tests (including process-restart persistence):
