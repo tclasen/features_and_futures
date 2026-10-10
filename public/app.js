@@ -108,6 +108,15 @@ async function render() {
           await loadTasks();
         });
         row.append(checkbox);
+        const priority = element('select');
+        priority.setAttribute('aria-label', 'Task priority');
+        for (const value of ['Low', 'Normal', 'High']) priority.append(new Option(value, value));
+        priority.value = task.priority;
+        priority.disabled = project.archived;
+        priority.addEventListener('change', async () => {
+          await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+        });
+        row.append(priority);
         const renameForm = element('form', undefined, 'create-form');
         const renameInput = element('input');
         renameInput.type = 'text';
