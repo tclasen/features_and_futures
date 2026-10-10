@@ -22,5 +22,8 @@ Existing databases are migrated automatically without changing project or task I
 Active project pages also support renaming. Names are trimmed; renaming preserves
 the project URL, list order, tasks, and summary. Archived projects cannot be renamed
 until restored.
+Each task row supports renaming with a trimmed title. Renaming preserves task
+ownership, order, completion, and summaries, and updates its completion label.
+Archived projects disable task renaming until restored.
 Run `npm test` for HTTP integration tests, including persistence across separate
 server processes. Tests use temporary databases and clean them up afterward.
