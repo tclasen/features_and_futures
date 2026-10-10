@@ -209,6 +209,25 @@ async function renderProject(id) {
 
   const tasks = await api(`/api/projects/${id}/tasks`);
   const pendingTasks = new Set();
+  async function saveTask(task, changes) {
+    if (project.archived || pendingTasks.has(task.id)) return;
+    pendingTasks.add(task.id);
+    app.querySelector('[role="alert"]')?.remove();
+    renderTasks();
+    try {
+      const saved = await api(`/api/projects/${id}/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      Object.assign(task, saved);
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      pendingTasks.delete(task.id);
+      renderTasks();
+    }
+  }
   function renderTasks() {
     list.replaceChildren();
     for (const task of tasks) {
@@ -222,24 +241,34 @@ async function renderProject(id) {
       checkbox.disabled = project.archived || pendingTasks.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       row.append(checkbox, element('span', task.title));
-      checkbox.addEventListener('change', async () => {
-        pendingTasks.add(task.id);
-        checkbox.disabled = true;
-        app.querySelector('[role="alert"]')?.remove();
-        try {
-          const saved = await api(`/api/projects/${id}/tasks/${task.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: checkbox.checked }),
-          });
-          task.completed = saved.completed;
-        } catch (error) {
-          showAlert(error.message);
-        } finally {
-          pendingTasks.delete(task.id);
-          renderTasks();
-        }
+      checkbox.addEventListener('change', () => {
+        saveTask(task, { completed: checkbox.checked });
       });
+      const taskRenameForm = element('form');
+      const renameLabel = element('label', 'New task title');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      const renameInput = element('input');
+      renameInput.type = 'text';
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.name = 'title';
+      renameInput.value = task.title;
+      renameInput.disabled = checkbox.disabled;
+      const renameButton = element('button', 'Rename task');
+      renameButton.type = 'submit';
+      renameButton.disabled = checkbox.disabled;
+      taskRenameForm.append(renameLabel, renameInput, renameButton);
+      taskRenameForm.addEventListener('submit', event => {
+        event.preventDefault();
+        if (project.archived || pendingTasks.has(task.id)) return;
+        app.querySelector('[role="alert"]')?.remove();
+        const title = renameInput.value.trim();
+        if (!title) {
+          showAlert('Task title is required');
+          return;
+        }
+        saveTask(task, { title });
+      });
+      row.append(taskRenameForm);
       list.append(row);
     }
   }
