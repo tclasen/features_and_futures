@@ -4,6 +4,7 @@ const form = document.querySelector('#create-form');
 const nameInput = document.querySelector('#project-name');
 const errorMessage = document.querySelector('#error-message');
 const projectsElement = document.querySelector('#projects');
+const projectFilter = document.querySelector('#project-filter');
 const taskForm = document.querySelector('#task-form');
 const taskTitleInput = document.querySelector('#task-title');
 const taskErrorMessage = document.querySelector('#task-error-message');
@@ -29,7 +30,7 @@ function showList() {
 async function renderProjects() {
   const projects = await request('/api/projects');
   projectsElement.replaceChildren();
-  for (const project of projects) {
+  for (const project of projects.filter((item) => item.archived === (projectFilter.value === 'Archived'))) {
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -42,7 +43,20 @@ async function renderProjects() {
       history.pushState({}, '', `/projects/${encodeURIComponent(project.id)}`);
       renderRoute();
     });
-    row.append(name, open);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+    const archive = document.createElement('button');
+    archive.type = 'button';
+    archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+    archive.addEventListener('click', async () => {
+      await request(`/api/projects/${encodeURIComponent(project.id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      await renderProjects();
+    });
+    row.append(name, summary, open, archive);
     projectsElement.append(row);
   }
 }
@@ -62,6 +76,7 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = taskForm.querySelector('button').disabled;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       checkbox.disabled = true;
@@ -96,6 +111,9 @@ async function renderRoute() {
     const project = await request(`/api/projects/${encodeURIComponent(projectId)}`);
     activeProjectId = project.id;
     document.querySelector('#project-title').textContent = project.name;
+    document.querySelector('#archived-notice').hidden = !project.archived;
+    taskForm.querySelector('input').disabled = project.archived;
+    taskForm.querySelector('button').disabled = project.archived;
     document.title = `${project.name} · Workboard`;
     listView.hidden = true;
     detailView.hidden = false;
@@ -160,6 +178,7 @@ taskForm.addEventListener('submit', async (event) => {
 });
 
 taskFilter.addEventListener('change', renderTasks);
+projectFilter.addEventListener('change', renderProjects);
 document.querySelector('#back-button').addEventListener('click', () => {
   history.pushState({}, '', '/');
   renderRoute();
