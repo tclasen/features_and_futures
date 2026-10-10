@@ -10,6 +10,16 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function taskPriorityFilter(value) {
+  return ['All', 'Low', 'Normal', 'High'].includes(value) ? value : 'All';
+}
+
+function projectLocation(id, filter, priorityFilter) {
+  const query = new URLSearchParams({ filter });
+  if (priorityFilter !== 'All') query.set('priorityFilter', priorityFilter);
+  return `/projects/${id}?${query}`;
+}
+
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
@@ -70,7 +80,8 @@ export function createWorkboardServer(databasePath) {
           send(response, 404, notFoundPage());
         } else if (request.method === 'GET' && parts.length === 3) {
           const filter = taskFilter(searchParams.get('filter'));
-          send(response, 200, projectPage(project, store.tasks.list(id, filter), filter));
+          const priorityFilter = taskPriorityFilter(searchParams.get('priorityFilter'));
+          send(response, 200, projectPage(project, store.tasks.list(id, filter, priorityFilter), { filter, priorityFilter }));
         } else if (request.method === 'POST' && ['archive', 'restore'].includes(parts[3])) {
           const archived = parts[3] === 'archive';
           store.setArchived(id, archived);
@@ -78,14 +89,15 @@ export function createWorkboardServer(databasePath) {
         } else if (request.method === 'POST' && parts[3] === 'rename') {
           const form = await readForm(request);
           const filter = taskFilter(form.get('filter'));
+          const priorityFilter = taskPriorityFilter(form.get('priorityFilter'));
           const name = form.get('name') ?? '';
           const result = store.rename(id, name);
           if (result.error) {
-            send(response, result.status, projectPage(project, store.tasks.list(id, filter), filter, '', '', {
-              error: result.error, submittedName: name,
+            send(response, result.status, projectPage(project, store.tasks.list(id, filter, priorityFilter), {
+              filter, priorityFilter, renameState: { error: result.error, submittedName: name },
             }));
           } else {
-            redirect(response, `/projects/${id}?filter=${filter}`);
+            redirect(response, projectLocation(id, filter, priorityFilter));
           }
         } else if (request.method === 'POST' && parts[3] === 'tasks') {
           if (project.archived) {
@@ -94,11 +106,14 @@ export function createWorkboardServer(databasePath) {
           }
           const form = await readForm(request);
           const filter = taskFilter(form.get('filter'));
+          const priorityFilter = taskPriorityFilter(form.get('priorityFilter'));
           if (parts.length === 4) {
             const title = form.get('title') ?? '';
             const task = store.tasks.create(id, title);
             if (task.error) {
-              send(response, 400, projectPage(project, store.tasks.list(id, filter), filter, task.error, title));
+              send(response, 400, projectPage(project, store.tasks.list(id, filter, priorityFilter), {
+                filter, priorityFilter, error: task.error, submittedTitle: title,
+              }));
               return;
             }
           } else {
@@ -112,8 +127,9 @@ export function createWorkboardServer(databasePath) {
               const result = store.tasks.rename(id, taskId, title);
               if (result.error) {
                 send(response, result.status, result.status === 404 ? notFoundPage() :
-                  projectPage(project, store.tasks.list(id, filter), filter, '', '', {}, {
-                    taskId, error: result.error, submittedTitle: title,
+                  projectPage(project, store.tasks.list(id, filter, priorityFilter), {
+                    filter, priorityFilter,
+                    taskRenameState: { taskId, error: result.error, submittedTitle: title },
                   }));
                 return;
               }
@@ -132,7 +148,7 @@ export function createWorkboardServer(databasePath) {
               return;
             }
           }
-          redirect(response, `/projects/${id}?filter=${filter}`);
+          redirect(response, projectLocation(id, filter, priorityFilter));
         } else {
           send(response, 404, notFoundPage());
         }

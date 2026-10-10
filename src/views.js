@@ -54,7 +54,10 @@ export function projectsPage(projects, error = '', submittedName = '', filter = 
     </section>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', error = '', submittedTitle = '', renameState = {}, taskRenameState = {}) {
+export function projectPage(project, tasks = [], {
+  filter = 'All', priorityFilter = 'All', error = '', submittedTitle = '',
+  renameState = {}, taskRenameState = {},
+} = {}) {
   return page(project.name, `
     <form action="/" method="get"><button class="secondary" type="submit">Projects</button></form>
     <p class="eyebrow detail-label">PROJECT</p>
@@ -62,6 +65,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form class="create-form rename-form" action="/projects/${project.id}/rename" method="post">
       <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
         <input id="new-project-name" name="name" type="text" value="${escapeHtml(renameState.submittedName ?? project.name)}"${project.archived ? ' disabled' : ''}>
@@ -71,6 +75,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
     </form>
     <form class="create-form" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
       <label for="task-title">Task title</label>
       <div class="form-controls">
         <input id="task-title" name="title" type="text" value="${escapeHtml(submittedTitle)}">
@@ -83,6 +88,10 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
       <select id="task-filter" name="filter" data-submit-on-change>
         ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter" data-submit-on-change>
+        ${['All', 'Low', 'Normal', 'High'].map((option) => `<option${priorityFilter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
       <noscript><button type="submit">Apply filter</button></noscript>
     </form>
     <section aria-label="Tasks">
@@ -91,11 +100,13 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
           <span class="task-title">${escapeHtml(task.title)}</span>
           <form action="/projects/${project.id}/tasks/${task.id}/completion" method="post">
             <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priorityFilter}">
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-submit-on-change>
             <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
           </form>
           <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
             <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priorityFilter}">
             <label for="task-priority-${task.id}">Task priority</label>
             <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} data-submit-on-change>
               ${['Low', 'Normal', 'High'].map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
@@ -104,6 +115,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
           </form>
           <form class="task-rename-form" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
             <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priorityFilter}">
             <label for="new-task-title-${task.id}">New task title</label>
             <div class="form-controls">
               <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(taskRenameState.taskId === task.id ? taskRenameState.submittedTitle : task.title)}"${project.archived ? ' disabled' : ''}>

@@ -49,3 +49,10 @@ Existing and new tasks default to Normal. Changes save immediately and persist
 between restarts, independently of completion and renaming. Archived projects
 disable priority changes in the browser and on the server; restoration preserves
 the saved priorities.
+
+Project pages also offer Priority filter with All (the default), Low, Normal,
+and High options. Tasks must match both Task filter and Priority filter and
+remain in creation order. Changing either filter or editing a task preserves
+both selected filters; edits immediately update the matching rows. Filters do
+not change saved tasks or completion summaries and remain usable when archived.
+Opening a project from the project list starts with both filters set to All.

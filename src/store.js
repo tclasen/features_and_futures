@@ -74,9 +74,10 @@ export function openWorkboardStore(databasePath) {
       return { id, name: trimmedName };
     },
     tasks: {
-      list(projectId, filter = 'All') {
+      list(projectId, filter = 'All', priorityFilter = 'All') {
         return listTasks.all(projectId).filter((task) =>
-          filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+          (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+          (priorityFilter === 'All' || task.priority === priorityFilter));
       },
       create(projectId, title) {
         const project = find.get(projectId);
