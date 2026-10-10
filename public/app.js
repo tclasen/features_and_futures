@@ -1,5 +1,6 @@
 import { matchesTaskFilters } from './task-filters.js';
 import { normalizeDueRange } from './due-date.js';
+import { matchesProjectFilters } from './search.js';
 
 const app = document.querySelector('#app');
 
@@ -91,6 +92,13 @@ async function renderProject(projectId) {
       <input id="due-through" name="through" type="text" autocomplete="off">
       <button type="submit">Apply due range</button>
     </form>
+    <form id="task-search">
+      <label for="task-query">Task search</label>
+      <div class="create-controls">
+        <input id="task-query" name="query" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </div>
+    </form>
     <section id="tasks" aria-label="Tasks"></section>`;
   app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
   const project = await request(`/api/projects/${projectId}`);
@@ -158,6 +166,15 @@ async function renderProject(projectId) {
   const filter = app.querySelector('#task-filter');
   const priorityFilter = app.querySelector('#priority-filter');
   const rows = app.querySelector('#tasks');
+  let taskQuery = '';
+  const taskSearchInput = app.querySelector('#task-query');
+  app.querySelector('#task-search').addEventListener('submit', (event) => {
+    event.preventDefault();
+    taskQuery = taskSearchInput.value.trim();
+    taskSearchInput.value = taskQuery;
+    showAlert('');
+    renderTasks();
+  });
   // Draft boundary edits take effect only after a valid application.
   let dueRange = { from: '', through: '' };
   const dueFrom = app.querySelector('#due-from');
@@ -178,7 +195,7 @@ async function renderProject(projectId) {
   function renderTasks() {
     rows.replaceChildren();
     for (const task of tasks) {
-      if (!matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange)) continue;
+      if (!matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange, taskQuery)) continue;
       const row = document.createElement('div');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -243,10 +260,8 @@ async function renderProject(projectId) {
             body: JSON.stringify({ title: renameInput.value }),
           });
           task.title = saved.title;
-          title.textContent = task.title;
-          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
-          renameInput.value = '';
-          renameInput.focus();
+          renderTasks();
+          app.querySelector(`#new-task-title-${task.id}`)?.focus();
         } catch (error) {
           showAlert(error.message);
         } finally {
@@ -411,7 +426,7 @@ async function render() {
 
   app.innerHTML = `
     <h1>Workboard</h1>
-    <form>
+    <form id="create-project">
       <label for="project-name">Project name</label>
       <div class="create-controls">
         <input id="project-name" name="name" type="text" autocomplete="off">
@@ -421,18 +436,34 @@ async function render() {
     <p role="alert" hidden></p>
     <label for="project-filter">Project filter</label>
     <select id="project-filter"><option>Active</option><option>Archived</option></select>
+    <form id="project-search">
+      <label for="project-query">Project search</label>
+      <div class="create-controls">
+        <input id="project-query" name="query" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </div>
+    </form>
     <section id="projects" aria-label="Projects"></section>`;
-  const form = app.querySelector('form');
-  const input = app.querySelector('input');
+  const form = app.querySelector('#create-project');
+  const input = app.querySelector('#project-name');
   const button = form.querySelector('button');
   // Attach creation only after the initial list loads to preserve visible order.
   button.disabled = true;
   const projects = await request('/api/projects');
   const filter = app.querySelector('#project-filter');
+  let projectQuery = '';
+  const projectSearchInput = app.querySelector('#project-query');
+  app.querySelector('#project-search').addEventListener('submit', (event) => {
+    event.preventDefault();
+    projectQuery = projectSearchInput.value.trim();
+    projectSearchInput.value = projectQuery;
+    showAlert('');
+    renderProjects();
+  });
   function renderProjects() {
     app.querySelector('#projects').replaceChildren();
     for (const project of projects) {
-      if (project.archived === (filter.value === 'Archived')) addProjectRow(project, renderProjects);
+      if (matchesProjectFilters(project, filter.value, projectQuery)) addProjectRow(project, renderProjects);
     }
   }
   filter.addEventListener('change', renderProjects);

@@ -58,5 +58,13 @@ the task's identity, title, completion, priority, and due date. The source
 page stays open with its selected filters and applied due range. Both project
 summaries reflect their current tasks. Archived projects cannot send or receive
 tasks; moving controls are disabled when archived or no destinations are available.
+Project search and Task search apply substring queries using ASCII case-insensitive
+matching. Surrounding query whitespace is trimmed; internal whitespace remains
+significant. Submit Search projects or Search tasks to apply the draft query; a
+blank query clears search. Project search combines with the archive filter; task
+search combines with completion, priority, and the applied due range. Edits
+re-evaluate matching rows while retaining the applied query and other filters.
+Search remains available in archived projects and never changes saved data or
+summary counts. Opening either page starts with an empty search query.
 Run `npm test` for date-validation and HTTP integration tests, including persistence across separate
 server processes. Tests use temporary databases and clean them up afterward.
