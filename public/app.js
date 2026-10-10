@@ -167,7 +167,7 @@ async function renderProject(id) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      Object.assign(project, saved);
+      project.name = saved.name;
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
       nameInput.value = project.name;
@@ -175,6 +175,40 @@ async function renderProject(id) {
       showAlert(error.message);
     } finally {
       rename.disabled = project.archived;
+    }
+  });
+
+  const defaultLabel = element('label', 'Default task priority');
+  defaultLabel.htmlFor = 'default-task-priority';
+  const defaultPriority = element('select');
+  defaultPriority.id = defaultLabel.htmlFor;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.default_priority;
+  defaultPriority.disabled = project.archived;
+  const defaults = element('div');
+  defaults.append(defaultLabel, defaultPriority);
+  app.append(defaults);
+  defaultPriority.addEventListener('change', async () => {
+    if (project.archived) return;
+    app.querySelector('[role="alert"]')?.remove();
+    defaultPriority.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: defaultPriority.value }),
+      });
+      // Only update this setting; other project edits can save concurrently.
+      project.default_priority = saved.default_priority;
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      defaultPriority.value = project.default_priority;
+      defaultPriority.disabled = project.archived;
     }
   });
 

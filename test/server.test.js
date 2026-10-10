@@ -358,6 +358,67 @@ test('priorities are independent, validated, archived read-only, and persistent'
   }
 });
 
+test('project defaults affect only future tasks and survive rename, archive, restore, and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'projects.sqlite');
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const project = await (await request('/api/projects', 'POST', { name: 'Owner' })).json();
+    const other = await (await request('/api/projects', 'POST', { name: 'Other' })).json();
+    assert.equal(project.default_priority, 'Normal');
+    assert.equal(other.default_priority, 'Normal');
+    const path = `/api/projects/${project.id}`;
+    const tasksPath = `${path}/tasks`;
+    const tasks = [await (await request(tasksPath, 'POST', { title: 'Existing' })).json()];
+    await request(`${tasksPath}/${tasks[0].id}`, 'PATCH', { completed: true });
+    tasks[0].completed = true;
+    for (const priority of ['High', 'Low', 'Normal']) {
+      const response = await request(path, 'PATCH', { default_priority: priority });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...project, default_priority: priority, total: tasks.length, completed: 1 });
+      assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+      const task = await (await request(tasksPath, 'POST', { title: `Inherit ${priority}` })).json();
+      assert.equal(task.priority, priority);
+      tasks.push(task);
+      assert.deepEqual(await (await request(`/api/projects/${other.id}`)).json(), other);
+    }
+    for (const default_priority of ['', 'high', ' High ', null, 1, {}, ['Low']]) {
+      assert.equal((await request(path, 'PATCH', { default_priority })).status, 400);
+    }
+    assert.equal((await request(path, 'PATCH', { default_priority: 'High', name: 'Mixed' })).status, 400);
+    assert.equal((await request(path, 'PATCH', { default_priority: 'High', archived: true })).status, 400);
+    assert.equal((await request('/api/projects/99999', 'PATCH', { default_priority: 'High' })).status, 404);
+    await request(path, 'PATCH', { default_priority: 'High' });
+    await request(path, 'PATCH', { name: 'Renamed' });
+    await request(path, 'PATCH', { archived: true });
+    const expected = { ...project, name: 'Renamed', archived: true, default_priority: 'High', total: 4, completed: 1 };
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), expected);
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    assert.equal((await request(path, 'PATCH', { default_priority: 'Low' })).status, 409);
+    assert.equal((await request(tasksPath, 'POST', { title: 'Blocked' })).status, 409);
+    await request(path, 'PATCH', { archived: false });
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), { ...expected, archived: false });
+    assert.deepEqual(await (await request(tasksPath)).json(), tasks);
+    const inherited = await (await request(tasksPath, 'POST', { title: 'After restore' })).json();
+    assert.equal(inherited.priority, 'High');
+    const independent = await (await request(`/api/projects/${other.id}/tasks`, 'POST', { title: 'Independent' })).json();
+    assert.equal(independent.priority, 'Normal');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('archive and priority migrations preserve existing project IDs, tasks, and completion', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
@@ -372,7 +433,7 @@ test('archive and priority migrations preserve existing project IDs, tasks, and 
   try {
     server = await start(databasePath);
     const request = path => fetch(`${server.url}${path}`);
-    const expected = { id: 17, name: 'Existing project', archived: false, total: 1, completed: 1 };
+    const expected = { id: 17, name: 'Existing project', archived: false, default_priority: 'Normal', total: 1, completed: 1 };
     assert.deepEqual(await (await request('/api/projects')).json(), [expected]);
     assert.deepEqual(await (await request('/api/projects/17/tasks')).json(), [
       { id: 23, title: 'Existing task', completed: true, priority: 'Normal' },

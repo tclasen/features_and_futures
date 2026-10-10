@@ -27,14 +27,17 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
 }
+if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))");
+}
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const taskData = task => ({ ...task, completed: Boolean(task.completed) });
-const projectQuery = `SELECT p.id, p.name, p.archived,
+const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT count(*) FROM tasks WHERE project_id = p.id) AS total,
   (SELECT count(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
   FROM projects p`;
@@ -43,6 +46,7 @@ const findProject = database.prepare(`${projectQuery} WHERE p.id = ?`);
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const projectData = project => ({ ...project, archived: Boolean(project.archived) });
 
 function json(response, status, value) {
@@ -101,12 +105,13 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'POST' && taskId === null) {
         const input = await readJson(request);
-        if (findProject.get(projectId).archived) {
+        const currentProject = findProject.get(projectId);
+        if (currentProject.archived) {
           return json(response, 409, { error: 'Archived project is read-only' });
         }
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title);
+        const result = insertTask.run(projectId, title, currentProject.default_priority);
         return json(response, 201, taskData(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (request.method === 'PATCH' && taskId !== null) {
@@ -144,10 +149,19 @@ const server = createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const input = await readJson(request);
-        if (input && Object.hasOwn(input, 'name')) {
-          if (Object.hasOwn(input, 'archived')) {
-            return json(response, 400, { error: 'Rename and archive must be separate requests' });
+        const changes = ['name', 'archived', 'default_priority'].filter(key => input && Object.hasOwn(input, key));
+        if (changes.length > 1) {
+          return json(response, 400, { error: 'Project changes must be separate requests' });
+        }
+        if (changes[0] === 'default_priority') {
+          if (findProject.get(projectId).archived) {
+            return json(response, 409, { error: 'Archived project is read-only' });
           }
+          if (!['Low', 'Normal', 'High'].includes(input.default_priority)) {
+            return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+          }
+          updateDefaultPriority.run(input.default_priority, projectId);
+        } else if (changes[0] === 'name') {
           if (findProject.get(projectId).archived) {
             return json(response, 409, { error: 'Archived project is read-only' });
           }

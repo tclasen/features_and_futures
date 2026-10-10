@@ -45,6 +45,7 @@ async function page(archived = false, beforeSave = async () => {}) {
     { id: 4, title: 'Fourth', completed: true, priority: 'High' },
   ];
   const writes = [];
+  const project = { id: 1, name: 'Example', archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   await runInNewContext(`(async () => { ${source} })()`, {
     document: { querySelector: () => app, createElement: tag => new Node(tag) },
@@ -53,13 +54,19 @@ async function page(archived = false, beforeSave = async () => {}) {
       let data;
       if (options?.method === 'PATCH') {
         await beforeSave();
-        const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
+        const target = path.includes('/tasks/')
+          ? tasks.find(task => task.id === Number(path.split('/').at(-1)))
+          : project;
         const changes = JSON.parse(options.body);
         writes.push(changes);
-        Object.assign(task, changes);
-        data = task;
+        Object.assign(target, changes);
+        data = target;
+      } else if (options?.method === 'POST' && path.endsWith('/tasks')) {
+        data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
+          completed: false, priority: project.default_priority };
+        tasks.push(data);
       } else if (path.endsWith('/tasks')) data = tasks;
-      else data = { id: 1, name: 'Example', archived };
+      else data = project;
       return { ok: true, json: async () => structuredClone(data) };
     },
   });
@@ -73,7 +80,7 @@ async function page(archived = false, beforeSave = async () => {}) {
     // Task event handlers start asynchronous saves without returning their promise.
     await new Promise(resolve => setImmediate(resolve));
   }
-  return { app, tasks, writes, byId, rows, titles, choose };
+  return { app, project, tasks, writes, byId, rows, titles, choose };
 }
 
 test('priority and completion filters intersect in creation order and retain each selection', async () => {
@@ -167,8 +174,48 @@ test('failed completion saves restore saved state and enable editing', async () 
   assert.deepEqual(p.writes, []);
 });
 
+test('default priority saves without changing existing tasks or selected filters', async () => {
+  const p = await page();
+  const defaults = p.byId('default-task-priority');
+  assert.equal(defaults.value, 'Normal');
+  assert.deepEqual(defaults.children.map(node => node.textContent), ['Low', 'Normal', 'High']);
+  assert.ok(p.app.all().some(node => node.tag === 'label' &&
+    node.textContent === 'Default task priority' && node.htmlFor === defaults.id));
+  const originalTasks = structuredClone(p.tasks);
+  await p.choose('task-filter', 'Open');
+  await p.choose('priority-filter', 'High');
+  await p.choose('default-task-priority', 'Low');
+  assert.equal(p.project.default_priority, 'Low');
+  assert.equal(defaults.disabled, false);
+  assert.deepEqual(p.tasks, originalTasks);
+  assert.deepEqual(p.titles(), ['First']);
+  assert.equal(p.byId('task-filter').value, 'Open');
+  assert.equal(p.byId('priority-filter').value, 'High');
+  p.byId('task-title').value = 'New task';
+  await p.byId('task-title').parent.fire('submit');
+  assert.equal(p.tasks.at(-1).priority, 'Low');
+  assert.deepEqual(p.titles(), ['First']);
+  await p.choose('priority-filter', 'Low');
+  assert.deepEqual(p.titles(), ['New task']);
+});
+
+test('failed default saves restore the saved selection without affecting filters', async () => {
+  const p = await page(false, async () => { throw new Error('Save failed'); });
+  await p.choose('task-filter', 'Completed');
+  await p.choose('priority-filter', 'Low');
+  await p.choose('default-task-priority', 'High');
+  assert.equal(p.byId('default-task-priority').value, 'Normal');
+  assert.equal(p.byId('default-task-priority').disabled, false);
+  assert.equal(p.byId('task-filter').value, 'Completed');
+  assert.equal(p.byId('priority-filter').value, 'Low');
+  assert.deepEqual(p.titles(), ['Second']);
+  assert.equal(p.app.querySelector('[role="alert"]').textContent, 'Save failed');
+});
+
 test('archived projects keep both filters usable and all task edits disabled', async () => {
   const p = await page(true);
+  assert.equal(p.byId('default-task-priority').value, 'Normal');
+  assert.equal(p.byId('default-task-priority').disabled, true);
   assert.ok(!p.byId('task-filter').disabled);
   assert.ok(!p.byId('priority-filter').disabled);
   await p.choose('task-filter', 'Completed');
