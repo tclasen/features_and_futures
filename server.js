@@ -53,8 +53,18 @@ const server = http.createServer(async (req, res) => {
   const projectAction = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectAction && req.method === 'PATCH') {
     const body = await requestBody(req);
+    const projectId = Number(projectAction[1]);
+    if (typeof body?.name === 'string') {
+      const name = body.name.trim();
+      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+      db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+      return send(res, 200, JSON.stringify({ ok: true, name }));
+    }
     if (typeof body?.archived !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid archive state' }));
-    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), Number(projectAction[1]));
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), projectId);
     if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
     return send(res, 200, JSON.stringify({ ok: true }));
   }
