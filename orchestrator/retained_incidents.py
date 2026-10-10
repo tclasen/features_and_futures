@@ -119,7 +119,12 @@ def retain_for_recovery(run, manifest, records, identity, output, index, head, l
     if not index.get('checksums') or any(digest_bytes((checkpoint / name).read_bytes()) != sha
                                         for name, sha in index['checksums'].items()):
         raise ValueError('Verified archived source/history required before incident recovery')
-    evidence.update(policy=POLICY, archive_checksums=index['checksums'], submission=head,
+    native_files=('native-history.bundle','native-working-tree.tar.gz','native-git.json')
+    native_hashes={name:digest_bytes((output/name).read_bytes()) for name in native_files}
+    native=json.loads((output/'native-git.json').read_text())
+    if native['head']!=head or native['head']!=index['source_commit'] or native['tree']!=index['source_tree']:
+        raise ValueError('Native submitted commit/tree differs from preserved checkpoint')
+    evidence.update(policy=POLICY, archive_checksums=index['checksums'], native_export_sha256=native_hashes, submission=head,
                     recovery='fresh native context; original task; own current repository; original task clock retained')
     write_json(output / 'infrastructure-incident.json', evidence)
     feedback = {'task_id': identity['task_id'], 'submission': head, 'status': 'infrastructure-interrupted',
@@ -130,6 +135,6 @@ def retain_for_recovery(run, manifest, records, identity, output, index, head, l
     write_json(output / 'feedback.json', feedback)
     ledger.event('infrastructure_attempt_retained', request_ids=evidence['request_ids'],
                  unknown_native_request_ids=evidence['unknown_native_request_ids'],
-                 archive_checksums=index['checksums'], policy=POLICY, **identity)
+                 archive_checksums=index['checksums'], native_export_sha256=native_hashes, policy=POLICY, **identity)
     ledger.event('feedback_issued', feedback_kind='infrastructure', **identity)
     return '\n\nInfrastructure interruption of the previous attempt:\n' + (output / 'feedback.json').read_text()

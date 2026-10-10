@@ -34,6 +34,10 @@ def evidence(run):
             raise InfrastructureError('State changed after report')
         if stream_input_hash(run)!=report['task_stream_input_sha256']:
             raise InfrastructureError('Task stream changed after report')
+        for name,sha in report['checked_artifact_sha256'].items():
+            artifact=(run/name).resolve()
+            if not artifact.is_relative_to(run.resolve()) or not artifact.is_file() or digest_bytes(artifact.read_bytes())!=sha:
+                raise InfrastructureError('Checked original artifact changed after report: '+name)
     return manifest,report,{'report_sha256':pointer['sha256'],**report['inputs']}
 
 def descriptive(values):

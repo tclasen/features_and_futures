@@ -187,8 +187,9 @@ def main():
     complete=(state["status"]=="completed" and not problems)
     extra={}
     if partial:
-        from .partial_report import augment
+        from .partial_report import augment,artifact_hashes
         extra=augment(run,m,events,usage,tasks,builder_rows,problems,state)
+        extra['checked_artifact_sha256']=artifact_hashes(run,usage)
         extra['bound_control_code_sha256']={name:digest_bytes(Path(__file__).with_name(name+'.py').read_bytes())
             for name in ('partial_report','retained_incidents','evidence_bounds','bounded_confirmation')}
     report={"schema_version":1,"readiness_passed":complete,"state":state["status"],

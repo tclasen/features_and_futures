@@ -44,6 +44,20 @@ def validate_research_manifest(run):
             raise InfrastructureError('Confirmation changes reference pricing')
         if original['paths']['builders']==manifest['paths']['builders']:
             raise InfrastructureError('Confirmation reuses builder repositories')
+        if manifest.get('experiment_revision')=='research-v002' and manifest['purpose']=='research-confirmation':
+            from .bounded_confirmation import assigned_runs
+            from .evidence import digest_json
+            research=manifest['research']
+            candidate=source/'analysis/candidate.json'
+            if digest_bytes(candidate.read_bytes())!=research['candidate_sha256']:
+                raise InfrastructureError('Registered confirmation candidate changed')
+            registry=read_jsonl(source/'analysis/confirmation-cohorts.jsonl')
+            try:
+                selected=assigned_runs(registry,research['confirmation_batch'],research['candidate_sha256'],plan['sha256'])
+            except ValueError as error:raise InfrastructureError(str(error)) from error
+            registered=[r for r in registry if r['run_id']==manifest['run_id']]
+            if manifest['run_id'] not in selected or len(registered)!=1 or registered[0]['manifest_sha256']!=digest_json(manifest):
+                raise InfrastructureError('Register the exact confirmation manifest before native dispatch')
     return manifest
 
 def completion_ready(run):

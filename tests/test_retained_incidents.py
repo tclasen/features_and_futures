@@ -111,8 +111,13 @@ class RetainedIncidentTests(unittest.TestCase):
     def partial_fixture(self, root):
         from orchestrator.partial_report import augment
         run, records, events, identity, prices = self.fixture(root)
+        folder=run/'tasks/task-001/attempts/b001/attempt-001'
+        native_hashes={}
+        for name in ('native-history.bundle','native-working-tree.tar.gz','native-git.json'):
+            (folder/name).write_bytes(b'synthetic labelled native export fixture')
+            native_hashes[name]=digest_bytes((folder/name).read_bytes())
         events.extend([{'kind': 'submission_observed', **identity, 'archive': {'history.bundle': 'fixture-history-hash'}},
-                       {'kind': 'infrastructure_attempt_retained', **identity, 'request_ids': [records[0]['request_id']]},
+                       {'kind': 'infrastructure_attempt_retained', **identity, 'request_ids': [records[0]['request_id']], 'native_export_sha256':native_hashes},
                        {'kind': 'validation_started', **identity, 'attempt_id': 'attempt-002'},
                        {'kind': 'validation_finished', **identity, 'attempt_id': 'attempt-002', 'success': True}])
         tasks = [{'builder_id': 'b001', 'task_id': 'task-001', 'builder_execution_nanoseconds': 123,
@@ -162,6 +167,10 @@ class RetainedIncidentTests(unittest.TestCase):
             file = checkpoint / 'synthetic-archive-checksum-fixture'; file.write_bytes(b'preserved fixture source')
             index = {'checksums': {file.name: digest_bytes(file.read_bytes())}}
             output = run / 'tasks/task-001/attempts/b001/attempt-001'
+            index.update(source_commit='fixture-commit',source_tree='fixture-tree')
+            (output/'native-history.bundle').write_bytes(b'synthetic labelled native history fixture')
+            (output/'native-working-tree.tar.gz').write_bytes(b'synthetic labelled working tree fixture')
+            (output/'native-git.json').write_text(json.dumps({'head':'fixture-commit','tree':'fixture-tree'}))
             ledger = Ledger(run, {})
             file.write_bytes(b'corrupted')
             with self.assertRaises(ValueError): retain_for_recovery(run, manifest, records, identity, output, index, 'fixture-commit', ledger)

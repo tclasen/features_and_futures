@@ -2,6 +2,8 @@
 from .evidence_bounds import cost_bounds, first_assessed_submission
 from .retained_incidents import terminal_attempt_evidence
 from .audit_request_coverage import reconcile
+from .evidence import digest_bytes
+import json
 
 
 def augment(run, manifest, events, usage, tasks, builders, problems, state):
@@ -38,6 +40,10 @@ def augment(run, manifest, events, usage, tasks, builders, problems, state):
                             and all(e.get(k) == v for k, v in identity.items())]
                 if len(observed) != 1 or not observed[0].get('archive'):
                     raise ValueError('Incident source/history archive observation missing')
+                folder=run/'tasks'/identity['task_id']/'attempts'/identity['builder_id']/identity['attempt_id']
+                native_hashes=markers[0].get('native_export_sha256',{})
+                if set(native_hashes)!=set(('native-history.bundle','native-working-tree.tar.gz','native-git.json')) or any(digest_bytes((folder/name).read_bytes())!=sha for name,sha in native_hashes.items()):
+                    raise ValueError('Original native working tree/history changed or missing after recovery')
                 incident_count += 1
                 permitted_unknowns.update(evidence['unknown_native_request_ids'])
             elif markers:
@@ -84,3 +90,18 @@ def add_cost_fields(row, requests):
         row['known_' + field] = bounds['lower']
         row[field] = bounds['point_estimate']
     row['native_accounting_complete'] = bool(requests) and all(u['counts'] is not None for u in requests)
+
+
+def artifact_hashes(run, usage):
+    """Bind checked originals so later analyses cannot trust changed archives."""
+    paths=set()
+    for row in usage:
+        folder=run/'tasks'/row['task_id']/'attempts'/row['builder_id']/row['attempt_id']
+        for suffix in ('request.json','response.raw'):
+            paths.add(folder/'requests'/(row['request_id']+'.'+suffix))
+        for name in ('submission.tar','result.json','infrastructure-incident.json','working-tree.tar.gz','working-tree-checksum.json','native-history.bundle','native-working-tree.tar.gz','native-git.json'):
+            if (folder/name).exists(): paths.add(folder/name)
+    for index in (run/'builders').glob('*/checkpoints/*/index.json'):
+        paths.add(index)
+        paths.update(index.parent/name for name in json.loads(index.read_text())['checksums'])
+    return {str(path.relative_to(run)):digest_bytes(path.read_bytes()) for path in sorted(paths)}

@@ -6,12 +6,49 @@ import re
 import shutil
 from pathlib import Path
 from .prepare import ROOT, checked, git, write_json, file_hashes, InfrastructureError
-from .evidence import digest_bytes, digest_json, timestamp, read_jsonl
+from .evidence import digest_bytes, digest_json, timestamp, read_jsonl, append_json
 from .task_stream import task_stream, verify_replay
 from .preflight import price_snapshot
 from .storage import require_space
 
 PLAN=Path('experiments/instruction-effects/revisions/research-v001/analysis-plan.json')
+BUILDERS_ROOT=Path('/Users/Shared/projects/features-and-futures-builders')
+
+def research_inputs(original, revision=None, replay=False):
+    selected=original['experiment_revision'] if replay else (revision or 'research-v001')
+    if revision is not None and revision!=selected:raise InfrastructureError('Exact replay cannot change the research revision')
+    if selected not in ('research-v001','research-v002'):raise InfrastructureError('Unsupported research revision')
+    plan=Path('experiments/instruction-effects/revisions')/selected/'analysis-plan.json'
+    definition=json.loads((ROOT/plan).read_text())
+    if definition.get('revision_id')!=selected or definition.get('status')!='frozen-before-main-dispatch':
+        raise InfrastructureError('Freeze the selected research plan before preparing a run')
+    research={'analysis_plan':{'path':str(plan),'sha256':digest_bytes((ROOT/plan).read_bytes())}}
+    execution=copy.deepcopy(original['execution'])
+    if selected=='research-v002':
+        from .retained_incidents import POLICY, validate_policy
+        from .bounded_confirmation import METHOD
+        research['analysis_method']=METHOD
+        execution['provider_incident_policy']=POLICY
+        try:validate_policy({'experiment_revision':selected,'execution':execution,'research':research},definition)
+        except ValueError as error:raise InfrastructureError(str(error)) from error
+    if replay and (original['research']['analysis_plan']!=research['analysis_plan'] or original['execution']!=execution or original['research'].get('analysis_method')!=research.get('analysis_method')):
+        raise InfrastructureError('Replay changes its frozen research rules')
+    return selected,research,execution
+
+def register_confirmation(source, run, batch):
+    """Bind each prepared v002 repetition before any native dispatch."""
+    from .bounded_confirmation import assigned_runs
+    if not batch or not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*',batch):raise InfrastructureError('A named confirmation batch is required')
+    manifest=json.loads((run/'manifest.json').read_text())
+    candidate=source/'analysis/candidate.json'
+    candidate_hash=digest_bytes(candidate.read_bytes())
+    record={'kind':'confirmation_run_assigned','utc':timestamp(),'run_id':manifest['run_id'],'batch':batch,
+            'candidate_sha256':candidate_hash,'plan_sha256':manifest['research']['analysis_plan']['sha256'],
+            'manifest_sha256':digest_json(manifest)}
+    registry=source/'analysis/confirmation-cohorts.jsonl'
+    records=read_jsonl(registry) if registry.exists() else []
+    assigned_runs(records+[record],batch,candidate_hash,record['plan_sha256'])
+    append_json(registry,record)
 
 def verify_recovery_source(source):
     """Permit a fresh exact discovery replay only after a drained accounting incident."""
@@ -37,14 +74,33 @@ def verify_recovery_source(source):
     task_stream(source,manifest)
     return {'original_requests':len(usage),'unknown_native_receipts':len(gaps),'request_ids':[u['request_id'] for u in gaps]}
 
-def prepare(run_id, source_id, confirmation=False, recovery=False):
+def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None, batch=None):
     if confirmation and recovery:raise ValueError('Recovery and confirmation are distinct run purposes')
     if not re.fullmatch(r'eval-[0-9]{3}(?:-repeat-[0-9]{3})?',run_id):raise ValueError('Invalid research run ID')
     if not re.fullmatch(r'(?:pilot-[0-9]{3}|eval-[0-9]{3}(?:-repeat-[0-9]{3})?)',source_id):raise ValueError('Invalid source run ID')
     source=ROOT/'runs/instruction-effects'/source_id
     original=json.loads((source/'manifest.json').read_text())
+    if digest_json(original)!=(source/'manifest.sha256').read_text().strip():raise InfrastructureError('Source manifest changed')
+    if file_hashes(source/'definitions')!=original['provenance']['definition_hashes']:raise InfrastructureError('Source definitions changed')
+    selected,research,execution=research_inputs(original,revision,confirmation or recovery)
+    if selected=='research-v002' and confirmation:
+        if not batch:raise InfrastructureError('Prospectively register a named confirmation batch')
+        from .study import evidence
+        evidence(source)
+        candidate=json.loads((source/'analysis/candidate.json').read_text())
+        from .task_stream import stream_input_hash
+        if candidate['task_stream_input_sha256']!=stream_input_hash(source) or candidate['plan_sha256']!=research['analysis_plan']['sha256']:
+            raise InfrastructureError('Confirmation candidate no longer matches its frozen prefix and plan')
+        research['confirmation_batch']=batch
+        research['candidate_sha256']=digest_bytes((source/'analysis/candidate.json').read_bytes())
     if confirmation and original['purpose']!='research-discovery':raise InfrastructureError('Confirmation replays a frozen research discovery prefix')
     recovery_evidence=verify_recovery_source(source) if recovery else None
+    source_starter=Path(original['paths']['builders'])/'starter'
+    if (git(source_starter,'rev-parse','HEAD')!=original['provenance']['starter_commit']
+            or git(source_starter,'rev-parse','HEAD^{tree}')!=original['provenance']['starter_tree']
+            or git(source_starter,'status','--porcelain')):
+        raise InfrastructureError('Identical clean frozen starter required; never reuse developed builder source')
+    latest={}
     state=json.loads((source/'state.json').read_text())
     if not recovery and state['status'] not in (('awaiting_frozen_round','completed') if confirmation else ('completed',)):
         raise InfrastructureError('Source must have a complete shared checkpoint')
@@ -57,7 +113,8 @@ def prepare(run_id, source_id, confirmation=False, recovery=False):
             if digest_bytes((source/filename).read_bytes()) != report['inputs'][field]:
                 raise InfrastructureError('Pilot evidence changed after readiness audit')
         for package, pinned in (('@openai/codex',original['runtime']['harness_versions']['codex']),('@earendil-works/pi-coding-agent',original['runtime']['harness_versions']['pi'])):
-            if checked(['npm','view',package,'version']) != pinned:
+            latest[package]=checked(['npm','view',package,'version'])
+            if latest[package] != pinned:
                 raise InfrastructureError('Latest stable harness changed; prepare a new verified image')
     require_space(original,ROOT)
     run=ROOT/'runs/instruction-effects'/run_id
@@ -72,7 +129,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False):
         if 'suite_files' in task:
             for name in ('round.json','requirements.md'):shutil.copy2(source/'tasks'/task['task_id']/name,target/name)
             shutil.copytree(source/'tasks'/task['task_id']/'suite',target/'suite')
-    sibling=Path('/Users/Shared/projects/features-and-futures-builders')/run_id
+    sibling=BUILDERS_ROOT/run_id
     sibling.mkdir()
     seed=sibling/'starter'
     checked(['git','clone','--no-local',str(Path(original['paths']['builders'])/'starter'),str(seed)])
@@ -81,7 +138,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False):
         repo=sibling/builder['builder_id'];checked(['git','clone','--no-local',str(seed),str(repo)])
         git(repo,'remote','remove','origin');git(repo,'config','user.name','Experiment Builder');git(repo,'config','user.email','builder@experiment.invalid')
     manifest=copy.deepcopy(original)
-    manifest.update(run_id=run_id,experiment_revision='research-v001',purpose='research-confirmation' if confirmation else 'research-discovery',frozen_at=timestamp(),status='running')
+    manifest.update(run_id=run_id,experiment_revision=selected,purpose='research-confirmation' if confirmation else 'research-discovery',frozen_at=timestamp(),status='running',execution=execution)
     manifest['paths']={'builders':str(sibling),'deployments':'/Users/Shared/projects/features-and-futures-deployments/'+run_id}
     manifest['lineage']={'source_run':source_id,'variation':'Independent fresh exact discovery recovery; original accounting gap retained' if recovery else ('Independent fresh task/suite replay' if confirmation else 'Main discovery from verified hosted pilot controls; no pilot source reuse beyond identical starter')}
     manifest['provenance']['pm_commit']=git(ROOT,'rev-parse','HEAD')
@@ -90,7 +147,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False):
         manifest['pricing']=price_snapshot(run/'pricing',models={b['model'] for b in original['runtime']['builder_configurations']})
         write_json(run/'definitions/pricing-mappings.json',manifest['pricing'])
     manifest['provenance']['definition_hashes']=file_hashes(run/'definitions')
-    manifest['research']={'analysis_plan':{'path':str(PLAN),'sha256':digest_bytes((ROOT/PLAN).read_bytes())}}
+    manifest['research']=research
     if confirmation:manifest['research']['replay_source']='runs/instruction-effects/'+source_id
     if recovery:
         manifest['research']['recovery_source']='runs/instruction-effects/'+source_id
@@ -100,10 +157,16 @@ def prepare(run_id, source_id, confirmation=False, recovery=False):
     write_json(run/'manifest.json',manifest);(run/'manifest.sha256').write_text(digest_json(manifest)+'\n')
     write_json(run/'state.json',{'status':'prepared','accepted':{},'last_error':None})
     verify_replay(source,run)
+    write_json(run/'preflight/preparation/verified.json',{'utc':timestamp(),'source_run':source_id,'revision':selected,
+        'plan_sha256':research['analysis_plan']['sha256'],'manifest_sha256':digest_json(manifest),
+        'starter_commit':manifest['provenance']['starter_commit'],'starter_tree':git(seed,'rev-parse','HEAD^{tree}'),
+        'latest_stable_npm':latest or None,'runtime_selection':'Exact frozen source runtime' if confirmation or recovery else 'Latest stable registry versions match the source immutable image',
+        'replay':verify_replay(source,run),'fresh_builder_roots':str(sibling),'native_model_calls':0})
+    if selected=='research-v002' and confirmation:register_confirmation(source,run,batch)
     return run
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--run',required=True);parser.add_argument('--source-run',required=True);parser.add_argument('--confirmation',action='store_true');parser.add_argument('--recovery',action='store_true');args=parser.parse_args()
-    print(prepare(args.run,args.source_run,args.confirmation,args.recovery))
+    parser=argparse.ArgumentParser();parser.add_argument('--run',required=True);parser.add_argument('--source-run',required=True);parser.add_argument('--confirmation',action='store_true');parser.add_argument('--recovery',action='store_true');parser.add_argument('--experiment-revision',choices=('research-v001','research-v002'));parser.add_argument('--batch');args=parser.parse_args()
+    print(prepare(args.run,args.source_run,args.confirmation,args.recovery,args.experiment_revision,args.batch))
 
 if __name__=='__main__':main()
