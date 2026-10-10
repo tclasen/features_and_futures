@@ -12,8 +12,14 @@ db.exec('PRAGMA foreign_keys = ON');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Keep existing Task 001/002 databases usable when Task 003 is deployed.
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -34,7 +40,16 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 200, { status: 'ok' });
   }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount,
+      SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id`).all().map((project) => ({
+        ...project,
+        archived: Boolean(project.archived),
+        totalCount: Number(project.totalCount),
+        completedCount: Number(project.completedCount)
+      }));
     return sendJson(res, 200, projects);
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
@@ -48,15 +63,23 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), name });
   }
   if (url.pathname.startsWith('/api/projects/')) {
+    const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)\/?$/);
+    if (archiveRoute && req.method === 'POST') {
+      const archived = archiveRoute[2] === 'archive';
+      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(archived), Number(archiveRoute[1]));
+      if (!result.changes) return sendJson(res, 404, { error: 'Project not found' });
+      return sendJson(res, 200, { archived });
+    }
     const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/?$/);
     if (taskRoute) {
       const projectId = Number(taskRoute[1]);
-      const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
       if (!project) return sendJson(res, 404, { error: 'Project not found' });
       if (req.method === 'GET') {
         return sendJson(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
       }
       if (req.method === 'POST') {
+        if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
         let body = '';
         for await (const chunk of req) body += chunk;
         let title;
@@ -69,6 +92,9 @@ const server = createServer(async (req, res) => {
     }
     const completionRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/?$/);
     if (completionRoute && req.method === 'PATCH') {
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(completionRoute[1]));
+      if (!project) return sendJson(res, 404, { error: 'Project not found' });
+      if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
       let body = '';
       for await (const chunk of req) body += chunk;
       let completed;
@@ -84,9 +110,9 @@ const server = createServer(async (req, res) => {
     }
     const id = Number(url.pathname.slice('/api/projects/'.length));
     const project = Number.isInteger(id) && id > 0
-      ? db.prepare('SELECT id, name FROM projects WHERE id = ?').get(id)
+      ? db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id)
       : undefined;
-    return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
+    return project ? sendJson(res, 200, { ...project, archived: Boolean(project.archived) }) : sendJson(res, 404, { error: 'Project not found' });
   }
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
