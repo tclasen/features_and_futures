@@ -143,19 +143,39 @@ export function createApplication(databasePath) {
     return priorities.includes(value) ? value : 'All';
   }
 
-  function projectLocation(id, filter, priority) {
+  // Applied ranges travel with each form, independently of editable range fields.
+  function dueRange(parameters) {
+    const from = (parameters.get('dueFrom') ?? '').trim();
+    const through = (parameters.get('dueThrough') ?? '').trim();
+    if ((from && !isValidDueDate(from)) || (through && !isValidDueDate(through))
+      || (from && through && from > through)) return { from: '', through: '' };
+    return { from, through };
+  }
+
+  function rangeFields(range) {
+    return `<input type="hidden" name="dueFrom" value="${range.from}">
+      <input type="hidden" name="dueThrough" value="${range.through}">`;
+  }
+
+  function projectLocation(id, filter, priority, range) {
     const query = new URLSearchParams({ filter });
     if (priority !== 'All') query.set('priorityFilter', priority);
+    if (range?.from) query.set('dueFrom', range.from);
+    if (range?.through) query.set('dueThrough', range.through);
     return `/projects/${id}?${query}`;
   }
 
-  function projectPage(project, filter, error = '', priority = 'All') {
+  function projectPage(project, filter, error = '', priority = 'All', range = { from: '', through: '' }) {
     const path = `/projects/${project.id}`;
     const filterFields = `<input type="hidden" name="filter" value="${filter}">
-      <input type="hidden" name="priorityFilter" value="${priority}">`;
+      <input type="hidden" name="priorityFilter" value="${priority}">
+      ${rangeFields(range)}`;
     const rows = listTasks.all(project.id)
       .filter(task => (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
-        && (priority === 'All' || task.priority === priority))
+        && (priority === 'All' || task.priority === priority)
+        && ((!range.from && !range.through) || (task.due_date
+          && (!range.from || task.due_date >= range.from)
+          && (!range.through || task.due_date <= range.through))))
       .map(task => `<div class="task-row" data-testid="task-row">
         <form action="${path}/tasks/${task.id}" method="post">
           ${filterFields}
@@ -209,7 +229,16 @@ export function createApplication(databasePath) {
         <input id="task-title" name="title" type="text">
         <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
       </form>
+      <form class="task-controls" action="${path}/due-range" method="get">
+        ${filterFields}
+        <label for="due-from">Due from</label>
+        <input id="due-from" name="rangeFrom" type="text" value="${range.from}">
+        <label for="due-through">Due through</label>
+        <input id="due-through" name="rangeThrough" type="text" value="${range.through}">
+        <button type="submit">Apply due range</button>
+      </form>
       <form class="task-controls" action="${path}" method="get">
+        ${rangeFields(range)}
         <label for="task-filter">Task filter</label>
         <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
           ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -255,17 +284,18 @@ export function createApplication(databasePath) {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         const selectedPriority = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
         if (project.archived) {
-          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed', selectedPriority));
+          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed', selectedPriority, range));
           return;
         }
         const priority = form.get('priority');
         if (!priorities.includes(priority)) {
-          html(response, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority));
+          html(response, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority, range));
           return;
         }
         setDefaultPriority.run(priority, id);
-        response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority) });
+        response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority, range) });
         response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/rename$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
@@ -277,17 +307,18 @@ export function createApplication(databasePath) {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
         if (project.archived) {
-          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed', priority));
+          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed', priority, range));
           return;
         }
         const name = (form.get('name') ?? '').trim();
         if (!name) {
-          html(response, 422, projectPage(project, filter, 'Project name is required', priority));
+          html(response, 422, projectPage(project, filter, 'Project name is required', priority, range));
           return;
         }
         renameProject.run(name, id);
-        response.writeHead(303, { Location: projectLocation(id, filter, priority) });
+        response.writeHead(303, { Location: projectLocation(id, filter, priority, range) });
         response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/(archive|restore)$/.test(pathname)) {
         const [, , projectId, action] = pathname.split('/');
@@ -300,6 +331,29 @@ export function createApplication(databasePath) {
         setArchived.run(action === 'archive' ? 1 : 0, id);
         response.writeHead(303, { Location: action === 'archive' ? '/' : '/?filter=Archived' });
         response.end();
+      } else if (request.method === 'GET' && /^\/projects\/\d+\/due-range$/.test(pathname)) {
+        const id = Number(pathname.split('/')[2]);
+        const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
+        if (!project) {
+          html(response, 404, page('Not found', '<h1>Project not found</h1>'));
+          return;
+        }
+        const filter = taskFilter(searchParams.get('filter'));
+        const priority = priorityFilter(searchParams.get('priorityFilter'));
+        const from = (searchParams.get('rangeFrom') ?? '').trim();
+        const through = (searchParams.get('rangeThrough') ?? '').trim();
+        let error = '';
+        if ((from && !isValidDueDate(from)) || (through && !isValidDueDate(through))) {
+          error = 'Due range must use valid YYYY-MM-DD dates';
+        } else if (from && through && from > through) {
+          error = 'Due from must not be after Due through';
+        }
+        if (error) {
+          html(response, 422, projectPage(project, filter, error, priority, dueRange(searchParams)));
+          return;
+        }
+        response.writeHead(303, { Location: projectLocation(id, filter, priority, { from, through }) });
+        response.end();
       } else if (request.method === 'GET' && /^\/projects\/\d+$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
         const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
@@ -307,7 +361,7 @@ export function createApplication(databasePath) {
           html(response, 404, page('Not found', '<h1>Project not found</h1><form action="/"><button>Projects</button></form>'));
           return;
         }
-        html(response, 200, projectPage(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter'))));
+        html(response, 200, projectPage(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter')), dueRange(searchParams)));
       } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date))?)?$/.test(pathname)) {
         const [, , projectId, , taskId, action] = pathname.split('/');
         const id = Number(projectId);
@@ -319,14 +373,15 @@ export function createApplication(databasePath) {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         const selectedPriority = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
         if (project.archived) {
-          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed', selectedPriority));
+          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed', selectedPriority, range));
           return;
         }
         if (taskId === undefined) {
           const title = (form.get('title') ?? '').trim();
           if (!title) {
-            html(response, 422, projectPage(project, filter, 'Task title is required', selectedPriority));
+            html(response, 422, projectPage(project, filter, 'Task title is required', selectedPriority, range));
             return;
           }
           insertTask.run(id, title, project.default_priority);
@@ -334,17 +389,17 @@ export function createApplication(databasePath) {
           const taskNumber = Number(taskId);
           const title = (form.get('title') ?? '').trim();
           if (action === 'rename' && !title) {
-            html(response, 422, projectPage(project, filter, 'Task title is required', selectedPriority));
+            html(response, 422, projectPage(project, filter, 'Task title is required', selectedPriority, range));
             return;
           }
           const priority = form.get('priority');
           if (action === 'priority' && !priorities.includes(priority)) {
-            html(response, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority));
+            html(response, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority, range));
             return;
           }
           const dueDate = (form.get('dueDate') ?? '').trim();
           if (action === 'due-date' && dueDate && !isValidDueDate(dueDate)) {
-            html(response, 422, projectPage(project, filter, 'Due date must be a valid YYYY-MM-DD date', selectedPriority));
+            html(response, 422, projectPage(project, filter, 'Due date must be a valid YYYY-MM-DD date', selectedPriority, range));
             return;
           }
           let result;
@@ -364,7 +419,7 @@ export function createApplication(databasePath) {
             return;
           }
         }
-        response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority) });
+        response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority, range) });
         response.end();
       } else {
         html(response, 404, page('Not found', '<h1>Page not found</h1>'));
