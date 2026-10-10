@@ -228,6 +228,57 @@ test('projects and tasks: validation, rename, archive, summaries, isolation, mig
     base = await start();
     assert.equal(await (await fetch(base + paths[0])).text(), restoredRenamedDetail);
     assert.equal(await (await fetch(base)).text(), restoredRenamedList);
+    const renameTask = async (path, title, filter = 'All') => fetch(`${base}${path}/rename`, {
+      method: 'POST', body: new URLSearchParams({ title, filter }), redirect: 'manual',
+    });
+    assert.equal((restoredRenamedDetail.match(/>New task title<\/label>/g) || []).length, 3);
+    assert.equal((restoredRenamedDetail.match(/>Rename task<\/button>/g) || []).length, 3);
+    for (const title of ['', '  \t ']) {
+      const invalid = await renameTask(taskPaths[1], title, 'Completed');
+      assert.equal(invalid.status, 200);
+      const body = await invalid.text();
+      assert.match(body, /role="alert">Task title is required/);
+      assert.match(body, /aria-label="Complete Second &lt;task&gt; &amp; &quot;title&quot;" checked/);
+      assert.equal((body.match(/data-testid="task-row"/g) || []).length, 1);
+      assert.equal(await (await fetch(base + paths[0])).text(), restoredRenamedDetail);
+    }
+    const renamedTask = await renameTask(taskPaths[1], '  Renamed <task> & "title"  ', 'Completed');
+    assert.equal(renamedTask.status, 303);
+    assert.equal(renamedTask.headers.get('location'), `${paths[0]}?filter=Completed`);
+    const renamedTasksDetail = await (await fetch(base + paths[0])).text();
+    const expectedTaskRename = restoredRenamedDetail.replaceAll('Second &lt;task&gt;', 'Renamed &lt;task&gt;');
+    assert.equal(renamedTasksDetail, expectedTaskRename);
+    assert.match(renamedTasksDetail, /aria-label="Complete Renamed &lt;task&gt; &amp; &quot;title&quot;" checked/);
+    assert.equal(await (await fetch(base)).text(), restoredRenamedList);
+    const renamedCompleted = await (await fetch(`${base}${paths[0]}?filter=Completed`)).text();
+    assert.equal((renamedCompleted.match(/data-testid="task-row"/g) || []).length, 1);
+    assert.match(renamedCompleted, /<span>Renamed &lt;task&gt; &amp; &quot;title&quot;<\/span>/);
+    const renamedOpen = await (await fetch(`${base}${paths[0]}?filter=Open`)).text();
+    assert.equal((renamedOpen.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.doesNotMatch(renamedOpen, /<span>Renamed &lt;task&gt;/);
+    assert.equal((await renameTask(wrongProjectPath, 'Wrong owner')).status, 404);
+    assert.equal((await renameTask(`${paths[0]}/tasks/999999`, 'Missing')).status, 404);
+    assert.doesNotMatch(await (await fetch(base + paths[1])).text(), /data-testid="task-row"/);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedTasksDetail);
+    assert.equal(await (await fetch(base)).text(), restoredRenamedList);
+    await fetch(`${base}${paths[0]}/archive`, { method: 'POST' });
+    const archivedTasksDetail = await (await fetch(base + paths[0])).text();
+    assert.equal((archivedTasksDetail.match(/id="new-task-title-\d+" name="title" type="text" disabled/g) || []).length, 3);
+    assert.equal((archivedTasksDetail.match(/<button type="submit" disabled>Rename task/g) || []).length, 3);
+    assert.equal((await renameTask(taskPaths[1], 'Blocked title')).status, 403);
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedTasksDetail);
+    await fetch(`${base}${paths[0]}/restore`, { method: 'POST' });
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedTasksDetail);
+    assert.equal((await renameTask(taskPaths[0], '  Restored task  ', 'Open')).status, 303);
+    const restoredTasksDetail = await (await fetch(base + paths[0])).text();
+    assert.equal(restoredTasksDetail, renamedTasksDetail.replaceAll('First task', 'Restored task'));
+    assert.match(restoredTasksDetail, /aria-label="Complete Restored task" onchange=/);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), restoredTasksDetail);
+    assert.equal(await (await fetch(base)).text(), restoredRenamedList);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

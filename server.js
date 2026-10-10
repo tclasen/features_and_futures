@@ -31,6 +31,8 @@ const projectFilter = value => value === 'Archived' ? 'Archived' : 'Active';
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const taskFilter = value => ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({
@@ -62,8 +64,11 @@ function page(content) {
     .project form { flex-shrink: 0; }
     .navigation { margin-bottom: 24px; }
     select { font: inherit; padding: 8px 12px; margin-bottom: 16px; }
-    .task { display: flex; gap: 12px; align-items: center; padding: 16px 0; border-top: 1px solid #dce2eb; }
-    .task input { width: 20px; height: 20px; margin: 0; cursor: pointer; }
+    .task { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 16px 0; border-top: 1px solid #dce2eb; }
+    .task-completion { display: flex; gap: 12px; align-items: center; flex: 1; }
+    .task input[type="checkbox"] { width: 20px; height: 20px; margin: 0; cursor: pointer; flex-shrink: 0; }
+    .task-rename { display: grid; gap: 8px; }
+    .task-rename button { justify-self: start; }
     .task span { overflow-wrap: anywhere; min-width: 0; }
     [role="alert"] { color: #a32323; margin: 0 0 16px; }
     @media (max-width: 600px) { main { margin: 20px 12px; padding: 20px; } .project { flex-wrap: wrap; } }
@@ -121,11 +126,18 @@ function projectPage(project, filter = 'All', error = '') {
       </select>
     </form>
     <section aria-label="Tasks">${tasks.map(task => `
-      <form class="task" data-testid="task-row" action="/projects/${project.id}/tasks/${task.id}" method="post">
+      <div class="task" data-testid="task-row">
+      <form class="task-completion" action="/projects/${project.id}/tasks/${task.id}" method="post">
         <input type="hidden" name="filter" value="${filter}">
         <input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         <span>${escape(task.title)}</span>
-      </form>`).join('')}</section>`);
+      </form>
+      <form class="task-rename" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+        <input type="hidden" name="filter" value="${filter}">
+        <div><label for="new-task-title-${task.id}">New task title</label><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}></div>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+      </form>
+      </div>`).join('')}</section>`);
 }
 
 async function readForm(request) {
@@ -202,8 +214,8 @@ const server = http.createServer(async (request, response) => {
       }
       setArchived.run(action === 'archive' ? 1 : 0, id);
       redirect(response, action === 'archive' ? '/' : '/?filter=Archived');
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*)?$/.test(pathname)) {
-      const [, , projectId, , taskId] = pathname.split('/');
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*(?:\/rename)?)?$/.test(pathname)) {
+      const [, , projectId, , taskId, action] = pathname.split('/');
       const id = Number(projectId);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (!project) {
@@ -222,9 +234,19 @@ const server = http.createServer(async (request, response) => {
       }
       if (taskId) {
         const task = Number(taskId);
-        if (!Number.isSafeInteger(task) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, task, id).changes) {
+        if (!Number.isSafeInteger(task) || !findTask.get(task, id)) {
           html(response, 404, page('<h1>Task not found</h1>'));
           return;
+        }
+        if (action === 'rename') {
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            html(response, 200, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          renameTask.run(title, task, id);
+        } else {
+          updateTask.run(form.get('completed') === '1' ? 1 : 0, task, id);
         }
       } else {
         const title = (form.get('title') || '').trim();
