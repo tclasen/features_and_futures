@@ -40,6 +40,10 @@ const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = 
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const getDestination = db.prepare('SELECT id, archived FROM projects WHERE id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
+const destinationOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?');
 
 function isValidDueDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -122,6 +126,15 @@ const server = http.createServer(async (req, res) => {
       const payload = JSON.parse(raw);
       const owner = getProject.get(taskMatch[1]);
       if (!owner) return json(res, 404, { error: 'Project not found' });
+      if (Object.hasOwn(payload, 'destinationProjectId')) {
+        if (owner.archived) return json(res, 403, { error: 'Archived project' });
+        const destinationId = payload.destinationProjectId;
+        const destination = typeof destinationId === 'string' ? getDestination.get(destinationId) : null;
+        if (!destination || destination.archived || destination.id === taskMatch[1]) return json(res, 400, { error: 'Invalid destination project' });
+        if (!getTask.get(taskMatch[2], taskMatch[1])) return json(res, 404, { error: 'Task not found' });
+        moveTask.run(destinationId, destinationOrder.get(destinationId).nextOrder, taskMatch[2], taskMatch[1]);
+        return json(res, 200, { projectId: destinationId });
+      }
       if (owner.archived) return json(res, 403, { error: 'Archived project' });
       if (Object.hasOwn(payload, 'dueDate')) {
         if (payload.dueDate !== null && typeof payload.dueDate !== 'string') return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
