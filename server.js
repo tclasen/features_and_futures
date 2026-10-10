@@ -16,8 +16,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// The duplicate-column error is ignored for databases created by earlier versions.
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+  SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -45,10 +50,12 @@ async function render() {
     if (response.ok) {
       const project = await response.json();
       app.append(heading(project.name), button('Projects', () => go('/')));
+      if (project.archived) { const notice=document.createElement('p'); notice.textContent='Archived project'; app.append(notice); }
       const form = document.createElement('form');
       const input = document.createElement('input'); input.type='text'; input.setAttribute('aria-label','Task title');
       const submit = document.createElement('button'); submit.type='submit'; submit.textContent='Create task';
       const alert = document.createElement('div'); alert.setAttribute('role','alert'); alert.hidden=true;
+      if (project.archived) submit.disabled=true;
       form.append(input, submit); app.append(form, alert);
       const filterLabel = document.createElement('label'); filterLabel.textContent='Task filter';
       const filter = document.createElement('select'); filter.setAttribute('aria-label','Task filter');
@@ -69,7 +76,7 @@ async function render() {
           if (filter.value==='Open' && task.completed || filter.value==='Completed' && !task.completed) continue;
           const row=document.createElement('div'); row.dataset.testid='task-row'; row.className='project-row';
           const title=document.createElement('span'); title.textContent=task.title;
-          const checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=Boolean(task.completed); checkbox.setAttribute('aria-label','Complete '+task.title);
+          const checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=Boolean(task.completed); checkbox.disabled=Boolean(project.archived); checkbox.setAttribute('aria-label','Complete '+task.title);
           checkbox.addEventListener('change', async () => { await fetch('/api/projects/'+project.id+'/tasks/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:checkbox.checked})}); await loadTasks(); });
           row.append(title, checkbox); app.append(row);
         }
@@ -79,6 +86,9 @@ async function render() {
     go('/'); return;
   }
   app.append(heading('Workboard'));
+  const filter=document.createElement('select'); filter.setAttribute('aria-label','Project filter');
+  for (const value of ['Active','Archived']) { const option=document.createElement('option'); option.value=value; option.textContent=value; filter.append(option); }
+  app.append(filter);
   const form = document.createElement('form');
   const input = document.createElement('input'); input.type='text'; input.setAttribute('aria-label','Project name');
   const submit = document.createElement('button'); submit.type='submit'; submit.textContent='Create project';
@@ -90,14 +100,19 @@ async function render() {
     const response=await fetch('/api/projects',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
     if (response.ok) { input.value=''; await loadRows(); }
   });
+  filter.addEventListener('change', loadRows);
   await loadRows();
   async function loadRows() {
-    const projects=await (await fetch('/api/projects')).json();
+    const projects=await (await fetch('/api/projects?filter='+filter.value)).json();
     app.querySelectorAll('[data-testid="project-row"]').forEach(row=>row.remove());
     for (const project of projects) {
       const row=document.createElement('div'); row.dataset.testid='project-row'; row.className='project-row';
       const name=document.createElement('span'); name.textContent=project.name;
-      row.append(name, button('Open project',()=>go('/projects/'+project.id))); app.append(row);
+      const summary=document.createElement('span'); summary.dataset.testid='project-summary'; summary.textContent=(project.completedCount||0)+'/'+project.totalCount+' completed';
+      row.append(name, summary, button('Open project',()=>go('/projects/'+project.id)));
+      row.append(button(project.archived ? 'Restore project' : 'Archive project', async () => {
+        await fetch('/api/projects/'+project.id+'/archive',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({archived:!project.archived})}); await loadRows();
+      })); app.append(row);
     }
   }
 }
@@ -112,13 +127,23 @@ function send(response, status, body, type = 'application/json; charset=utf-8') 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/health') return send(response, 200, { status: 'ok' });
-  if (request.method === 'GET' && url.pathname === '/api/projects') return send(response, 200, listProjects.all());
+  if (request.method === 'GET' && url.pathname === '/api/projects') return send(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (request.method === 'PATCH' && archiveMatch) {
+    try {
+      let raw=''; for await (const chunk of request) raw+=chunk;
+      const data=JSON.parse(raw); if (typeof data.archived !== 'boolean') return send(response,400,{error:'Invalid archive state'});
+      const id=Number(archiveMatch[1]); if (!getProject.get(id)) return send(response,404,{error:'Not found'});
+      updateProject.run(data.archived ? 1 : 0,id); return send(response,200,{ok:true});
+    } catch { return send(response,400,{error:'Invalid request'}); }
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
     if (!getProject.get(projectId)) return send(response, 404, { error: 'Not found' });
     if (request.method === 'GET' && !tasksMatch[2]) return send(response, 200, listTasks.all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (request.method === 'POST' && !tasksMatch[2]) {
+      if (getProject.get(projectId).archived) return send(response, 403, { error: 'Archived project' });
       try {
         let raw = ''; for await (const chunk of request) raw += chunk;
         const data = JSON.parse(raw); const title = typeof data.title === 'string' ? data.title.trim() : '';
@@ -128,6 +153,7 @@ const server = createServer(async (request, response) => {
       } catch { return send(response, 400, { error: 'Invalid request' }); }
     }
     if (request.method === 'PATCH' && tasksMatch[2]) {
+      if (getProject.get(projectId).archived) return send(response, 403, { error: 'Archived project' });
       try {
         let raw = ''; for await (const chunk of request) raw += chunk;
         const data = JSON.parse(raw);
