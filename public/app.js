@@ -343,6 +343,7 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
   const taskList = document.createElement('div');
   taskList.className = 'task-list';
   app.append(taskList);
+  const activeDestinations = projects.filter((item) => !item.archived && String(item.id) !== id);
   let tasks;
   try {
     tasks = await getTasks(id);
@@ -479,7 +480,38 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
           renderProjectWithAlert(id, message, filter.value, priorityFilter.value, dueRange);
         }
       });
-      row.append(title, checkboxLabel, renameForm, priorityField, dueDateForm);
+      const moveForm = document.createElement('form');
+      moveForm.className = 'task-move-form';
+      const destination = document.createElement('select');
+      destination.setAttribute('aria-label', 'Destination project');
+      for (const candidate of activeDestinations) {
+        const option = document.createElement('option');
+        option.value = candidate.id;
+        option.textContent = candidate.name;
+        destination.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      destination.disabled = project.archived || activeDestinations.length === 0;
+      moveButton.disabled = project.archived || activeDestinations.length === 0;
+      moveForm.append(destination, moveButton);
+      moveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!destination.value) return;
+        moveButton.disabled = true;
+        const response = await fetch(`/api/projects/${id}/tasks/${task.id}/move`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+        });
+        if (response.ok) {
+          renderProject(id, filter.value, priorityFilter.value, dueRange);
+        } else {
+          moveButton.disabled = false;
+          renderProjectWithAlert(id, 'Unable to move task', filter.value, priorityFilter.value, dueRange);
+        }
+      });
+      row.append(title, checkboxLabel, renameForm, priorityField, dueDateForm, moveForm);
       taskList.append(row);
     }
   };

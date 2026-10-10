@@ -31,7 +31,8 @@ db.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-    due_date TEXT
+    due_date TEXT,
+    position INTEGER NOT NULL DEFAULT 0
   )
 `);
 // Add priority to task databases created by earlier checkpoints.
@@ -41,6 +42,11 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 }
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+  // Preserve the established creation order for databases from earlier tasks.
+  db.exec('UPDATE tasks SET position = id');
 }
 
 function parseDueDate(value) {
@@ -144,14 +150,14 @@ const server = createServer(async (request, response) => {
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
   }
-  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+)(\/move)?)?$/);
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
     const taskId = taskRoute[2] ? Number(taskRoute[2]) : null;
     const project = db.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (!taskId && request.method === 'GET') {
-      const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+      const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId)
         .map((task) => ({ ...task, id: Number(task.id), completed: Boolean(task.completed) }));
       return sendJson(response, 200, tasks);
     }
@@ -160,8 +166,30 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+      const result = db.prepare(`
+        INSERT INTO tasks (project_id, title, priority, position)
+        VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0))
+      `).run(projectId, title, project.default_task_priority, projectId);
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
+    }
+    if (taskId && taskRoute[3] === '/move' && request.method === 'POST') {
+      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+      const body = await readJson(request);
+      const destinationId = Number(body?.destination_project_id);
+      const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
+      if (!destination || destination.archived || destinationId === projectId) {
+        return sendJson(response, 400, { error: 'Invalid destination project' });
+      }
+      const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+      if (!task) return sendJson(response, 404, { error: 'Task not found' });
+      db.prepare(`
+        UPDATE tasks
+        SET project_id = ?,
+            position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0)
+        WHERE id = ? AND project_id = ?
+      `)
+        .run(destinationId, destinationId, taskId, projectId);
+      return sendJson(response, 200, { id: taskId, project_id: destinationId });
     }
     if (taskId && request.method === 'PATCH') {
       if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
