@@ -59,6 +59,16 @@ const server = http.createServer(async (req, res) => {
     const changed = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
     return changed.changes ? send(res, 200, { ok: true }) : send(res, 404, { error: 'Project not found' });
   }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (renameMatch && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return send(res, 400, { error: 'Project name is required' });
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(renameMatch[1]));
+      return result.changes ? send(res, 200, { ok: true, name }) : send(res, 404, { error: 'Project not found or archived' });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
   const taskListMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskListMatch && req.method === 'GET') {
     return send(res, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC').all(Number(taskListMatch[1])).map(t => ({ ...t, completed: !!t.completed })));

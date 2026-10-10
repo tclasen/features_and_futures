@@ -29,6 +29,45 @@ async function render() {
     back.addEventListener('click', () => navigate('/'));
     app.append(back);
 
+    const renameForm = element('form', undefined, 'create-form');
+    const renameLabel = element('label', 'New project name');
+    renameLabel.htmlFor = 'new-project-name';
+    const renameInput = element('input');
+    renameInput.id = 'new-project-name';
+    renameInput.type = 'text';
+    renameInput.autocomplete = 'off';
+    renameInput.value = project.name;
+    renameInput.disabled = project.archived;
+    const renameButton = element('button', 'Rename project');
+    renameButton.type = 'submit';
+    renameButton.disabled = project.archived;
+    renameForm.append(renameLabel, renameInput, renameButton);
+    const renameAlert = element('p', '', 'alert');
+    renameAlert.setAttribute('role', 'alert');
+    renameAlert.hidden = true;
+    app.append(renameForm, renameAlert);
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) {
+        renameAlert.textContent = 'Project name is required';
+        renameAlert.hidden = false;
+        renameInput.focus();
+        return;
+      }
+      const response = await fetch(`/api/projects/${match[1]}/rename`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+      });
+      if (!response.ok) {
+        renameAlert.textContent = 'Project name is required';
+        renameAlert.hidden = false;
+        return;
+      }
+      renameAlert.hidden = true;
+      renameInput.value = name;
+      app.querySelector('h1').textContent = name;
+    });
+
     const form = element('form', undefined, 'create-form');
     const label = element('label', 'Task title');
     label.htmlFor = 'task-title';
