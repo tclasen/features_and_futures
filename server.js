@@ -99,6 +99,14 @@ const server = createServer(async (request, response) => {
         }
         const taskId = Number(taskRoute[2]);
         const body = await readJson(request);
+        if (typeof body.title === 'string') {
+          const title = body.title.trim();
+          if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+          const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          const task = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?').get(taskId);
+          return sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
+        }
         if (typeof body.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
         const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(body.completed ? 1 : 0, taskId, projectId);
         if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
