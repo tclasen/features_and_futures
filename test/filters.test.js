@@ -54,7 +54,7 @@ async function page(archived = false) {
     }
   }
   const writes = [];
-  const project = { id: 1, name: 'Project', archived: Number(archived) };
+  const project = { id: 1, name: 'Project', archived: Number(archived), default_priority: 'Normal' };
   const location = { pathname: '/projects/1' };
   const context = vm.createContext({
     document: { querySelector: (selector) => elements.get(selector), createElement: (tag) => new Element(tag) },
@@ -66,11 +66,21 @@ async function page(archived = false) {
       if (options) {
         assert.equal(project.archived, 0, 'archived projects must not edit tasks');
         const patch = JSON.parse(options.body);
-        const task = savedTasks.find((item) => path.endsWith(`/tasks/${item.id}`));
-        assert.ok(task);
-        writes.push(patch);
-        Object.assign(task, patch);
-        data = task;
+        if (path === '/api/projects/1') {
+          writes.push(patch);
+          Object.assign(project, patch);
+          data = project;
+        } else if (options.method === 'POST') {
+          data = { id: savedTasks.length + 1, title: patch.title, priority: project.default_priority, completed: false };
+          savedTasks.push(data);
+          writes.push(patch);
+        } else {
+          const task = savedTasks.find((item) => path.endsWith(`/tasks/${item.id}`));
+          assert.ok(task);
+          writes.push(patch);
+          Object.assign(task, patch);
+          data = task;
+        }
       } else if (path.endsWith('/tasks')) data = savedTasks;
       else if (path === '/api/projects') {
         data = [{ ...project, total: savedTasks.length, completed: savedTasks.filter((task) => task.completed).length }];
@@ -167,4 +177,52 @@ test('archived projects retain usable combined filters while editing stays disab
     assert.equal(row.children[2].querySelector('input').disabled, false);
     assert.equal(row.children[2].querySelector('button').disabled, false);
   }
+});
+
+test('project defaults save without resetting filters or editing existing rows', async () => {
+  const ui = await page();
+  const control = ui.get('default-task-priority');
+  assert.deepEqual(control.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(control.value, 'Normal');
+  assert.equal(control.disabled, false);
+  await ui.select('task-filter', 'Open');
+  await ui.select('priority-filter', 'High');
+  const original = structuredClone(ui.savedTasks);
+  const originalRow = ui.rows()[0];
+  await ui.select('default-task-priority', 'High');
+  assert.equal(ui.project.default_priority, 'High');
+  assert.deepEqual(ui.savedTasks, original);
+  assert.equal(ui.rows()[0], originalRow);
+  assert.equal(ui.get('task-filter').value, 'Open');
+  assert.equal(ui.get('priority-filter').value, 'High');
+  ui.get('task-title').value = '  Inherited high  ';
+  await ui.get('task-form').dispatch('submit');
+  assert.deepEqual(ui.titles(), ['High open', 'Inherited high']);
+  assert.equal(ui.savedTasks.at(-1).priority, 'High');
+  await ui.select('default-task-priority', 'Low');
+  ui.get('task-title').value = 'Inherited low';
+  await ui.get('task-form').dispatch('submit');
+  assert.deepEqual(ui.titles(), ['High open', 'Inherited high']);
+  assert.equal(ui.savedTasks.at(-1).priority, 'Low');
+  assert.equal(ui.savedTasks.at(-2).priority, 'High');
+  assert.equal(ui.get('task-filter').value, 'Open');
+  assert.equal(ui.get('priority-filter').value, 'High');
+  ui.get('new-project-name').value = 'Renamed project';
+  await ui.get('rename-form').dispatch('submit');
+  assert.equal(control.value, 'Low');
+  ui.project.archived = 1;
+  await vm.runInContext('render()', ui.context);
+  assert.equal(control.value, 'Low');
+  assert.equal(control.disabled, true);
+  await ui.select('task-filter', 'Completed');
+  await ui.select('priority-filter', 'Normal');
+  assert.deepEqual(ui.titles(), ['Normal done']);
+  ui.project.archived = 0;
+  await vm.runInContext('render()', ui.context);
+  assert.equal(control.disabled, false);
+  assert.equal(control.value, 'Low');
+  assert.deepEqual(ui.savedTasks.slice(0, original.length), original);
+  ui.location.pathname = '/';
+  await vm.runInContext('render()', ui.context);
+  assert.equal(ui.get('project-list').children[0].children[0].children[1].textContent, '3/8 completed');
 });

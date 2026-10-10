@@ -10,6 +10,7 @@ const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const taskList = document.querySelector('#task-list');
 const detailError = document.querySelector('#detail-error');
 const renameForm = document.querySelector('#rename-form');
@@ -17,6 +18,7 @@ const renameInput = document.querySelector('#new-project-name');
 const renameButton = renameForm.querySelector('button');
 let activeProjectId = null;
 let archivedProject = false;
+let savedDefaultPriority = 'Normal';
 let tasks = [];
 let renderVersion = 0;
 
@@ -46,6 +48,7 @@ async function render() {
   document.title = 'Workboard';
   activeProjectId = null;
   archivedProject = false;
+  defaultTaskPriority.disabled = true;
   archivedNotice.hidden = true;
   renameForm.hidden = true;
   renameInput.disabled = true;
@@ -72,6 +75,9 @@ async function render() {
       const savedTasks = await request(`/api/projects/${project.id}/tasks`);
       if (version !== renderVersion) return;
       activeProjectId = project.id;
+      savedDefaultPriority = project.default_priority;
+      defaultTaskPriority.value = savedDefaultPriority;
+      defaultTaskPriority.disabled = archivedProject;
       renameInput.value = project.name;
       renameInput.disabled = archivedProject;
       renameButton.disabled = archivedProject;
@@ -260,6 +266,29 @@ function renderTasks() {
 
 taskFilter.addEventListener('change', renderTasks);
 priorityFilter.addEventListener('change', renderTasks);
+defaultTaskPriority.addEventListener('change', async () => {
+  if (archivedProject || activeProjectId === null) return;
+  const projectId = activeProjectId;
+  const version = renderVersion;
+  defaultTaskPriority.disabled = true;
+  showError(detailError, '');
+  try {
+    const project = await request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_priority: defaultTaskPriority.value }),
+    });
+    if (version !== renderVersion) return;
+    savedDefaultPriority = project.default_priority;
+    defaultTaskPriority.value = savedDefaultPriority;
+  } catch (err) {
+    if (version !== renderVersion) return;
+    defaultTaskPriority.value = savedDefaultPriority;
+    showError(detailError, err.message);
+  } finally {
+    if (version === renderVersion) defaultTaskPriority.disabled = archivedProject || activeProjectId === null;
+  }
+});
 projectFilter.addEventListener('change', render);
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();

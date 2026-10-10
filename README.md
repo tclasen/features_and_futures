@@ -16,9 +16,11 @@ Active project pages provide New project name and Rename project controls. Renam
 
 Each task row provides New task title and Rename task controls. Renaming trims whitespace and preserves the task's project, position, completion and summary counts. Blank titles show an alert. Archived projects disable these controls until restored. Task titles persist across reloads and restarts.
 
-Each task row has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Each priority persists independently across reloads and restarts, including task renames and project archive/restoration. Archived projects disable priority edits.
+Each task row has a Task priority selector with Low, Normal, and High options. Existing tasks default to Normal. Each priority persists independently across reloads and restarts, including task renames and project archive/restoration. Archived projects disable priority edits.
 
 Project pages also provide a Priority filter with All, Low, Normal, and High options. It combines with Task filter to show matching tasks in creation order. Both filters start at All when opening a project, keep their selections during task edits, and remain usable when archived. Editing priority or completion immediately updates the matching rows; summaries always count all tasks.
+
+Each project has a Default task priority selector, initially Normal. Saving Low, Normal, or High applies only to tasks created afterward in that project. Existing tasks and both task filters are unchanged. Defaults persist across reloads, restarts, renaming, archival, and restoration; archived projects display the saved default with the selector disabled.
 
 Health check:
 
