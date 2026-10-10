@@ -40,6 +40,10 @@ so new tasks follow all established positions. Remembered order persists across 
 Moves preserve
 the task's identity, completion, priority and due date, as well as the source page's
 filters. Move controls are disabled while archived or when no destination is available.
+Project search and Task search apply trimmed, ASCII-case-insensitive substring
+queries. Internal whitespace remains significant. Search intersects the other filters
+and stays applied through filter changes and edits. Searches remain usable while
+archived; opening from the list or returning via Projects resets the relevant query.
 Project rows show completed/total task counts. Existing
 SQLite databases are migrated automatically to preserve projects and tasks.
 
@@ -60,4 +64,6 @@ migration, filter preservation and archived controls, inclusive due ranges,
 range validation, combined membership and preservation through edits, and persistence
 across restarts. Move tests also check migrated ordering, destination options, append
 order, reverse-order returns, reserved positions, current field preservation, repeated
-moves, source filter preservation and archive restrictions.
+moves, source filter preservation and archive restrictions. Search tests cover ASCII
+matching, significant whitespace, filter intersections, form-state retention, edit and
+move re-evaluation, archive behavior, reset navigation, and unchanged persistent data.
