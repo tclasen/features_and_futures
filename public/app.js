@@ -1,3 +1,5 @@
+import { matchesTaskFilters } from './task-filters.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -166,6 +168,13 @@ async function showProject(id) {
       <option>Open</option>
       <option>Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option>All</option>
+      <option>Low</option>
+      <option>Normal</option>
+      <option>High</option>
+    </select>
     <ul class="tasks"></ul>
   `;
   if (project.archived) {
@@ -177,15 +186,15 @@ async function showProject(id) {
   const form = section.querySelector('form');
   const input = section.querySelector('input');
   const submit = form.querySelector('button');
-  const filter = section.querySelector('select');
+  const filter = section.querySelector('#task-filter');
+  const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('ul');
   const endpoint = `/api/projects/${id}/tasks`;
   let tasks = [];
   const pendingUpdates = new Set();
 
   function renderTasks() {
-    const visible = tasks.filter((task) => filter.value === 'All'
-      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    const visible = tasks.filter((task) => matchesTaskFilters(task, filter.value, priorityFilter.value));
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -257,6 +266,7 @@ async function showProject(id) {
   }
 
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (project.archived) return;

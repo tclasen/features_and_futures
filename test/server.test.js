@@ -82,6 +82,10 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
       assert.equal(page.status, 200);
       assert.match(await page.text(), /<title>Workboard<\/title>/);
     }
+    const filtersModule = await fetch(`${base}/task-filters.js`);
+    assert.equal(filtersModule.status, 200);
+    assert.match(filtersModule.headers.get('content-type'), /javascript/);
+    assert.match(await filtersModule.text(), /export function matchesTaskFilters/);
     assert.equal((await fetch(`${base}/api/projects/999999`)).status, 404);
     assert.equal((await fetch(`${base}/api/projects`, { method: 'POST', body: '{' })).status, 400);
     const tasksUrl = `${base}/api/projects/${first.id}/tasks`;
