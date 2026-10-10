@@ -11,8 +11,12 @@ if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
+// Keep existing Task 001/002 databases usable when the archive feature is added.
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(column => column.name);
+if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -41,7 +45,10 @@ const server = createServer(async (req, res) => {
     return send(res, 200, JSON.stringify({ status: 'ok' }));
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return send(res, 200, JSON.stringify(db.prepare('SELECT id, name FROM projects ORDER BY id').all()));
+    return send(res, 200, JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id`).all()));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     const input = await readJson(req);
@@ -52,9 +59,18 @@ const server = createServer(async (req, res) => {
   }
   const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectRoute) {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectRoute[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectRoute[1]));
     return project
       ? send(res, 200, JSON.stringify(project))
+      : send(res, 404, JSON.stringify({ error: 'Project not found' }));
+  }
+  const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (req.method === 'POST' && archiveRoute) {
+    const [, rawId, action] = archiveRoute;
+    const id = Number(rawId);
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(action === 'archive' ? 1 : 0, id);
+    return result.changes
+      ? send(res, 200, JSON.stringify({ id, archived: action === 'archive' ? 1 : 0 }))
       : send(res, 404, JSON.stringify({ error: 'Project not found' }));
   }
   const tasksRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
