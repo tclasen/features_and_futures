@@ -125,7 +125,8 @@ async function renderProject(id) {
   const back = element('button', 'back-button', 'Projects');
   back.type = 'button';
   back.addEventListener('click', () => navigate('/'));
-  content.append(back, element('h1', '', project.name));
+  const heading = element('h1', '', project.name);
+  content.append(back, heading);
   if (project.archived) content.append(element('p', 'archived-notice', 'Archived project'));
 
   const renameForm = element('form', 'create-form');
@@ -211,12 +212,33 @@ async function renderProject(id) {
     priorityFilter.append(option);
   }
   priorityFilterField.append(priorityFilterLabel, priorityFilter);
+  const dueRangeField = element('div', 'due-range-field');
+  const dueFromLabel = element('label', '', 'Due from');
+  dueFromLabel.htmlFor = 'due-from';
+  const dueFrom = element('input');
+  dueFrom.id = 'due-from';
+  dueFrom.type = 'text';
+  dueFrom.autocomplete = 'off';
+  const dueThroughLabel = element('label', '', 'Due through');
+  dueThroughLabel.htmlFor = 'due-through';
+  const dueThrough = element('input');
+  dueThrough.id = 'due-through';
+  dueThrough.type = 'text';
+  dueThrough.autocomplete = 'off';
+  const applyDueRange = element('button', '', 'Apply due range');
+  applyDueRange.type = 'button';
+  dueRangeField.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
+  let appliedDueFrom = '';
+  let appliedDueThrough = '';
   const list = element('div', 'task-list');
   function drawTasks() {
     list.replaceChildren();
     const shown = tasks.filter(task =>
       (filter.value === 'all' || (filter.value === 'completed') === task.completed) &&
-      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value));
+      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
+      ((!appliedDueFrom && !appliedDueThrough) || (Boolean(task.dueDate) &&
+        (!appliedDueFrom || task.dueDate >= appliedDueFrom) &&
+        (!appliedDueThrough || task.dueDate <= appliedDueThrough))));
     if (!shown.length) list.append(element('p', 'empty', tasks.length ? 'No tasks match this filter.' : 'No tasks yet.'));
     for (const task of shown) {
       const row = element('div', 'task-row');
@@ -320,7 +342,7 @@ async function renderProject(id) {
             body: JSON.stringify({ dueDate }),
           });
           task.dueDate = updated.dueDate;
-          dueDateInput.value = updated.dueDate || '';
+          drawTasks();
         } catch (error) {
           alert.textContent = error.message;
           alert.hidden = false;
@@ -332,8 +354,26 @@ async function renderProject(id) {
   }
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
+  applyDueRange.addEventListener('click', () => {
+    alert.hidden = true;
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if ((from && !isValidCalendarDate(from)) || (through && !isValidCalendarDate(through))) {
+      alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+      alert.hidden = false;
+      return;
+    }
+    if (from && through && from > through) {
+      alert.textContent = 'Due from must not be after Due through';
+      alert.hidden = false;
+      return;
+    }
+    appliedDueFrom = from;
+    appliedDueThrough = through;
+    drawTasks();
+  });
   drawTasks();
-  content.append(renameForm, defaultPriorityField, form, alert, filterField, priorityFilterField, list);
+  content.append(renameForm, defaultPriorityField, form, alert, filterField, priorityFilterField, dueRangeField, list);
   renameForm.addEventListener('submit', async event => {
     event.preventDefault();
     alert.hidden = true;
@@ -345,11 +385,12 @@ async function renderProject(id) {
       return;
     }
     try {
-      await request(`/api/projects/${id}`, {
+      const updated = await request(`/api/projects/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      renderProject(id);
+      project.name = updated.name;
+      heading.textContent = updated.name;
     } catch (error) {
       alert.textContent = error.message;
       alert.hidden = false;
@@ -378,6 +419,18 @@ async function renderProject(id) {
       alert.hidden = false;
     }
   });
+}
+
+function isValidCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
 }
 
 function navigate(path) {
