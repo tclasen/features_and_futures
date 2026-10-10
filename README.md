@@ -22,4 +22,6 @@ Verify:
 npm test
 ```
 
-The integration tests start the actual server with temporary databases, check project and task validation, ordering, navigation, completion, filtering, project isolation, archive/restore, read-only archived tasks, completion summaries, project and task renaming, independent task priorities, and combined priority/completion filtering with selections retained during edits. They also verify migration from the earlier schema and restart the process to check persistence. Temporary files are removed after the tests.
+Each project has a saved default task priority. New tasks inherit that default; changing it leaves existing tasks unchanged. Archived projects display the default but cannot edit it.
+
+The integration tests start the actual server with temporary databases, check project and task validation, ordering, navigation, completion, filtering, project isolation, archive/restore, read-only archived tasks, completion summaries, project and task renaming, independent task priorities, combined priority/completion filtering with selections retained during edits, and project defaults for new tasks. They also verify migration from the earlier schema and restart the process to check persistence. Temporary files are removed after the tests.
