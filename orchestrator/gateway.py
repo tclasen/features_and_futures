@@ -14,7 +14,11 @@ from .evidence import append_json, canonical, digest_bytes, native_counts, price
 
 
 class InferenceGateway:
-    def __init__(self, ledger, prices, port=0, local_endpoint="http://127.0.0.1:11434", native_usage_path=None):
+    def __init__(self, ledger, prices, port=0, local_endpoint="http://127.0.0.1:11434", native_usage_path=None,
+                 observation_lifecycle="legacy-drain-30s-v1"):
+        if observation_lifecycle not in ("legacy-drain-30s-v1", "drain-upstream-and-partial-response-v1"):
+            raise ValueError("Unsupported inference observation lifecycle")
+        self.retain_pending = observation_lifecycle == "drain-upstream-and-partial-response-v1"
         self.ledger = ledger
         self.prices = prices
         self.local_endpoint = local_endpoint
@@ -91,6 +95,7 @@ class InferenceGateway:
 
         # sbx's host proxy can reach a loopback listener via host.docker.internal.
         self.server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        self.server.daemon_threads = not self.retain_pending
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
@@ -118,7 +123,13 @@ class InferenceGateway:
                 raise RuntimeError('Inference observations have not settled.')
 
     def revoke(self):
-        self.wait_idle()
+        # A native harness can time out while its upstream stream is still live.
+        # Keep observing that stream through its own transport timeout; a short
+        # PM drain deadline must not discard its terminal accounting.
+        if self.retain_pending:
+            self.wait_idle(timeout=None)
+        else:
+            self.wait_idle()
         with self.lock:
             self.active = None
 
@@ -160,6 +171,8 @@ class InferenceGateway:
         status = None
         sent_headers = False
         raw = bytearray()
+        partial_file = raw_dir / f"{request_id}.response.partial"
+        partial = partial_file.open("wb") if self.retain_pending else None
         try:
             request = urllib.request.Request(url, original, headers, method="POST")
             with urllib.request.urlopen(request, timeout=1800) as upstream:
@@ -178,6 +191,9 @@ class InferenceGateway:
                         if not line:
                             break
                         raw.extend(line)
+                        if partial is not None:
+                            partial.write(line)
+                            partial.flush()
                         try:
                             handler.wfile.write(line)
                             handler.wfile.flush()
@@ -225,8 +241,12 @@ class InferenceGateway:
             if not sent_headers:
                 handler.send_error(502, "Inference gateway transport failed.")
         finally:
+            if partial is not None:
+                partial.close()
             response_file = raw_dir / f"{request_id}.response.raw"
             response_file.write_bytes(raw)
+            if partial is not None:
+                partial_file.unlink()
             native_observations = []
             parser_error = None
             usage_source = "compatible-api-terminal-counters"

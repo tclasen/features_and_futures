@@ -390,7 +390,9 @@ def main(allowed_purposes=None, completion_check=None):
     identity={k:manifest[k] for k in ("experiment_id","experiment_revision","project_id","project_revision","run_id")}
     identity["manifest_sha256"]=manifest_hash
     ledger=Ledger(run,identity)
-    provider_args = {"local_endpoint": None}
+    provider_args = {"local_endpoint": None,
+                     "observation_lifecycle": manifest["execution"].get(
+                         "inference_observation_lifecycle", "legacy-drain-30s-v1")}
     if "local_provider" in manifest["runtime"]:
         from .local_provider import provenance
         provider=provenance()
@@ -398,7 +400,7 @@ def main(allowed_purposes=None, completion_check=None):
         for key in ("binary_sha256","runner_binary_sha256","instrumentation_sha256","model","settings"):
             if provider[key]!=frozen_provider[key]:
                 raise InfrastructureError(f"Local provider provenance changed: {key}")
-        provider_args = {"local_endpoint": provider["endpoint"], "native_usage_path": provider["native_usage_file"]}
+        provider_args.update(local_endpoint=provider["endpoint"], native_usage_path=provider["native_usage_file"])
     state_lock=threading.RLock()
     stop_event=threading.Event()
     state["status"]="running"; state["last_error"]=None

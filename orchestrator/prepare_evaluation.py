@@ -26,10 +26,12 @@ def research_inputs(original, revision=None, replay=False):
     research={'analysis_plan':{'path':str(plan),'sha256':digest_bytes((ROOT/plan).read_bytes())}}
     execution=copy.deepcopy(original['execution'])
     if selected in BOUNDED_REVISIONS:
-        from .retained_incidents import POLICY, validate_policy
+        from .retained_incidents import POLICY, OBSERVATION_LIFECYCLE, validate_policy
         from .bounded_confirmation import METHOD
         research['analysis_method']=METHOD
         execution['provider_incident_policy']=POLICY
+        if selected == 'research-v007':
+            execution['inference_observation_lifecycle']=OBSERVATION_LIFECYCLE
         try:validate_policy({'experiment_revision':selected,'execution':execution,'research':research},definition)
         except ValueError as error:raise InfrastructureError(str(error)) from error
     if replay and (original['research']['analysis_plan']!=research['analysis_plan'] or original['execution']!=execution or original['research'].get('analysis_method')!=research.get('analysis_method')):

@@ -1,6 +1,7 @@
 import io
 import json
 import tempfile
+import threading
 import unittest
 import urllib.error
 import urllib.request
@@ -26,7 +27,7 @@ class GatewayTests(unittest.TestCase):
                 "pricing": {"prompt": "0.000002", "completion": "0.00001"},
                 "reference_id": "fixture/reference", "snapshot_sha256": "fixture-snapshot",
             }
-        })
+        }, observation_lifecycle='drain-upstream-and-partial-response-v1')
         self.addCleanup(self.gateway.close)
         self.key = self.gateway.lease("fixture-model", "builder", "task", "attempt", "ollama")
         self.original_urlopen = urllib.request.urlopen
@@ -43,6 +44,16 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.gateway.lease("fixture-model","builder","task","attempt","ollama")
         self.assertIsInstance(self.gateway.lease("fixture-model","builder","task","attempt","subscription"),str)
+
+    def test_legacy_lifecycle_keeps_frozen_drain_behavior(self):
+        legacy = InferenceGateway(self.ledger, {}, local_endpoint=None)
+        try:
+            self.assertTrue(legacy.server.daemon_threads)
+            with patch.object(legacy, 'wait_idle') as wait_idle:
+                legacy.revoke()
+                wait_idle.assert_called_once_with()
+        finally:
+            legacy.close()
 
     def test_incorrect_and_revoked_leases_cannot_infer(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
@@ -83,6 +94,72 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual("response-one", rows[0]["response_id"])
         self.assertEqual("fixture-snapshot", rows[0]["pricing_snapshot_sha256"])
         self.assertIsNotNone(rows[0]["cost"])
+
+    def test_disconnected_client_retains_partial_stream_and_drains_terminal_usage(self):
+        blocked = threading.Event()
+        release = threading.Event()
+        first = b'data: {"type":"response.created"}\n'
+        terminal = b'data: {"type":"response.completed","response":{"id":"late","usage":{"input_tokens":17,"output_tokens":9}}}\n'
+
+        class DelayedStream(Upstream):
+            def __init__(self):
+                super().__init__(first + terminal)
+                self.lines = 0
+
+            def readline(self, *args):
+                self.lines += 1
+                if self.lines == 2:
+                    blocked.set()
+                    if not release.wait(5):
+                        raise TimeoutError('Synthetic upstream was not released')
+                return super().readline(*args)
+
+        def upstream(request, **kwargs):
+            if request.full_url.startswith('http://127.0.0.1:11434'):
+                return DelayedStream()
+            return self.original_urlopen(request, **kwargs)
+
+        errors = []
+        def revoke():
+            try:
+                self.gateway.revoke()
+            except BaseException as error:
+                errors.append(error)
+
+        with patch('orchestrator.gateway.urllib.request.urlopen', side_effect=upstream), \
+                patch.object(self.gateway, 'wait_idle', wraps=self.gateway.wait_idle) as wait_idle:
+            thread = None
+            try:
+                client = self.call({'model': 'fixture-model', 'stream': True})
+                self.assertTrue(blocked.wait(2))
+                client.close()
+                partial = list(self.ledger.root.glob('tasks/**/requests/*.response.partial'))
+                self.assertEqual(1, len(partial))
+                self.assertEqual(first, partial[0].read_bytes())
+                self.assertEqual([], read_jsonl(self.ledger.root / 'usage.jsonl'))
+                thread = threading.Thread(target=revoke)
+                thread.start()
+                thread.join(.1)
+                self.assertTrue(thread.is_alive())
+                wait_idle.assert_called_once_with(timeout=None)
+                self.assertFalse(self.gateway.server.daemon_threads)
+            finally:
+                release.set()
+                if thread:
+                    thread.join(3)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([], errors)
+        rows = read_jsonl(self.ledger.root / 'usage.jsonl')
+        self.assertEqual(1, len(rows))
+        self.assertEqual(17, rows[0]['counts']['input_tokens'])
+        self.assertEqual(9, rows[0]['counts']['output_tokens'])
+        finished = [e for e in read_jsonl(self.ledger.root / 'events.jsonl')
+                    if e['kind'] == 'inference_request_finished']
+        self.assertEqual(1, len(finished))
+        response = list(self.ledger.root.glob('tasks/**/requests/*.response.raw'))
+        self.assertEqual(first + terminal, response[0].read_bytes())
+        self.assertEqual([], list(self.ledger.root.glob('tasks/**/requests/*.response.partial')))
+        self.assertIsNone(self.gateway.active)
 
     def test_failed_tool_parse_retains_native_consumption(self):
         sidecar=Path(self.temp.name)/"native.jsonl"

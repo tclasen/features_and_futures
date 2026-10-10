@@ -27,6 +27,7 @@ class RetainedIncidentTests(unittest.TestCase):
         auth.write_text(json.dumps({'openai-codex': {'access': 'synthetic-fixture-only', 'accountId': 'fixture'}}))
         run = root / 'run'
         gateway = object.__new__(InferenceGateway)
+        gateway.retain_pending = False
         gateway.ledger = Ledger(run, {'experiment_id': 'fixture', 'experiment_revision': 'research-v002',
                                      'project_id': 'workboard', 'project_revision': 'fixture', 'run_id': 'fixture'})
         prices = {'gpt-6-luna': {'pricing': {'prompt': '0.01', 'completion': '0.02', 'input_cache_read': '0.005'},
