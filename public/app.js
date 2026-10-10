@@ -84,12 +84,38 @@ async function renderProject(id) {
     const archived = Boolean(project.archived);
     if (archived) app.append(element('p', 'Archived project'));
 
+    const alert = element('p', undefined, { role: 'alert', hidden: '' });
+    const renameForm = element('form');
+    const renameLabel = element('label', 'New project name', { for: 'new-project-name' });
+    const renameInput = element('input', undefined, {
+      id: 'new-project-name', name: 'name', type: 'text', 'aria-label': 'New project name',
+    });
+    const renameButton = element('button', 'Rename project', { type: 'submit' });
+    renameInput.disabled = archived;
+    renameButton.disabled = archived;
+    renameForm.append(renameLabel, renameInput, renameButton);
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      alert.hidden = true;
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: renameInput.value }),
+        });
+        app.querySelector('h1').textContent = updated.name;
+        renameInput.value = '';
+      } catch (error) {
+        alert.textContent = error.message;
+        alert.hidden = false;
+      }
+    });
+
     const form = element('form');
     const label = element('label', 'Task title', { for: 'task-title' });
     const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text', 'aria-label': 'Task title' });
     const submit = element('button', 'Create task', { type: 'submit' });
     submit.disabled = archived;
-    const alert = element('p', undefined, { role: 'alert', hidden: '' });
     form.append(label, input, submit);
 
     const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
@@ -150,7 +176,7 @@ async function renderProject(id) {
       }
     });
     renderTasks();
-    app.append(form, alert, filterLabel, filter, list);
+    app.append(renameForm, alert, form, filterLabel, filter, list);
   } catch {
     app.append(element('h1', 'Project not found'));
     const back = element('button', 'Projects', { type: 'button' });

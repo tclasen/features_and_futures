@@ -38,6 +38,7 @@ const listProjects = database.prepare(`
 `);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
@@ -103,10 +104,26 @@ const server = createServer(async (request, response) => {
   }
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
-  if (projectMatch && request.method === 'GET') {
-    const project = getProject.get(decodeURIComponent(projectMatch[1]));
+  if (projectMatch && ['GET', 'PATCH'].includes(request.method)) {
+    const projectId = decodeURIComponent(projectMatch[1]);
+    const project = getProject.get(projectId);
     if (!project) {
       sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    if (request.method === 'PATCH') {
+      const body = await readJson(request);
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      if (!name) {
+        sendJson(response, 400, { error: 'Project name is required' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+        return;
+      }
+      renameProject.run(name, projectId);
+      sendJson(response, 200, { ...project, name });
       return;
     }
     sendJson(response, 200, project);
