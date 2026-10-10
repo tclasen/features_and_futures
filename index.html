@@ -78,6 +78,7 @@
         <form id="task-form"><label for="task-title">Task title</label><input id="task-title" type="text" aria-label="Task title"><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
         <div id="task-message" role="alert" hidden></div>
         <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+        <label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
         <section id="task-list" aria-label="Tasks"></section>`;
       app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
       if (project) {
@@ -99,7 +100,8 @@
         const refresh = async () => {
           const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(response => response.json());
           const filter = app.querySelector('#task-filter').value;
-          list.innerHTML = tasks.filter(task => filter === 'All' || (filter === 'Completed') === Boolean(task.completed)).map(task => `<div class="task-row" data-testid="task-row"><span class="task-title">${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><input type="text" aria-label="New task title" data-rename-input="${task.id}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select></div>`).join('');
+          const priorityFilter = app.querySelector('#priority-filter').value;
+          list.innerHTML = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === Boolean(task.completed)) && (priorityFilter === 'All' || task.priority === priorityFilter)).map(task => `<div class="task-row" data-testid="task-row"><span class="task-title">${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><input type="text" aria-label="New task title" data-rename-input="${task.id}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select></div>`).join('');
           list.querySelectorAll('[data-rename]').forEach(button => button.addEventListener('click', async () => {
             const input = list.querySelector(`[data-rename-input="${button.dataset.rename}"]`);
             const message = app.querySelector('#task-message');
@@ -112,6 +114,7 @@
           }));
           list.querySelectorAll('[data-priority]').forEach(select => select.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${select.dataset.priority}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: select.value }) });
+            await refresh();
           }));
           list.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${box.dataset.task}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
@@ -119,6 +122,7 @@
           }));
         };
         app.querySelector('#task-filter').addEventListener('change', refresh);
+        app.querySelector('#priority-filter').addEventListener('change', refresh);
         app.querySelector('#task-form').addEventListener('submit', async event => {
           event.preventDefault();
           const input = app.querySelector('#task-title'), message = app.querySelector('#task-message'), title = input.value.trim();
