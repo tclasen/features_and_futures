@@ -19,6 +19,10 @@ function projectIdFromPath() {
   return match ? match[1] : null;
 }
 
+function searchKey(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
 async function renderList() {
   content.replaceChildren();
   content.append(element('h1', '', 'Workboard'));
@@ -34,6 +38,18 @@ async function renderList() {
     filter.append(option);
   }
   filterField.append(filterLabel, filter);
+
+  const searchForm = element('form', 'search-form');
+  const searchLabel = element('label', '', 'Project search');
+  searchLabel.htmlFor = 'project-search';
+  const searchInput = element('input');
+  searchInput.id = 'project-search';
+  searchInput.type = 'text';
+  searchInput.autocomplete = 'off';
+  const searchButton = element('button', '', 'Search projects');
+  searchButton.type = 'submit';
+  searchForm.append(searchLabel, searchInput, searchButton);
+  let appliedSearch = '';
 
   const form = element('form', 'create-form');
   const field = element('div', 'field');
@@ -58,7 +74,8 @@ async function renderList() {
   const list = element('div', 'project-list');
   function drawProjects() {
     list.replaceChildren();
-    const shown = projects.filter(project => project.archived === (filter.value === 'archived'));
+    const query = searchKey(appliedSearch);
+    const shown = projects.filter(project => project.archived === (filter.value === 'archived') && searchKey(project.name).includes(query));
     if (!shown.length) {
       list.append(element('p', 'empty', projects.length ? 'No projects in this filter.' : 'No projects yet. Create one to get started.'));
       return;
@@ -92,7 +109,13 @@ async function renderList() {
   }
   filter.addEventListener('change', drawProjects);
   drawProjects();
-  content.append(filterField, title, list);
+  content.append(searchForm, filterField, title, list);
+
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedSearch = searchInput.value.trim();
+    drawProjects();
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -232,12 +255,24 @@ async function renderProject(id) {
   dueRangeField.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
   let appliedDueFrom = '';
   let appliedDueThrough = '';
+  const taskSearchForm = element('form', 'search-form');
+  const taskSearchLabel = element('label', '', 'Task search');
+  taskSearchLabel.htmlFor = 'task-search';
+  const taskSearchInput = element('input');
+  taskSearchInput.id = 'task-search';
+  taskSearchInput.type = 'text';
+  taskSearchInput.autocomplete = 'off';
+  const taskSearchButton = element('button', '', 'Search tasks');
+  taskSearchButton.type = 'submit';
+  taskSearchForm.append(taskSearchLabel, taskSearchInput, taskSearchButton);
+  let appliedTaskSearch = '';
   const list = element('div', 'task-list');
   function drawTasks() {
     list.replaceChildren();
     const shown = tasks.filter(task =>
       (filter.value === 'all' || (filter.value === 'completed') === task.completed) &&
       (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
+      searchKey(task.title).includes(searchKey(appliedTaskSearch)) &&
       ((!appliedDueFrom && !appliedDueThrough) || (Boolean(task.dueDate) &&
         (!appliedDueFrom || task.dueDate >= appliedDueFrom) &&
         (!appliedDueThrough || task.dueDate <= appliedDueThrough))));
@@ -403,8 +438,13 @@ async function renderProject(id) {
     appliedDueThrough = through;
     drawTasks();
   });
+  taskSearchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedTaskSearch = taskSearchInput.value.trim();
+    drawTasks();
+  });
   drawTasks();
-  content.append(renameForm, defaultPriorityField, form, alert, filterField, priorityFilterField, dueRangeField, list);
+  content.append(renameForm, defaultPriorityField, form, alert, taskSearchForm, filterField, priorityFilterField, dueRangeField, list);
   renameForm.addEventListener('submit', async event => {
     event.preventDefault();
     alert.hidden = true;
