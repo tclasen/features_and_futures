@@ -25,9 +25,18 @@ async function readForm(request) {
   return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
+function taskFilter(value) {
+  return ['all', 'open', 'completed'].includes(value) ? value : 'all';
+}
+
+function redirect(response, location) {
+  response.writeHead(303, { Location: location });
+  response.end();
+}
+
 const server = createServer(async (request, response) => {
   try {
-    const { pathname } = new URL(request.url, 'http://localhost');
+    const { pathname, searchParams } = new URL(request.url, 'http://localhost');
     if (request.method === 'GET' && pathname === '/health') {
       return send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     }
@@ -41,14 +50,35 @@ const server = createServer(async (request, response) => {
         return send(response, 422, projectsPage(store.list(), 'Project name is required'));
       }
       store.create(name);
-      response.writeHead(303, { Location: '/' });
-      return response.end();
+      return redirect(response, '/');
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)$/.exec(pathname);
-    if (request.method === 'GET' && projectRoute) {
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(pathname);
+    if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
-      if (project) return send(response, 200, projectPage(project));
+      if (!project) return send(response, 404, notFoundPage());
+      const projectPath = `/projects/${id}`;
+      if (request.method === 'GET' && pathname === projectPath) {
+        const filter = taskFilter(searchParams.get('filter'));
+        return send(response, 200, projectPage(project, store.listTasks(id, filter), filter));
+      }
+      if (request.method === 'POST' && pathname !== projectPath) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        if (projectRoute[2]) {
+          const taskId = Number(projectRoute[2]);
+          if (!Number.isSafeInteger(taskId) || !store.setTaskCompleted(id, taskId, form.has('completed'))) {
+            return send(response, 404, notFoundPage());
+          }
+        } else {
+          const title = (form.get('title') ?? '').trim();
+          if (!title) {
+            return send(response, 422, projectPage(project, store.listTasks(id, filter), filter, 'Task title is required'));
+          }
+          store.createTask(id, title);
+        }
+        return redirect(response, `${projectPath}?filter=${filter}`);
+      }
     }
     send(response, 404, notFoundPage());
   } catch (error) {

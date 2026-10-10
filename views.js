@@ -26,6 +26,11 @@ function page(title, content) {
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid #dde3eb; padding: 16px 0; }
     .project-row span { overflow-wrap: anywhere; min-width: 0; }
     .project-row form { flex-shrink: 0; }
+    select { padding: 10px; font: inherit; }
+    .task-filter { margin-top: 28px; }
+    .task-row { border-top: 1px solid #dde3eb; padding: 16px 0; }
+    .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
+    .task-row input { width: 20px; height: 20px; flex-shrink: 0; }
     [role="alert"] { color: #9c2020; }
     @media (max-width: 760px) { main { margin: 24px 12px; padding: 20px; } }
   </style>
@@ -54,10 +59,36 @@ export function projectsPage(projects, error = '') {
     </section>`);
 }
 
-export function projectPage(project) {
+export function projectPage(project, tasks = [], filter = 'all', error = '') {
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
-    <form method="get" action="/"><button type="submit">Projects</button></form>`);
+    <form method="get" action="/"><button type="submit">Projects</button></form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create" method="post" action="/projects/${project.id}/tasks">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <input id="task-title" name="title" type="text">
+      <button type="submit">Create task</button>
+    </form>
+    <form class="task-filter" method="get" action="/projects/${project.id}">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
+          `<option value="${value}"${filter === value ? ' selected' : ''}>${label}</option>`).join('')}
+      </select>
+    </form>
+    <section aria-label="Tasks">
+      ${tasks.map((task) => `
+        <div class="task-row" data-testid="task-row">
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
+            <input type="hidden" name="filter" value="${filter}">
+            <label>
+              <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+              <span>${escapeHtml(task.title)}</span>
+            </label>
+          </form>
+        </div>`).join('')}
+    </section>`);
 }
 
 export function notFoundPage() {
