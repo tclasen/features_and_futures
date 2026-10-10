@@ -131,13 +131,21 @@ async function renderProject(id) {
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value: value.toLowerCase() }));
     filterLabel.append(filter);
     app.append(filterLabel);
+    const priorityFilterLabel = element('label', 'Priority filter', { for: 'priority-filter' });
+    const priorityFilter = element('select', undefined, { id: 'priority-filter', name: 'priority-filter' });
+    for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value: value.toLowerCase() }));
+    priorityFilterLabel.append(priorityFilter);
+    app.append(priorityFilterLabel);
     const list = element('section', undefined, { 'aria-label': 'Tasks' });
     app.append(list);
 
     let tasks = [];
     const renderTasks = () => {
       list.replaceChildren();
-      const visible = tasks.filter(task => filter.value === 'all' || (filter.value === 'completed' ? task.completed : !task.completed));
+      const visible = tasks.filter(task =>
+        (filter.value === 'all' || (filter.value === 'completed' ? task.completed : !task.completed)) &&
+        (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value)
+      );
       for (const task of visible) {
         const row = element('article', undefined, { 'data-testid': 'task-row', class: 'task-row' });
         row.append(element('span', task.title));
@@ -216,6 +224,7 @@ async function renderProject(id) {
       }
     };
     filter.addEventListener('change', renderTasks);
+    priorityFilter.addEventListener('change', renderTasks);
     const tasksResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
     if (!tasksResponse.ok) throw new Error('Could not load tasks');
     tasks = await tasksResponse.json();
