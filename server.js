@@ -20,11 +20,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0
+  completed INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const setTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
@@ -95,6 +98,9 @@ const server = createServer(async (req, res) => {
       const title = update.title.trim();
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       setTaskTitle.run(title, id);
+    } else if (typeof update.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(update.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      setTaskPriority.run(update.priority, id);
     } else {
       if (typeof update.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
       setTaskCompleted.run(update.completed ? 1 : 0, id);
