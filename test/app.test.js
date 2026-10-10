@@ -318,3 +318,74 @@ test('task renames validate titles, update checkbox names, and preserve order an
   assert.equal(reloaded.get('#tasks').children[0].children[1].textContent, 'Renamed <task>');
   assert.equal(reloaded.get('#tasks').children[0].children[0].checked, true);
 });
+
+test('task priorities show saved values, preserve filters and renames, and disable archived edits', async () => {
+  let archived = false;
+  let savedTasks = [
+    { id: 1, title: 'Done', completed: true, priority: 'Normal' },
+    { id: 2, title: 'Open', completed: false, priority: 'Low' },
+  ];
+  let rejectWrite = false;
+  const writes = [];
+  const fetch = async (path, options) => {
+    if (!options) {
+      const data = path.endsWith('/tasks') ? savedTasks : { id: 7, name: 'Project', archived: Number(archived) };
+      return { ok: true, json: async () => JSON.parse(JSON.stringify(data)) };
+    }
+    const body = JSON.parse(options.body);
+    writes.push({ path, body });
+    if (rejectWrite) return { ok: false, json: async () => ({ error: 'Unable to save priority' }) };
+    const id = Number(path.split('/').at(-1));
+    const saved = { ...savedTasks.find((task) => task.id === id), ...body };
+    savedTasks = savedTasks.map((task) => task.id === id ? saved : task);
+    return { ok: true, json: async () => saved };
+  };
+  const elements = pageElements();
+  await loadPage(elements, '/projects/7', fetch);
+  const rows = () => elements.get('#tasks').children;
+  const priority = (row) => row.children[3].children[1];
+  for (const row of rows()) {
+    assert.equal(row.children[3].children[0].textContent, 'Task priority');
+    assert.equal(row.children[3].children[0].htmlFor, priority(row).id);
+    assert.deepEqual(priority(row).children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+    assert.equal(priority(row).disabled, false);
+  }
+  assert.equal(priority(rows()[0]).value, 'Normal');
+  assert.equal(priority(rows()[1]).value, 'Low');
+  elements.get('#task-filter').value = 'Completed';
+  await elements.get('#task-filter').fire('change');
+  priority(rows()[0]).value = 'High';
+  await priority(rows()[0]).fire('change');
+  assert.deepEqual(writes, [{ path: '/api/projects/7/tasks/1', body: { priority: 'High' } }]);
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[0].checked, true);
+  assert.equal(rows()[0].children[1].textContent, 'Done');
+  assert.equal(priority(rows()[0]).value, 'High');
+  const renameForm = rows()[0].children[2];
+  renameForm.children[1].children[0].value = 'Renamed';
+  await renameForm.fire('submit');
+  assert.equal(priority(rows()[0]).value, 'High');
+  assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete Renamed');
+  rejectWrite = true;
+  priority(rows()[0]).value = 'Low';
+  await priority(rows()[0]).fire('change');
+  assert.equal(priority(rows()[0]).value, 'High');
+  assert.equal(priority(rows()[0]).disabled, false);
+  assert.equal(elements.get('#error').textContent, 'Unable to save priority');
+  elements.get('#task-filter').value = 'All';
+  await elements.get('#task-filter').fire('change');
+  assert.deepEqual(rows().map((row) => priority(row).value), ['High', 'Low']);
+  for (const isArchived of [true, false]) {
+    archived = isArchived;
+    const reloaded = pageElements();
+    await loadPage(reloaded, '/projects/7', fetch);
+    const reloadedRows = reloaded.get('#tasks').children;
+    assert.deepEqual(reloadedRows.map((row) => priority(row).value), ['High', 'Low']);
+    assert.ok(reloadedRows.every((row) => priority(row).disabled === isArchived));
+    if (isArchived) {
+      const count = writes.length;
+      await priority(reloadedRows[0]).fire('change');
+      assert.equal(writes.length, count);
+    }
+  }
+});

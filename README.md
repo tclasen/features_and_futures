@@ -14,6 +14,8 @@ On an active project page, use New project name and Rename project to update its
 
 Each task row has New task title and Rename task controls. Task renames trim whitespace and reject blank titles, preserving ownership, creation order, completion, filters, and project summaries. The completion checkbox label follows the saved title. Archived projects disable task renaming until restored; titles persist across reloads and restarts.
 
+Each task also has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priorities persist independently across reloads, restarts, and renames; archived projects disable priority edits until restored.
+
 Run the integration checks:
 
 ```sh
@@ -23,3 +25,4 @@ npm test
 Tests use a temporary SQLite database and verify schema migration, validation, creation order, project isolation, completion updates, archive/restore, summaries, the page and asset routes, and persistence across server restarts.
 Tests also cover project and task renaming, unchanged identity and completion state, rejection of archived renames, and renaming after restoration.
 UI event-handler checks use a minimal DOM adapter to verify validation, checkbox names, completion changes, filters, summaries, renaming, and archived controls without external dependencies.
+Priority checks cover migration of existing tasks, independent saved values, invalid input, filters, renames, archived controls, restoration, and server restarts.
