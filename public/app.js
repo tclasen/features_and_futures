@@ -36,6 +36,7 @@ function renderProject(project) {
     <form id="task-form"><label for="task-title">Task title</label><div class="create-line"><input id="task-title" type="text"><button type="submit">Create task</button></div></form>
     <p id="task-alert" class="alert" role="alert" hidden></p>
     <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+    <label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
     <section id="tasks" aria-label="Tasks"></section>`;
   document.querySelector('#task-form button').disabled = project.archived;
   document.querySelector('#rename-form input').disabled = project.archived;
@@ -44,16 +45,19 @@ function renderProject(project) {
   document.querySelector('#back').addEventListener('click', () => navigate('/'));
   document.querySelector('#task-form').addEventListener('submit', event => createTask(event, project.id));
   document.querySelector('#task-filter').addEventListener('change', () => loadTasks(project.id, project.archived));
+  document.querySelector('#priority-filter').addEventListener('change', () => loadTasks(project.id, project.archived));
   loadTasks(project.id, project.archived);
 }
 
 async function loadTasks(projectId, archived = false) {
   const tasks = await request(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
   const filter = document.querySelector('#task-filter').value;
+  const priorityFilter = document.querySelector('#priority-filter').value;
   const list = document.querySelector('#tasks');
   list.replaceChildren();
   for (const task of tasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'project-row';
