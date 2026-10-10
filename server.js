@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id)`);
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 // Upgrade databases created before project archiving was introduced.
 if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
@@ -142,6 +143,14 @@ function projectPage(project, filter = 'All', error = '') {
           <input type="hidden" name="filter" value="${filter}">
           <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         </form>
+        <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input type="hidden" name="filter" value="${filter}">
+          <div class="create-fields">
+            <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </div>
+        </form>
       </li>`).join('')}</ul>` : '<p class="empty">No matching tasks.</p>'}`);
 }
 
@@ -217,8 +226,8 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       sendHtml(response, 200, projectPage(project, taskFilter(searchParams.get('filter'))));
-    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+)?$/.test(pathname)) {
-      const [, , projectId, , taskId] = pathname.split('/');
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/rename)?)?$/.test(pathname)) {
+      const [, , projectId, , taskId, action] = pathname.split('/');
       const project = getProject.get(projectId);
       if (!project) {
         sendHtml(response, 404, page('Not found', '<h1>Project not found</h1>'));
@@ -231,7 +240,17 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       if (taskId) {
-        const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
+        let result;
+        if (action === 'rename') {
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          result = renameTask.run(title, taskId, project.id);
+        } else {
+          result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
+        }
         if (!result.changes) {
           sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
           return;

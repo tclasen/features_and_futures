@@ -199,6 +199,80 @@ test('rename validates and preserves identity, order, tasks, and archive protect
   }
 });
 
+test('task rename preserves order, ownership, completion, filters, and archive protection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
+  const databasePath = join(directory, 'tasks.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const html = async (path = '/') => (await fetch(`${server.url}${path}`)).text();
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Original' });
+    await post('/projects/1/tasks', { title: 'Later task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const initial = await html('/projects/1');
+    assert.match(initial, /<label for="new-task-title-1">New task title<\/label>/);
+    assert.equal((initial.match(/>Rename task<\/button>/g) || []).length, 2);
+    for (const title of ['', ' \t\n']) {
+      const response = await post('/projects/1/tasks/1/rename', { title, filter: 'Completed' });
+      assert.equal(response.status, 400);
+      const body = await response.text();
+      assert.match(body, /role="alert">Task title is required/);
+      assert.match(body, /Complete Original" checked/);
+      assert.match(body, /<option selected>Completed<\/option>/);
+      assert.equal(await html('/projects/1'), initial);
+    }
+    assert.equal((await post('/projects/2/tasks/1/rename', { title: 'Forbidden' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/rename', { title: 'Missing' })).status, 404);
+    const renamed = await post('/projects/1/tasks/1/rename', {
+      title: '  Renamed <task> "title"  ', filter: 'Completed',
+    });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Completed');
+    const detail = await html('/projects/1');
+    assert.match(detail, /<span>Renamed &lt;task&gt; &quot;title&quot;<\/span>/);
+    assert.match(detail, /aria-label="Complete Renamed &lt;task&gt; &quot;title&quot;" checked/);
+    assert.ok(detail.indexOf('<span>Renamed') < detail.indexOf('<span>Later task'));
+    assert.match(detail, /action="\/projects\/1\/tasks\/1\/rename"/);
+    assert.doesNotMatch(await html('/projects/2'), /data-testid="task-row"/);
+    assert.doesNotMatch(await html('/projects/1?filter=Open'), /Renamed/);
+    assert.doesNotMatch(await html('/projects/1?filter=Completed'), /Later task/);
+    assert.match(await html(), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html('/projects/1'), detail);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assert.equal((archived.match(/id="new-task-title-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((archived.match(/disabled>Rename task<\/button>/g) || []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/rename', { title: 'Forbidden' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(await html('/projects/1'), / disabled/);
+    assert.equal((await post('/projects/1/tasks/2/rename', { title: '  Renamed open task  ', filter: 'Open' })).status, 303);
+    const open = await html('/projects/1?filter=Open');
+    assert.match(open, /<span>Renamed open task<\/span>/);
+    assert.match(open, /aria-label="Complete Renamed open task"/);
+    assert.doesNotMatch(open, / checked/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html('/projects/1?filter=Open'), open);
+    assert.match(await html(), /1\/2 completed/);
+    await post('/projects/1/tasks/1', {});
+    assert.doesNotMatch(await html('/projects/1?filter=Completed'), /data-testid="task-row"/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('tasks validate, filter, stay project-scoped, and persist completion', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
   const databasePath = join(directory, 'tasks.sqlite');
