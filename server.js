@@ -62,7 +62,7 @@ async function renderList() {
     const projects = await request('/api/projects');
     list.replaceChildren();
     for (const project of projects) {
-      const row = document.createElement('div'); row.dataset.testid = 'project-row'; row.className = 'project-row';
+      const row = document.createElement('article'); row.dataset.testid = 'project-row'; row.className = 'project-row';
       const name = document.createElement('span'); name.className = 'project-name'; name.textContent = project.name;
       const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Open project';
       open.addEventListener('click', () => { location.href = escapePath(project.id); });
