@@ -28,6 +28,77 @@ async function start(dbPath) {
   };
 }
 
+test('due dates validate calendar days, preserve task data, and survive archive and restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'workboard.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Alpha'), ('Beta');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing', 1), (2, 'Other', 0);`);
+    legacy.close();
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = (path, values = {}) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual'
+    });
+    const dateInput = content => /<input id="task-due-date-1"[^>]*>/.exec(content)[0];
+    assert.match(dateInput(await get('/projects/1')), /value=""/);
+    await post('/projects/1/tasks', { title: 'New' });
+    assert.match(await get('/projects/1'), /id="task-due-date-3"[^>]*value=""/);
+    const summary = await get('/');
+    const save = dueDate => post('/projects/1/tasks/1/due-date', {
+      dueDate, filter: 'Completed', priorityFilter: 'Normal'
+    });
+    for (const value of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29']) {
+      const response = await save(` ${value} `);
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=Normal');
+      assert.match(dateInput(await get(response.headers.get('location'))), new RegExp(`value="${value}"`));
+    }
+    for (const value of ['0000-01-01', '10000-01-01', '1900-02-29', '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01', '2024-01-01T00:00:00Z', 'nonsense']) {
+      const response = await save(value);
+      assert.equal(response.status, 400, value);
+      const content = await response.text();
+      assert.match(content, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.match(dateInput(content), /value="2024-02-29"/);
+      assert.match(content, /<option selected>Completed/);
+      assert.match(content, /<option selected>Normal/);
+    }
+    assert.equal(await get('/'), summary);
+    assert.equal((await post('/projects/2/tasks/1/due-date', { dueDate: '2025-01-01' })).status, 404);
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.match(dateInput(archived), /value="2024-02-29" disabled/);
+    assert.match(archived, /<button type="submit" disabled>Save due date/);
+    assert.equal((await save('2025-01-01')).status, 403);
+    await server.stop();
+    server = await start(dbPath);
+    assert.match(dateInput(await get('/projects/1')), /value="2024-02-29" disabled/);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(dateInput(await get('/projects/1')), /disabled/);
+    const saved = new DatabaseSync(dbPath);
+    assert.deepEqual({ ...saved.prepare('SELECT * FROM tasks WHERE id = 1').get() }, {
+      id: 1, project_id: 1, title: 'Renamed', completed: 1, priority: 'High', due_date: '2024-02-29'
+    });
+    assert.equal(saved.prepare('SELECT due_date FROM tasks WHERE id = 2').get().due_date, '');
+    saved.close();
+    await save('   ');
+    assert.match(dateInput(await get('/projects/1')), /value=""/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.match(dateInput(await get('/projects/1')), /value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('project priority defaults migrate, persist independently, and only affect subsequent tasks', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
   let server;

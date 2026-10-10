@@ -30,16 +30,28 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+
+function validDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+}
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -159,6 +171,12 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
       <select id="task-priority-${task.id}" name="priority" onchange="this.form.requestSubmit()"${project.archived ? ' disabled' : ''}>
         ${['Low', 'Normal', 'High'].map(option => `<option${option === task.priority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form action="/projects/${project.id}/tasks/${task.id}/due-date" method="post">
+      ${filterFields}
+      <label for="task-due-date-${task.id}">Task due date</label>
+      <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
     </form>
     <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
       ${filterFields}
@@ -302,6 +320,28 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         setTaskPriority.run(priority, task.id, project.id);
+        redirect(response, projectLocation(project.id, filter, selectedPriority));
+        return;
+      }
+    }
+    const dueDateMatch = /^\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/.exec(url.pathname);
+    if (request.method === 'POST' && dueDateMatch) {
+      const project = findProject.get(dueDateMatch[1]);
+      const task = project && findTask.get(dueDateMatch[2], project.id);
+      if (task) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        const selectedPriority = priorityFilter(form.get('priorityFilter'));
+        if (project.archived) {
+          html(response, 403, projectPage(project, filter, 'Archived project is read-only', '', null, selectedPriority));
+          return;
+        }
+        const dueDate = (form.get('dueDate') || '').trim();
+        if (dueDate && !validDueDate(dueDate)) {
+          html(response, 400, projectPage(project, filter, 'Due date must be a valid YYYY-MM-DD date', '', null, selectedPriority));
+          return;
+        }
+        setTaskDueDate.run(dueDate, task.id, project.id);
         redirect(response, projectLocation(project.id, filter, selectedPriority));
         return;
       }
