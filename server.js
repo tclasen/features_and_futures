@@ -125,6 +125,7 @@ const server = http.createServer(async (req, res) => {
       const destination = getProject.get(payload.destinationProjectId);
       if (!source || !destination) return json(res, 404, { error: 'Project not found' });
       if (source.archived || destination.archived) return json(res, 403, { error: 'Archived project' });
+      if (source.id === destination.id) return json(res, 400, { error: 'Destination must be a different project' });
       const result = moveTask.run(destination.id, destination.id, moveMatch[2], source.id);
       return result.changes ? json(res, 200, { projectId: destination.id }) : json(res, 404, { error: 'Task not found' });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
