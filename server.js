@@ -27,6 +27,8 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
+const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS next FROM tasks WHERE project_id = ?');
 const html = await readFile(path.join(base, 'public', 'index.html'));
 
 const server = http.createServer(async (req, res) => {
@@ -73,7 +75,7 @@ const server = http.createServer(async (req, res) => {
         const title = String(JSON.parse(raw).title ?? '').trim();
         if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
         if (title.length > 500) return send(400, JSON.stringify({ error: 'Task title is too long' }));
-        const id = randomUUID(); const priority = findProject.get(projectId).default_priority; insertTask.run(id, projectId, title, Date.now(), priority);
+        const id = randomUUID(); const priority = findProject.get(projectId).default_priority; insertTask.run(id, projectId, title, nextTaskOrder.get(projectId).next, priority);
         return send(201, JSON.stringify({ id, title, completed: 0, priority }));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
@@ -83,6 +85,14 @@ const server = http.createServer(async (req, res) => {
         let raw = ''; for await (const chunk of req) raw += chunk;
         const body = JSON.parse(raw);
         const taskId = decodeURIComponent(taskMatch[2]);
+        if (Object.hasOwn(body, 'destination_project_id')) {
+          const destinationId = String(body.destination_project_id);
+          const destination = findProject.get(destinationId);
+          if (!destination || destination.archived || destinationId === projectId) return send(400, JSON.stringify({ error: 'Invalid destination project' }));
+          const order = nextTaskOrder.get(destinationId).next;
+          const result = moveTask.run(destinationId, order, taskId, projectId);
+          return Number(result.changes) ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Task not found' }));
+        }
         if (Object.hasOwn(body, 'due_date')) {
           const rawDate = String(body.due_date ?? '').trim();
           let dueDate = null;
