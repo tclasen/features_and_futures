@@ -19,3 +19,10 @@ npm run check
 Projects are stored in creation order with stable, automatically assigned IDs.
 The browser uses `/api/projects` to list and create projects and
 `/api/projects/:id` to load a project. Names are trimmed and must be nonblank.
+
+Each project page supports creating tasks, changing completion, and filtering
+by All, Open, or Completed. Task titles are trimmed and must be nonblank.
+Tasks are listed and created at `/api/projects/:id/tasks`; update completion
+with `PATCH /api/projects/:id/tasks/:taskId` and a JSON body such as
+`{"completed":true}`. Tasks belong to their project, remain in creation order,
+and persist with their completion state in the configured database.

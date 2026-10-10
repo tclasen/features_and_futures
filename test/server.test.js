@@ -98,3 +98,72 @@ test('project validation, order, stable IDs, routes, and restart persistence', a
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task validation, project ownership, completion, order, and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-test-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    });
+    const firstProject = await (await request('/api/projects', 'POST', { name: 'First' })).json();
+    const secondProject = await (await request('/api/projects', 'POST', { name: 'Second' })).json();
+    const tasksPath = `/api/projects/${firstProject.id}/tasks`;
+    const otherTasksPath = `/api/projects/${secondProject.id}/tasks`;
+    assert.deepEqual(await (await request(tasksPath)).json(), []);
+
+    for (const title of ['', ' \t\n ', null, 123]) {
+      const response = await request(tasksPath, 'POST', { title });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    const malformed = await fetch(`${server.url}${tasksPath}`, { method: 'POST', body: '{' });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await (await request(tasksPath)).json(), []);
+    assert.equal((await request('/api/projects/999999/tasks', 'POST', { title: 'Orphan' })).status, 404);
+
+    const firstResponse = await request(tasksPath, 'POST', { title: '  First task \n' });
+    assert.equal(firstResponse.status, 201);
+    const first = await firstResponse.json();
+    assert.equal(first.title, 'First task');
+    assert.equal(first.completed, false);
+    const second = await (await request(tasksPath, 'POST', { title: '<script>Second</script>' })).json();
+    assert.ok(second.id > first.id);
+    const other = await (await request(otherTasksPath, 'POST', { title: 'Other project task' })).json();
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    assert.deepEqual(await (await request(otherTasksPath)).json(), [other]);
+    assert.equal((await request(`${otherTasksPath}/${first.id}`, 'PATCH', { completed: true })).status, 404);
+    assert.equal((await request(`${tasksPath}/999999`, 'PATCH', { completed: true })).status, 404);
+    for (const completed of [0, 1, 'true', null]) {
+      assert.equal((await request(`${tasksPath}/${first.id}`, 'PATCH', { completed })).status, 400);
+    }
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    const completedResponse = await request(`${tasksPath}/${first.id}`, 'PATCH', { completed: true });
+    assert.equal(completedResponse.status, 200);
+    assert.deepEqual(await completedResponse.json(), { ...first, completed: true });
+    assert.deepEqual(await (await request(tasksPath)).json(), [{ ...first, completed: true }, second]);
+
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [{ ...first, completed: true }, second]);
+    assert.deepEqual(await (await request(otherTasksPath)).json(), [other]);
+    assert.equal((await request(`/projects/${firstProject.id}`)).status, 200);
+    const reopenedResponse = await request(`${tasksPath}/${first.id}`, 'PATCH', { completed: false });
+    assert.equal(reopenedResponse.status, 200);
+    assert.deepEqual(await reopenedResponse.json(), first);
+    const third = await (await request(tasksPath, 'POST', { title: 'Third' })).json();
+    assert.ok(third.id > other.id);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second, third]);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
