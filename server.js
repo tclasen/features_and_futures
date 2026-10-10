@@ -25,6 +25,10 @@ database.exec(`
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 
 const sendJson = (response, status, value) => {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -49,8 +53,11 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = database.prepare('SELECT id, name FROM projects ORDER BY id').all();
-    sendJson(response, 200, projects);
+    const projects = database.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id`).all();
+    sendJson(response, 200, projects.map((project) => ({ ...project, archived: Boolean(project.archived) })));
     return;
   }
 
@@ -72,12 +79,24 @@ const server = createServer(async (request, response) => {
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
-    const project = database.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (!project) {
       sendJson(response, 404, { error: 'Project not found' });
       return;
     }
-    sendJson(response, 200, project);
+    sendJson(response, 200, { ...project, archived: Boolean(project.archived) });
+    return;
+  }
+
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (request.method === 'POST' && archiveMatch) {
+    const projectId = Number(archiveMatch[1]);
+    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, projectId);
+    if (!result.changes) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    sendJson(response, 200, { archived: archiveMatch[2] === 'archive' });
     return;
   }
 
