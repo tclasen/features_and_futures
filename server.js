@@ -93,7 +93,7 @@ const server = createServer(async (request, response) => {
       const filter = taskFilter(url.searchParams.get('filter'));
       send(response, project ? 200 : 404, project
         ? projectPage(project, projects.tasks.list(id, filter), filter) : notFoundPage());
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/completion)?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const projectId = Number(parts[2]);
       const taskId = parts[4] ? Number(parts[4]) : null;
@@ -111,6 +111,16 @@ const server = createServer(async (request, response) => {
       if (taskId === null) {
         if (!projects.tasks.create(projectId, form.get('title'))) {
           send(response, 400, projectPage(project, projects.tasks.list(projectId, filter), filter, 'Task title is required'));
+          return;
+        }
+      } else if (parts[5] === 'rename') {
+        const title = form.get('title');
+        if (!title?.trim()) {
+          send(response, 400, projectPage(project, projects.tasks.list(projectId, filter), filter, 'Task title is required'));
+          return;
+        }
+        if (!projects.tasks.rename(projectId, taskId, title)) {
+          send(response, 404, notFoundPage());
           return;
         }
       } else if (!projects.tasks.setCompleted(projectId, taskId, form.get('completed') === 'true')) {

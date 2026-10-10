@@ -90,6 +90,14 @@ export function projectPage(project, tasks, filter = 'all', error = '') {
             <input type="hidden" name="filter" value="${filter}">
             <input type="checkbox" name="completed" value="true" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
           </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <div class="form-controls">
+              <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+            </div>
+          </form>
         </div>`).join('') : '<p class="empty">No matching tasks.</p>'}
     </section>`);
 }

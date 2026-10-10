@@ -439,3 +439,120 @@ test('rename preserves project identity, ordering and tasks through archive and 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task rename preserves ownership, order, completion and filters through archive and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const getPage = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Done' });
+    await post('/projects/1/tasks', { title: 'Pending' });
+    await post('/projects/2/tasks', { title: 'Other' });
+    await post('/projects/1/tasks/1/completion', { completed: 'true' });
+    const original = await getPage('/projects/1');
+    assert.match(original, /<label for="new-task-title-1">New task title<\/label>/);
+    assert.equal((original.match(/>Rename task<\/button>/g) ?? []).length, 2);
+    for (const values of [{}, { title: '' }, { title: ' \t\n ', filter: 'completed' }]) {
+      const invalid = await post('/projects/1/tasks/1/rename', values);
+      assert.equal(invalid.status, 400);
+      assert.match(await invalid.text(), /role="alert">Task title is required/);
+      assert.equal(await getPage('/projects/1'), original);
+    }
+    const summary = await getPage('/');
+    const renamed = await post('/projects/1/tasks/1/rename', {
+      title: '  Reviewed <plan> & "notes"  ', filter: 'completed',
+    });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=completed');
+    const detail = await getPage('/projects/1');
+    assert.match(detail, /<span>Reviewed &lt;plan&gt; &amp; &quot;notes&quot;<\/span>/);
+    assert.match(detail, /aria-label="Complete Reviewed &lt;plan&gt; &amp; &quot;notes&quot;" checked/);
+    assert.doesNotMatch(detail, /Complete Done/);
+    assert.ok(detail.indexOf('<span>Reviewed') < detail.indexOf('<span>Pending'));
+    assert.match(detail, /action="\/projects\/1\/tasks\/1\/rename"/);
+    const completed = await getPage('/projects/1?filter=completed');
+    assert.match(completed, /<span>Reviewed/);
+    assert.doesNotMatch(completed, /<span>Pending/);
+    const open = await getPage('/projects/1?filter=open');
+    assert.match(open, /<span>Pending/);
+    assert.doesNotMatch(open, /<span>Reviewed/);
+    assert.equal(await getPage('/'), summary);
+    const other = await getPage('/projects/2');
+    for (const path of [
+      '/projects/2/tasks/1/rename', '/projects/1/tasks/3/rename',
+      '/projects/1/tasks/999/rename', '/projects/999/tasks/1/rename',
+      '/projects/1/tasks/9007199254740993/rename',
+    ]) {
+      assert.equal((await post(path, { title: 'Blocked' })).status, 404);
+    }
+    assert.equal(await getPage('/projects/1'), detail);
+    assert.equal(await getPage('/projects/2'), other);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage('/projects/1'), detail);
+    assert.equal(await getPage('/projects/1?filter=completed'), completed);
+    assert.equal(await getPage('/'), summary);
+
+    await post('/projects/1/archive');
+    const archived = await getPage('/projects/1');
+    assert.match(archived, /id="new-task-title-1" name="title" type="text" disabled/);
+    assert.match(archived, /id="new-task-title-2" name="title" type="text" disabled/);
+    assert.equal((archived.match(/<button type="submit" disabled>Rename task/g) ?? []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/rename', { title: 'Blocked' })).status, 409);
+    assert.equal(await getPage('/projects/1'), archived);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await getPage('/projects/1'), detail);
+    const restored = await post('/projects/1/tasks/2/rename', { title: '  Ready  ', filter: 'open' });
+    assert.equal(restored.status, 303);
+    assert.equal(restored.headers.get('location'), '/projects/1?filter=open');
+    const restoredDetail = await getPage('/projects/1');
+    assert.match(restoredDetail, /aria-label="Complete Ready">/);
+    assert.ok(restoredDetail.indexOf('<span>Reviewed') < restoredDetail.indexOf('<span>Ready'));
+    assert.equal(await getPage('/'), summary);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await getPage('/projects/1'), restoredDetail);
+    assert.match(await getPage('/projects/1?filter=open'), /<span>Ready<\/span>/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task rename storage rejects invalid titles, wrong ownership and archived projects', () => {
+  const store = openWorkboard(':memory:');
+  try {
+    const project = store.create('First');
+    const other = store.create('Second');
+    const task = store.tasks.create(project.id, 'Original');
+    store.tasks.setCompleted(project.id, task.id, true);
+    for (const title of ['', ' \t\n ', null, undefined, 42]) {
+      assert.equal(store.tasks.rename(project.id, task.id, title), false);
+    }
+    assert.equal(store.tasks.rename(other.id, task.id, 'Blocked'), false);
+    assert.equal(store.tasks.rename(project.id, 999, 'Blocked'), false);
+    store.setArchived(project.id, true);
+    assert.equal(store.tasks.rename(project.id, task.id, 'Blocked'), false);
+    assert.equal(store.tasks.list(project.id)[0].title, 'Original');
+    store.setArchived(project.id, false);
+    assert.equal(store.tasks.rename(project.id, task.id, '  Renamed  '), true);
+    assert.deepEqual({ ...store.tasks.list(project.id)[0] }, {
+      id: task.id, title: 'Renamed', completed: 1,
+    });
+  } finally {
+    store.close();
+  }
+});
