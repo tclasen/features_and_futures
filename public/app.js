@@ -9,6 +9,7 @@ const taskForm = document.querySelector('#create-task');
 const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project');
@@ -71,6 +72,8 @@ async function showRoute() {
   newProjectNameInput.disabled = activeProjectArchived;
   renameForm.querySelector('button').disabled = activeProjectArchived;
   taskForm.querySelector('button').disabled = activeProjectArchived;
+  defaultTaskPriority.disabled = activeProjectArchived;
+  defaultTaskPriority.value = project.default_task_priority;
   listView.hidden = true;
   detailView.hidden = false;
   await loadTasks();
@@ -188,6 +191,18 @@ form.addEventListener('submit', async event => {
 
 document.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
 function showError(message) { error.textContent = message; error.hidden = false; }
+defaultTaskPriority.addEventListener('change', async () => {
+  const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/default-task-priority`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ priority: defaultTaskPriority.value })
+  });
+  if (!response.ok) {
+    showError('Unable to update default task priority');
+    return;
+  }
+  error.hidden = true;
+});
 renameForm.addEventListener('submit', async event => {
   event.preventDefault();
   error.hidden = true;

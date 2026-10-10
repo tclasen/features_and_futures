@@ -30,17 +30,19 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(colum
 if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name);
 if (!taskColumns.includes('priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+if (!projectColumns.includes('default_task_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
 
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
   FROM projects p WHERE p.archived = ? ORDER BY p.created_at, p.rowid`);
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateProjectArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefaultPriority = db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
 const updateTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
@@ -106,6 +108,18 @@ const server = createServer(async (request, response) => {
     updateProjectName.run(name, project.id);
     return sendJson(response, 200, { ...project, name });
   }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-task-priority\/?$/);
+  if (defaultPriorityMatch && request.method === 'PATCH') {
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    const priority = body?.priority;
+    if (!['Low', 'Normal', 'High'].includes(priority)) return sendJson(response, 400, { error: 'Invalid default task priority' });
+    const project = getProject.get(decodeURIComponent(defaultPriorityMatch[1]));
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived project' });
+    updateProjectDefaultPriority.run(priority, project.id);
+    return sendJson(response, 200, { ...project, default_task_priority: priority });
+  }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body;
     try {
@@ -130,8 +144,8 @@ const server = createServer(async (request, response) => {
       try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-      const task = { id: randomUUID(), title, completed: 0 };
-      insertTask.run(task.id, projectId, title, Date.now());
+      const task = { id: randomUUID(), title, completed: 0, priority: getProject.get(projectId).default_task_priority };
+      insertTask.run(task.id, projectId, title, Date.now(), task.priority);
       return sendJson(response, 201, task);
     }
   }
