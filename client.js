@@ -239,6 +239,7 @@ async function showProject(id) {
     });
     const list = element('div', { className: 'task-list' });
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const activeProjects = archived ? [] : await request('/api/projects?archived=false');
     const drawTasks = () => {
       list.replaceChildren();
       for (const task of tasks) {
@@ -340,6 +341,28 @@ async function showProject(id) {
           }
         });
         row.append(checkbox);
+        const destinations = activeProjects.filter(candidate => Number(candidate.id) !== Number(id));
+        const destination = element('select', { label: 'Destination project' });
+        for (const candidate of destinations) {
+          const option = element('option', { text: candidate.name });
+          option.value = candidate.id;
+          destination.append(option);
+        }
+        const moveButton = element('button', { type: 'button', text: 'Move task' });
+        destination.disabled = archived || destinations.length === 0;
+        moveButton.disabled = archived || destinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          try {
+            await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/move`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ destinationProjectId: Number(destination.value) })
+            });
+            const index = tasks.findIndex(item => item.id === task.id);
+            if (index !== -1) tasks.splice(index, 1);
+            drawTasks();
+          } catch (error) { showError(error.message); }
+        });
+        row.append(destination, moveButton);
         list.append(row);
       }
     };
