@@ -20,6 +20,9 @@ and becomes available again after restoration.
 Each task has an independent Low, Normal, or High priority, defaulting to Normal.
 Priority selections persist across restarts and are disabled while archived;
 restoration enables editing with the saved priority intact.
+Project pages combine the completion filter with an All, Low, Normal, or High
+priority filter. Both selections remain in place when editing tasks, and archived
+projects keep both filters available. Completion totals always count all tasks.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
