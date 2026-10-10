@@ -266,6 +266,18 @@ async function renderTasks(projectId, archived) {
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      const priorityLabel = document.createElement('label');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      priorityLabel.textContent = 'Task priority';
+      const priority = document.createElement('select');
+      priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
       const renameForm = document.createElement('form');
       renameForm.className = 'task-rename';
       const renameLabel = document.createElement('label');
@@ -286,10 +298,19 @@ async function renderTasks(projectId, archived) {
       renameForm.append(renameLabel, renameControls);
       function setDisabled(pending) {
         checkbox.disabled = archived || pending;
+        priority.disabled = archived || pending;
         renameInput.disabled = archived || pending;
         renameButton.disabled = archived || pending;
       }
       setDisabled(pendingUpdates.has(task.id));
+      priority.addEventListener('change', async () => {
+        if (archived || pendingUpdates.has(task.id)) return;
+        setDisabled(true);
+        await updateTask(task, { priority: priority.value });
+        priority.value = task.priority;
+        setDisabled(false);
+        if (!row.isConnected) renderList();
+      });
       checkbox.addEventListener('change', async () => {
         if (archived || pendingUpdates.has(task.id)) return;
         setDisabled(true);
@@ -317,7 +338,7 @@ async function renderTasks(projectId, archived) {
         setDisabled(false);
         if (!row.isConnected) renderList();
       });
-      row.append(title, checkbox, renameForm);
+      row.append(title, checkbox, priorityLabel, priority, renameForm);
       return row;
     }));
   }

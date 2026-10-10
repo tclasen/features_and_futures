@@ -22,6 +22,9 @@ export function openProjectStore(path) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+  }
   const projectQuery = `SELECT id, name, archived,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS totalCount,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completedCount
@@ -31,11 +34,12 @@ export function openProjectStore(path) {
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
-  const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-  const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+  const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+  const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
   const taskRecord = (task) => task && { ...task, completed: Boolean(task.completed) };
   const projectRecord = (project) => project && { ...project, archived: Boolean(project.archived) };
 
@@ -97,6 +101,16 @@ export function openProjectStore(path) {
         throw error;
       }
       updateTaskTitle.run(trimmedTitle, projectId, taskId);
+      return taskRecord(findTask.get(projectId, taskId));
+    },
+    setTaskPriority(projectId, taskId, priority) {
+      requireActiveProject(projectId);
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        const error = new Error('Task priority must be Low, Normal, or High');
+        error.status = 400;
+        throw error;
+      }
+      updateTaskPriority.run(priority, projectId, taskId);
       return taskRecord(findTask.get(projectId, taskId));
     },
     close: () => database.close(),

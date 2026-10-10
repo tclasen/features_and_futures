@@ -32,3 +32,8 @@ Each task row provides New task title and Rename task. Titles are trimmed and
 cannot be blank. Renaming preserves ownership, creation order, completion state,
 and completion summaries. Task rename controls are disabled while the project
 is archived and become available after restoration.
+
+Each task has a Task priority dropdown with Low, Normal, and High options.
+New and existing tasks default to Normal. Priority is saved independently for
+each task and survives renaming, completion changes, and restarts. Archived
+projects disable priority edits; restoration preserves the saved priorities.

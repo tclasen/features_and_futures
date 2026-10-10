@@ -65,10 +65,17 @@ const server = createServer(async (request, response) => {
       }
       if (taskId && request.method === 'PATCH') {
         const input = await readJson(request);
+        const fields = ['title', 'completed', 'priority'].filter((field) => input && Object.hasOwn(input, field));
+        if (fields.length > 1) {
+          return json(response, 400, { error: 'Change task title, completion, or priority separately' });
+        }
+        if (fields[0] === 'priority') {
+          const task = store.setTaskPriority(projectId, taskId, input.priority);
+          return task
+            ? json(response, 200, task)
+            : json(response, 404, { error: 'Task not found' });
+        }
         if (input && Object.hasOwn(input, 'title')) {
-          if (Object.hasOwn(input, 'completed')) {
-            return json(response, 400, { error: 'Change task title or completion separately' });
-          }
           const task = store.renameTask(projectId, taskId, input.title);
           return task
             ? json(response, 200, task)
