@@ -40,10 +40,10 @@
         <section class="project-list" aria-label="Projects"></section>`;
       const filter = app.querySelector('#project-filter'), list = app.querySelector('.project-list');
       let appliedQuery = '';
-      const foldAscii = value => value.replace(/[A-Z]/g, char => char.toLowerCase());
+      const normalizeSearch = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
       function renderProjects() {
         const archived = filter.value === 'Archived';
-        list.innerHTML = projects.filter(p => Boolean(p.archived) === archived && foldAscii(p.name).includes(foldAscii(appliedQuery))).map(project => `<div data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-state="${project.id}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
+        list.innerHTML = projects.filter(p => Boolean(p.archived) === archived && normalizeSearch(p.name).includes(normalizeSearch(appliedQuery))).map(project => `<div data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-state="${project.id}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
         list.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => { history.pushState({}, '', `/projects/${button.dataset.open}`); showRoute(); }));
         list.querySelectorAll('[data-state]').forEach(button => button.addEventListener('click', async () => {
           await fetch(`/api/projects/${button.dataset.state}/${archived ? 'restore' : 'archive'}`, { method: 'POST' });
@@ -112,7 +112,7 @@
       const filter = app.querySelector('#task-filter');
       const priorityFilter = app.querySelector('#priority-filter');
       let appliedFrom = '', appliedThrough = '', appliedTaskQuery = '';
-      const foldAscii = value => value.replace(/[A-Z]/g, char => char.toLowerCase());
+      const normalizeSearch = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
       const validDate = value => {
         const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
         if (!m) return false;
@@ -136,7 +136,7 @@
       });
       async function renderTasks() {
         const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(r => r.json());
-        const visible = tasks.filter(task => foldAscii(task.title).includes(foldAscii(appliedTaskQuery)) && (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed)) && (priorityFilter.value === 'All' || task.priority === priorityFilter.value) && (!appliedFrom && !appliedThrough || Boolean(task.due_date) && (!appliedFrom || task.due_date >= appliedFrom) && (!appliedThrough || task.due_date <= appliedThrough)));
+        const visible = tasks.filter(task => normalizeSearch(task.title).includes(normalizeSearch(appliedTaskQuery)) && (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed)) && (priorityFilter.value === 'All' || task.priority === priorityFilter.value) && (!appliedFrom && !appliedThrough || Boolean(task.due_date) && (!appliedFrom || task.due_date >= appliedFrom) && (!appliedThrough || task.due_date <= appliedThrough)));
         list.innerHTML = visible.map(task => `<div data-testid="task-row"><input type="checkbox" data-task="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeHtml(task.title)}</span><label for="priority-${task.id}">Task priority</label><select id="priority-${task.id}" data-priority="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><form data-rename-task="${task.id}"><label for="rename-task-${task.id}">New task title</label><input id="rename-task-${task.id}" type="text" aria-label="New task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><form data-due-date="${task.id}"><label for="due-date-${task.id}">Task due date</label><input id="due-date-${task.id}" type="text" aria-label="Task due date" value="${escapeHtml(task.due_date || '')}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button></form><label for="destination-${task.id}">Destination project</label><select id="destination-${task.id}" aria-label="Destination project" data-destination="${task.id}" ${project.archived || !destinations.length ? 'disabled' : ''}>${destinations.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select><button type="button" data-move="${task.id}" ${project.archived || !destinations.length ? 'disabled' : ''}>Move task</button></div>`).join('');
         list.querySelectorAll('[data-move]').forEach(button => button.addEventListener('click', async () => {
           const destination = list.querySelector(`[data-destination="${button.dataset.move}"]`);
