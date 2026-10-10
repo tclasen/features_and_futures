@@ -107,8 +107,15 @@ async function handleRequest(req, res) {
     const destination = getProject.get(destinationId);
     if (!source || !getTask.get(taskId, sourceId) || !destination) return send(404, JSON.stringify({ error: 'Not found' }));
     if (source.archived || destination.archived || sourceId === destinationId) return send(403, JSON.stringify({ error: 'Invalid move' }));
-    const latest = nextTaskOrder.get(destinationId).latest ?? 0;
-    moveTask.run(destinationId, Math.max(Date.now(), latest + 1), taskId, sourceId);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const latest = nextTaskOrder.get(destinationId).latest ?? 0;
+      moveTask.run(destinationId, Math.max(Date.now(), latest + 1), taskId, sourceId);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
     return send(200, JSON.stringify({ ok: true }));
   }
   const dueDateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/due-date$/);
