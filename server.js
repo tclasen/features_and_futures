@@ -67,7 +67,9 @@ const server = http.createServer(async (req, res) => {
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'GET') {
-    const relative = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
+    // Project URLs are client-side routes; serve the app shell on direct visits/reloads.
+    const isProjectPage = /^\/projects\/[^/]+\/?$/.test(url.pathname);
+    const relative = url.pathname === '/' || isProjectPage ? 'index.html' : url.pathname.replace(/^\/+/, '');
     const path = resolve(root, 'public', relative);
     if (!path.startsWith(resolve(root, 'public') + '/') && path !== resolve(root, 'public')) return text(res, 404, 'Not found');
     try {
