@@ -16,6 +16,8 @@ toggle completion, and filter by All, Open, or Completed. The project list defau
 to Active; select Archived to open or restore archived projects. Archived project
 pages are read-only, including the rename controls. Active projects can be renamed
 with New project name and Rename project without changing their URL or tasks.
+Each task row has New task title and Rename task controls; renaming preserves
+its order, ownership and completion state. Archived task rename controls are disabled.
 Project rows show completed/total task counts. Existing
 SQLite databases are migrated automatically to preserve projects and tasks.
 
@@ -28,4 +30,5 @@ npm test
 Tests use a temporary SQLite database outside the repository and check health,
 validation, ordering, safe rendering, navigation, task ownership, completion,
 filtering, archive/restore, completion summaries, database migration, read-only
-archived pages, rename validation and identity preservation, and persistence across restarts.
+archived pages, project and task rename validation and identity preservation,
+and persistence across restarts.
