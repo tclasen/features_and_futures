@@ -22,7 +22,9 @@ function projectIdFromPath() {
 function searchKey(value) {
   // Search folds ASCII case and treats runs of spaces/tabs as one space,
   // without changing the stored or displayed project/task text.
-  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
+  // Coerce at the boundary so a missing/legacy value cannot abort rendering
+  // the entire list; trim only the query at its call site, never saved text.
+  return String(value ?? '').replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 async function renderList() {
