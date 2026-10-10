@@ -81,6 +81,30 @@ const server = http.createServer((request, response) => {
     });
     return;
   }
+  const moveRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (moveRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const destinationId = Number(JSON.parse(body).projectId);
+        if (!Number.isSafeInteger(destinationId) || destinationId < 1) return sendJson(response, 400, { error: 'Invalid destination project' });
+        const taskId = Number(moveRoute[1]);
+        const task = db.prepare(`SELECT t.* FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.archived = 0`).get(taskId);
+        const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+        if (!task || !destination || task.project_id === destinationId) return sendJson(response, 404, { error: 'Active task or destination not found' });
+        db.exec('BEGIN');
+        try {
+          const newId = Number(db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS id FROM tasks').get().id);
+          db.prepare('UPDATE tasks SET project_id = ?, id = ? WHERE id = ?').run(destinationId, newId, taskId);
+          db.exec('COMMIT');
+        } catch (error) { db.exec('ROLLBACK'); throw error; }
+        return sendJson(response, 200, { ok: true });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
   const dueDateRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
   if (dueDateRoute && request.method === 'PATCH') {
     let body = '';
