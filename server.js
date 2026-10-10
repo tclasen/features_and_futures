@@ -9,10 +9,12 @@ const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,6 +26,10 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -33,7 +39,7 @@ const sendJson = (res, status, value) => {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
-  if (url.pathname === '/api/projects' && req.method === 'GET') return sendJson(res, 200, listProjects.all());
+  if (url.pathname === '/api/projects' && req.method === 'GET') return sendJson(res, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -43,6 +49,17 @@ const server = createServer(async (req, res) => {
     if (!name) return sendJson(res, 400, { error: 'Project name is required' });
     const result = addProject.run(name);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), name });
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let update;
+    try { update = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+    const id = Number(archiveMatch[1]);
+    if (!getProject.get(id)) return sendJson(res, 404, { error: 'Project not found' });
+    setArchived.run(update.archived ? 1 : 0, id);
+    return sendJson(res, 200, getProject.get(id));
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskMatch && req.method === 'GET') {
@@ -59,6 +76,7 @@ const server = createServer(async (req, res) => {
     if (!getProject.get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
     const title = typeof task.title === 'string' ? task.title.trim() : '';
     if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+    if (getProject.get(projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
     const result = addTask.run(projectId, title);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
   }
@@ -71,6 +89,7 @@ const server = createServer(async (req, res) => {
     if (typeof update.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
     const id = Number(completionMatch[1]);
     if (!getTask.get(id)) return sendJson(res, 404, { error: 'Task not found' });
+    if (getProject.get(getTask.get(id).projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
     setTaskCompleted.run(update.completed ? 1 : 0, id);
     const task = getTask.get(id);
     return sendJson(res, 200, { ...task, completed: Boolean(task.completed) });
