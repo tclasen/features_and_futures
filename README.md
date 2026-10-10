@@ -16,4 +16,6 @@ Open `/` to create and open projects, view completion summaries, and filter Acti
 
 Active project pages also provide New project name and Rename project controls. Renaming trims whitespace, requires a nonblank name, and preserves the project URL, creation order, tasks, and completion summary. Archived projects cannot be renamed; restoring them enables renaming again. Names persist across reloads and server restarts.
 
-Run the integration checks with `npm test`. Tests use isolated temporary databases and verify project and task validation, creation order, escaping, navigation, project isolation, filtering, migration, archive/restore, archived task protection, completion summaries, renaming and archived rename protection, and persistence after server restarts.
+Each task row provides New task title and Rename task controls. Renaming trims whitespace, requires a nonblank title, and updates the completion checkbox label while preserving ownership, creation order, completion state, filter membership, and summaries. Archived projects disable task renaming; restoration enables it again. Task titles persist across reloads and server restarts.
+
+Run the integration checks with `npm test`. Tests use isolated temporary databases and verify project and task validation, creation order, escaping, navigation, project isolation, filtering, migration, archive/restore, archived task protection, completion summaries, project and task renaming, ownership protection, archived rename protection, and persistence after server restarts.
