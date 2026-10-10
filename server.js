@@ -1,12 +1,15 @@
 import http from 'node:http';
 import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const port = Number(process.env.PORT || 8080);
-const dbPath = process.env.DB_PATH || join(process.cwd(), 'data', 'workboard.sqlite');
+// Resolve once at startup so a relative DB_PATH always identifies the same
+// file for this process, even if later code changes the working directory.
+const dbPath = resolve(process.env.DB_PATH || join(process.cwd(), 'data', 'workboard.sqlite'));
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
+db.exec('PRAGMA synchronous = FULL');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -104,6 +107,15 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, '0.0.0.0');
+let shuttingDown = false;
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
-  server.close(() => { db.close(); process.exit(0); });
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => {
+    db.close();
+    process.exit(0);
+  });
+  // Do not let idle keep-alive sockets prevent the close callback from
+  // flushing and closing SQLite during a real process restart.
+  server.closeAllConnections();
 });
