@@ -7,7 +7,10 @@ test('combined filters retain selections and reevaluate completion, priority and
   // Execute the actual page scripts with a DOM-shaped fixture.
   const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
   const validator = source.match(/function validDueDate\(value\) \{[\s\S]*?\n\}/)[0];
-  const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1].replace('${validDueDate.toString()}', validator));
+  const searchMatcher = source.match(/function matchesSearch\(value, query\) \{[\s\S]*?\n\}/)[0];
+  const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]
+    .replace('${validDueDate.toString()}', validator)
+    .replace('${matchesSearch.toString()}', searchMatcher));
   function control(value) {
     return { value, disabled: false, addEventListener(type, handler) { this[type] = handler; } };
   }
@@ -17,6 +20,8 @@ test('combined filters retain selections and reevaluate completion, priority and
   const dueFrom = control('');
   const dueThrough = control('');
   const range = control('');
+  const search = control('');
+  const searchForm = control('');
   const create = control('');
   const renameProject = Object.assign(control(''), {
     action: '/project-rename', elements: { name: control('') }, querySelector: () => control('')
@@ -66,7 +71,7 @@ test('combined filters retain selections and reevaluate completion, priority and
     DOMParser: class { parseFromString() { return { querySelector: () => section }; } },
     document: {
       querySelector: selector => selector === 'h1' ? heading : section,
-      getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : ({ 'due-from': dueFrom, 'due-through': dueThrough, 'due-range': range, 'task-create': create, 'project-rename': renameProject })[id] || alert,
+      getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : ({ 'due-from': dueFrom, 'due-through': dueThrough, 'due-range': range, 'task-search': search, 'task-search-form': searchForm, 'task-create': create, 'project-rename': renameProject })[id] || alert,
       querySelectorAll: selector => ({
         '[data-testid="task-row"]': rows.filter(row => !row.removed),
         '[data-task-move]': rows.map(row => row.moveForm),
@@ -211,6 +216,61 @@ test('combined filters retain selections and reevaluate completion, priority and
   completionFilter.value = 'Completed';
   completionFilter.change();
   assert.deepEqual(visible(), [0]);
+  assert.ok(rows.every(row => row.checkbox.disabled && row.select.disabled));
+  // Search intersects every filter and preserves applied selections during edits.
+  rows.forEach(row => { row.checkbox.disabled = false; row.select.disabled = false; });
+  completionFilter.value = 'All';
+  priorityFilter.value = 'All';
+  applyRange('', '');
+  const applySearch = query => {
+    search.value = query;
+    searchForm.submit({ preventDefault() {} });
+  };
+  applySearch('  rENAMED TASK  ');
+  assert.equal(search.value, 'rENAMED TASK');
+  assert.deepEqual(visible(), [2]);
+  priorityFilter.value = 'Low';
+  priorityFilter.change();
+  assert.deepEqual(visible(), []);
+  priorityFilter.value = 'High';
+  priorityFilter.change();
+  assert.deepEqual(visible(), [2]);
+  applyRange('2025-01-01', '2025-01-01');
+  assert.deepEqual(visible(), [2]);
+  rows[2].form.elements.title.value = 'Different title';
+  await rows[2].form.submit({ preventDefault() {} });
+  assert.deepEqual(visible(), []);
+  assert.equal(priorityFilter.value, 'High');
+  applySearch('different');
+  assert.deepEqual(visible(), [2]);
+  defaultPriority.value = 'Normal';
+  await defaultPriority.change();
+  create.elements.title.value = 'Another task';
+  await create.submit({ preventDefault() {}, currentTarget: create });
+  assert.deepEqual(visible(), [2]);
+  rows[2].dueDateForm.elements.due_date.value = '';
+  await rows[2].dueDateForm.submit({ preventDefault() {} });
+  assert.deepEqual(visible(), []);
+  applyRange('', '');
+  assert.deepEqual(visible(), [2]);
+  completionFilter.value = 'Completed';
+  completionFilter.change();
+  assert.deepEqual(visible(), []);
+  rows[2].checkbox.checked = true;
+  await rows[2].checkbox.change();
+  assert.deepEqual(visible(), [2]);
+  applySearch('Different  title');
+  assert.deepEqual(visible(), []); // Internal whitespace is significant.
+  applySearch('  ');
+  assert.deepEqual(visible(), [0, 2]);
+  rows[2].span.textContent = 'École';
+  applySearch('école');
+  assert.deepEqual(visible(), []); // Only ASCII case is folded.
+  applySearch('ÉCOLE');
+  assert.deepEqual(visible(), [2]);
+  rows.forEach(row => { row.checkbox.disabled = true; row.select.disabled = true; });
+  applySearch('');
+  assert.deepEqual(visible(), [0, 2]);
   assert.ok(rows.every(row => row.checkbox.disabled && row.select.disabled));
   assert.match(source, /<label for="priority-filter">Priority filter<\/label>\s*<select id="priority-filter">\s*<option>All<\/option><option>Low<\/option><option>Normal<\/option><option>High<\/option>/);
 });

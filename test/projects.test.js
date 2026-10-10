@@ -52,7 +52,7 @@ test('archive migration, summaries, read-only tasks, restore and restart persist
     const filter = { value: 'All', addEventListener(type, handler) { this.change = handler; } };
     const rows = [true, false].map(checked => ({
       checkbox: { checked, disabled: true, addEventListener() {} },
-      querySelector(selector) { return selector === '[data-saved-date]' ? { dataset: { savedDate: '' } } : selector === '[data-priority-url]' ? { value: 'Normal' } : this.checkbox; }, hidden: false
+      querySelector(selector) { return selector === 'span' ? { textContent: 'Task' } : selector === '[data-saved-date]' ? { dataset: { savedDate: '' } } : selector === '[data-priority-url]' ? { value: 'Normal' } : this.checkbox; }, hidden: false
     }));
     runInNewContext(detail.match(/<script>([\s\S]*?)function bindTaskRows/)[1], {
       document: {
@@ -548,7 +548,7 @@ test('project-scoped tasks, validation, completion, filtering and restart persis
         checked, dataset: { completionUrl: `/projects/1/tasks/${index + 1}/completion` },
         addEventListener(type, handler) { this.change = handler; }
       };
-      return { checkbox, querySelector(selector) { return selector === '[data-saved-date]' ? { dataset: { savedDate: '' } } : selector === '[data-priority-url]' ? { value: 'Normal' } : checkbox; }, hidden: false };
+      return { checkbox, querySelector(selector) { return selector === 'span' ? { textContent: 'Task' } : selector === '[data-saved-date]' ? { dataset: { savedDate: '' } } : selector === '[data-priority-url]' ? { value: 'Normal' } : checkbox; }, hidden: false };
     });
     let saveOk = true;
     const client = content.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -590,6 +590,57 @@ test('project-scoped tasks, validation, completion, filtering and restart persis
     await server.stop();
     server = await start(dbPath);
     assert.doesNotMatch(await detail(1), / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project search intersects archive filter with ASCII-only matching and fresh navigation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual'
+    });
+    const get = path => fetch(`${server.base}${path}`).then(res => res.text());
+    const names = html => [...html.matchAll(/data-testid="project-row">\s*<span>(.*?)<\/span>/g)].map(match => match[1]);
+    for (const name of ['Alpha Board', 'ALPHA  Board', 'Beta', 'École']) await post('/projects', { name });
+    await post('/projects/1/tasks', { title: 'Saved task' });
+    await post('/projects/1/tasks/1/completion', { completed: 'true' });
+    const search = (query, filter = 'Active') => get('/?' + new URLSearchParams({ query, filter }));
+    let result = await search('  aLpHa  ');
+    assert.deepEqual(names(result), ['Alpha Board', 'ALPHA  Board']);
+    assert.match(result, /data-testid="project-summary">1\/1 completed/);
+    assert.match(result, /name="query" value="aLpHa"/);
+    assert.deepEqual(names(await search('alpha board')), ['Alpha Board']);
+    assert.deepEqual(names(await search('alpha  board')), ['ALPHA  Board']);
+    assert.deepEqual(names(await search('école')), []);
+    assert.deepEqual(names(await search('ÉCOLE')), ['École']);
+    assert.deepEqual(names(await search('   ')), ['Alpha Board', 'ALPHA  Board', 'Beta', 'École']);
+    const archive = await post('/projects/1/archive', { query: 'aLpHa' });
+    result = await get(archive.headers.get('location'));
+    assert.deepEqual(names(result), ['ALPHA  Board']);
+    result = await search('aLpHa', 'Archived');
+    assert.deepEqual(names(result), ['Alpha Board']);
+    assert.match(result, /name="query" value="aLpHa"/);
+    assert.match(result, /data-testid="project-summary">1\/1 completed/);
+    const detail = await get('/projects/1');
+    assert.match(detail, /form action="\/" method="get"><button type="submit">Projects/);
+    assert.match(detail, /<input id="task-search" type="text">/);
+    assert.match(detail, /<button type="submit">Search tasks/);
+    assert.deepEqual(names(await get('/')), ['ALPHA  Board', 'Beta', 'École']);
+    await post('/projects/1/restore', { query: 'aLpHa' });
+    await post('/projects/1/rename', { name: 'Gamma' });
+    assert.deepEqual(names(await search('alpha')), ['ALPHA  Board']);
+    assert.deepEqual(names(await search('gamma')), ['Gamma']);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(names(await get('/')), ['Gamma', 'ALPHA  Board', 'Beta', 'École']);
+    assert.deepEqual(names(await search('alpha')), ['ALPHA  Board']);
+    assert.match(await get('/health'), /"status":"ok"/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

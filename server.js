@@ -106,6 +106,11 @@ function validDueDate(value) {
   return day >= 1 && day <= days[month - 1];
 }
 
+function matchesSearch(value, query) {
+  const fold = text => text.replace(/[A-Z]/g, char => char.toLowerCase());
+  return fold(value).includes(fold(query));
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -148,27 +153,37 @@ function page(title, content) {
 </html>`;
 }
 
-function projectsPage(error = '', name = '', filter = 'Active') {
+function projectsPage(error = '', name = '', filter = 'Active', query = '') {
   return page('Projects', `<h1>Workboard</h1>
     ${error ? `<div role="alert">${escapeHtml(error)}</div>` : ''}
     <form action="/projects" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text" value="${escapeHtml(name)}">
       <button type="submit">Create project</button>
     </form>
     <form action="/" method="get">
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         <option${filter === 'Active' ? ' selected' : ''}>Active</option>
         <option${filter === 'Archived' ? ' selected' : ''}>Archived</option>
       </select>
     </form>
-    <section aria-label="Projects">${listProjects.all(filter === 'Archived' ? 1 : 0).map(project => `
+    <form action="/" method="get">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-search">Project search</label>
+      <input id="project-search" name="query" type="text" value="${escapeHtml(query)}">
+      <button type="submit">Search projects</button>
+    </form>
+    <section aria-label="Projects">${listProjects.all(filter === 'Archived' ? 1 : 0).filter(project => matchesSearch(project.name, query)).map(project => `
       <div class="project-row" data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
         <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+          <input type="hidden" name="query" value="${escapeHtml(query)}">
           <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
         </form>
       </div>`).join('')}</section>`);
@@ -203,6 +218,11 @@ function projectPage(project, error = '') {
     <select id="priority-filter">
       <option>All</option><option>Low</option><option>Normal</option><option>High</option>
     </select>
+    <form id="task-search-form">
+      <label for="task-search">Task search</label>
+      <input id="task-search" type="text">
+      <button type="submit">Search tasks</button>
+    </form>
     <form id="due-range">
       <label for="due-from">Due from</label>
       <input id="due-from" type="text">
@@ -244,7 +264,15 @@ function projectPage(project, error = '') {
       const dueThrough = document.getElementById('due-through');
       let appliedFrom = '';
       let appliedThrough = '';
+      let appliedQuery = '';
+      ${matchesSearch.toString()}
       ${validDueDate.toString()}
+      document.getElementById('task-search-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const input = document.getElementById('task-search');
+        appliedQuery = input.value = input.value.trim();
+        applyFilter();
+      });
       document.getElementById('due-range').addEventListener('submit', event => {
         event.preventDefault();
         const from = dueFrom.value.trim();
@@ -272,7 +300,8 @@ function projectPage(project, error = '') {
           const date = row.querySelector('[data-saved-date]').dataset.savedDate;
           const matchesDate = (!appliedFrom && !appliedThrough) ||
             (date && (!appliedFrom || date >= appliedFrom) && (!appliedThrough || date <= appliedThrough));
-          row.hidden = !matchesCompletion || !matchesPriority || !matchesDate;
+          const matchesTitle = matchesSearch(row.querySelector('span').textContent, appliedQuery);
+          row.hidden = !matchesCompletion || !matchesPriority || !matchesDate || !matchesTitle;
         });
       }
       filter.addEventListener('change', applyFilter);
@@ -338,6 +367,7 @@ function projectPage(project, error = '') {
             row.querySelector('span').textContent = title;
             row.querySelector('[data-completion-url]').setAttribute('aria-label', 'Complete ' + title);
             input.value = title;
+            applyFilter();
           } catch {
             alert.textContent = 'Could not rename task. Please try again.';
           } finally {
@@ -493,25 +523,29 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
     } else if (req.method === 'GET' && url.pathname === '/') {
-      html(res, 200, projectsPage('', '', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active'));
+      html(res, 200, projectsPage('', '', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active', (url.searchParams.get('query') || '').trim()));
     } else if (req.method === 'POST' && url.pathname === '/projects') {
-      const name = ((await readForm(req)).get('name') || '').trim();
+      const form = await readForm(req);
+      const name = (form.get('name') || '').trim();
+      const filter = form.get('filter') === 'Archived' ? 'Archived' : 'Active';
+      const query = (form.get('query') || '').trim();
       if (!name) {
-        html(res, 422, projectsPage('Project name is required'));
+        html(res, 422, projectsPage('Project name is required', '', filter, query));
         return;
       }
       createProject.run(name);
-      res.writeHead(303, { Location: '/' });
+      res.writeHead(303, { Location: filter === 'Active' && !query ? '/' : '/?' + new URLSearchParams({ filter, query }) });
       res.end();
     } else if (req.method === 'POST' && /^\/projects\/\d+\/(archive|restore)$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const archived = parts[3] === 'archive';
+      const query = ((await readForm(req)).get('query') || '').trim();
       const result = setArchived.run(archived ? 1 : 0, Number(parts[2]));
       if (!result.changes) {
         html(res, 404, page('Not found', '<h1>Project not found</h1>'));
         return;
       }
-      res.writeHead(303, { Location: archived ? '/' : '/?filter=Archived' });
+      res.writeHead(303, { Location: '/?' + new URLSearchParams({ filter: archived ? 'Active' : 'Archived', query }) });
       res.end();
     } else if (req.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) {
       const project = findProject.get(Number(url.pathname.split('/')[2]));

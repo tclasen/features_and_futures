@@ -18,6 +18,8 @@ Use `Due from`, `Due through`, and `Apply due range` for inclusive date filterin
 
 Each task row has `Destination project` and `Move task` controls. Destinations list other active projects in project creation order. Moving to a project for the first time appends the task after all positions established there. Returning to a previous project restores its remembered position, even when tasks return in a different order. Each project's positions persist independently, including while tasks are away. Moves preserve the task's identity, current title, completion, priority, and due date. The source page stays open with all filters unchanged; summaries reflect current ownership. Archived projects cannot send or receive tasks, and move controls are disabled when no eligible destination exists. Moves and task order survive restarts.
 
+Use `Project search` and `Search projects` to search within the selected Active/Archived list. On a project page, `Task search` and `Search tasks` combine with completion, priority, and due-range filters. Searches match substrings, ignore ASCII letter case, trim surrounding whitespace, and preserve internal whitespace. Blank searches match everything allowed by the other filters. Task edits retain the applied search and other filters; archived tasks remain searchable but read-only. Opening the list or returning with `Projects` resets project search, and opening a project resets task search.
+
 Run automated HTTP, browser-script, and SQLite restart-persistence checks:
 
 ```sh
