@@ -546,3 +546,82 @@ test('project defaults affect only future owned tasks and survive rename, archiv
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('moves append tasks, preserve saved data and summaries, reject invalid destinations, and persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
+  const dbPath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const send = (path, method, body) => fetch(`${server.url}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const list = async (path) => (await fetch(`${server.url}${path}`)).json();
+    const source = await (await send('/api/projects', 'POST', { name: 'Source' })).json();
+    const destination = await (await send('/api/projects', 'POST', { name: 'Destination' })).json();
+    const archived = await (await send('/api/projects', 'POST', { name: 'Archived' })).json();
+    const sourcePath = `/api/projects/${source.id}`;
+    const destinationPath = `/api/projects/${destination.id}`;
+    const archivedPath = `/api/projects/${archived.id}`;
+    const sourceTasks = `${sourcePath}/tasks`;
+    const destinationTasks = `${destinationPath}/tasks`;
+    const first = await (await send(sourceTasks, 'POST', { title: 'Oldest task' })).json();
+    const remaining = await (await send(sourceTasks, 'POST', { title: 'Remaining' })).json();
+    const existing = await (await send(destinationTasks, 'POST', { title: 'Existing destination task' })).json();
+    const taskPath = `${sourceTasks}/${first.id}`;
+    await send(taskPath, 'PATCH', { completed: true });
+    await send(taskPath, 'PATCH', { priority: 'High' });
+    const moved = await (await send(taskPath, 'PATCH', { dueDate: '0001-01-01' })).json();
+    await send(destinationPath, 'PATCH', { defaultTaskPriority: 'Low' });
+    await send(archivedPath, 'PATCH', { archived: true });
+    for (const destinationProjectId of [null, '2', 0, -1, 1.5, source.id]) {
+      assert.equal((await send(`${taskPath}/move`, 'POST', { destinationProjectId })).status, 400);
+    }
+    assert.equal((await send(`${taskPath}/move`, 'POST', { destinationProjectId: 999999 })).status, 404);
+    assert.equal((await send(`${destinationTasks}/${first.id}/move`, 'POST', { destinationProjectId: source.id })).status, 404);
+    assert.equal((await send(`${sourceTasks}/999999/move`, 'POST', { destinationProjectId: destination.id })).status, 404);
+    assert.equal((await send(`${taskPath}/move`, 'POST', { destinationProjectId: archived.id })).status, 409);
+    await send(sourcePath, 'PATCH', { archived: true });
+    assert.equal((await send(`${taskPath}/move`, 'POST', { destinationProjectId: destination.id })).status, 409);
+    assert.deepEqual(await list(sourceTasks), [moved, remaining]);
+    assert.deepEqual(await list(destinationTasks), [existing]);
+    await send(sourcePath, 'PATCH', { archived: false });
+    const response = await send(`${taskPath}/move`, 'POST', { destinationProjectId: destination.id });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), moved);
+    assert.deepEqual(await list(sourceTasks), [remaining]);
+    assert.deepEqual(await list(destinationTasks), [existing, moved]);
+    assert.deepEqual(await list(sourcePath), { ...source, totalCount: 1 });
+    assert.deepEqual(await list(destinationPath), {
+      ...destination, defaultTaskPriority: 'Low', totalCount: 2, completedCount: 1,
+    });
+    assert.equal((await send(taskPath, 'PATCH', { title: 'Wrong owner' })).status, 404);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(sourceTasks), [remaining]);
+    assert.deepEqual(await list(destinationTasks), [existing, moved]);
+    const appended = await (await send(destinationTasks, 'POST', { title: 'Created after move' })).json();
+    assert.equal(appended.priority, 'Low');
+    assert.deepEqual(await list(destinationTasks), [existing, moved, appended]);
+    const returned = await send(`${destinationTasks}/${moved.id}/move`, 'POST', { destinationProjectId: source.id });
+    assert.deepEqual(await returned.json(), moved);
+    assert.deepEqual(await list(sourceTasks), [remaining, moved]);
+    // Blank due dates and open completion survive moves as well.
+    assert.deepEqual(await (await send(`${destinationTasks}/${existing.id}/move`, 'POST', {
+      destinationProjectId: source.id,
+    })).json(), existing);
+    assert.deepEqual(await list(sourceTasks), [remaining, moved, existing]);
+    assert.deepEqual(await list(destinationTasks), [appended]);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.deepEqual(await list(sourceTasks), [remaining, moved, existing]);
+    assert.deepEqual(await list(destinationTasks), [appended]);
+    assert.deepEqual(await list(sourcePath), { ...source, totalCount: 3, completedCount: 1 });
+    assert.deepEqual(await list(destinationPath), { ...destination, defaultTaskPriority: 'Low', totalCount: 1 });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

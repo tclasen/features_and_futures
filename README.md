@@ -47,5 +47,11 @@ boundary excludes undated tasks. Apply due range validates both dates and their
 order before replacing the applied range. Invalid applications keep the previous
 visible membership. Edits re-evaluate the applied range without resetting filters.
 Range controls remain usable in archived projects and reset to empty on reopening.
+Each task row offers Destination project and Move task. Destinations are other
+active projects in project creation order. Moving appends the task to its destination
+and preserves its identity, title, completion, priority, and due date. The source
+page stays open with its selected filters and applied due range. Both project
+summaries reflect their current tasks. Archived projects cannot send or receive
+tasks; moving controls are disabled when archived or no destinations are available.
 Run `npm test` for date-validation and HTTP integration tests, including persistence across separate
 server processes. Tests use temporary databases and clean them up afterward.
