@@ -25,9 +25,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const setTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
@@ -35,6 +36,15 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+
+function validDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [, year, month, day] = match;
+  if (+year < 1 || +month < 1 || +month > 12) return false;
+  const days = new Date(Date.UTC(+year, +month, 0)).getUTCDate();
+  return +day >= 1 && +day <= days;
+}
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -95,7 +105,12 @@ const server = createServer(async (req, res) => {
     const existing = getTask.get(id);
     if (!existing) return sendJson(res, 404, { error: 'Task not found' });
     if (getProject.get(existing.projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
-    if (typeof update.title === 'string') {
+    if (Object.hasOwn(update, 'dueDate')) {
+      if (typeof update.dueDate !== 'string') return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const date = update.dueDate.trim();
+      if (date && !validDate(date)) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(date || null, id);
+    } else if (typeof update.title === 'string') {
       const title = update.title.trim();
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       setTaskTitle.run(title, id);
