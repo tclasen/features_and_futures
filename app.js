@@ -31,10 +31,11 @@ async function render() {
     if (!taskResponse.ok) throw new Error('Could not load tasks');
     const tasks = await taskResponse.json();
     app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
+      ${project.archived ? '<p>Archived project</p>' : ''}
       <form id="task-form">
         <label for="task-title">Task title</label>
         <input id="task-title" name="title" type="text" autocomplete="off">
-        <button type="submit">Create task</button>
+        <button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button>
         <p id="task-error" role="alert" hidden></p>
       </form>
       <label for="task-filter">Task filter</label>
@@ -47,7 +48,7 @@ async function render() {
       const shown = tasks.filter((task) => filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed));
       list.innerHTML = shown.map((task) => `<div data-testid="task-row" class="task-row">
         <span>${escapeHtml(task.title)}</span>
-        <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}>
+        <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}>
       </div>`).join('');
       list.querySelectorAll('[data-task-id]').forEach((checkbox) => checkbox.addEventListener('change', async () => {
         const task = tasks.find((item) => item.id === Number(checkbox.dataset.taskId));
@@ -75,19 +76,38 @@ async function render() {
     return;
   }
 
-  app.innerHTML = `<h1>Workboard</h1>
+    app.innerHTML = `<h1>Workboard</h1>
+    <label for="project-filter">Project filter</label>
+    <select id="project-filter"><option>Active</option><option>Archived</option></select>
     <form id="create-form">
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text" autocomplete="off">
       <button type="submit">Create project</button>
       <p id="error" role="alert" hidden></p>
     </form>
-    <section id="projects" aria-label="Projects">${projects.map((project) => `
+    <section id="projects" aria-label="Projects"></section>`;
+
+  const projectFilter = document.querySelector('#project-filter');
+  const drawProjects = () => {
+    const shown = projects.filter((project) => project.archived === (projectFilter.value === 'Archived'));
+    document.querySelector('#projects').innerHTML = shown.map((project) => `
       <div data-testid="project-row" class="project-row">
         <span>${escapeHtml(project.name)}</span>
+        <span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span>
         <button type="button" data-project-id="${project.id}">Open project</button>
-      </div>`).join('')}
-    </section>`;
+        <button type="button" data-archive-id="${project.id}">${project.archived ? 'Restore project' : 'Archive project'}</button>
+      </div>`).join('');
+    document.querySelectorAll('[data-project-id]').forEach((button) => button.addEventListener('click', () => navigate(`/projects/${button.dataset.projectId}`)));
+    document.querySelectorAll('[data-archive-id]').forEach((button) => button.addEventListener('click', async () => {
+      const project = projects.find((item) => item.id === Number(button.dataset.archiveId));
+      const response = await fetch(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+      if (!response.ok) { showError(new Error('Could not update project')); return; }
+      project.archived = !project.archived;
+      drawProjects();
+    }));
+  };
+  projectFilter.addEventListener('change', drawProjects);
+  drawProjects();
 
   document.querySelector('#create-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -111,9 +131,6 @@ async function render() {
       return;
     }
     navigate('/');
-  });
-  document.querySelectorAll('[data-project-id]').forEach((button) => {
-    button.addEventListener('click', () => navigate(`/projects/${button.dataset.projectId}`));
   });
 }
 

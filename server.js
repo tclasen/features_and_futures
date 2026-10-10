@@ -14,6 +14,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map((column) => column.name);
+if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -42,7 +44,20 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { status: 'ok' });
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return send(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return send(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p ORDER BY p.id`).all().map((p) => ({ ...p, archived: Boolean(p.archived) })));
+  }
+  const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectMatch && req.method === 'PATCH') {
+    try {
+      const payload = await readJson(req);
+      if (typeof payload.archived !== 'boolean') return send(res, 400, { error: 'Archive state is required' });
+      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(payload.archived ? 1 : 0, Number(projectMatch[1]));
+      if (!result.changes) return send(res, 404, { error: 'Project not found' });
+      return send(res, 200, { id: Number(projectMatch[1]), archived: payload.archived });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
@@ -64,7 +79,9 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'POST') {
     try {
       const projectId = Number(tasksMatch[1]);
-      if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return send(res, 404, { error: 'Project not found' });
+      if (project.archived) return send(res, 409, { error: 'Archived projects cannot receive tasks' });
       const payload = await readJson(req);
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       if (!title) return send(res, 400, { error: 'Task title is required' });
