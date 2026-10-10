@@ -9,6 +9,9 @@ const taskForm = document.querySelector('#create-task');
 const taskTitleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueRangeForm = document.querySelector('#due-range-form');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
 const defaultTaskPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
@@ -16,6 +19,16 @@ const renameForm = document.querySelector('#rename-project');
 const newProjectNameInput = document.querySelector('#new-project-name');
 let activeProjectId;
 let activeProjectArchived = false;
+let appliedDueRange = { from: '', through: '' };
+
+function isValidDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
 
 async function loadProjects() {
   const response = await fetch(`/api/projects?filter=${encodeURIComponent(projectFilter.value)}`);
@@ -65,6 +78,11 @@ async function showRoute() {
     return;
   }
   const project = await response.json();
+  appliedDueRange = { from: '', through: '' };
+  dueFromInput.value = '';
+  dueThroughInput.value = '';
+  taskFilter.value = 'All';
+  priorityFilter.value = 'All';
   activeProjectId = project.id;
   activeProjectArchived = Boolean(project.archived);
   document.querySelector('#project-title').textContent = project.name;
@@ -85,10 +103,13 @@ async function loadTasks() {
   const tasks = await response.json();
   const filter = taskFilter.value;
   const selectedPriority = priorityFilter.value;
+  const { from, through } = appliedDueRange;
   taskContainer.replaceChildren();
   for (const task of tasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
+    if ((from || through) && !task.due_date) continue;
+    if (from && task.due_date < from || through && task.due_date > through) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'project-row';
@@ -272,6 +293,26 @@ priorityFilter.addEventListener('change', () => loadTasks().catch(() => {
   error.textContent = 'Unable to load tasks';
   error.hidden = false;
 }));
+dueRangeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const from = dueFromInput.value.trim();
+  const through = dueThroughInput.value.trim();
+  if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+    showError('Due range must use valid YYYY-MM-DD dates');
+    return;
+  }
+  if (from && through && from > through) {
+    showError('Due from must not be after Due through');
+    return;
+  }
+  appliedDueRange = { from, through };
+  error.hidden = true;
+  try {
+    await loadTasks();
+  } catch {
+    showError('Unable to load tasks');
+  }
+});
 showRoute().catch(() => {
   error.textContent = 'Unable to load projects';
   error.hidden = false;
