@@ -16,7 +16,7 @@ async function unusedPort() {
   return port;
 }
 
-test('project validation, creation order, navigation and restart persistence', async () => {
+test('projects and tasks: validation, order, isolation, completion, filtering and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = await unusedPort();
   const base = `http://127.0.0.1:${port}`;
@@ -85,11 +85,65 @@ test('project validation, creation order, navigation and restart persistence', a
     assert.match(detail, /action="\/" method="get"><button type="submit">Projects<\/button>/);
     const invalid = await create('   ');
     assert.equal(((await invalid.text()).match(/data-testid="project-row"/g) || []).length, 2);
+    async function post(path, values) {
+      return fetch(base + path, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+    }
+    async function detailHtml(path = paths[0]) {
+      return (await fetch(base + path)).text();
+    }
+    const taskCount = html => (html.match(/data-testid="task-row"/g) || []).length;
+    assert.match(detail, /<label for="task-title">Task title<\/label>/);
+    assert.match(detail, />Create task<\/button>/);
+    assert.match(detail, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(detail, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post(`${paths[0]}/tasks`, { title });
+      assert.equal(response.status, 422);
+      const invalidHtml = await response.text();
+      assert.match(invalidHtml, /role="alert"[^>]*>Task title is required/);
+      assert.equal(taskCount(invalidHtml), 0);
+    }
+    for (const title of ['  First task  ', 'Second <task>']) {
+      assert.equal((await post(`${paths[0]}/tasks`, { title })).status, 303);
+    }
+    html = await detailHtml();
+    assert.equal(taskCount(html), 2);
+    assert.match(html, /aria-label="Complete First task"/);
+    assert.match(html, /aria-label="Complete Second &lt;task&gt;"/);
+    assert.match(html, /<span>First task<\/span>/);
+    assert.ok(html.indexOf('First task') < html.indexOf('Second &lt;task&gt;'));
+    assert.doesNotMatch(html, /\schecked\s/);
+    assert.equal(taskCount(await detailHtml(paths[1])), 0);
+    const completionPaths = [...html.matchAll(/action="([^" ]+\/completion)"/g)].map(match => match[1]);
+    assert.equal(completionPaths.length, 2);
+    assert.equal((await post(completionPaths[0], { completed: '1' })).status, 303);
+    assert.match(await detailHtml(), /aria-label="Complete First task" checked/);
+    const open = await detailHtml(`${paths[0]}?filter=Open`);
+    assert.equal(taskCount(open), 1);
+    assert.doesNotMatch(open, /Complete First task/);
+    const completed = await detailHtml(`${paths[0]}?filter=Completed`);
+    assert.equal(taskCount(completed), 1);
+    assert.doesNotMatch(completed, /Complete Second/);
+    assert.match(completed, /<option selected>Completed/);
+    const taskId = completionPaths[0].match(/\/tasks\/(\d+)/)[1];
+    assert.equal((await post(`${paths[1]}/tasks/${taskId}/completion`, {})).status, 404);
+    assert.match(await detailHtml(), /aria-label="Complete First task" checked/);
+    assert.equal((await post(completionPaths[0], {})).status, 303);
+    assert.doesNotMatch(await detailHtml(), /\schecked\s/);
+    assert.equal(taskCount(await detailHtml(`${paths[0]}?filter=Completed`)), 0);
+    await post(completionPaths[1], { completed: '1' });
+    const invalidTask = await post(`${paths[0]}/tasks`, { title: '  ' });
+    assert.equal(taskCount(await invalidTask.text()), 2);
+    const tasksBeforeRestart = await detailHtml();
     const beforeRestart = await (await fetch(base)).text();
     await stop();
     await start();
     assert.equal(await (await fetch(base)).text(), beforeRestart);
-    assert.equal(await (await fetch(base + paths[0])).text(), detail);
+    assert.equal(await detailHtml(), tasksBeforeRestart);
+    assert.equal(taskCount(await detailHtml(paths[1])), 0);
+    assert.equal(taskCount(await detailHtml(`${paths[0]}?filter=Completed`)), 1);
     assert.equal((await fetch(`${base}/projects/99999`)).status, 404);
   } finally {
     await stop();
