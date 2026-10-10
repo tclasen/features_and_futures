@@ -17,6 +17,7 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.nam
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -139,11 +140,19 @@ function projectsPage(error = '', value = '', filter = 'Active') {
     </section>`);
 }
 
-function projectPage(project, filter = 'All', error = '', value = '') {
+function projectPage(project, filter = 'All', error = '', value = '', renameError = '', renameValue = '') {
   const tasks = listTasks.all(project.id).filter((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `<div class="brand">Workboard</div><h1>${escapeHtml(project.name)}</h1>
     <form method="get" action="/"><button class="secondary" type="submit">Projects</button></form>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <section class="panel task-create" aria-label="Rename a project">
+      ${renameError ? `<div role="alert">${escapeHtml(renameError)}</div>` : ''}
+      <form method="post" action="/projects/${project.id}/rename">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-project-name">New project name</label>
+        <div class="fields"><input id="new-project-name" name="name" type="text" value="${escapeHtml(renameValue)}"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+      </form>
+    </section>
     <section class="panel task-create" aria-label="Create a task">
       ${error ? `<div role="alert">${escapeHtml(error)}</div>` : ''}
       <form method="post" action="/projects/${project.id}/tasks">
@@ -196,6 +205,27 @@ const server = http.createServer(async (request, response) => {
       createProject.run(name);
       redirect(response, '/');
       return;
+    }
+    const renameMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/rename$/);
+    if (request.method === 'POST' && renameMatch) {
+      const form = await readForm(request);
+      const project = getProject.get(renameMatch[1]);
+      if (project) {
+        const filter = taskFilter(form.get('filter'));
+        const submittedName = form.get('name') || '';
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, '', '', 'Archived projects cannot be renamed'));
+          return;
+        }
+        const name = submittedName.trim();
+        if (!name) {
+          sendHtml(response, 400, projectPage(project, filter, '', '', 'Project name is required', submittedName));
+          return;
+        }
+        renameProject.run(name, project.id);
+        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        return;
+      }
     }
     const archiveMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
     if (request.method === 'POST' && archiveMatch) {
