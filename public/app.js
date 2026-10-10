@@ -276,6 +276,9 @@ async function showProject(id) {
           await request(`/api/tasks/${task.id}`, {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
+            // Keep this small write alive if the user navigates immediately after
+            // changing the select; otherwise page teardown can abort the save.
+            keepalive: true,
             body: JSON.stringify({ priority: priority.value }),
           });
           task.priority = priority.value;
