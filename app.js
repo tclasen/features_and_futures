@@ -27,6 +27,14 @@ function element(tag, attributes = {}, text = '') {
   return node;
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
+}
+
+function matchesSearch(value, query) {
+  return asciiLower(value).includes(asciiLower(query));
+}
+
 async function showProjects() {
   app.replaceChildren();
   app.append(element('h1', {}, 'Workboard'));
@@ -54,7 +62,7 @@ async function showProjects() {
       });
       input.value = '';
       alert.hidden = true;
-      await renderProjects(filter.value, list, renderState);
+      await renderProjects(filter.value, appliedSearch.query, list, renderState);
     } catch (error) {
       alert.textContent = error.message;
       alert.hidden = false;
@@ -64,18 +72,29 @@ async function showProjects() {
   const filter = element('select', { id: 'project-filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', { value }, value));
   const list = element('div', { id: 'project-list', class: 'project-list' });
+  const searchForm = element('form', { class: 'project-search-form' });
+  const searchLabel = element('label', { for: 'project-search' }, 'Project search');
+  const searchInput = element('input', { id: 'project-search', type: 'text' });
+  const searchButton = element('button', { type: 'submit' }, 'Search projects');
+  const appliedSearch = { query: '' };
+  searchForm.append(searchLabel, searchInput, searchButton);
+  searchForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    appliedSearch.query = searchInput.value.trim();
+    await renderProjects(filter.value, appliedSearch.query, list, renderState);
+  });
   const renderState = { version: 0 };
-  filter.addEventListener('change', () => renderProjects(filter.value, list, renderState));
-  app.append(form, alert, filterLabel, filter, list);
-  await renderProjects(filter.value, list, renderState);
+  filter.addEventListener('change', () => renderProjects(filter.value, appliedSearch.query, list, renderState));
+  app.append(form, alert, searchForm, filterLabel, filter, list);
+  await renderProjects(filter.value, appliedSearch.query, list, renderState);
 }
 
-async function renderProjects(filter, list, renderState) {
+async function renderProjects(filter, searchQuery, list, renderState) {
   const version = ++renderState.version;
   const projects = await request('/api/projects');
   if (version !== renderState.version) return;
   list.replaceChildren();
-  for (const project of projects.filter((item) => item.archived === (filter === 'Archived'))) {
+  for (const project of projects.filter((item) => item.archived === (filter === 'Archived') && matchesSearch(item.name, searchQuery))) {
     const row = element('div', { 'data-testid': 'project-row', class: 'project-row' });
     row.append(element('span', {}, project.name));
     row.append(element('span', { 'data-testid': 'project-summary' }, `${project.completedCount}/${project.totalCount} completed`));
@@ -186,6 +205,17 @@ async function showProject(id) {
     const dueRangeAlert = element('p', { class: 'alert', role: 'alert', hidden: '' });
     dueRangeForm.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
     const appliedDueRange = { from: '', through: '' };
+    const taskSearchForm = element('form', { class: 'task-search-form' });
+    const taskSearchLabel = element('label', { for: 'task-search' }, 'Task search');
+    const taskSearchInput = element('input', { id: 'task-search', type: 'text' });
+    const taskSearchButton = element('button', { type: 'submit' }, 'Search tasks');
+    const appliedTaskSearch = { query: '' };
+    taskSearchForm.append(taskSearchLabel, taskSearchInput, taskSearchButton);
+    taskSearchForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      appliedTaskSearch.query = taskSearchInput.value.trim();
+      await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, appliedTaskSearch.query, list);
+    });
     const list = element('div', { class: 'task-list' });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -201,14 +231,14 @@ async function showProject(id) {
         });
         input.value = '';
         alert.hidden = true;
-        await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, list);
+        await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, appliedTaskSearch.query, list);
       } catch (error) {
         alert.textContent = error.message;
         alert.hidden = false;
       }
     });
-    filter.addEventListener('change', () => renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, list));
-    priorityFilter.addEventListener('change', () => renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, list));
+    filter.addEventListener('change', () => renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, appliedTaskSearch.query, list));
+    priorityFilter.addEventListener('change', () => renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, appliedTaskSearch.query, list));
     dueRangeForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const from = dueFrom.value.trim();
@@ -226,11 +256,11 @@ async function showProject(id) {
       appliedDueRange.from = from;
       appliedDueRange.through = through;
       dueRangeAlert.hidden = true;
-      await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, list);
+      await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, appliedTaskSearch.query, list);
     });
     app.append(form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter,
-      dueRangeForm, dueRangeAlert, list);
-    await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, list);
+      taskSearchForm, dueRangeForm, dueRangeAlert, list);
+    await renderTasks(id, filter.value, priorityFilter.value, appliedDueRange, appliedTaskSearch.query, list);
   } catch {
     app.append(element('h1', {}, 'Project not found'));
     const back = element('button', { type: 'button' }, 'Projects');
@@ -239,7 +269,7 @@ async function showProject(id) {
   }
 }
 
-async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list) {
+async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, searchQuery, list) {
   const project = await request(`/api/projects/${encodeURIComponent(projectId)}`);
   const [tasks, projects] = await Promise.all([
     request(`/api/projects/${encodeURIComponent(projectId)}/tasks`),
@@ -250,6 +280,7 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
   for (const task of tasks) {
     if (taskFilter === 'Open' && task.completed || taskFilter === 'Completed' && !task.completed) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+    if (!matchesSearch(task.title, searchQuery)) continue;
     if ((dueRange.from || dueRange.through) && !task.dueDate) continue;
     if (dueRange.from && task.dueDate < dueRange.from) continue;
     if (dueRange.through && task.dueDate > dueRange.through) continue;
@@ -265,7 +296,7 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
         await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }),
         });
-        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, list);
+        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, searchQuery, list);
       } catch (error) {
         checkbox.checked = !checkbox.checked;
         console.error(error);
@@ -287,7 +318,7 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
         await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: selectedPriority }),
         });
-        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, list);
+        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, searchQuery, list);
       } catch (error) {
         console.error(error);
         priority.value = task.priority;
@@ -315,7 +346,7 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
         await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }),
         });
-        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, list);
+        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, searchQuery, list);
       } catch (error) {
         renameAlert.textContent = error.message;
         renameAlert.hidden = false;
@@ -343,7 +374,7 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
           method: 'PATCH', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ dueDate: enteredDate || null }),
         });
-        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, list);
+        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, searchQuery, list);
       } catch (error) {
         dueDateAlert.textContent = error.message;
         dueDateAlert.hidden = false;
@@ -370,7 +401,7 @@ async function renderTasks(projectId, taskFilter, priorityFilter, dueRange, list
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
         });
-        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, list);
+        await renderTasks(projectId, taskFilter, priorityFilter, dueRange, searchQuery, list);
       } catch (error) {
         console.error(error);
       }
