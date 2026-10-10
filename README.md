@@ -38,8 +38,10 @@ filters, stays applied during edits, and remains usable while archived. Invalid
 ranges keep the previous applied range. Reopening from the project list resets
 both boundaries to empty.
 Each task row can move its task to another active project. Destinations use current
-project names in project creation order. Moving appends the task after the
-destination’s existing tasks, preserves its completion, priority and due date,
+project names in project creation order. Moving to a new destination appends after all positions established there.
+Returning to a previous project restores the task’s remembered position, even
+when multiple tasks return in a different order. Positions survive restarts and
+project renaming, archival and restoration. Moving preserves completion, priority and due date,
 and retains the source page’s filters. Both project summaries reflect the new
 ownership. Archived projects cannot send or receive moved tasks.
 `GET /health` returns `{"status":"ok"}`.
