@@ -60,10 +60,23 @@ function taskFilter(url) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter, error = '', renameError = '', taskRenameError = null) {
+function priorityFilter(url) {
+  const value = url.searchParams.get('priorityFilter');
+  return ['Low', 'Normal', 'High'].includes(value) ? value : 'All';
+}
+
+function taskQuery(url) {
+  const priority = priorityFilter(url);
+  return `filter=${taskFilter(url)}${priority === 'All' ? '' : `&priorityFilter=${priority}`}`;
+}
+
+function projectPage(project, url, error = '', renameError = '', taskRenameError = null) {
+  const filter = taskFilter(url);
+  const priority = priorityFilter(url);
   const tasks = listTasks.all(project.id).filter(task =>
-    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
-  return renderProject(project, tasks, filter, error, renameError, taskRenameError);
+    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+    (priority === 'All' || task.priority === priority));
+  return renderProject(project, tasks, filter, error, renameError, taskRenameError, priority);
 }
 
 async function formData(req) {
@@ -118,7 +131,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && match) {
       const project = findProject.get(match[1]);
       if (project) {
-        html(res, 200, projectPage(project, taskFilter(url)));
+        html(res, 200, projectPage(project, url));
         return;
       }
     }
@@ -126,18 +139,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && renameMatch) {
       const project = findProject.get(renameMatch[1]);
       if (project) {
-        const filter = taskFilter(url);
         if (project.archived) {
-          html(res, 403, projectPage(project, filter, '', 'Archived project is read-only'));
+          html(res, 403, projectPage(project, url, '', 'Archived project is read-only'));
           return;
         }
         const name = ((await formData(req)).get('name') || '').trim();
         if (!name) {
-          html(res, 400, projectPage(project, filter, '', 'Project name is required'));
+          html(res, 400, projectPage(project, url, '', 'Project name is required'));
           return;
         }
         renameProject.run(name, project.id);
-        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.writeHead(303, { Location: `/projects/${project.id}?${taskQuery(url)}` });
         res.end();
         return;
       }
@@ -147,18 +159,17 @@ const server = http.createServer(async (req, res) => {
       const project = findProject.get(priorityMatch[1]);
       const task = project && findTask.get(priorityMatch[2], project.id);
       if (task) {
-        const filter = taskFilter(url);
         if (project.archived) {
-          html(res, 403, projectPage(project, filter, 'Archived project is read-only'));
+          html(res, 403, projectPage(project, url, 'Archived project is read-only'));
           return;
         }
         const priority = (await formData(req)).get('priority');
         if (!['Low', 'Normal', 'High'].includes(priority)) {
-          html(res, 400, projectPage(project, filter, 'Invalid task priority'));
+          html(res, 400, projectPage(project, url, 'Invalid task priority'));
           return;
         }
         updatePriority.run(priority, task.id, project.id);
-        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.writeHead(303, { Location: `/projects/${project.id}?${taskQuery(url)}` });
         res.end();
         return;
       }
@@ -168,18 +179,17 @@ const server = http.createServer(async (req, res) => {
       const project = findProject.get(taskRenameMatch[1]);
       const task = project && findTask.get(taskRenameMatch[2], project.id);
       if (task) {
-        const filter = taskFilter(url);
         if (project.archived) {
-          html(res, 403, projectPage(project, filter, 'Archived project is read-only'));
+          html(res, 403, projectPage(project, url, 'Archived project is read-only'));
           return;
         }
         const title = ((await formData(req)).get('title') || '').trim();
         if (!title) {
-          html(res, 400, projectPage(project, filter, '', '', { id: task.id, message: 'Task title is required' }));
+          html(res, 400, projectPage(project, url, '', '', { id: task.id, message: 'Task title is required' }));
           return;
         }
         renameTask.run(title, task.id, project.id);
-        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.writeHead(303, { Location: `/projects/${project.id}?${taskQuery(url)}` });
         res.end();
         return;
       }
@@ -189,11 +199,10 @@ const server = http.createServer(async (req, res) => {
       const project = findProject.get(taskMatch[1]);
       if (project) {
         if (project.archived) {
-          html(res, 403, projectPage(project, taskFilter(url), 'Archived project is read-only'));
+          html(res, 403, projectPage(project, url, 'Archived project is read-only'));
           return;
         }
         const data = await formData(req);
-        const filter = taskFilter(url);
         if (taskMatch[2]) {
           const result = updateTask.run(data.get('completed') === 'on' ? 1 : 0, taskMatch[2], project.id);
           if (!result.changes) {
@@ -203,12 +212,12 @@ const server = http.createServer(async (req, res) => {
         } else {
           const title = (data.get('title') || '').trim();
           if (!title) {
-            html(res, 400, projectPage(project, filter, 'Task title is required'));
+            html(res, 400, projectPage(project, url, 'Task title is required'));
             return;
           }
           createTask.run(project.id, title);
         }
-        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.writeHead(303, { Location: `/projects/${project.id}?${taskQuery(url)}` });
         res.end();
         return;
       }

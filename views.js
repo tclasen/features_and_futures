@@ -75,13 +75,14 @@ export function renderProjects(projects, error = '', filter = 'Active') {
   `);
 }
 
-export function renderProject(project, tasks = [], filter = 'All', error = '', renameError = '', taskRenameError = null) {
+export function renderProject(project, tasks = [], filter = 'All', error = '', renameError = '', taskRenameError = null, priorityFilter = 'All') {
+  const query = `filter=${filter}&amp;priorityFilter=${priorityFilter}`;
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <section class="panel" aria-label="Rename a project">
-      <form method="post" action="/projects/${project.id}/rename?filter=${filter}">
+      <form method="post" action="/projects/${project.id}/rename?${query}">
         <label for="new-project-name">New project name</label>
         <div class="create">
           <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}${renameError ? ' aria-invalid="true" aria-describedby="rename-error"' : ''}>
@@ -91,7 +92,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', r
       </form>
     </section>
     <section class="panel" aria-label="Create a task">
-      <form method="post" action="/projects/${project.id}/tasks?filter=${filter}">
+      <form method="post" action="/projects/${project.id}/tasks?${query}">
         <label for="task-title">Task title</label>
         <div class="create">
           <input id="task-title" name="title" type="text" autocomplete="off"${error ? ' aria-invalid="true" aria-describedby="task-error"' : ''}>
@@ -106,22 +107,26 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', r
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map(value => `<option${filter === value ? ' selected' : ''}>${value}</option>`).join('')}
       </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
+        ${['All', 'Low', 'Normal', 'High'].map(value => `<option${priorityFilter === value ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
     </form>
     ${tasks.length ? `<ul>${tasks.map(task => `
       <li class="panel task" data-testid="task-row">
-        <form method="post" action="/projects/${project.id}/tasks/${task.id}?filter=${filter}">
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}?${query}">
           <label>
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             <span>${escapeHtml(task.title)}</span>
           </label>
         </form>
-        <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority?filter=${filter}">
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority?${query}">
           <label for="task-priority-${task.id}">Task priority</label>
           <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${['Low', 'Normal', 'High'].map(value => `<option${task.priority === value ? ' selected' : ''}>${value}</option>`).join('')}
           </select>
         </form>
-        <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename?filter=${filter}">
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename?${query}">
           <label for="new-task-title-${task.id}">New task title</label>
           <div class="create">
             <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}${taskRenameError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-rename-error-${task.id}"` : ''}>
