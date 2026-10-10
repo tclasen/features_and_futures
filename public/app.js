@@ -294,6 +294,7 @@ async function renderTasks(projectId, archived) {
   const list = section.querySelector('ul');
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
+  let destinations = [];
   const pendingUpdates = new Set();
 
   function matchesCurrentFilters(task) {
@@ -377,6 +378,26 @@ async function renderTasks(projectId, archived) {
       dueDateButton.textContent = 'Save due date';
       dueDateControls.append(dueDateInput, dueDateButton);
       dueDateForm.append(dueDateLabel, dueDateControls);
+      const moveForm = document.createElement('form');
+      moveForm.className = 'task-move';
+      const destinationLabel = document.createElement('label');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      destinationLabel.textContent = 'Destination project';
+      const moveControls = document.createElement('div');
+      moveControls.className = 'create-controls';
+      const destination = document.createElement('select');
+      destination.id = destinationLabel.htmlFor;
+      for (const project of destinations) {
+        const option = document.createElement('option');
+        option.value = String(project.id);
+        option.textContent = project.name;
+        destination.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      moveControls.append(destination, moveButton);
+      moveForm.append(destinationLabel, moveControls);
       function setDisabled(pending) {
         checkbox.disabled = archived || pending;
         priority.disabled = archived || pending;
@@ -384,6 +405,8 @@ async function renderTasks(projectId, archived) {
         renameButton.disabled = archived || pending;
         dueDateInput.disabled = archived || pending;
         dueDateButton.disabled = archived || pending;
+        destination.disabled = archived || pending || destinations.length === 0;
+        moveButton.disabled = destination.disabled;
       }
       setDisabled(pendingUpdates.has(task.id));
       priority.addEventListener('change', async () => {
@@ -430,7 +453,27 @@ async function renderTasks(projectId, archived) {
         setDisabled(false);
         if (!row.isConnected || !matchesCurrentFilters(task)) renderList();
       });
-      row.append(title, checkbox, priorityLabel, priority, renameForm, dueDateForm);
+      moveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (moveButton.disabled || pendingUpdates.has(task.id)) return;
+        pendingUpdates.add(task.id);
+        setDisabled(true);
+        alert.hidden = true;
+        try {
+          await api(`${path}/${task.id}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+          });
+          tasks = tasks.filter((current) => current.id !== task.id);
+        } catch (error) {
+          showError(alert, error.message);
+        } finally {
+          pendingUpdates.delete(task.id);
+          renderList();
+        }
+      });
+      row.append(title, checkbox, priorityLabel, priority, renameForm, dueDateForm, moveForm);
       return row;
     }));
   }
@@ -477,7 +520,9 @@ async function renderTasks(projectId, archived) {
     }
   });
   try {
-    tasks = await api(path);
+    const [savedTasks, projects] = await Promise.all([api(path), api('/api/projects')]);
+    tasks = savedTasks;
+    destinations = projects.filter((project) => !project.archived && project.id !== Number(projectId));
     renderList();
     button.disabled = archived;
   } catch (error) {

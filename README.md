@@ -65,3 +65,16 @@ previous applied range intact. Editing the textboxes alone does not apply a
 range. Task edits immediately update matching rows while preserving all filters.
 Range controls remain available in archived projects. Reopening a project starts
 with empty boundaries; filters never change saved task data or completion summaries.
+
+Destination project lists other active projects in project creation order. Move
+task appends the task to the chosen project's tasks, preserving its identity,
+title, completion, priority, and due date. The source page and all its filters
+remain selected. Both summaries reflect the new ownership. Moving is disabled
+for archived projects or when there are no eligible destinations. Existing
+task order is preserved when migrating older databases; new and moved tasks
+append after the destination's current tasks.
+
+`POST /api/projects/:projectId/tasks/:taskId/move` accepts
+`{"destinationProjectId":123}`. Source and destination must be different active
+projects. Moves update ownership and order together in a SQLite transaction;
+invalid requests leave both projects unchanged.

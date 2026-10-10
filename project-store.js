@@ -32,6 +32,14 @@ export function openProjectStore(path) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id;
+      COMMIT;
+    `);
+  }
   const projectQuery = `SELECT id, name, archived, default_task_priority AS defaultTaskPriority,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS totalCount,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completedCount
@@ -42,9 +50,13 @@ export function openProjectStore(path) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
   const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? AND id = ?');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE project_id = ? AND id = ?`);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -99,8 +111,33 @@ export function openProjectStore(path) {
       const project = requireActiveProject(projectId);
       const trimmedTitle = typeof title === 'string' ? title.trim() : '';
       if (!trimmedTitle) throw new Error('Task title is required');
-      const result = insertTask.run(projectId, trimmedTitle, project.defaultTaskPriority);
+      const result = insertTask.run(projectId, trimmedTitle, project.defaultTaskPriority, projectId);
       return taskRecord(findTask.get(projectId, result.lastInsertRowid));
+    },
+    moveTask(projectId, taskId, destinationProjectId) {
+      if (!Number.isSafeInteger(destinationProjectId) || destinationProjectId < 1 ||
+          destinationProjectId === Number(projectId)) {
+        const error = new Error('Destination must be another active project');
+        error.status = 400;
+        throw error;
+      }
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        requireActiveProject(projectId);
+        requireActiveProject(destinationProjectId);
+        const task = findTask.get(projectId, taskId);
+        if (!task) {
+          const error = new Error('Task not found');
+          error.status = 404;
+          throw error;
+        }
+        moveTask.run(destinationProjectId, destinationProjectId, projectId, taskId);
+        database.exec('COMMIT');
+        return taskRecord(task);
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
     },
     setTaskCompletion(projectId, taskId, completed) {
       requireActiveProject(projectId);

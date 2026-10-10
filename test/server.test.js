@@ -794,3 +794,111 @@ test('due dates migrate, validate, and persist independently through edits and r
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('moves migrate order and preserve task data, append position, summaries, and persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  // Task 010 data has no position column. IDs initially define task order.
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0,
+      default_task_priority TEXT NOT NULL DEFAULT 'Normal'
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+      due_date TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO projects (name, default_task_priority, archived)
+    VALUES ('Source', 'Normal', 0), ('Destination', 'Low', 0), ('Archived', 'High', 1);
+    INSERT INTO tasks (project_id, title, completed, priority, due_date)
+    VALUES (1, 'Dated completed task', 1, 'High', '0001-01-01'),
+           (1, 'Undated task', 0, 'Normal', ''),
+           (2, 'Destination task', 0, 'Low', '9999-12-31');
+  `);
+  database.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.baseUrl + path, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }),
+    });
+    const tasks = async (projectId) => (await request(`/api/projects/${projectId}/tasks`)).json();
+    const move = (projectId, taskId, destinationProjectId) => request(
+      `/api/projects/${projectId}/tasks/${taskId}/move`, 'POST', { destinationProjectId },
+    );
+    const [first, second] = await tasks(1);
+    const [third] = await tasks(2);
+    async function assertProjects(sourceTasks, destinationTasks, sourceArchived = false) {
+      assert.deepEqual(await tasks(1), sourceTasks);
+      assert.deepEqual(await tasks(2), destinationTasks);
+      assert.deepEqual(await tasks(3), []);
+      const projects = await (await request('/api/projects')).json();
+      assert.deepEqual(projects.map(({ id, totalCount, completedCount }) => ({ id, totalCount, completedCount })), [
+        { id: 1, totalCount: sourceTasks.length, completedCount: sourceTasks.filter((task) => task.completed).length },
+        { id: 2, totalCount: destinationTasks.length, completedCount: destinationTasks.filter((task) => task.completed).length },
+        { id: 3, totalCount: 0, completedCount: 0 },
+      ]);
+      assert.equal(projects[0].archived, sourceArchived);
+      assert.equal(projects[1].defaultTaskPriority, 'Low');
+    }
+    await assertProjects([first, second], [third]);
+    for (const destination of [1, 0, -1, '2', null, 2.5, {}, []]) {
+      assert.equal((await move(1, first.id, destination)).status, 400);
+      await assertProjects([first, second], [third]);
+    }
+    assert.equal((await move(1, first.id, 999)).status, 404);
+    assert.equal((await move(1, first.id, 3)).status, 409);
+    assert.equal((await move(1, 999, 2)).status, 404);
+    assert.equal((await move(2, first.id, 1)).status, 404);
+    assert.equal((await move(999, first.id, 2)).status, 404);
+    await assertProjects([first, second], [third]);
+
+    const moved = await move(1, first.id, 2);
+    assert.equal(moved.status, 200);
+    assert.deepEqual(await moved.json(), first);
+    await assertProjects([second], [third, first]);
+    // Stale source requests cannot edit or move a task now owned by another project.
+    assert.equal((await move(1, first.id, 2)).status, 404);
+    assert.equal((await request(`/api/projects/1/tasks/${first.id}`, 'PATCH', { completed: false })).status, 404);
+    await assertProjects([second], [third, first]);
+    await server.stop();
+    server = await startServer(databasePath);
+    await assertProjects([second], [third, first]);
+    assert.equal((await move(1, second.id, 2)).status, 200);
+    await assertProjects([], [third, first, second]);
+    const added = await (await request('/api/projects/2/tasks', 'POST', { title: 'After moved tasks' })).json();
+    assert.equal(added.priority, 'Low');
+    await assertProjects([], [third, first, second, added]);
+    assert.equal((await move(2, third.id, 1)).status, 200);
+    assert.equal((await move(2, first.id, 1)).status, 200);
+    await assertProjects([third, first], [second, added]);
+
+    await request('/api/projects/1', 'PATCH', { archived: true });
+    assert.equal((await move(1, first.id, 2)).status, 409);
+    assert.equal((await move(2, second.id, 1)).status, 409);
+    await assertProjects([third, first], [second, added], true);
+    await server.stop();
+    server = await startServer(databasePath);
+    await assertProjects([third, first], [second, added], true);
+    await request('/api/projects/1', 'PATCH', { archived: false });
+    await request('/api/projects/2', 'PATCH', { name: 'Renamed destination' });
+    assert.equal((await move(1, first.id, 2)).status, 200);
+    await assertProjects([third], [second, added, first]);
+    await server.stop();
+    server = await startServer(databasePath);
+    await assertProjects([third], [second, added, first]);
+    assert.equal((await request('/health')).status, 200);
+    assert.deepEqual(await (await request('/health')).json(), { status: 'ok' });
+    assert.equal((await request('/projects/1')).status, 200);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

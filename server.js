@@ -51,6 +51,11 @@ const server = createServer(async (request, response) => {
         return json(response, 201, store.create(input.name));
       }
     }
+    const moveApi = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/move$/);
+    if (moveApi && request.method === 'POST') {
+      const input = await readJson(request);
+      return json(response, 200, store.moveTask(moveApi[1], moveApi[2], input?.destinationProjectId));
+    }
     const tasksApi = pathname.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
     if (tasksApi) {
       const [, projectId, taskId] = tasksApi;
