@@ -24,9 +24,14 @@ db.exec(`PRAGMA foreign_keys = ON;
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   )`);
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const priorities = ['Low', 'Normal', 'High'];
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT projects.id, projects.name,
@@ -149,6 +154,13 @@ function projectPage(project, filter = 'All', error = '') {
         <label for="new-task-title-${task.id}">New task title</label>
         <div class="create"><input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
       </form>
+      <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="task-priority-${task.id}">Task priority</label>
+        <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+          ${priorities.map(priority => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+        </select>
+      </form>
     </div>`).join('') : '<p class="empty">No matching tasks.</p>'}
     </section>`);
 }
@@ -244,7 +256,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/(?:rename|priority))?)?$/.exec(url.pathname);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const taskId = taskMatch[2] ? Number(taskMatch[2]) : null;
@@ -267,7 +279,18 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           createTask.run(projectId, title);
-        } else if (taskMatch[3]) {
+        } else if (taskMatch[3] === '/priority') {
+          if (!getTask.get(taskId, projectId)) {
+            sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
+          const priority = body.get('priority');
+          if (!priorities.includes(priority)) {
+            sendHtml(response, 422, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
+          setTaskPriority.run(priority, taskId, projectId);
+        } else if (taskMatch[3] === '/rename') {
           if (!getTask.get(taskId, projectId)) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, filtering, archive, project/task rename, summaries, migration, and restart persistence', async () => {
+test('projects and tasks: validation, filtering, archive, project/task rename, priorities, summaries, migration, and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Start with the previous schema to exercise migration of existing databases.
   const previousDb = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -106,7 +106,7 @@ test('projects and tasks: validation, filtering, archive, project/task rename, s
     async function projectHtml(id, filter = 'All') {
       return (await fetch(`${base}/projects/${id}?filter=${filter}`)).text();
     }
-    const rows = page => [...page.matchAll(/<div class="task-row" data-testid="task-row">([\s\S]*?)<\/div>/g)].map(match => match[1]);
+    const rows = page => [...page.matchAll(/<div class="task-row" data-testid="task-row">([\s\S]*?)<\/form>\s*<\/div>/g)].map(match => match[1]);
     assert.match(detail, /<label for="task-title">Task title<\/label>/);
     assert.match(detail, />Create task<\/button>/);
     assert.match(detail, /<label for="task-filter">Task filter<\/label>/);
@@ -317,8 +317,106 @@ test('projects and tasks: validation, filtering, archive, project/task rename, s
     await start();
     assert.equal(await projectHtml(ids[0]), finalTasks);
     assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+
+    // Priorities change independently and preserve the rest of each task.
+    const priorityPath = `/projects/${ids[0]}/tasks/${taskId}/priority`;
+    const secondPriorityPath = `/projects/${ids[0]}/tasks/${secondTaskId}/priority`;
+    const normalOptions = /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/;
+    assert.ok(rows(finalTasks).every(row => normalOptions.test(row)));
+    assert.match(rows(finalTasks)[0], new RegExp(`<label for="task-priority-${taskId}">Task priority</label>`));
+    assert.equal((await post(`/projects/${ids[1]}/tasks/${taskId}/priority`, { priority: 'High' })).status, 404);
+    assert.equal((await post(`/projects/${ids[0]}/tasks/999999/priority`, { priority: 'High' })).status, 404);
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(priorityPath, { priority })).status, 422);
+      assert.equal(await projectHtml(ids[0]), finalTasks);
+    }
+    const priorityResponse = await post(priorityPath, { priority: 'High', filter: 'Completed' });
+    assert.equal(priorityResponse.status, 303);
+    assert.equal(priorityResponse.headers.get('location'), `/projects/${ids[0]}?filter=Completed`);
+    const highTasks = await projectHtml(ids[0]);
+    assert.equal(highTasks, finalTasks.replace('<option selected>Normal</option><option>High</option>', '<option>Normal</option><option selected>High</option>'));
+    assert.equal((await post(secondPriorityPath, { priority: 'Low', filter: 'Open' })).status, 303);
+    const prioritizedTasks = await projectHtml(ids[0]);
+    assert.match(rows(prioritizedTasks)[0], /<option selected>High<\/option>/);
+    assert.match(rows(prioritizedTasks)[1], /<option selected>Low<\/option>/);
+    assert.match(rows(await projectHtml(ids[0], 'Completed'))[0], /<option selected>High<\/option>/);
+    assert.match(rows(await projectHtml(ids[0], 'Open'))[0], /<option selected>Low<\/option>/);
+    assert.equal(await projectHtml(ids[1]), otherProjectBefore);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    await post(renameTaskPath, { title: 'Priority retained' });
+    const renamedPriorityTasks = await projectHtml(ids[0]);
+    assert.match(rows(renamedPriorityTasks)[0], /aria-label="Complete Priority retained"[^>]* checked/);
+    assert.match(rows(renamedPriorityTasks)[0], /<option selected>High<\/option>/);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), renamedPriorityTasks);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    await post(`/projects/${ids[0]}/archive`, {});
+    const archivedPriorities = await projectHtml(ids[0]);
+    assert.ok(rows(archivedPriorities).every(row => /<select[^>]*name="priority"[^>]* disabled/.test(row)));
+    assert.equal((await post(priorityPath, { priority: 'Normal' })).status, 403);
+    assert.equal(await projectHtml(ids[0]), archivedPriorities);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), archivedPriorities);
+    await post(`/projects/${ids[0]}/restore`, {});
+    assert.equal(await projectHtml(ids[0]), renamedPriorityTasks);
+    await post(priorityPath, { priority: 'Normal' });
+    assert.match(rows(await projectHtml(ids[0]))[0], normalOptions);
+    assert.match(rows(await projectHtml(ids[0]))[1], /<option selected>Low<\/option>/);
+    await post(`/projects/${ids[0]}/tasks`, { title: 'New normal task' });
+    const afterNewTask = rows(await projectHtml(ids[0]));
+    assert.equal(afterNewTask.length, 3);
+    assert.match(afterNewTask[2], normalOptions);
+    assert.doesNotMatch(afterNewTask[2], / checked/);
+
   } finally {
     await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('migrates existing tasks to Normal without changing their saved data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  const database = new DatabaseSync(databasePath);
+  database.exec(`CREATE TABLE projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO projects (name, archived) VALUES ('Existing active', 0), ('Existing archived', 1);
+  INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing open', 0), (2, 'Existing completed', 1);`);
+  const before = database.prepare('SELECT * FROM tasks ORDER BY id').all();
+  const child = spawn(process.execPath, ['server.js'], {
+    env: { ...process.env, PORT: '0', DB_PATH: databasePath },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stderr.on('data', chunk => { output += chunk; });
+  try {
+    let migrated = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+        migrated = true;
+        break;
+      }
+      if (child.exitCode !== null) throw new Error(`Server exited: ${output}`);
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.ok(migrated, `Migration did not complete: ${output}`);
+    assert.deepEqual(database.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
+      before.map(task => ({ ...task, priority: 'Normal' })));
+    assert.equal(database.prepare('SELECT archived FROM projects WHERE id = 2').get().archived, 1);
+  } finally {
+    if (child.exitCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+    database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
