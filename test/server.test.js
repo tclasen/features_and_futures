@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 async function unusedPort() {
   const socket = createServer();
@@ -56,6 +57,10 @@ test('projects and tasks: validation, ownership, filtering, completion and resta
     });
   }
   try {
+    // Simulate the pre-archive schema so the same suite exercises migration.
+    const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
+    legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL CHECK(length(trim(name)) > 0))');
+    legacy.close();
     await start();
     const initial = await (await fetch(base)).text();
     assert.match(initial, /<h1>Workboard<\/h1>/);
@@ -144,6 +149,48 @@ test('projects and tasks: validation, ownership, filtering, completion and resta
     assert.equal((await postTask(taskPaths[0], {})).status, 303);
     assert.doesNotMatch(await tasksPage(), / checked/);
     assert.doesNotMatch(await tasksPage('completed'), /data-testid="task-row"/);
+
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
+    await postTask(taskPaths[0], { completed: 'on' });
+    const beforeArchive = await tasksPage();
+    const active = await (await fetch(base)).text();
+    assert.match(active, /value="active" selected>Active/);
+    assert.match(active, /data-testid="project-summary">1\/2 completed/);
+    assert.match(active, /data-testid="project-summary">0\/0 completed/);
+    assert.match(active, />Archive project<\/button>/);
+    assert.equal((await postTask(`${projectPath}/archive`, {})).status, 303);
+    const remaining = await (await fetch(base)).text();
+    assert.doesNotMatch(remaining, /First project/);
+    assert.match(remaining, /第二/);
+    const archivedList = await (await fetch(`${base}/?filter=archived`)).text();
+    assert.match(archivedList, /value="archived" selected>Archived/);
+    assert.match(archivedList, /First project/);
+    assert.doesNotMatch(archivedList, /第二/);
+    assert.match(archivedList, /data-testid="project-summary">1\/2 completed/);
+    assert.match(archivedList, />Restore project<\/button>/);
+    assert.match(archivedList, />Open project<\/button>/);
+    const archivedPage = await tasksPage();
+    assert.match(archivedPage, /<p>Archived project<\/p>/);
+    assert.match(archivedPage, /disabled>Create task/);
+    assert.equal((archivedPage.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+    assert.match(await tasksPage('completed'), /<span>First task<\/span>/);
+    assert.doesNotMatch(await tasksPage('open'), /<span>First task<\/span>/);
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: 'Forbidden' })).status, 403);
+    assert.equal((await postTask(taskPaths[0], {})).status, 403);
+    assert.equal(await tasksPage(), archivedPage);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), archivedPage);
+    assert.equal(await (await fetch(`${base}/?filter=archived`)).text(), archivedList);
+    assert.equal((await postTask(`${projectPath}/restore`, {})).status, 303);
+    assert.equal(await tasksPage(), beforeArchive);
+    assert.equal(await (await fetch(base)).text(), active);
+    assert.doesNotMatch(await (await fetch(`${base}/?filter=archived`)).text(), /data-testid="project-row"/);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), beforeArchive);
+    assert.equal(await (await fetch(base)).text(), active);
+    assert.equal((await postTask('/projects/99999/archive', {})).status, 404);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
