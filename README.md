@@ -26,3 +26,11 @@ Tasks are listed and created at `/api/projects/:id/tasks`; update completion
 with `PATCH /api/projects/:id/tasks/:taskId` and a JSON body such as
 `{"completed":true}`. Tasks belong to their project, remain in creation order,
 and persist with their completion state in the configured database.
+
+The project list initially shows Active projects; select Archived to open or
+restore archived projects. Each row shows completed/total task counts. Archive
+or restore with `PATCH /api/projects/:id` and `{"archived":true}` or
+`{"archived":false}`. Archived project pages retain task filtering but disable
+task creation and completion changes; the API also rejects these writes with
+HTTP 409. Existing databases are migrated automatically, preserving IDs and
+tasks. Archive state and summaries survive process restarts.
