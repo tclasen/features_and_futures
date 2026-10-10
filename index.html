@@ -20,6 +20,8 @@
     #alert { min-height: 1.5em; color: #b42318; }
     #projects { display: grid; gap: 10px; }
     .project-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #d9dfeb; border-radius: 8px; background: white; }
+    .project-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .project-summary { color: #536079; white-space: nowrap; }
     .project-name { overflow-wrap: anywhere; }
     #detail { margin-top: 22px; }
     #detail h1 { margin-top: 22px; }
@@ -39,11 +41,16 @@
         <input id="project-name" name="name" type="text" aria-label="Project name">
         <button type="submit">Create project</button>
       </form>
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter" aria-label="Project filter">
+        <option value="active">Active</option><option value="archived">Archived</option>
+      </select>
       <div id="alert" role="alert" aria-live="polite"></div>
       <div id="projects"></div>
     </section>
     <section id="detail" hidden>
       <button id="back" type="button">Projects</button>
+      <p id="archived-notice" hidden>Archived project</p>
       <h1 id="detail-name"></h1>
       <form id="task-form" novalidate>
         <label for="task-title-input">Task title</label>
@@ -68,7 +75,8 @@
     let activeProjectId = null;
 
     async function loadProjects() {
-      const response = await fetch('/api/projects');
+      const archived = document.querySelector('#project-filter').value === 'archived';
+      const response = await fetch(`/api/projects?archived=${archived}`);
       return response.json();
     }
 
@@ -87,7 +95,23 @@
         open.type = 'button';
         open.textContent = 'Open project';
         open.addEventListener('click', () => navigate(`/projects/${project.id}`));
-        row.append(name, open);
+        const summary = document.createElement('span');
+        summary.className = 'project-summary';
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+        const actions = document.createElement('div');
+        actions.className = 'project-actions';
+        actions.append(summary, open);
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          const action = project.archived ? 'restore' : 'archive';
+          const response = await fetch(`/api/projects/${project.id}/${action}`, { method: 'POST' });
+          if (response.ok) await showList();
+        });
+        actions.append(archive);
+        row.append(name, actions);
         return row;
       }));
     }
@@ -104,6 +128,10 @@
       const project = await response.json();
       activeProjectId = id;
       document.querySelector('#detail-name').textContent = project.name;
+      const isArchived = !!project.archived;
+      document.querySelector('#archived-notice').hidden = !isArchived;
+      document.querySelector('#task-title-input').disabled = isArchived;
+      document.querySelector('#task-form').querySelector('button').disabled = isArchived;
       await loadTasks();
     }
 
@@ -121,6 +149,7 @@
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = !!task.completed;
+        checkbox.disabled = !!(document.querySelector('#archived-notice').hidden === false);
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         checkbox.addEventListener('change', async () => {
           const result = await fetch(`/api/tasks/${task.id}`, {
@@ -168,6 +197,7 @@
     });
     document.querySelector('#back').addEventListener('click', () => navigate('/'));
     document.querySelector('#task-filter').addEventListener('change', loadTasks);
+    document.querySelector('#project-filter').addEventListener('change', showList);
     document.querySelector('#task-form').addEventListener('submit', async event => {
       event.preventDefault();
       const input = document.querySelector('#task-title-input');

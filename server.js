@@ -9,8 +9,13 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Existing databases from earlier checkpoints need the archive state too.
+if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -38,7 +43,11 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 200, { status: 'ok' });
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
+    return sendJson(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
+      FROM projects p WHERE p.archived = ? ORDER BY p.id`).all(archived));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let data;
@@ -50,18 +59,24 @@ const server = createServer(async (req, res) => {
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (req.method === 'POST' && archiveMatch) {
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
+    return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Project not found' });
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
       return sendJson(res, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
     }
     if (req.method === 'POST') {
+      if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
       let data;
       try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
       const title = typeof data.title === 'string' ? data.title.trim() : '';
