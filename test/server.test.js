@@ -81,6 +81,12 @@ test('health, project validation, creation order, detail, and restart persistenc
     assert.equal(filtersModule.status, 200);
     assert.match(filtersModule.headers.get('content-type'), /text\/javascript/);
     assert.match(await filtersModule.text(), /export function filterTasks/);
+    for (const path of ['/search.js', '/project-filters.js']) {
+      const module = await get(path);
+      assert.equal(module.status, 200);
+      assert.match(module.headers.get('content-type'), /text\/javascript/);
+      assert.match(await module.text(), /export function/);
+    }
     assert.equal((await get('/style.css')).status, 200);
     assert.equal((await get('/missing')).status, 404);
     await server.stop();

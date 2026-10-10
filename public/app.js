@@ -1,4 +1,5 @@
 import { filterTasks, normalizeDueRange } from './task-filters.js';
+import { filterProjects } from './project-filters.js';
 
 const app = document.querySelector('#app');
 
@@ -70,6 +71,13 @@ async function showProjects() {
       <option>Active</option>
       <option>Archived</option>
     </select>
+    <form id="project-search-form">
+      <label for="project-search">Project search</label>
+      <div class="form-controls">
+        <input id="project-search" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </div>
+    </form>
     <ul aria-label="Projects"></ul>
   `;
   const form = app.querySelector('form');
@@ -78,8 +86,17 @@ async function showProjects() {
   const list = app.querySelector('ul');
   const filter = app.querySelector('select');
   let projects = [];
+  let searchQuery = '';
+  const searchForm = app.querySelector('#project-search-form');
+  const searchInput = app.querySelector('#project-search');
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchQuery = searchInput.value.trim();
+    searchInput.value = searchQuery;
+    renderProjects();
+  });
   function renderProjects() {
-    const visible = projects.filter((project) => project.archived === (filter.value === 'Archived'));
+    const visible = filterProjects(projects, filter.value, searchQuery);
     list.replaceChildren(...visible.map((project) => projectRow(project, (saved) => {
       Object.assign(project, saved);
       renderProjects();
@@ -209,6 +226,13 @@ async function showProject(id) {
       <input id="due-through" type="text" autocomplete="off">
       <button type="submit">Apply due range</button>
     </form>
+    <form id="task-search-form">
+      <label for="task-search">Task search</label>
+      <div class="form-controls">
+        <input id="task-search" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </div>
+    </form>
     <ul aria-label="Tasks"></ul>
   `;
   app.append(controls);
@@ -240,6 +264,15 @@ async function showProject(id) {
   const list = controls.querySelector('ul');
   const tasksPath = `/api/projects/${id}/tasks`;
   let tasks = [];
+  let searchQuery = '';
+  const searchForm = controls.querySelector('#task-search-form');
+  const searchInput = controls.querySelector('#task-search');
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchQuery = searchInput.value.trim();
+    searchInput.value = searchQuery;
+    renderTasks();
+  });
   let dueRange = { from: '', through: '' };
   const rangeForm = controls.querySelector('#due-range-form');
   const dueFrom = controls.querySelector('#due-from');
@@ -259,7 +292,7 @@ async function showProject(id) {
   });
 
   function renderTasks() {
-    const visible = filterTasks(tasks, filter.value, priorityFilter.value, dueRange);
+    const visible = filterTasks(tasks, filter.value, priorityFilter.value, dueRange, searchQuery);
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -319,10 +352,7 @@ async function showProject(id) {
             body: JSON.stringify({ title: newTitle }),
           });
           Object.assign(task, saved);
-          title.textContent = task.title;
-          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
-          taskRenameInput.value = '';
-          taskRenameInput.focus();
+          renderTasks();
         } catch (error) {
           showAlert(error.message);
         } finally {

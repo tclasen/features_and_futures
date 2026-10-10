@@ -1,4 +1,5 @@
 import { normalizeDueDate } from '../due-date.js';
+import { matchesSearch } from './search.js';
 
 export function normalizeDueRange(from, through) {
   const range = { from: normalizeDueDate(from), through: normalizeDueDate(through) };
@@ -12,7 +13,7 @@ export function normalizeDueRange(from, through) {
 }
 
 // Filtering is view-only: preserve the original tasks and their creation order.
-export function filterTasks(tasks, completionFilter, priorityFilter, dueRange = { from: '', through: '' }) {
+export function filterTasks(tasks, completionFilter, priorityFilter, dueRange = { from: '', through: '' }, searchQuery = '') {
   return tasks.filter((task) => (
     completionFilter === 'All' || task.completed === (completionFilter === 'Completed')
   ) && (
@@ -23,5 +24,5 @@ export function filterTasks(tasks, completionFilter, priorityFilter, dueRange = 
       (!dueRange.from || task.due_date >= dueRange.from) &&
       (!dueRange.through || task.due_date <= dueRange.through)
     )
-  ));
+  ) && matchesSearch(task.title, searchQuery));
 }
