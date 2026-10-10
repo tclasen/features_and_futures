@@ -24,8 +24,9 @@ class Element {
   async fire(name) { await this.listeners[name]({ preventDefault() {} }); }
 }
 
-async function page(archived = false) {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+async function page(archived = false, savedDates = {}) {
+  const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
+    .replace("import { normalizeDueDate } from './due-date.js';", '');
   const elements = new Map();
   const get = (id) => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -43,17 +44,25 @@ async function page(archived = false) {
       tasks.push({ id: tasks.length + 1, title: `${priority} ${completed}`, priority, completed, dueDate: '' });
     }
   }
+  for (const [index, date] of Object.entries(savedDates)) tasks[index].dueDate = date;
   const writes = [];
   const project = { id: 1, name: 'Project', archived, defaultTaskPriority: 'Normal' };
   runInNewContext(source, {
+    normalizeDueDate,
     document: { querySelector: (selector) => get(selector.slice(1)), createElement: (tag) => new Element(tag) },
     window: { location: { pathname: '/projects/1' } },
     fetch: async (path, options) => {
       let result;
       if (options) {
         writes.push({ path, ...options });
-        const item = path === '/api/projects/1' ? project : tasks.find((item) => item.id === Number(path.split('/').at(-1)));
         const input = JSON.parse(options.body);
+        let item;
+        if (options.method === 'POST' && path.endsWith('/tasks')) {
+          item = { id: tasks.length + 1, title: input.title, completed: false, priority: project.defaultTaskPriority, dueDate: '' };
+          tasks.push(item);
+        } else {
+          item = path === '/api/projects/1' ? project : tasks.find((item) => item.id === Number(path.split('/').at(-1)));
+        }
         if (Object.hasOwn(input, 'dueDate')) {
           input.dueDate = normalizeDueDate(input.dueDate);
           if (input.dueDate === null) {
@@ -190,7 +199,7 @@ test('due-date controls save and clear without changing filters, matching rows o
     await form.fire('submit');
     assert.equal(view.tasks[5].dueDate, dueDate);
     assert.equal(input.value, dueDate);
-    assert.equal(view.rows()[0], row);
+    assert.equal(view.rows()[0].children[5].children[1].value, dueDate);
     assert.equal(view.get('task-filter').value, 'completed');
     assert.equal(view.get('priority-filter').value, 'High');
     assert.deepEqual(view.titles(), ['High true']);
@@ -232,6 +241,153 @@ test('default priority has an accessible label and exact ordered options', async
     .map((match) => [match[1], Boolean(match[2]), match[3]]), [
     ['Low', false, 'Low'], ['Normal', true, 'Normal'], ['High', false, 'High'],
   ]);
+});
+
+async function applyRange(view, from, through) {
+  view.get('due-from').value = from;
+  view.get('due-through').value = through;
+  await view.get('due-range').fire('submit');
+}
+
+async function seedDates(view) {
+  const dates = ['', '0001-01-01', '2024-02-28', '2024-02-29', '2024-03-01', '9999-12-31'];
+  for (let index = 0; index < dates.length; index++) {
+    const form = view.rows()[index].children[5];
+    form.children[1].value = dates[index];
+    await form.fire('submit');
+  }
+}
+
+test('due ranges intersect both filters inclusively, support unbounded sides and exclude undated tasks', async () => {
+  const view = await page();
+  assert.equal(view.get('due-from').value, '');
+  assert.equal(view.get('due-through').value, '');
+  await seedDates(view);
+  const before = JSON.stringify(view.tasks);
+  const writes = view.writes.length;
+  for (const [from, through] of [
+    ['', ''], ['2024-02-28', '2024-03-01'], ['2024-02-29', '2024-02-29'],
+    ['', '2024-02-29'], ['2024-02-29', ''], ['0001-01-01', '9999-12-31'],
+  ]) {
+    await applyRange(view, ` ${from} `, ` ${through} `);
+    assert.equal(view.get('due-from').value, from);
+    assert.equal(view.get('due-through').value, through);
+    for (const completion of ['all', 'open', 'completed']) {
+      await view.filter('task-filter', completion);
+      for (const priority of ['all', 'Low', 'Normal', 'High']) {
+        await view.filter('priority-filter', priority);
+        assert.deepEqual(view.titles(), view.tasks.filter((task) =>
+          (completion === 'all' || task.completed === (completion === 'completed')) &&
+          (priority === 'all' || task.priority === priority) &&
+          (!(from || through) || Boolean(task.dueDate)) &&
+          (!from || task.dueDate >= from) && (!through || task.dueDate <= through)
+        ).map((task) => task.title));
+      }
+    }
+  }
+  assert.equal(JSON.stringify(view.tasks), before);
+  assert.equal(view.writes.length, writes);
+});
+
+test('invalid range submissions preserve applied membership, including after other filter changes', async () => {
+  const view = await page();
+  await seedDates(view);
+  await applyRange(view, '2024-02-28', '2024-03-01');
+  const before = JSON.stringify(view.tasks);
+  for (const [from, through, message] of [
+    ['2025-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+    ['', '2024-04-31', 'Due range must use valid YYYY-MM-DD dates'],
+    ['0000-01-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+    ['2024-2-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+    ['2024-03-01', '2024-02-29', 'Due from must not be after Due through'],
+  ]) {
+    await applyRange(view, from, through);
+    assert.equal(view.get('alert').hidden, false);
+    assert.equal(view.get('alert').textContent, message);
+    assert.deepEqual(view.titles(), ['Normal false', 'Normal true', 'High false']);
+    await view.filter('task-filter', 'completed');
+    assert.deepEqual(view.titles(), ['Normal true']);
+    await view.filter('task-filter', 'all');
+    assert.equal(JSON.stringify(view.tasks), before);
+  }
+});
+
+test('edits and creation retain the applied range and both selections while updating membership', async () => {
+  const view = await page();
+  await seedDates(view);
+  await view.filter('task-filter', 'open');
+  await view.filter('priority-filter', 'Normal');
+  await applyRange(view, '2024-02-28', '2024-03-01');
+  const assertFilters = () => {
+    assert.equal(view.get('task-filter').value, 'open');
+    assert.equal(view.get('priority-filter').value, 'Normal');
+    assert.equal(view.get('due-from').value, '2024-02-28');
+    assert.equal(view.get('due-through').value, '2024-03-01');
+  };
+  const rename = view.rows()[0].children[2];
+  rename.children[1].value = 'Renamed';
+  await rename.fire('submit');
+  assert.deepEqual(view.titles(), ['Renamed']);
+  view.get('new-project-name').value = 'New project';
+  await view.get('rename-project').fire('submit');
+  view.get('default-task-priority').value = 'High';
+  await view.get('default-task-priority').fire('change');
+  view.get('task-title').value = 'New undated task';
+  await view.get('create-task').fire('submit');
+  assert.deepEqual(view.titles(), ['Renamed']);
+  assertFilters();
+  // A draft range does not apply until submitted.
+  view.get('due-from').value = '';
+  view.get('due-through').value = '';
+  let form = view.rows()[0].children[5];
+  form.children[1].value = '2024-02-29';
+  await form.fire('submit');
+  assert.deepEqual(view.titles(), ['Renamed']);
+  form = view.rows()[0].children[5];
+  form.children[1].value = '';
+  await form.fire('submit');
+  assert.deepEqual(view.titles(), []);
+  await applyRange(view, '', '');
+  assert.deepEqual(view.titles(), ['Renamed']);
+  await applyRange(view, '2024-02-28', '2024-03-01');
+  await view.filter('priority-filter', 'High');
+  let row = view.rows()[0];
+  row.children[4].value = 'Normal';
+  await row.children[4].fire('change');
+  assert.deepEqual(view.titles(), []);
+  await view.filter('priority-filter', 'Normal');
+  row = view.rows()[0];
+  row.children[0].checked = true;
+  await row.children[0].fire('change');
+  assert.deepEqual(view.titles(), []);
+  assertFilters();
+  await view.filter('task-filter', 'completed');
+  assert.deepEqual(view.titles(), ['Normal true', 'High false']);
+});
+
+test('archived pages permit due range filtering but not task edits; reopening resets the range', async () => {
+  const view = await page(true, { 3: '2024-02-29' });
+  await applyRange(view, '2024-02-29', '2024-02-29');
+  assert.deepEqual(view.titles(), ['Normal true']);
+  for (const id of ['due-from', 'due-through', 'due-range']) assert.equal(view.get(id).disabled, false);
+  const row = view.rows()[0];
+  for (const control of [row.children[0], row.children[2].children[1], row.children[2].children[2], row.children[4], row.children[5].children[1], row.children[5].children[2]]) {
+    assert.equal(control.disabled, true);
+  }
+  assert.equal(view.writes.length, 0);
+  const reopened = await page();
+  assert.equal(reopened.get('due-from').value, '');
+  assert.equal(reopened.get('due-through').value, '');
+  assert.equal(reopened.rows().length, 6);
+});
+
+test('due range controls have explicit accessible labels and text inputs', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label for="due-from">Due from<\/label>/);
+  assert.match(html, /<label for="due-through">Due through<\/label>/);
+  assert.match(html, /<input id="due-from" type="text"/);
+  assert.match(html, /<input id="due-through" type="text"/);
+  assert.match(html, /<button type="submit">Apply due range<\/button>/);
 });
 
 test('priority filter has an accessible label and exact ordered options', async () => {

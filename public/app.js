@@ -1,3 +1,5 @@
+import { normalizeDueDate } from './due-date.js';
+
 const heading = document.querySelector('#heading');
 const alert = document.querySelector('#alert');
 const list = document.querySelector('#project-list');
@@ -11,6 +13,11 @@ const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueRangeForm = document.querySelector('#due-range');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
+let dueFrom = '';
+let dueThrough = '';
 const defaultPrioritySelect = document.querySelector('#default-task-priority');
 let defaultTaskPriority = 'Normal';
 const tasksElement = document.querySelector('#tasks');
@@ -158,12 +165,35 @@ defaultPrioritySelect.addEventListener('change', async () => {
   }
 });
 
+dueRangeForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  alert.hidden = true;
+  const from = normalizeDueDate(dueFromInput.value);
+  const through = normalizeDueDate(dueThroughInput.value);
+  if (from === null || through === null) {
+    showError('Due range must use valid YYYY-MM-DD dates');
+    return;
+  }
+  if (from && through && from > through) {
+    showError('Due from must not be after Due through');
+    return;
+  }
+  dueFrom = from;
+  dueThrough = through;
+  dueFromInput.value = from;
+  dueThroughInput.value = through;
+  renderTasks();
+});
+
 function renderTasks() {
   tasksElement.replaceChildren();
   for (const task of tasks) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
     if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
+    if ((dueFrom || dueThrough) && !task.dueDate) continue;
+    if (dueFrom && task.dueDate < dueFrom) continue;
+    if (dueThrough && task.dueDate > dueThrough) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -291,6 +321,7 @@ function renderTasks() {
         });
         task.dueDate = saved.dueDate;
         dueDateInput.value = saved.dueDate;
+        renderTasks();
       } catch (error) {
         showError(error.message);
       } finally {

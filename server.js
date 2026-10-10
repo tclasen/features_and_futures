@@ -86,6 +86,7 @@ async function readJson(request) {
 const assets = new Map([
   ['/', ['index.html', 'text/html']],
   ['/app.js', ['app.js', 'text/javascript']],
+  ['/due-date.js', ['due-date.js', 'text/javascript']],
   ['/style.css', ['style.css', 'text/css']],
 ]);
 
