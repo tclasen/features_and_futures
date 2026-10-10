@@ -2,6 +2,7 @@ import http from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { parseDueDate } from './due-date.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -31,6 +32,9 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -44,12 +48,13 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -84,8 +89,8 @@ function page(title, content) {
     .task { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 0; border-top: 1px solid #dce1ea; overflow-wrap: anywhere; }
     .task input { width: auto; flex-shrink: 0; }
     .task label { margin: 0; min-width: 0; }
-    .task .rename-task { flex-basis: 100%; }
-    .task .rename-task input { width: 100%; margin: 8px 0; }
+    .task .rename-task, .task .due-date { flex-basis: 100%; }
+    .task .rename-task input, .task .due-date input { width: 100%; margin: 8px 0; }
     .filter { margin-top: 24px; }
     select { padding: 10px; font: inherit; }
     .back { margin-bottom: 24px; }
@@ -162,6 +167,12 @@ function projectPage(project, filter = 'All', error = '', priorityFilter = 'All'
           <label for="new-task-title-${task.id}">New task title</label>
           <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
+        <form class="due-date" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+          ${filterInputs}
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
       </div>`).join('')}${tasks.length ? '' : '<p>No tasks to show.</p>'}</div>
     <script>
@@ -277,7 +288,7 @@ const server = http.createServer(async (request, response) => {
       response.end();
       return;
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*)(\/(?:rename|priority))?)?|archive|restore|rename|default-priority))?$/.exec(pathname);
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/(?:tasks(?:\/([1-9]\d*)(\/(?:rename|priority|due-date))?)?|archive|restore|rename|default-priority))?$/.exec(pathname);
     if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -359,6 +370,17 @@ const server = http.createServer(async (request, response) => {
           const currentProject = findProject.get(id);
           if (currentProject.archived) {
             sendHtml(response, 403, projectPage(currentProject, filter, 'Archived project', priorityFilter));
+            return;
+          }
+          if (projectRoute[3] === '/due-date') {
+            const dueDate = parseDueDate(form.get('dueDate') || '');
+            if (dueDate === null) {
+              sendHtml(response, 400, projectPage(currentProject, filter, 'Due date must be a valid YYYY-MM-DD date', priorityFilter));
+              return;
+            }
+            updateTaskDueDate.run(dueDate, taskId, id);
+            response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter) });
+            response.end();
             return;
           }
           if (projectRoute[3] === '/priority') {

@@ -61,3 +61,11 @@ apply only to tasks created afterward. Existing tasks and both selected filters
 remain unchanged. Defaults persist across reloads, restarts and project renaming.
 Archived projects display the saved default but disable changes until restored.
 Existing SQLite databases are upgraded with Normal defaults without altering tasks.
+
+Each task has an optional Task due date textbox and Save due date button. Dates
+are trimmed and saved as calendar strings in `YYYY-MM-DD` format, with years
+0001–9999 and Gregorian leap-year rules. Empty input clears the date; invalid input
+shows an alert and preserves the saved date. Due-date edits preserve task data,
+both filters and completion summaries. Archived projects disable due-date edits
+until restored. Dates persist across restarts, and existing databases are upgraded
+with empty dates without changing existing tasks.
