@@ -37,6 +37,13 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Preserve legacy creation order and allow moved tasks to append without changing identity.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+  database.exec(`BEGIN;
+    ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE tasks SET position = id;
+    COMMIT;`);
+}
 const projectSelection = `SELECT id, name, archived, default_task_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed
@@ -46,9 +53,13 @@ const findProject = database.prepare(`${projectSelection} WHERE id = ?`);
 const archiveProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const createTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?`);
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
@@ -108,6 +119,26 @@ const server = http.createServer(async (request, response) => {
         return json(response, 201, findProject.get(Number(result.lastInsertRowid)));
       }
     }
+    const moveMatch = pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+    if (moveMatch && request.method === 'POST') {
+      const projectId = Number(moveMatch[1]);
+      const taskId = Number(moveMatch[2]);
+      const input = await readJson(request);
+      const source = findProject.get(projectId);
+      if (!source) return json(response, 404, { error: 'Project not found' });
+      if (source.archived) return json(response, 409, { error: 'Archived project is read-only' });
+      if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+      const destinationId = input?.destination_project_id;
+      if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === projectId) {
+        return json(response, 400, { error: 'Choose another active destination project' });
+      }
+      const destination = findProject.get(destinationId);
+      if (!destination) return json(response, 404, { error: 'Destination project not found' });
+      if (destination.archived) return json(response, 409, { error: 'Destination project is archived' });
+      // One synchronous statement atomically transfers ownership and appends to the destination.
+      moveTask.run(destinationId, destinationId, projectId, taskId);
+      return json(response, 200, taskData(findTask.get(destinationId, taskId)));
+    }
     const tasksMatch = pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (tasksMatch) {
       const projectId = Number(tasksMatch[1]);
@@ -122,7 +153,7 @@ const server = http.createServer(async (request, response) => {
           const input = await readJson(request);
           const title = typeof input?.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
-          const result = createTask.run(projectId, title, project.default_task_priority);
+          const result = createTask.run(projectId, title, project.default_task_priority, projectId);
           return json(response, 201, taskData(findTask.get(projectId, Number(result.lastInsertRowid))));
         }
       } else if (request.method === 'PATCH') {

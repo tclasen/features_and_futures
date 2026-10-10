@@ -115,6 +115,8 @@ async function showProject(id) {
   app.innerHTML = '<button type="button">Projects</button><h1></h1><p role="alert" hidden></p>';
   app.querySelector('button').addEventListener('click', () => location.assign('/'));
   const project = await api(`/api/projects/${id}`);
+  const destinations = (await api('/api/projects'))
+    .filter((candidate) => !candidate.archived && candidate.id !== project.id);
   app.querySelector('h1').textContent = project.name;
   document.title = `${project.name} — Workboard`;
   const renameForm = document.createElement('form');
@@ -301,18 +303,37 @@ async function showProject(id) {
       dueDateButton.disabled = checkbox.disabled;
       dueDateForm.append(dueDateLabel, dueDateInput, dueDateButton);
 
-      async function saveTask(update) {
+      const moveForm = document.createElement('form');
+      const destinationLabel = document.createElement('label');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      destinationLabel.textContent = 'Destination project';
+      const destination = document.createElement('select');
+      destination.id = destinationLabel.htmlFor;
+      for (const project of destinations) {
+        const option = document.createElement('option');
+        option.value = project.id;
+        option.textContent = project.name;
+        destination.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      destination.disabled = moveButton.disabled = checkbox.disabled || destinations.length === 0;
+      moveForm.append(destinationLabel, destination, moveButton);
+
+      async function saveTask(update, moving = false) {
         if (project.archived || pendingUpdates.has(task.id)) return;
         pendingUpdates.add(task.id);
         checkbox.disabled = renameInput.disabled = renameButton.disabled = priority.disabled =
-          dueDateInput.disabled = dueDateButton.disabled = true;
+          dueDateInput.disabled = dueDateButton.disabled = destination.disabled = moveButton.disabled = true;
         try {
-          const saved = await api(`${endpoint}/${task.id}`, {
-            method: 'PATCH',
+          const saved = await api(`${endpoint}/${task.id}${moving ? '/move' : ''}`, {
+            method: moving ? 'POST' : 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(update),
           });
-          Object.assign(task, saved);
+          if (moving) tasks = tasks.filter((candidate) => candidate.id !== task.id);
+          else Object.assign(task, saved);
           app.querySelector('[role="alert"]').hidden = true;
         } catch (error) {
           showError(error.message);
@@ -334,7 +355,12 @@ async function showProject(id) {
         event.preventDefault();
         saveTask({ due_date: dueDateInput.value });
       });
-      row.append(title, checkbox, renameForm, priorityLabel, priority, dueDateForm);
+      moveForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (destinations.length === 0) return;
+        saveTask({ destination_project_id: Number(destination.value) }, true);
+      });
+      row.append(title, checkbox, renameForm, priorityLabel, priority, dueDateForm, moveForm);
       return row;
     }));
   }
