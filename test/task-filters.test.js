@@ -35,7 +35,7 @@ class Node {
   querySelector() { return this.all().find(node => node.attributes.role === 'alert'); }
 }
 
-async function page(archived = false, destinations = []) {
+async function page(archived = false, destinations = [], pathname = '/projects/1') {
   const app = new Node('main');
   const project = { id: 1, name: 'Project', archived, default_priority: 'Normal' };
   const tasks = [
@@ -48,7 +48,7 @@ async function page(archived = false, destinations = []) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   runInNewContext(source.replace(/render\(\);\s*$/, 'globalThis.ready = render();'), {
     document: { querySelector: () => app, createElement: tag => new Node(tag) },
-    window: { location: { pathname: '/projects/1' } },
+    window: { location: { pathname } },
     fetch: async (path, options) => {
       let data;
       if (options) {
@@ -404,5 +404,114 @@ test('archived projects keep both filters usable and editing controls disabled',
   for (const node of [row, ...row.all()].filter(node => ['input', 'button', 'select'].includes(node.tag))) {
     assert.equal(node.disabled, true);
   }
+  assert.deepEqual(ui.writes, []);
+});
+
+test('project search trims, folds only ASCII, preserves internal spaces and intersects archive filter', async () => {
+  const ui = await page(false, [
+    { id: 2, name: 'ALPHA  Beta', archived: 0, total: 3, completed: 1 },
+    { id: 3, name: 'alpha Beta', archived: 1, total: 2, completed: 2 },
+    { id: 4, name: 'Älpha', archived: 0, total: 0, completed: 0 },
+  ], '/');
+  const search = ui.control('project-search');
+  const filter = ui.control('project-filter');
+  const rows = () => ui.app.all().filter(node => node.attributes['data-testid'] === 'project-row');
+  const names = () => rows().map(row => row.children[0].textContent);
+  assert.equal(search.value, '');
+  assert.equal(search.parent.children.at(-1).textContent, 'Search projects');
+  assert.deepEqual(names(), ['Project', 'ALPHA  Beta', 'Älpha']);
+  search.value = '  AlPhA  ';
+  await search.parent.fire('submit');
+  assert.deepEqual(names(), ['ALPHA  Beta']);
+  assert.equal(rows()[0].children[1].textContent, '1/3 completed');
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['alpha Beta']);
+  search.value = 'alpha  beta';
+  await search.parent.fire('submit');
+  assert.deepEqual(names(), []);
+  filter.value = 'Active';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['ALPHA  Beta']);
+  search.value = 'älpha';
+  await search.parent.fire('submit');
+  assert.deepEqual(names(), []);
+  search.value = 'ÄLPHA';
+  await search.parent.fire('submit');
+  assert.deepEqual(names(), ['Älpha']);
+  search.value = '   ';
+  await search.parent.fire('submit');
+  assert.deepEqual(names(), ['Project', 'ALPHA  Beta', 'Älpha']);
+  assert.deepEqual(ui.writes, []);
+});
+
+test('task search intersects all filters and rename immediately re-evaluates membership', async () => {
+  const ui = await page(false, [{ id: 2, name: 'Destination', archived: 0 }]);
+  const search = ui.control('task-search');
+  const completion = ui.control('task-filter');
+  const priority = ui.control('priority-filter');
+  assert.equal(search.value, '');
+  assert.equal(search.parent.children.at(-1).textContent, 'Search tasks');
+  search.value = '  iR  ';
+  await search.parent.fire('submit');
+  assert.deepEqual(ui.titles(), ['First', 'Third']);
+  assert.deepEqual(ui.writes, []);
+  // Unsubmitted text is not the applied query.
+  search.value = 'Fourth';
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.deepEqual(ui.titles(), ['First']);
+  const due = ui.control('task-due-date-1');
+  due.value = '2024-02-29';
+  await due.parent.fire('submit');
+  const from = ui.control('due-from');
+  const through = ui.control('due-through');
+  from.value = '2024-02-29';
+  through.value = '2024-02-29';
+  await from.parent.fire('submit');
+  completion.value = 'Open';
+  await completion.fire('change');
+  const rename = ui.control('new-task-title-1');
+  rename.value = 'No match';
+  await rename.parent.fire('submit');
+  assert.deepEqual(ui.titles(), []);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  assert.equal(from.value, '2024-02-29');
+  assert.equal(through.value, '2024-02-29');
+  search.value = '  MATCH ';
+  await search.parent.fire('submit');
+  assert.deepEqual(ui.titles(), ['No match']);
+  const checkbox = ui.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(ui.titles(), []);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.deepEqual(ui.titles(), ['No match']);
+  await ui.rows()[0].children.at(-1).fire('click');
+  assert.deepEqual(ui.titles(), []);
+  search.value = '';
+  await search.parent.fire('submit');
+  assert.deepEqual(ui.titles(), []); // Remaining tasks still fail the due range.
+  assert.equal((await page()).control('task-search').value, '');
+});
+
+test('archived task search is usable and clearing retains other filters', async () => {
+  const ui = await page(true);
+  const search = ui.control('task-search');
+  assert.equal(search.disabled, false);
+  assert.equal(search.parent.children.at(-1).disabled, false);
+  ui.control('task-filter').value = 'Completed';
+  await ui.control('task-filter').fire('change');
+  search.value = ' FoUr ';
+  await search.parent.fire('submit');
+  assert.deepEqual(ui.titles(), ['Fourth']);
+  for (const control of ui.rows()[0].all().filter(node => ['input', 'button', 'select'].includes(node.tag))) {
+    assert.equal(control.disabled, true);
+  }
+  search.value = '  ';
+  await search.parent.fire('submit');
+  assert.deepEqual(ui.titles(), ['Second', 'Fourth']);
   assert.deepEqual(ui.writes, []);
 });

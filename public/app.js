@@ -71,6 +71,22 @@ function renderRename(project, heading) {
     finally { rename.disabled = Boolean(project.archived); }
   });
 }
+function matchesSearch(value, query) {
+  const fold = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return fold(value).includes(fold(query));
+}
+function searchForm(label, buttonLabel, id, onApply) {
+  const form = element('form');
+  const input = element('input', '', { id, type: 'text', autocomplete: 'off' });
+  form.append(element('label', label, { for: id }), input,
+    element('button', buttonLabel, { type: 'submit' }));
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    input.value = input.value.trim();
+    onApply(input.value);
+  });
+  return form;
+}
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -145,10 +161,16 @@ async function renderTasks(project) {
     app.querySelector('[role="alert"]')?.remove();
     draw();
   });
-  app.append(form, filters, rangeForm, list);
+  let appliedSearch = '';
+  const search = searchForm('Task search', 'Search tasks', 'task-search', query => {
+    appliedSearch = query;
+    draw();
+  });
+  app.append(form, filters, rangeForm, search, list);
   function draw() {
     list.replaceChildren();
     for (const task of tasks) {
+      if (!matchesSearch(task.title, appliedSearch)) continue;
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -200,6 +222,7 @@ async function renderTasks(project) {
           checkbox.setAttribute('aria-label', `Complete ${saved.title}`);
           renameInput.value = saved.title;
           app.querySelector('[role="alert"]')?.remove();
+          draw();
         } catch (error) { alertMessage(error.message); }
         finally { rename.disabled = archived; }
       });
@@ -337,9 +360,15 @@ async function render() {
   const filters = element('div', '', { class: 'task-filters' });
   filters.append(element('label', 'Project filter', { for: 'project-filter' }), filter);
   let projects = [];
+  let appliedSearch = '';
+  const search = searchForm('Project search', 'Search projects', 'project-search', query => {
+    appliedSearch = query;
+    drawProjects();
+  });
   function drawProjects() {
     list.replaceChildren();
     for (const project of projects) {
+      if (!matchesSearch(project.name, appliedSearch)) continue;
       if (Boolean(project.archived) !== (filter.value === 'Archived')) continue;
       list.append(projectRow(project, saved => {
         projects = projects.map(item => item.id === saved.id ? saved : item);
@@ -348,7 +377,7 @@ async function render() {
     }
   }
   filter.addEventListener('change', drawProjects);
-  app.append(form, filters, list);
+  app.append(form, filters, search, list);
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const name = input.value.trim();
