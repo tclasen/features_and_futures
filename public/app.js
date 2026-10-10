@@ -178,6 +178,7 @@ async function showProject(id) {
   applyDueRange.type = 'submit';
   dueRangeForm.append(dueFromLabel, dueThroughLabel, applyDueRange);
   let appliedDueRange = { from: '', through: '' };
+  let taskRenderVersion = 0;
   const taskList = element('div', undefined, 'task-list');
   taskList.setAttribute('aria-label', 'Tasks');
   if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, dueRangeForm, taskList);
@@ -220,7 +221,11 @@ async function showProject(id) {
   });
 
   const renderTasks = async () => {
+    const renderVersion = ++taskRenderVersion;
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    // Several edits can finish close together. Only let the newest response
+    // paint the list, so an older pre-move snapshot cannot restore stale rows.
+    if (renderVersion !== taskRenderVersion) return;
     taskList.replaceChildren();
     const matchingTasks = tasks.filter((task) => (filter.value === 'All'
       || (filter.value === 'Completed' ? task.completed : !task.completed))
@@ -367,10 +372,6 @@ async function showProject(id) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
           });
-          // The task no longer belongs to this project. Remove its row before
-          // reloading so it cannot be counted as a source match while the
-          // refreshed list is in flight.
-          row.remove();
           await renderTasks();
         } catch (error) {
           alert.textContent = error.message;
