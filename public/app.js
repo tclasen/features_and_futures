@@ -136,6 +136,23 @@ async function render() {
         });
         checkboxLabel.append(checkbox);
         row.append(title, checkboxLabel);
+        const priority = document.createElement('select');
+        priority.setAttribute('aria-label', 'Task priority');
+        priority.disabled = project.archived;
+        for (const value of ['Low', 'Normal', 'High']) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          priority.append(option);
+        }
+        priority.value = task.priority || 'Normal';
+        priority.addEventListener('change', async () => {
+          const saved = await fetch(`/api/tasks/${task.id}/priority`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
+          });
+          if (!saved.ok) priority.value = task.priority || 'Normal';
+        });
+        row.append(priority);
         const renameInput = document.createElement('input');
         renameInput.type = 'text';
         renameInput.setAttribute('aria-label', 'New task title');
