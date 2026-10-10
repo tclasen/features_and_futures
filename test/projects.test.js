@@ -100,3 +100,81 @@ test('project creation, validation, navigation, and restart persistence', async 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, toggle, remain isolated, and persist after restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await startServer(databasePath);
+    const get = async path => (await fetch(server.baseUrl + path)).text();
+    const post = (path, values) => fetch(server.baseUrl + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const rows = body => [...body.matchAll(/<div class="task-row" data-testid="task-row">([\s\S]*?)<\/div>/g)].map(match => match[1]);
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const initial = await get('/projects/1');
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    assert.equal(rows(initial).length, 0);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 400);
+      const body = await response.text();
+      assert.match(body, /role="alert">Task title is required/);
+      assert.equal(rows(body).length, 0);
+    }
+    for (const title of ['  First task  ', 'Review <draft> & "notes"']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1?filter=All');
+    }
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    let tasks = rows(await get('/projects/1'));
+    assert.equal(tasks.length, 2);
+    assert.match(tasks[0], /<span>First task<\/span>/);
+    assert.match(tasks[0], /type="checkbox".*aria-label="Complete First task"/);
+    assert.match(tasks[1], /aria-label="Complete Review &lt;draft&gt; &amp; &quot;notes&quot;"/);
+    assert.ok(tasks.every(task => !task.includes(' checked')));
+    assert.equal(rows(await get('/projects/1?filter=Open')).length, 2);
+    assert.equal(rows(await get('/projects/1?filter=Completed')).length, 0);
+    const invalid = await post('/projects/1/tasks', { title: '   ' });
+    assert.equal(rows(await invalid.text()).length, 2);
+
+    const completed = await post('/projects/1/tasks/1', { completed: '1', filter: 'Open' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    tasks = rows(await get('/projects/1'));
+    assert.match(tasks[0], / checked/);
+    assert.doesNotMatch(tasks[1], / checked/);
+    assert.match(rows(await get('/projects/1?filter=Completed'))[0], /First task/);
+    assert.equal(rows(await get('/projects/1?filter=Completed')).length, 1);
+    const open = await get('/projects/1?filter=Open');
+    assert.match(open, /<option selected>Open<\/option>/);
+    assert.equal(rows(open).length, 1);
+    assert.match(rows(open)[0], /Review &lt;draft&gt;/);
+    assert.equal(rows(await get('/projects/2')).length, 1);
+    assert.doesNotMatch(await get('/projects/2'), /First task|Review &lt;draft&gt;/);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Missing project' })).status, 404);
+
+    const savedPage = await get('/projects/1');
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/1'), savedPage);
+    assert.equal(rows(await get('/projects/2')).length, 1);
+    assert.equal((await post('/projects/1/tasks/1', {})).status, 303);
+    assert.equal(rows(await get('/projects/1?filter=Completed')).length, 0);
+    assert.equal(rows(await get('/projects/1?filter=Open')).length, 2);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(rows(await get('/projects/1?filter=Open')).length, 2);
+    assert.ok(rows(await get('/projects/1')).every(task => !task.includes(' checked')));
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

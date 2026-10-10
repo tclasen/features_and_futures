@@ -1,6 +1,6 @@
 # Workboard
 
-A project list built with Node.js 22.22.1, built-in HTTP and SQLite, and browser HTML/CSS. No external dependencies or installation step are needed.
+A project and task board built with Node.js 22.22.1, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript. No external dependencies or installation step are needed.
 
 Run:
 
@@ -22,4 +22,4 @@ Verify:
 npm test
 ```
 
-The integration test starts the actual server with a temporary database, checks project validation, ordering and navigation, and restarts the process to verify persistence. Its temporary files are removed after the test.
+The integration tests start the actual server with temporary databases, check project and task validation, ordering, navigation, completion, filtering, and project isolation, and restart the process to verify persistence. Temporary files are removed after the tests.
