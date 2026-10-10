@@ -374,13 +374,19 @@ function page() {
       return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
     }
 
+    const taskRowRequests = new WeakMap();
+
     async function loadTasks(projectId, rows, filter, priorityFilter, dueFrom = '', dueThrough = '', searchQuery = '') {
+      const requestId = (taskRowRequests.get(rows) || 0) + 1;
+      taskRowRequests.set(rows, requestId);
       const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks');
       const tasks = await response.json();
       const projectResponse = await fetch('/api/projects/' + encodeURIComponent(projectId));
       const project = await projectResponse.json();
       const destinationsResponse = await fetch('/api/projects?filter=active');
       const destinations = (await destinationsResponse.json()).filter(item => String(item.id) !== String(projectId));
+      // A slower earlier refresh must not replace rows rendered for newer filter or note edits.
+      if (taskRowRequests.get(rows) !== requestId) return;
       rows.replaceChildren();
       for (const task of tasks) {
         const normalizedQuery = normalizeSearch(searchQuery);
