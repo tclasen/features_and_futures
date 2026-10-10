@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color: #1e293b; background: #f5f7fa; font-family: system-ui, sans-serif; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 56px auto; padding: 0 24px; }
+    h1 { margin: 0 0 28px; font-size: 2rem; }
+    form, .project-row { display: flex; gap: 12px; align-items: center; }
+    form { margin-bottom: 24px; }
+    label { font-weight: 600; }
+    input { box-sizing: border-box; min-width: 0; flex: 1; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+    button { padding: 10px 14px; border: 0; border-radius: 6px; background: #2457d6; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1946b7; }
+    .project-list { display: grid; gap: 10px; }
+    .project-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #dce2ea; border-radius: 8px; background: white; }
+    .project-name { font-weight: 600; }
+    [role="alert"] { min-height: 1.5em; margin: -12px 0 16px; color: #b42318; }
+    @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+
+    async function getProjects() {
+      const response = await fetch('/api/projects');
+      return response.json();
+    }
+
+    function renderList(projects, alertMessage = '') {
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Workboard';
+      app.append(heading);
+
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.htmlFor = 'project-name';
+      label.textContent = 'Project name';
+      const input = document.createElement('input');
+      input.id = 'project-name';
+      input.name = 'name';
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Project name');
+      const createButton = document.createElement('button');
+      createButton.type = 'submit';
+      createButton.textContent = 'Create project';
+      form.append(label, input, createButton);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+          renderList(await getProjects(), 'Project name is required');
+          return;
+        }
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (response.ok) renderList(await getProjects());
+      });
+      app.append(form);
+
+      const alert = document.createElement('p');
+      alert.setAttribute('role', 'alert');
+      alert.textContent = alertMessage;
+      app.append(alert);
+
+      const list = document.createElement('section');
+      list.className = 'project-list';
+      for (const project of projects) {
+        const row = document.createElement('div');
+        row.className = 'project-row';
+        row.dataset.testid = 'project-row';
+        const name = document.createElement('span');
+        name.className = 'project-name';
+        name.textContent = project.name;
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.textContent = 'Open project';
+        open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
+        row.append(name, open);
+        list.append(row);
+      }
+      app.append(list);
+    }
+
+    async function renderProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) {
+        app.textContent = 'Project not found';
+        return;
+      }
+      const project = await response.json();
+      app.replaceChildren();
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.textContent = 'Projects';
+      back.addEventListener('click', () => { location.href = '/'; });
+      const heading = document.createElement('h1');
+      heading.textContent = project.name;
+      app.append(back, heading);
+    }
+
+    const match = location.pathname.match(/^\/projects\/([^/]+)$/);
+    if (match) renderProject(match[1]);
+    else getProjects().then((projects) => renderList(projects));
+  </script>
+</body>
+</html>
