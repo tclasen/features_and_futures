@@ -25,6 +25,10 @@ range with both task filters. Blank boundaries are unbounded; any nonblank bound
 excludes undated tasks. Invalid ranges preserve the last applied range. Edits retain
 the applied range, and reopening a project from the list clears it. Range controls
 remain available in archived projects.
+Use Destination project and Move task to append a task to another active project.
+Moving preserves completion, priority and due date, updates both summaries, and
+keeps the source project open with its filters. Moves and task order persist across
+restarts. Archived projects cannot send or receive tasks.
 Archive projects to make their names and tasks read-only; restore them to resume editing.
 Existing databases are upgraded automatically. `GET /health` returns `{"status":"ok"}`.
 
