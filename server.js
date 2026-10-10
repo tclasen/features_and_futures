@@ -50,7 +50,8 @@ export function createApplication(dbPath) {
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
   const listProjects = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
   const getProject = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
-  const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const archiveProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const projectData = (project) => ({ ...project, archived: Boolean(project.archived) });
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
@@ -112,10 +113,20 @@ export function createApplication(dbPath) {
         const projectId = Number(projectMatch[1]);
         if (!getProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
         const input = await readJson(request);
-        if (typeof input?.archived !== 'boolean') {
-          return json(response, 400, { error: 'Archive state must be a boolean' });
+        if (Object.hasOwn(input ?? {}, 'name')) {
+          if (Object.hasOwn(input, 'archived')) {
+            return json(response, 400, { error: 'Update name or archive state separately' });
+          }
+          if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
+          const name = typeof input.name === 'string' ? input.name.trim() : '';
+          if (!name) return json(response, 400, { error: 'Project name is required' });
+          renameProject.run(name, projectId);
+        } else {
+          if (typeof input?.archived !== 'boolean') {
+            return json(response, 400, { error: 'Archive state must be a boolean' });
+          }
+          archiveProject.run(Number(input.archived), projectId);
         }
-        updateProject.run(Number(input.archived), projectId);
         return json(response, 200, projectData(getProject.get(projectId)));
       }
       if (request.method === 'GET' && projectMatch) {

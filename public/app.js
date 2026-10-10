@@ -54,7 +54,14 @@ async function renderProject(projectId) {
   app.innerHTML = `
     <button id="back" type="button">Projects</button><h1></h1>
     <p id="archive-notice" hidden>Archived project</p>
-    <form>
+    <form id="rename-project">
+      <label for="new-project-name">New project name</label>
+      <div class="create-controls">
+        <input id="new-project-name" name="name" type="text" autocomplete="off" disabled>
+        <button type="submit" disabled>Rename project</button>
+      </div>
+    </form>
+    <form id="create-task">
       <label for="task-title">Task title</label>
       <div class="create-controls">
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -72,6 +79,38 @@ async function renderProject(projectId) {
   app.querySelector('h1').textContent = project.name;
   document.title = `${project.name} · Workboard`;
   app.querySelector('#archive-notice').hidden = !project.archived;
+  const renameForm = app.querySelector('#rename-project');
+  const renameInput = app.querySelector('#new-project-name');
+  const renameButton = renameForm.querySelector('button');
+  renameInput.disabled = project.archived;
+  renameButton.disabled = project.archived;
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    showAlert('');
+    if (!renameInput.value.trim()) {
+      showAlert('Project name is required');
+      renameInput.focus();
+      return;
+    }
+    renameButton.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameInput.value }),
+      });
+      Object.assign(project, saved);
+      app.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      renameInput.value = '';
+      renameInput.focus();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      renameButton.disabled = project.archived;
+    }
+  });
   const tasksPath = `/api/projects/${projectId}/tasks`;
   const tasks = await request(tasksPath);
   const filter = app.querySelector('#task-filter');
@@ -117,7 +156,7 @@ async function renderProject(projectId) {
 
   filter.addEventListener('change', renderTasks);
   renderTasks();
-  const form = app.querySelector('form');
+  const form = app.querySelector('#create-task');
   const input = app.querySelector('#task-title');
   const button = form.querySelector('button');
   button.disabled = project.archived;
