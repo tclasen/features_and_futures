@@ -5,6 +5,13 @@ const detailView = document.querySelector('#project-detail');
 const list = document.querySelector('#project-list');
 const form = document.querySelector('#create-project');
 const input = document.querySelector('#project-name');
+const taskForm = document.querySelector('#create-task');
+const taskInput = document.querySelector('#task-title');
+const taskFilter = document.querySelector('#task-filter');
+const taskList = document.querySelector('#task-list');
+let projectId = null;
+let tasks = [];
+let renderVersion = 0;
 
 function showError(message) {
   alert.textContent = message;
@@ -14,7 +21,7 @@ function showError(message) {
 async function api(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(data.error || 'Unable to save or load data');
   return data;
 }
 
@@ -32,23 +39,79 @@ function projectRow(project) {
   return row;
 }
 
+function renderTasks() {
+  const visible = tasks.filter(task => taskFilter.value === 'All' ||
+    (taskFilter.value === 'Completed' ? task.completed : !task.completed));
+  taskList.replaceChildren(...visible.map(task => {
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.dataset.testid = 'task-row';
+    const title = document.createElement('span');
+    title.textContent = task.title;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = task.completed;
+    checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    const owner = projectId;
+    const version = renderVersion;
+    checkbox.addEventListener('change', async () => {
+      checkbox.disabled = true;
+      alert.hidden = true;
+      try {
+        const saved = await api(`/api/projects/${owner}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        if (version !== renderVersion) return;
+        tasks = tasks.map(item => item.id === saved.id ? saved : item);
+        renderTasks();
+      } catch (error) {
+        checkbox.checked = task.completed;
+        if (version === renderVersion) showError(error.message);
+      } finally {
+        checkbox.disabled = false;
+      }
+    });
+    row.append(checkbox, title);
+    return row;
+  }));
+}
+
 async function render() {
+  const version = ++renderVersion;
   alert.hidden = true;
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   projectsView.hidden = Boolean(match);
   detailView.hidden = !match;
   heading.textContent = match ? 'Loading project…' : 'Workboard';
+  projectId = null;
+  tasks = [];
+  taskInput.value = '';
+  taskFilter.value = 'All';
+  taskList.replaceChildren();
+  taskForm.querySelector('button').disabled = true;
   try {
     if (match) {
-      const project = await api(`/api/projects/${match[1]}`);
+      const [project, savedTasks] = await Promise.all([
+        api(`/api/projects/${match[1]}`),
+        api(`/api/projects/${match[1]}/tasks`),
+      ]);
+      if (version !== renderVersion) return;
+      projectId = project.id;
+      tasks = savedTasks;
+      renderTasks();
+      taskForm.querySelector('button').disabled = false;
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
     } else {
       document.title = 'Workboard';
       const projects = await api('/api/projects');
+      if (version !== renderVersion) return;
       list.replaceChildren(...projects.map(projectRow));
     }
   } catch (error) {
+    if (version !== renderVersion) return;
     heading.textContent = 'Workboard';
     showError(error.message);
   }
@@ -85,6 +148,35 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
+taskForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  alert.hidden = true;
+  const title = taskInput.value.trim();
+  if (!title) return showError('Task title is required');
+  if (projectId === null) return;
+  const owner = projectId;
+  const version = renderVersion;
+  const submit = taskForm.querySelector('button');
+  submit.disabled = true;
+  try {
+    const task = await api(`/api/projects/${owner}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (version !== renderVersion) return;
+    tasks.push(task);
+    renderTasks();
+    taskInput.value = '';
+    taskInput.focus();
+  } catch (error) {
+    if (version === renderVersion) showError(error.message);
+  } finally {
+    if (version === renderVersion) submit.disabled = false;
+  }
+});
+
+taskFilter.addEventListener('change', renderTasks);
 document.querySelector('#back').addEventListener('click', () => navigate('/'));
 window.addEventListener('popstate', render);
 render();

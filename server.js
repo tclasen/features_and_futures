@@ -13,6 +13,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+db.exec(`PRAGMA foreign_keys = ON;
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  )`);
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const taskJSON = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
@@ -22,6 +34,18 @@ const assets = new Map([
 function json(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
+}
+
+async function readJSON(request) {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 65536) {
+      throw Object.assign(new Error('Request is too large'), { status: 413 });
+    }
+  }
+  try { return JSON.parse(body); }
+  catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
 }
 
 const server = createServer(async (request, response) => {
@@ -34,20 +58,34 @@ const server = createServer(async (request, response) => {
       return json(response, 200, listProjects.all());
     }
     if (request.method === 'POST' && path === '/api/projects') {
-      let body = '';
-      for await (const chunk of request) {
-        body += chunk;
-        if (Buffer.byteLength(body) > 65536) {
-          return json(response, 413, { error: 'Request is too large' });
-        }
-      }
-      let input;
-      try { input = JSON.parse(body); }
-      catch { return json(response, 400, { error: 'Invalid JSON' }); }
+      const input = await readJSON(request);
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return json(response, 400, { error: 'Project name is required' });
       const result = insertProject.run(name);
       return json(response, 201, findProject.get(Number(result.lastInsertRowid)));
+    }
+    const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+    if (tasksMatch) {
+      const projectId = Number(tasksMatch[1]);
+      const taskId = tasksMatch[2] ? Number(tasksMatch[2]) : null;
+      if (!findProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
+      if (request.method === 'GET' && taskId === null) {
+        return json(response, 200, listTasks.all(projectId).map(taskJSON));
+      }
+      if (request.method === 'POST' && taskId === null) {
+        const input = await readJSON(request);
+        const title = typeof input?.title === 'string' ? input.title.trim() : '';
+        if (!title) return json(response, 400, { error: 'Task title is required' });
+        const result = insertTask.run(projectId, title);
+        return json(response, 201, taskJSON(findTask.get(projectId, Number(result.lastInsertRowid))));
+      }
+      if (request.method === 'PATCH' && taskId !== null) {
+        if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+        const input = await readJSON(request);
+        if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
+        updateTask.run(Number(input.completed), projectId, taskId);
+        return json(response, 200, taskJSON(findTask.get(projectId, taskId)));
+      }
     }
     const projectMatch = path.match(/^\/api\/projects\/(\d+)$/);
     if (request.method === 'GET' && projectMatch) {
@@ -63,6 +101,7 @@ const server = createServer(async (request, response) => {
     }
     json(response, 404, { error: 'Not found' });
   } catch (error) {
+    if (error.status) return json(response, error.status, { error: error.message });
     console.error(error);
     if (!response.headersSent) json(response, 500, { error: 'Something went wrong' });
     else response.end();

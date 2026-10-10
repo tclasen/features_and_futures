@@ -1,6 +1,6 @@
 # Workboard
 
-Projects application using Node.js 22.22.1, JavaScript ES modules, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript. No installation or external dependencies are required.
+Projects and tasks application using Node.js 22.22.1, JavaScript ES modules, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript. No installation or external dependencies are required.
 
 Run:
 
@@ -16,4 +16,6 @@ Verify:
 npm test
 ```
 
-The integration test uses an isolated temporary SQLite file and checks validation, trimmed names, creation order, page routes, health, and persistence of names and IDs across server restarts.
+Open a project to create tasks, toggle their completion, and filter by All, Open, or Completed. Each project has its own tasks. Projects, tasks, and completion persist in the configured database.
+
+The integration tests use isolated temporary SQLite files and check validation, trimmed names and titles, creation order, page routes, health, project isolation, and persistence of projects, tasks, and completion across server restarts.
