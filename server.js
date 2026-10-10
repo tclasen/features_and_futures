@@ -43,6 +43,16 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function priorityFilter(value) {
+  return priorities.includes(value) ? value : 'All';
+}
+
+function projectLocation(id, filter, selectedPriority) {
+  const query = new URLSearchParams({ filter });
+  if (selectedPriority !== 'All') query.set('priorityFilter', selectedPriority);
+  return `/projects/${id}?${query}`;
+}
+
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
@@ -148,8 +158,10 @@ function projectsPage(error = '', value = '', filter = 'Active') {
     </section>`);
 }
 
-function projectPage(project, filter = 'All', error = '', value = '', renameError = '', renameValue = '', taskRename = null) {
-  const tasks = listTasks.all(project.id).filter((task) => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+function projectPage(project, filter = 'All', error = '', value = '', renameError = '', renameValue = '', taskRename = null, selectedPriority = 'All') {
+  const tasks = listTasks.all(project.id).filter((task) =>
+    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+    (selectedPriority === 'All' || task.priority === selectedPriority));
   return page(project.name, `<div class="brand">Workboard</div><h1>${escapeHtml(project.name)}</h1>
     <form method="get" action="/"><button class="secondary" type="submit">Projects</button></form>
     ${project.archived ? '<p>Archived project</p>' : ''}
@@ -157,6 +169,7 @@ function projectPage(project, filter = 'All', error = '', value = '', renameErro
       ${renameError ? `<div role="alert">${escapeHtml(renameError)}</div>` : ''}
       <form method="post" action="/projects/${project.id}/rename">
         <input type="hidden" name="filter" value="${filter}">
+        <input type="hidden" name="priorityFilter" value="${selectedPriority}">
         <label for="new-project-name">New project name</label>
         <div class="fields"><input id="new-project-name" name="name" type="text" value="${escapeHtml(renameValue)}"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
       </form>
@@ -165,6 +178,7 @@ function projectPage(project, filter = 'All', error = '', value = '', renameErro
       ${error ? `<div role="alert">${escapeHtml(error)}</div>` : ''}
       <form method="post" action="/projects/${project.id}/tasks">
         <input type="hidden" name="filter" value="${filter}">
+        <input type="hidden" name="priorityFilter" value="${selectedPriority}">
         <label for="task-title">Task title</label>
         <div class="fields"><input id="task-title" name="title" type="text" value="${escapeHtml(value)}"><button type="submit"${project.archived ? ' disabled' : ''}>Create task</button></div>
       </form>
@@ -174,15 +188,21 @@ function projectPage(project, filter = 'All', error = '', value = '', renameErro
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+      <label class="filter" for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
+        ${['All', ...priorities].map((option) => `<option${selectedPriority === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
     </form>
     <section class="projects" aria-label="Tasks">
       ${tasks.length ? tasks.map((task) => `<div class="panel task-row${task.completed ? ' completed' : ''}" data-testid="task-row">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${selectedPriority}">
           <label class="completion-label"><input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
         </form>
         <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
           <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${selectedPriority}">
           <label for="task-priority-${task.id}">Task priority</label>
           <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${priorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
@@ -190,6 +210,7 @@ function projectPage(project, filter = 'All', error = '', value = '', renameErro
         </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${selectedPriority}">
           ${taskRename?.id === task.id ? `<p role="alert">${escapeHtml(taskRename.error)}</p>` : ''}
           <label for="new-task-title-${task.id}">New task title</label>
           <div class="fields"><input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(taskRename?.id === task.id ? taskRename.value : '')}"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
@@ -233,18 +254,19 @@ const server = http.createServer(async (request, response) => {
       const project = getProject.get(renameMatch[1]);
       if (project) {
         const filter = taskFilter(form.get('filter'));
+        const selectedPriority = priorityFilter(form.get('priorityFilter'));
         const submittedName = form.get('name') || '';
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, '', '', 'Archived projects cannot be renamed'));
+          sendHtml(response, 403, projectPage(project, filter, '', '', 'Archived projects cannot be renamed', '', null, selectedPriority));
           return;
         }
         const name = submittedName.trim();
         if (!name) {
-          sendHtml(response, 400, projectPage(project, filter, '', '', 'Project name is required', submittedName));
+          sendHtml(response, 400, projectPage(project, filter, '', '', 'Project name is required', submittedName, null, selectedPriority));
           return;
         }
         renameProject.run(name, project.id);
-        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        redirect(response, projectLocation(project.id, filter, selectedPriority));
         return;
       }
     }
@@ -263,17 +285,18 @@ const server = http.createServer(async (request, response) => {
       const task = project && getTask.get(priorityMatch[2], project.id);
       if (task) {
         const filter = taskFilter(form.get('filter'));
+        const selectedPriority = priorityFilter(form.get('priorityFilter'));
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed'));
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed', '', '', '', null, selectedPriority));
           return;
         }
         const priority = form.get('priority');
         if (!priorities.includes(priority)) {
-          sendHtml(response, 400, projectPage(project, filter, 'Choose Low, Normal, or High priority'));
+          sendHtml(response, 400, projectPage(project, filter, 'Choose Low, Normal, or High priority', '', '', '', null, selectedPriority));
           return;
         }
         setTaskPriority.run(priority, task.id, project.id);
-        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        redirect(response, projectLocation(project.id, filter, selectedPriority));
         return;
       }
     }
@@ -284,8 +307,9 @@ const server = http.createServer(async (request, response) => {
       const task = project && getTask.get(taskRenameMatch[2], project.id);
       if (task) {
         const filter = taskFilter(form.get('filter'));
+        const selectedPriority = priorityFilter(form.get('priorityFilter'));
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed'));
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed', '', '', '', null, selectedPriority));
           return;
         }
         const submittedTitle = form.get('title') || '';
@@ -293,11 +317,11 @@ const server = http.createServer(async (request, response) => {
         if (!title) {
           sendHtml(response, 400, projectPage(project, filter, '', '', '', '', {
             id: task.id, error: 'Task title is required', value: submittedTitle,
-          }));
+          }, selectedPriority));
           return;
         }
         renameTask.run(title, task.id, project.id);
-        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        redirect(response, projectLocation(project.id, filter, selectedPriority));
         return;
       }
     }
@@ -307,8 +331,9 @@ const server = http.createServer(async (request, response) => {
       if (project) {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
+        const selectedPriority = priorityFilter(form.get('priorityFilter'));
         if (project.archived) {
-          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed'));
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed', '', '', '', null, selectedPriority));
           return;
         }
         if (taskMatch[2]) {
@@ -321,12 +346,12 @@ const server = http.createServer(async (request, response) => {
           const submittedTitle = form.get('title') || '';
           const title = submittedTitle.trim();
           if (!title) {
-            sendHtml(response, 400, projectPage(project, filter, 'Task title is required', submittedTitle));
+            sendHtml(response, 400, projectPage(project, filter, 'Task title is required', submittedTitle, '', '', null, selectedPriority));
             return;
           }
           createTask.run(project.id, title);
         }
-        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        redirect(response, projectLocation(project.id, filter, selectedPriority));
         return;
       }
     }
@@ -334,7 +359,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && match) {
       const project = getProject.get(match[1]);
       if (project) {
-        sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+        sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), '', '', '', '', null, priorityFilter(url.searchParams.get('priorityFilter'))));
         return;
       }
     }
