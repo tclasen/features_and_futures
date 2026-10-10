@@ -33,6 +33,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
+// An empty string represents a task without a due date, including legacy tasks.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
          COALESCE(SUM(t.completed), 0) AS completed
@@ -45,12 +49,23 @@ const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 
-const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+
+const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function validDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 function projectFilter(url) {
   return url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active';
@@ -193,6 +208,26 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         updatePriority.run(priority, task.id, project.id);
+        res.writeHead(303, { Location: `/projects/${project.id}?${taskQuery(url)}` });
+        res.end();
+        return;
+      }
+    }
+    const dueDateMatch = /^\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/.exec(url.pathname);
+    if (req.method === 'POST' && dueDateMatch) {
+      const project = findProject.get(dueDateMatch[1]);
+      const task = project && findTask.get(dueDateMatch[2], project.id);
+      if (task) {
+        if (project.archived) {
+          html(res, 403, projectPage(project, url, 'Archived project is read-only'));
+          return;
+        }
+        const date = ((await formData(req)).get('due_date') || '').trim();
+        if (date && !validDueDate(date)) {
+          html(res, 400, projectPage(project, url, 'Due date must be a valid YYYY-MM-DD date'));
+          return;
+        }
+        updateDueDate.run(date, task.id, project.id);
         res.writeHead(303, { Location: `/projects/${project.id}?${taskQuery(url)}` });
         res.end();
         return;

@@ -132,6 +132,13 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', r
             ${['Low', 'Normal', 'High'].map(value => `<option${task.priority === value ? ' selected' : ''}>${value}</option>`).join('')}
           </select>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date?${query}">
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <div class="create">
+            <input id="task-due-date-${task.id}" name="due_date" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          </div>
+        </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename?${query}">
           <label for="new-task-title-${task.id}">New task title</label>
           <div class="create">
