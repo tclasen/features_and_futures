@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -126,6 +127,65 @@ test('tasks validate, filter, remain isolated, and persist completion', async ()
     await app.stop();
     app = await start(databasePath);
     assert.ok(taskRows(await detail()).every((task) => !task.completed));
+  } finally {
+    if (app) await app.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive and restore migrate existing data, preserve summaries, and reject archived writes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  // Simulate the pre-archive schema and persisted task data.
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Pending', 0);
+  `);
+  database.close();
+  let app;
+  try {
+    app = await start(databasePath);
+    const list = async (filter = 'Active') => (await fetch(`${app.url}/?filter=${filter}`)).text();
+    const detail = async (filter = 'All') => (await fetch(`${app.url}/projects/1?filter=${filter}`)).text();
+    assert.match(await list(), /<option selected>Active<\/option><option>Archived<\/option>/);
+    assert.match(await list(), /data-testid="project-summary">1\/2 completed/);
+    assert.match(await list(), />Archive project<\/button>/);
+    await createProject(app.url, 'New');
+    assert.match(await list(), /data-testid="project-summary">0\/0 completed/);
+    const savedTasks = taskRows(await detail());
+    assert.equal((await post(app.url, '/projects/1/archive', {})).status, 303);
+    assert.deepEqual(rows(await list()).map((row) => row.name), ['New']);
+    assert.deepEqual(rows(await list('Archived')).map((row) => row.name), ['Existing']);
+    assert.match(await list('Archived'), />Restore project<\/button>/);
+    assert.match(await list('Archived'), /data-testid="project-summary">1\/2 completed/);
+    const archived = await detail();
+    assert.match(archived, /<p>Archived project<\/p>/);
+    assert.match(archived, /<button type="submit" disabled>Create task/);
+    assert.equal((archived.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+    assert.deepEqual(taskRows(await detail('Open')).map((task) => task.title), ['Pending']);
+    assert.deepEqual(taskRows(await detail('Completed')).map((task) => task.title), ['Done']);
+    assert.equal((await post(app.url, '/projects/1/tasks', { title: 'Blocked' })).status, 409);
+    assert.equal((await post(app.url, savedTasks[0].action, {})).status, 409);
+    await app.stop();
+    app = await start(databasePath);
+    assert.deepEqual(taskRows(await detail()), savedTasks);
+    assert.match(await detail(), /Archived project/);
+    assert.match(await list('Archived'), /1\/2 completed/);
+    assert.equal((await post(app.url, '/projects/1/restore', {})).status, 303);
+    assert.deepEqual(rows(await list()).map((row) => row.name), ['Existing', 'New']);
+    assert.deepEqual(rows(await list('Archived')), []);
+    assert.doesNotMatch(await detail(), / disabled|Archived project/);
+    assert.deepEqual(taskRows(await detail()), savedTasks);
+    await app.stop();
+    app = await start(databasePath);
+    assert.deepEqual(rows(await list()).map((row) => row.name), ['Existing', 'New']);
+    assert.match(await list(), /1\/2 completed/);
+    assert.equal((await post(app.url, savedTasks[1].action, { completed: '1' })).status, 303);
+    assert.match(await list(), /2\/2 completed/);
+    assert.equal((await post(app.url, '/projects/99999/archive', {})).status, 404);
   } finally {
     if (app) await app.stop();
     await rm(directory, { recursive: true, force: true });

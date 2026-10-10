@@ -19,8 +19,18 @@ export function openProjectStore(path) {
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id);
   `);
-  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const find = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  // Add archive state without replacing existing projects or their task IDs.
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
+  }
+  const list = database.prepare(`
+    SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
+      COALESCE(SUM(t.completed), 0) AS completed
+    FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+    WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
+  `);
+  const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
@@ -28,7 +38,8 @@ export function openProjectStore(path) {
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 
   return {
-    list: () => list.all(),
+    list: (archived = false) => list.all(archived ? 1 : 0),
+    setArchived: (id, archived) => updateArchive.run(archived ? 1 : 0, id).changes > 0,
     find: (id) => find.get(id),
     create(name) {
       const trimmedName = name.trim();
@@ -37,11 +48,13 @@ export function openProjectStore(path) {
     },
     listTasks: (projectId) => listTasks.all(projectId),
     createTask(projectId, title) {
+      if (find.get(projectId)?.archived) throw new Error('Archived project is read-only');
       const trimmedTitle = title.trim();
       if (!trimmedTitle) throw new Error('Task title is required');
       return Number(insertTask.run(projectId, trimmedTitle).lastInsertRowid);
     },
     setTaskCompleted(projectId, taskId, completed) {
+      if (find.get(projectId)?.archived) return false;
       return updateTask.run(completed ? 1 : 0, projectId, taskId).changes > 0;
     },
     close: () => database.close(),
