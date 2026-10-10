@@ -119,6 +119,26 @@ const server = http.createServer(async (req, res) => {
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
       return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority });
     }
+    const movePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+    if (movePath && req.method === 'PATCH') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      let payload;
+      try { payload = JSON.parse(body); } catch { return sendJson(400, { error: 'Invalid request' }); }
+      const taskId = Number(movePath[1]);
+      const destinationId = Number(payload.projectId);
+      const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+      const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+      const source = task && db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(task.project_id);
+      if (!task || !destination || !source || task.project_id === destinationId) return sendJson(400, { error: 'Invalid task destination' });
+      db.exec('BEGIN');
+      try {
+        const inserted = db.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES (?, ?, ?, ?, ?)').run(destinationId, task.title, task.completed, task.priority, task.due_date);
+        db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+        db.exec('COMMIT');
+        return sendJson(200, { ok: true, id: Number(inserted.lastInsertRowid) });
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    }
     const dueDatePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
     if (dueDatePath && req.method === 'PATCH') {
       let body = '';
