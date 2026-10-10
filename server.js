@@ -23,6 +23,7 @@ db.exec(`
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
+    project_order INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -32,6 +33,10 @@ if (!projectColumns.some(column => column.name === 'default_priority')) db.exec(
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!taskColumns.some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+if (!taskColumns.some(column => column.name === 'project_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN project_order INTEGER');
+  db.exec('UPDATE tasks SET project_order = id');
+}
 
 // Older runs could create the same project repeatedly. Keep the first project
 // ID and move any tasks from duplicates onto it before removing duplicate rows.
@@ -98,7 +103,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY project_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -111,7 +116,8 @@ const server = http.createServer(async (req, res) => {
     if (project.archived) return json(res, 409, { error: 'Archived project' });
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     if (!title) return json(res, 400, { error: 'Task title is required' });
-    const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+    const projectOrder = db.prepare('SELECT COALESCE(MAX(project_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(projectId).nextOrder;
+    const result = db.prepare('INSERT INTO tasks (project_id, title, priority, project_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, projectOrder);
     return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -149,6 +155,14 @@ const server = http.createServer(async (req, res) => {
       } else dueDate = null;
       db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, Number(taskMatch[1]));
       return json(res, 200, { ok: true, dueDate });
+    }
+    if (Object.hasOwn(input, 'destinationProjectId')) {
+      const destinationId = Number(input.destinationProjectId);
+      const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+      if (!destination || destinationId === Number(task.project_id)) return json(res, 400, { error: 'Invalid destination project' });
+      const nextOrder = db.prepare('SELECT COALESCE(MAX(project_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(destinationId).nextOrder;
+      db.prepare('UPDATE tasks SET project_id = ?, project_order = ? WHERE id = ?').run(destinationId, nextOrder, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, projectId: destinationId });
     }
     if (typeof input.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
     db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]));

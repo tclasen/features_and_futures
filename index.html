@@ -172,6 +172,8 @@
       async function renderTasks() {
         const tasksResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
         const tasks = await tasksResponse.json();
+        const projects = await loadProjects();
+        const destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== Number(id));
         list.replaceChildren();
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed) continue;
@@ -257,7 +259,25 @@
             alert.hidden = true;
             await renderTasks();
           });
-          row.append(checkbox, title, priority, renameForm, dueForm);
+          const moveSelect = document.createElement('select');
+          moveSelect.setAttribute('aria-label', 'Destination project');
+          for (const destination of destinations) {
+            const option = document.createElement('option');
+            option.value = destination.id;
+            option.textContent = destination.name;
+            moveSelect.append(option);
+          }
+          const moveButton = document.createElement('button');
+          moveButton.type = 'button';
+          moveButton.textContent = 'Move task';
+          moveSelect.disabled = project.archived || destinations.length === 0;
+          moveButton.disabled = project.archived || destinations.length === 0;
+          moveButton.addEventListener('click', async () => {
+            const moved = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(moveSelect.value) }) });
+            if (!moved.ok) { alert.textContent = 'Could not move task'; alert.hidden = false; return; }
+            await renderTasks();
+          });
+          row.append(checkbox, title, priority, renameForm, dueForm, moveSelect, moveButton);
           list.append(row);
         }
       }
