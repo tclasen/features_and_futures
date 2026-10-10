@@ -45,6 +45,33 @@ export function openProjectStore(path) {
       COMMIT;
     `);
   }
+  // Retain positions even while tasks belong elsewhere. Seed legacy current order.
+  database.exec(`
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS task_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL,
+      PRIMARY KEY (task_id, project_id),
+      UNIQUE (project_id, position)
+    );
+    INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+      SELECT id, project_id, position FROM tasks;
+    COMMIT;
+  `);
+
+  function transaction(operation) {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      database.exec('COMMIT');
+      return result;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   const list = database.prepare(`
     SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
       COALESCE(SUM(t.completed), 0) AS completed
@@ -61,7 +88,7 @@ export function openProjectStore(path) {
   const insertTask = database.prepare(`
     INSERT INTO tasks (project_id, title, priority, position)
     SELECT id, ?, default_priority,
-      (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = projects.id)
+      (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = projects.id)
     FROM projects WHERE id = ? AND archived = 0
   `);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
@@ -80,20 +107,35 @@ export function openProjectStore(path) {
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
 
-  // A single statement validates ownership and both projects while appending atomically.
-  const moveTask = database.prepare(`
-    UPDATE tasks SET
-      position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?),
-      project_id = ?
+  const rememberCreatedPosition = database.prepare(`
+    INSERT INTO task_positions (task_id, project_id, position)
+      SELECT id, project_id, position FROM tasks WHERE id = ?
+  `);
+  const eligibleMove = database.prepare(`
+    SELECT id FROM tasks
     WHERE project_id = ? AND id = ? AND project_id != ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
       AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)
+  `);
+  const rememberDestination = database.prepare(`
+    INSERT INTO task_positions (task_id, project_id, position)
+    SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?
+    ON CONFLICT (task_id, project_id) DO NOTHING
+  `);
+  const moveTask = database.prepare(`
+    UPDATE tasks SET project_id = ?,
+      position = (SELECT position FROM task_positions WHERE task_id = tasks.id AND project_id = ?)
+    WHERE id = ?
   `);
 
   return {
     moveTask(projectId, taskId, destinationId) {
       if (!Number.isSafeInteger(destinationId) || destinationId < 1) return false;
-      return moveTask.run(destinationId, destinationId, projectId, taskId, destinationId, destinationId).changes > 0;
+      return transaction(() => {
+        if (!eligibleMove.get(projectId, taskId, destinationId, destinationId)) return false;
+        rememberDestination.run(taskId, destinationId, destinationId);
+        return moveTask.run(destinationId, destinationId, taskId).changes > 0;
+      });
     },
     list: (archived = false) => list.all(archived ? 1 : 0),
     setArchived: (id, archived) => updateArchive.run(archived ? 1 : 0, id).changes > 0,
@@ -121,7 +163,11 @@ export function openProjectStore(path) {
       if (project.archived) throw new Error('Archived project is read-only');
       const trimmedTitle = title.trim();
       if (!trimmedTitle) throw new Error('Task title is required');
-      return Number(insertTask.run(trimmedTitle, projectId).lastInsertRowid);
+      return transaction(() => {
+        const taskId = Number(insertTask.run(trimmedTitle, projectId).lastInsertRowid);
+        rememberCreatedPosition.run(taskId);
+        return taskId;
+      });
     },
     renameTask(projectId, taskId, title) {
       const trimmedTitle = title.trim();

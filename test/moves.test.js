@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openProjectStore } from '../projects.js';
 
-test('moves append, preserve identity and data, reject invalid ownership, and persist order', () => {
+test('moves append on first arrival, restore prior positions, preserve data, and persist order', () => {
   const directory = mkdtempSync(join(tmpdir(), 'workboard-moves-'));
   const path = join(directory, 'db.sqlite');
   let store;
@@ -48,11 +48,11 @@ test('moves append, preserve identity and data, reject invalid ownership, and pe
     assert.equal(store.moveTask(2, 3, 1), true); // Blank due date stays blank.
     assert.equal(store.listTasks(1)[1].due_date, '');
     assert.equal(store.moveTask(2, 1, 1), true);
-    assert.deepEqual(store.listTasks(1).map((task) => task.id), [2, 3, 1]);
+    assert.deepEqual(store.listTasks(1).map((task) => task.id), [1, 2, 3]);
     store.close();
     store = openProjectStore(path);
-    assert.deepEqual(store.listTasks(1).map((task) => task.id), [2, 3, 1]);
-    assert.deepEqual(store.listTasks(1)[2], original);
+    assert.deepEqual(store.listTasks(1).map((task) => task.id), [1, 2, 3]);
+    assert.deepEqual(store.listTasks(1)[0], original);
     assert.equal(store.moveTask(1, 1, 3), true);
     assert.deepEqual(store.listTasks(3), [original]);
   } finally {

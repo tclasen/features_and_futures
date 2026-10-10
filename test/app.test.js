@@ -839,7 +839,7 @@ test('move controls list active destinations and retain the source filtered view
     app = await start(join(directory, 'db.sqlite'));
     assert.deepEqual(taskRows(await html('/projects/2')).map((row) => row.title), ['Moving']);
     assert.equal((await post(app.url, '/projects/2/tasks/1/move', { destinationId: '1' })).status, 303);
-    assert.deepEqual(taskRows(await html('/projects/1')).map((row) => row.title), ['Remaining', 'Moving']);
+    assert.deepEqual(taskRows(await html('/projects/1')).map((row) => row.title), ['Moving', 'Remaining']);
   } finally {
     if (app) await app.stop();
     await rm(directory, { recursive: true, force: true });
