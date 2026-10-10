@@ -221,6 +221,81 @@ async function renderUI(pathname, fetch) {
 
 const jsonResponse = (body) => ({ ok: true, json: async () => JSON.parse(JSON.stringify(body)) });
 
+test('due date UI saves, clears, reports invalid dates, and preserves filters and other task data', async () => {
+  const project = { id: 7, name: 'Project', archived: 0 };
+  const tasks = [
+    { id: 1, project_id: 7, title: 'First', completed: true, priority: 'High', due_date: '' },
+    { id: 2, project_id: 7, title: 'Second', completed: false, priority: 'Low', due_date: '' },
+  ];
+  let mutations = 0;
+  const fetch = async (path, options = {}) => {
+    if (options.method === 'PATCH') {
+      mutations++;
+      const input = JSON.parse(options.body);
+      if (input.due_date === 'invalid') {
+        return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+      }
+      const task = tasks.find((task) => path === `/api/projects/7/tasks/${task.id}`);
+      Object.assign(task, input);
+      return jsonResponse(task);
+    }
+    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+  };
+  const { app } = await renderUI('/projects/7', fetch);
+  const completion = app.find((node) => node.id === 'task-filter');
+  const priority = app.find((node) => node.id === 'priority-filter');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  const dateInput = (root, id = 1) => root.find((node) => node.id === `task-due-date-${id}`);
+  assert.equal(dateInput(app).type, 'text');
+  assert.equal(dateInput(app).value, '');
+  assert.equal(dateInput(app, 2).value, '');
+  assert.equal(dateInput(app).parent.children[0].textContent, 'Task due date');
+  assert.equal(dateInput(app).parent.children[0].htmlFor, dateInput(app).id);
+  assert.equal(dateInput(app).parent.children[2].textContent, 'Save due date');
+  completion.value = 'Completed';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const original = { ...tasks[0] };
+  for (const [input, saved] of [['  0001-01-01  ', '0001-01-01'], ['invalid', '0001-01-01'],
+    ['', ''], ['2024-02-29', '2024-02-29'], [' \t ', ''], ['9999-12-31', '9999-12-31']]) {
+    dateInput(app).value = input;
+    await dateInput(app).parent.fire('submit');
+    assert.deepEqual(tasks[0], { ...original, due_date: saved });
+    assert.equal(tasks[1].due_date, '');
+    assert.equal(completion.value, 'Completed');
+    assert.equal(priority.value, 'High');
+    assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['First']);
+    if (input === 'invalid') {
+      assert.equal(app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
+    } else {
+      assert.equal(dateInput(app).value, saved);
+      assert.equal(app.querySelector('[role="alert"]'), null);
+    }
+  }
+  const rename = list.children[0].children[2];
+  rename.children[1].value = 'Renamed';
+  await rename.fire('submit');
+  assert.equal(dateInput(app).value, '9999-12-31');
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'High');
+  for (const archived of [0, 1, 0]) {
+    project.archived = archived;
+    const reloaded = await renderUI('/projects/7', fetch);
+    const input = dateInput(reloaded.app);
+    assert.equal(input.value, '9999-12-31');
+    assert.equal(input.disabled, Boolean(archived));
+    assert.equal(input.parent.children[2].disabled, Boolean(archived));
+    if (archived) {
+      const before = mutations;
+      input.value = '';
+      await input.parent.fire('submit');
+      assert.equal(mutations, before);
+      assert.equal(tasks[0].due_date, '9999-12-31');
+    }
+  }
+});
+
 test('project UI archive/restore, summaries, filtering, creation, and navigation', async () => {
   const projects = [
     { id: 1, name: 'First', archived: 0, completed_count: 1, total_count: 2 },

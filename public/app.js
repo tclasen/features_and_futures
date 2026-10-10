@@ -231,7 +231,39 @@ async function renderTasks(project) {
     const priorityControls = element('div');
     priorityControls.className = 'task-priority';
     priorityControls.append(priorityLabel, priority);
-    row.append(element('span', task.title), checkbox, renameForm, priorityControls);
+    const dueDateForm = element('form');
+    const dueDateLabel = element('label', 'Task due date');
+    dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+    const dueDateInput = element('input');
+    dueDateInput.id = dueDateLabel.htmlFor;
+    dueDateInput.type = 'text';
+    dueDateInput.name = 'due_date';
+    dueDateInput.value = task.due_date || '';
+    dueDateInput.disabled = Boolean(project.archived);
+    const dueDateButton = element('button', 'Save due date');
+    dueDateButton.type = 'submit';
+    dueDateButton.disabled = Boolean(project.archived);
+    dueDateForm.append(dueDateLabel, dueDateInput, dueDateButton);
+    dueDateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (project.archived) return;
+      dueDateButton.disabled = true;
+      try {
+        const saved = await request(`${endpoint}/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ due_date: dueDateInput.value.trim() }),
+        });
+        task.due_date = saved.due_date;
+        drawTasks();
+        app.querySelector('[role="alert"]')?.remove();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        dueDateButton.disabled = Boolean(project.archived);
+      }
+    });
+    row.append(element('span', task.title), checkbox, renameForm, priorityControls, dueDateForm);
     return row;
   }
 

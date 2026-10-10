@@ -17,6 +17,8 @@ test('launch contract, project and task validation, ownership, completion, and r
     CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
       completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));
+    INSERT INTO projects (name) VALUES ('Legacy project');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy task', 1);
   `);
   legacy.close();
   let child;
@@ -56,6 +58,13 @@ test('launch contract, project and task validation, ownership, completion, and r
     const health = await fetch(`${base}/health`);
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
+    const migratedTasks = await (await fetch(`${base}/api/projects/1/tasks`)).json();
+    assert.deepEqual(migratedTasks, [{ id: 1, project_id: 1, title: 'Legacy task',
+      completed: true, priority: 'Normal', due_date: '' }]);
+    // Remove the migration fixture before exercising creation on an empty board.
+    const fixtures = new DatabaseSync(databasePath);
+    fixtures.exec('DELETE FROM tasks; DELETE FROM projects;');
+    fixtures.close();
     const home = await fetch(base);
     assert.equal(home.status, 200);
     assert.match(await home.text(), /<title>Workboard<\/title>/);
@@ -167,6 +176,30 @@ test('launch contract, project and task validation, ownership, completion, and r
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     });
+    const setDueDate = (projectId, taskId, due_date) => fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ due_date }),
+    });
+    assert.equal(firstTask.due_date, '');
+    assert.equal(secondTask.due_date, '');
+    assert.equal((await setDueDate(second.id, firstTask.id, '2026-01-01')).status, 404);
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '2026-04-30']) {
+      const response = await setDueDate(first.id, firstTask.id, `  ${date}  `);
+      assert.equal(response.status, 200);
+      firstTask.due_date = date;
+      assert.deepEqual(await response.json(), { ...firstTask, completed: true });
+    }
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2026-02-29',
+      '2024-02-30', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '2026-01-32',
+      '2026-1-01', '2026-01-1', '2026-01-01T00:00:00Z', 'not a date', null, 20260101]) {
+      const response = await setDueDate(first.id, firstTask.id, date);
+      assert.equal(response.status, 400, String(date));
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
+    }
+    assert.deepEqual(await taskList(second.id), [otherTask]);
+    assert.deepEqual(await list(), [first, second]);
     assert.equal((await renameTask(second.id, firstTask.id, 'Wrong project')).status, 404);
     assert.equal((await renameTask(first.id, 999999, 'Missing')).status, 404);
     for (const title of ['', ' \t\n ', null]) {
@@ -217,6 +250,7 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
     assert.equal((await renameTask(first.id, firstTask.id, 'Blocked task rename')).status, 409);
     assert.equal((await setPriority(first.id, firstTask.id, 'Low')).status, 409);
+    assert.equal((await setDueDate(first.id, firstTask.id, '')).status, 409);
     assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
     await stop();
     await start();
@@ -229,6 +263,14 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal(restored.status, 200);
     first.archived = 0;
     assert.deepEqual(await restored.json(), first);
+    for (const date of ['', ' \t\n ']) {
+      const response = await setDueDate(first.id, firstTask.id, date);
+      firstTask.due_date = '';
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...firstTask, completed: true });
+    }
+    await setDueDate(first.id, firstTask.id, '2028-02-29');
+    firstTask.due_date = '2028-02-29';
     const priorityAfterRestore = await setPriority(first.id, firstTask.id, 'Low');
     assert.equal(priorityAfterRestore.status, 200);
     firstTask.priority = 'Low';

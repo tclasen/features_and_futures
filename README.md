@@ -1,6 +1,6 @@
 # Workboard
 
-Tasks 001–007 provide project creation, renaming, archive/restore, completion summaries,
+Tasks 001–009 provide project creation, renaming, archive/restore, completion summaries,
 and project pages with task creation, completion checkboxes, and
 All/Open/Completed filters. Archived projects retain their tasks and allow
 filtering, while task creation and completion changes are disabled.
@@ -12,6 +12,11 @@ Archived projects disable task renaming and priority controls as well.
 Project pages combine the All/Open/Completed task filter with an
 All/Low/Normal/High priority filter. Both start at All and retain their selections
 when tasks are edited, immediately updating the matching rows in creation order.
+Each project saves a default priority for subsequent new tasks without changing
+existing tasks. Each task also has an optional due date: save a real Gregorian
+date in YYYY-MM-DD format (years 0001–9999), or save a blank value to clear it.
+Invalid dates display an alert and preserve the saved date. Archived projects
+disable default-priority and due-date editing while retaining their saved values.
 Uses Node.js 22.22.1,
 JavaScript ES modules, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript.
 No installation or external dependencies are needed.
@@ -24,8 +29,9 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. The server binds to `0.0.0.0`. `PORT` defaults to
 8080 and `DB_PATH` defaults to `./data/workboard.sqlite`. Reuse the database path
-across restarts to retain project names, archive state, task titles, priorities, and completion state.
-Existing databases are migrated automatically to support archiving and task priorities.
+across restarts to retain project names, archive state, default priorities, task
+titles, priorities, completion state, and due dates.
+Existing databases are migrated automatically; existing tasks begin with no due date.
 `GET /health` returns `{"status":"ok"}`.
 
 Verify:
@@ -47,3 +53,7 @@ accessible labels, validation, filter behavior, completion changes, project
 archive/restore, renaming, priority selection and error recovery, and archived project controls.
 Combined filter checks cover all option pairs, preserved selections during edits,
 creation order, unchanged summaries, and filtering archived and restored projects.
+Default-priority checks cover inheritance and independent project defaults.
+Due-date checks cover migration, leap years, date bounds, invalid input, clearing,
+independent task values, preserved filters and summaries, archive/restore, and
+restart persistence.
