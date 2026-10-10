@@ -26,6 +26,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -62,6 +63,21 @@ const server = createServer(async (req, res) => {
     if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
     setArchived.run(archiveRoute[2] === 'archive' ? 1 : 0, project.id);
     return send(200, JSON.stringify(getProject.get(project.id)));
+  }
+  const taskRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename$/);
+  if (taskRenameRoute && req.method === 'POST') {
+    const projectId = Number(taskRenameRoute[1]);
+    const taskId = Number(taskRenameRoute[2]);
+    const project = getProject.get(projectId);
+    if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (project.archived) return send(409, JSON.stringify({ error: 'Archived project' }));
+    try {
+      const title = String((await readBody()).title ?? '').trim();
+      if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+      if (!getTask.get(taskId, projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
+      renameTask.run(title, taskId, projectId);
+      return send(200, JSON.stringify(getTask.get(taskId, projectId)));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
   if (taskRoute) {

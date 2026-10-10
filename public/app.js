@@ -71,6 +71,19 @@ async function render() {
           await loadTasks();
         });
         row.append(checkbox);
+        const renameForm = element('form');
+        const renameInput = element('input', { type: 'text', 'aria-label': 'New task title', value: task.title });
+        const renameButton = element('button', { type: 'submit' }, 'Rename task');
+        if (project.archived) { renameInput.disabled = true; renameButton.disabled = true; }
+        renameForm.append(renameInput, renameButton);
+        renameForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = renameInput.value.trim();
+          if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; renameInput.focus(); return; }
+          const response = await fetch(`/api/projects/${match[1]}/tasks/${task.id}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+          if (response.ok) { alert.hidden = true; await loadTasks(); }
+        });
+        row.append(renameForm);
         list.append(row);
       }
     }
