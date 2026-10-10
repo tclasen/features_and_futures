@@ -527,6 +527,74 @@ test('projects and tasks: validation, rename, archive, priorities, summaries, is
     await stop();
     base = await start();
     assert.equal(await (await fetch(base + paths[0])).text(), finalDefaultDetail);
+    // Task 009: migrate existing tasks, validate calendar days, and isolate edits.
+    await stop();
+    const legacyDates = new DatabaseSync(join(directory, 'projects.sqlite'));
+    legacyDates.exec('ALTER TABLE tasks DROP COLUMN due_date');
+    legacyDates.close();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), finalDefaultDetail);
+    const dueDates = body => [...body.matchAll(/name="dueDate" type="text" value="([^"]*)"/g)].map(match => match[1]);
+    assert.deepEqual(dueDates(finalDefaultDetail), ['', '', '', '', '', '']);
+    const saveDate = (path, dueDate) => mutateFiltered(`${path}/due-date`, { dueDate }, 'Open', 'Low');
+    const datedTask = taskPaths[0];
+    const beforeDates = await (await fetch(filteredUrl('Open', 'Low'))).text();
+    const otherBeforeDates = await (await fetch(base + paths[1])).text();
+    const summaryBeforeDates = await (await fetch(base)).text();
+    for (const date of ['0001-01-01', '0099-12-31', '2000-02-29', '2024-02-29', '9999-12-31']) {
+      const saved = await saveDate(datedTask, `  ${date}  `);
+      assert.equal(saved.status, 303);
+      assert.equal(saved.headers.get('location'), `${paths[0]}?filter=Open&priorityFilter=Low`);
+      const body = await (await fetch(base + saved.headers.get('location'))).text();
+      assert.equal(body, beforeDates.replace('name="dueDate" type="text" value=""', `name="dueDate" type="text" value="${date}"`));
+    }
+    const savedDates = await (await fetch(filteredUrl('Open', 'Low'))).text();
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01', '2024-01-1', '2024-01-01T00:00:00Z', 'not a date']) {
+      const invalid = await saveDate(datedTask, date);
+      assert.equal(invalid.status, 200);
+      const body = await invalid.text();
+      assert.match(body, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assertFilters(body, 'Open', 'Low');
+      assert.deepEqual(dueDates(body), dueDates(savedDates));
+      assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), savedDates);
+    }
+    assert.equal(await (await fetch(base)).text(), summaryBeforeDates);
+    assert.equal(await (await fetch(base + paths[1])).text(), otherBeforeDates);
+    assert.equal((await saveDate(`${paths[1]}/tasks/${datedTask.split('/').at(-1)}`, '2024-01-01')).status, 404);
+    assert.equal((await saveDate(`${paths[0]}/tasks/999999`, '2024-01-01')).status, 404);
+    await saveDate(inheritedLow, '2026-10-10');
+    const independentDates = await (await fetch(filteredUrl('Open', 'Low'))).text();
+    assert.deepEqual(dueDates(independentDates), ['9999-12-31', '2026-10-10', '']);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), independentDates);
+    for (const empty of ['', '  \t  ']) {
+      await saveDate(datedTask, empty);
+      assert.deepEqual(dueDates(await (await fetch(filteredUrl('Open', 'Low'))).text()), ['', '2026-10-10', '']);
+      await saveDate(datedTask, '2000-02-29');
+    }
+    await mutateFiltered(`${datedTask}/rename`, { title: 'Renamed dated task' }, 'Open', 'Low');
+    const renamedDates = await (await fetch(filteredUrl('Open', 'Low'))).text();
+    assertFilters(renamedDates, 'Open', 'Low');
+    assert.match(renamedDates, /aria-label="Complete Renamed dated task" onchange/);
+    assert.deepEqual(dueDates(renamedDates), ['2000-02-29', '2026-10-10', '']);
+    await fetch(`${base}${paths[0]}/archive`, { method: 'POST' });
+    const archivedDates = await (await fetch(filteredUrl('Open', 'Low'))).text();
+    assert.equal((archivedDates.match(/name="dueDate" type="text" value="[^"]*" disabled/g) || []).length, 3);
+    assert.equal((archivedDates.match(/<button type="submit" disabled>Save due date/g) || []).length, 3);
+    assert.equal((await saveDate(datedTask, '2026-01-01')).status, 403);
+    assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), archivedDates);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), archivedDates);
+    await fetch(`${base}${paths[0]}/restore`, { method: 'POST' });
+    assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), renamedDates);
+    await saveDate(datedTask, ' ');
+    const clearedDates = await (await fetch(filteredUrl('Open', 'Low'))).text();
+    assert.deepEqual(dueDates(clearedDates), ['', '2026-10-10', '']);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), clearedDates);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
