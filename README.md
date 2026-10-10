@@ -12,6 +12,8 @@ Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `
 
 Open a project to create tasks, check or uncheck completion, and filter the task list by All, Open, or Completed. Names and titles are trimmed; blank entries display a validation alert.
 
+The project list starts with Active projects. Archive a project to move it to the Archived filter, then restore it there when needed. Archived projects remain readable with task filtering, but task creation and completion changes are disabled. Each project shows its completed/total task summary. Archive state and tasks persist in SQLite; existing databases are migrated automatically.
+
 Health check:
 
 ```sh
