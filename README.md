@@ -31,9 +31,15 @@ completion state, filter membership, and project summaries across restarts.
 Task renaming is disabled while the project is archived and enabled on restore.
 
 Each task has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Priority changes persist across
+Existing tasks default to Normal. Priority changes persist across
 restarts and preserve task titles, completion, ordering, ownership, and summaries.
 Archived projects disable priority changes; restoring enables them again.
+
+Each project has a Default task priority selector with Low, Normal, and High
+options, initially Normal. New tasks inherit the project's saved default.
+Changing it preserves existing tasks, both filter selections, and summaries.
+Defaults are independent per project and persist through renaming, restarts,
+archival, and restoration. Archived projects show a disabled default selector.
 
 The Project filter starts with Active projects. Archive a project to move it to
 Archived, or restore it to return it to Active. Each project shows its completed
@@ -59,4 +65,5 @@ escaping, task filtering and ownership, completion changes, and persistence
 after restarts, legacy database migration, archive/restore, summaries, and
 archived-project mutation protection, and project and task renaming with identity
 and data preservation, task priorities including migration and persistence, and
-combined completion/priority filtering with edits and archive/restore.
+combined completion/priority filtering with edits and archive/restore, and
+project default priorities with migration, inheritance, and persistence.

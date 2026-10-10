@@ -50,7 +50,8 @@ test('priorities migrate, stay independent, preserve task data, and survive rest
       assert.equal(response.status, 303);
       assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
       const saved = await html('/projects/1');
-      assert.equal(saved, before.replace(options('Normal'), options(priority)));
+      const selectStart = '<select id="task-priority-1" name="priority" data-autosubmit>';
+      assert.equal(saved, before.replace(selectStart + options('Normal'), selectStart + options(priority)));
       assert.equal(selector(await html('/projects/1?filter=Completed'), 1), options(priority));
       assert.doesNotMatch(await html('/projects/1?filter=Open'), /task-priority-1"/);
       assert.equal(await html('/'), summary);
@@ -533,7 +534,7 @@ test('combined filters retain selections, re-evaluate edits, and work across arc
     const location = '/projects/1?filter=Open&priorityFilter=Low';
     const before = await detail('Open', 'Low');
     const forms = [...before.matchAll(/<form[^>]*method="post"[^>]*>([\s\S]*?)<\/form>/g)];
-    assert.equal(forms.length, 5);
+    assert.equal(forms.length, 6);
     for (const form of forms) {
       assert.match(form[1], /name="filter" value="Open"/);
       assert.match(form[1], /name="priorityFilter" value="Low"/);
@@ -601,6 +602,123 @@ test('combined filters retain selections, re-evaluate edits, and work across arc
     assert.equal(await html('/projects/1'), allSaved);
     assert.equal(await html('/'), summary);
     assertFilters(await html('/projects/1'), 'All', 'All');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project defaults migrate, affect only subsequent tasks, and persist through rename and archive', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data/test-'));
+  let server;
+  try {
+    const dbPath = resolve(directory, 'defaults.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+      INSERT INTO projects (name) VALUES ('Alpha');
+      INSERT INTO tasks (project_id, title, completed, priority) VALUES
+        (1, 'Existing high', 1, 'High'), (1, 'Existing normal', 0, 'Normal');`);
+    legacy.close();
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const selector = (body, id, expected, disabled = false) => {
+      const match = body.match(new RegExp(`<select id="${id}"([^>]*)>(.*?)</select>`));
+      assert.ok(match, `Missing ${id}`);
+      assert.equal(match[1].includes(' disabled'), disabled);
+      const values = id === 'task-filter' ? ['All', 'Open', 'Completed'] :
+        id === 'priority-filter' ? ['All', 'Low', 'Normal', 'High'] : ['Low', 'Normal', 'High'];
+      assert.equal(match[2], values.map(value =>
+        `<option${value === expected ? ' selected' : ''}>${value}</option>`).join(''));
+    };
+    const rows = body => [...body.matchAll(/<div class="project task" data-testid="task-row">[\s\S]*?(?=<div class="project task"|<\/section>)/g)].map(match => match[0]);
+    await post('/projects', { name: 'Beta' });
+    const initial = await html('/projects/1');
+    assert.match(initial, /<label for="default-task-priority">Default task priority<\/label>/);
+    selector(initial, 'default-task-priority', 'Normal');
+    selector(await html('/projects/2'), 'default-task-priority', 'Normal');
+    const summary = await html('/');
+    const otherProject = await html('/projects/2');
+    const filters = { filter: 'Completed', priorityFilter: 'High' };
+    const location = '/projects/1?filter=Completed&priorityFilter=High';
+    const matchingBefore = rows(await html(location));
+    const change = await post('/projects/1/default-priority', { ...filters, priority: 'Low' });
+    assert.equal(change.status, 303);
+    assert.equal(change.headers.get('location'), location);
+    const changed = await html(location);
+    selector(changed, 'default-task-priority', 'Low');
+    selector(changed, 'task-filter', 'Completed');
+    selector(changed, 'priority-filter', 'High');
+    assert.deepEqual(rows(changed), matchingBefore);
+    assert.deepEqual(rows(await html('/projects/1')), rows(initial));
+    assert.equal(await html('/'), summary);
+    assert.equal(await html('/projects/2'), otherProject);
+    for (const priority of ['', 'Urgent']) {
+      assert.equal((await post('/projects/1/default-priority', { priority })).status, 400);
+      selector(await html('/projects/1'), 'default-task-priority', 'Low');
+    }
+    assert.equal((await post('/projects/999/default-priority', { priority: 'High' })).status, 404);
+    await post('/projects/1/tasks', { title: 'Inherited low', ...filters });
+    selector(await html('/projects/1'), 'task-priority-3', 'Low');
+    assert.deepEqual(rows(await html(location)), matchingBefore);
+    await post('/projects/1/default-priority', { priority: 'High' });
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/2/tasks', { title: 'Independent normal' });
+    let all = await html('/projects/1');
+    selector(all, 'task-priority-1', 'High');
+    selector(all, 'task-priority-2', 'Normal');
+    selector(all, 'task-priority-3', 'Low');
+    selector(all, 'task-priority-4', 'High');
+    selector(await html('/projects/2'), 'task-priority-5', 'Normal');
+    assert.ok(all.indexOf('Complete Existing high') < all.indexOf('Complete Existing normal'));
+    assert.ok(all.indexOf('Complete Existing normal') < all.indexOf('Complete Inherited low'));
+    assert.ok(all.indexOf('Complete Inherited low') < all.indexOf('Complete Inherited high'));
+    assert.match(await html('/'), /1\/4 completed/);
+    await post('/projects/1/rename', { name: 'Renamed' });
+    await post('/projects/1/tasks/3/rename', { title: 'Low renamed' });
+    all = await html('/projects/1');
+    selector(all, 'default-task-priority', 'High');
+    selector(all, 'task-priority-3', 'Low');
+    assert.match(all, /aria-label="Complete Existing high" checked/);
+    const list = await html('/');
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), all);
+    assert.equal(await html('/'), list);
+    await post('/projects/1/tasks', { title: 'High after restart' });
+    selector(await html('/projects/1'), 'task-priority-6', 'High');
+    const saved = await html('/projects/1');
+    await post('/projects/1/archive');
+    const archived = await html(location);
+    selector(archived, 'default-task-priority', 'High', true);
+    selector(archived, 'task-filter', 'Completed');
+    selector(archived, 'priority-filter', 'High');
+    const blocked = await post('/projects/1/default-priority', { ...filters, priority: 'Normal' });
+    assert.equal(blocked.status, 403);
+    assert.equal(await html(location), archived);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await html(location), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), saved);
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Low after restore' });
+    selector(await html('/projects/1'), 'task-priority-7', 'Low');
+    selector(await html('/projects/1'), 'task-priority-6', 'High');
+    const final = await html('/projects/1');
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), final);
+    selector(await html('/projects/2'), 'default-task-priority', 'Normal');
+    selector(await html('/projects/2'), 'task-priority-5', 'Normal');
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
