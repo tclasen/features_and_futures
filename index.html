@@ -9,7 +9,7 @@
     body { margin: 0; }
     main { max-width: 760px; margin: 56px auto; padding: 0 24px; }
     h1 { margin: 0 0 28px; font-size: 2rem; }
-    form, .project-row { display: flex; align-items: center; gap: 12px; }
+    form, .project-row, .task-row { display: flex; align-items: center; gap: 12px; }
     form { margin-bottom: 20px; }
     label { font-weight: 600; }
     input { box-sizing: border-box; min-width: 0; flex: 1; padding: 10px 12px; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
@@ -20,6 +20,13 @@
     .project-list { display: grid; gap: 10px; }
     .project-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #d8dee7; border-radius: 8px; background: white; }
     .project-name { overflow-wrap: anywhere; }
+    .task-controls { display: flex; align-items: center; gap: 12px; margin: 22px 0; }
+    .task-controls label { white-space: nowrap; }
+    .task-controls select { padding: 10px 12px; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
+    .task-list { display: grid; gap: 10px; }
+    .task-row { padding: 14px 16px; border: 1px solid #d8dee7; border-radius: 8px; background: white; }
+    .task-row input { flex: none; width: 18px; height: 18px; }
+    .task-row span { overflow-wrap: anywhere; }
     @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -102,14 +109,108 @@
     async function renderProject(id) {
       const projects = await loadProjects();
       const project = projects.find((item) => String(item.id) === id);
+      if (!project) {
+        app.replaceChildren();
+        const heading = document.createElement('h1');
+        heading.textContent = 'Project not found';
+        app.append(heading);
+        return;
+      }
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+      if (!response.ok) throw new Error('Could not load tasks');
+      const tasks = await response.json();
       app.replaceChildren();
       const back = document.createElement('button');
       back.type = 'button';
       back.textContent = 'Projects';
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
-      heading.textContent = project ? project.name : 'Project not found';
-      app.append(back, heading);
+      heading.textContent = project.name;
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.htmlFor = 'task-title';
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.id = 'task-title';
+      input.name = 'title';
+      input.type = 'text';
+      input.autocomplete = 'off';
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create task';
+      form.append(label, input, submit);
+      const alert = document.createElement('p');
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      const controls = document.createElement('div');
+      controls.className = 'task-controls';
+      const filterLabel = document.createElement('label');
+      filterLabel.htmlFor = 'task-filter';
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.id = 'task-filter';
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      controls.append(filterLabel, filter);
+      const list = document.createElement('section');
+      list.className = 'task-list';
+      list.setAttribute('aria-label', 'Tasks');
+      function drawTasks() {
+        list.replaceChildren();
+        const matching = tasks.filter((task) => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
+        for (const task of matching) {
+          const row = document.createElement('div');
+          row.className = 'task-row';
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          checkbox.addEventListener('change', async () => {
+            checkbox.disabled = true;
+            const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked }),
+            });
+            if (saved.ok) task.completed = checkbox.checked;
+            checkbox.disabled = false;
+            drawTasks();
+          });
+          row.append(checkbox, title);
+          list.append(row);
+        }
+      }
+      filter.addEventListener('change', drawTasks);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          alert.textContent = 'Task title is required';
+          alert.hidden = false;
+          input.focus();
+          return;
+        }
+        alert.hidden = true;
+        const created = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+        });
+        if (!created.ok) {
+          alert.textContent = (await created.json()).error || 'Could not create task';
+          alert.hidden = false;
+          return;
+        }
+        tasks.push(await created.json());
+        input.value = '';
+        drawTasks();
+      });
+      app.append(back, heading, form, alert, controls, list);
+      drawTasks();
     }
 
     const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
