@@ -1,0 +1,31 @@
+Work only in your assigned repository on the current task. Implement the supplied requirements using the specified technology stack. Preserve the previously required behavior. Use the shared launch and health interfaces. Manage your own Git history and submit an exact commit plus the required run commands. Work within the supplied tool and resource limits. If verification fails, use the factual feedback to revise your submission. Do not access PM files, other builders, or their artifacts. Do not work ahead on undispatched tasks.
+
+# Workboard pilot workload
+
+Workboard is a browser application whose business behavior is defined only by the current cumulative task packet. Implement the disclosed requirements checkpoint; future features and the PM backlog are not part of this packet. Do not expose business controls for undispatched features. Presentation choices and internal architecture remain independent.
+
+Every builder uses Node.js 22.22.1, JavaScript ES modules, built-in HTTP (node:http) and SQLite (node:sqlite), and browser HTML/CSS/JavaScript. No external application dependencies are required or permitted in this pilot. This keeps package installation and network access outside the measured feature work.
+
+The shared start command is `npm start`. The server entry point is `server.js`; internal module layout is independent. Bind to `0.0.0.0` at `PORT` (default 8080). Use the SQLite file at `DB_PATH`, preserving data across process restarts. Serve `GET /health` as JSON `{"status":"ok"}`.
+
+Requirements specify accessible UI labels and observable row boundaries for a common acceptance surface. The PM's Playwright source remains outside builder sandboxes. Application code and tests are independently owned by each builder.
+
+The pilot verifies measurement and orchestration, not an instruction effect. A main run may grow this workload through additions and revisions after its evidence method has been frozen.
+
+Submission boundary: `git status --porcelain` must be empty at submission, including runtime and untracked files. The submitted commit is the exact application tree the PM will validate.
+
+
+Cumulative requirements through this task:
+
+# Task 001: Projects
+
+Build the initial Workboard application using the specified stack and shared launch contract.
+
+- At `/`, show the heading `Workboard`, a textbox labelled `Project name`, and a button `Create project`.
+- Creating a project trims its name. A blank or whitespace-only name leaves the list unchanged and displays a visible alert containing `Project name is required`.
+- Display projects in creation order. Each project has a visible row with `data-testid="project-row"`, its name, and a button `Open project`.
+- Opening a project navigates to `/projects/<project-id>`, shows its name as a heading, and provides a `Projects` button to return to the list.
+- Project names and IDs persist across page reloads and server-process restarts using the configured SQLite file.
+- `GET /health` returns HTTP 200 and JSON `{"status":"ok"}`.
+- Start with `npm start`, binding to `0.0.0.0` at `PORT` (default 8080), and store data at `DB_PATH`. No external application dependencies are permitted.
+- Commit your implementation in your independent Git repository. Leave relevant source changes committed and report the submitted commit ID. Do not modify the assigned technology stack or work ahead on undispatched features.

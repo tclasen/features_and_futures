@@ -30,7 +30,7 @@ def research_inputs(original, revision=None, replay=False):
         from .bounded_confirmation import METHOD
         research['analysis_method']=METHOD
         execution['provider_incident_policy']=POLICY
-        if selected in ('research-v007', 'research-v008'):
+        if selected in ('research-v007', 'research-v008', 'research-v009'):
             execution['inference_observation_lifecycle']=OBSERVATION_LIFECYCLE
         try:validate_policy({'experiment_revision':selected,'execution':execution,'research':research},definition)
         except ValueError as error:raise InfrastructureError(str(error)) from error

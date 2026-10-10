@@ -1,0 +1,3 @@
+# Task 032: Bound project names
+
+New project creation and project rename accept trimmed nonempty names of at most 200 Unicode code points. Oversized direct input announces Project name must be at most 200 characters, remains available to edit and causes no mutation. Both project and workspace imports reject oversized names atomically using their existing invalid-JSON messages, including an oversized final owner. Existing records, including any previously valid longer name, remain unchanged. Preserve duplicate identities, creation positions, archived state, defaults, task metadata and reserved positions. Search and project-name ordering use successful current renames.

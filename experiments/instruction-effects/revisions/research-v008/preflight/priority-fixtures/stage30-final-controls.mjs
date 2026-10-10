@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 const root=resolve('experiments/instruction-effects/revisions/research-v008');
 const stage=30;
 assert.ok([30].includes(stage));
-const suite=root+'/preflight/priority-fixtures/final030-third-executed-suite/playwright.config.mjs';
+const suite=root+'/preflight/priority-fixtures/final030-fourth-executed-suite/playwright.config.mjs';
 const evidence=root+'/preflight/priority-fixtures/stage30-final-controls-'+Date.now();
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 let projects=[],nextId=1,mode='form',defect='none',rowDelay=100;

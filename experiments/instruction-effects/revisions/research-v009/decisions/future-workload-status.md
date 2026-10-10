@@ -1,0 +1,5 @@
+Requirements21–30 and31–40 were selected before any comparative inspection. They remain unfrozen. V008 retains all prototype inputs/results, including82combined genuine fault controls and the incomplete full99 run with081missing-write barrier. V009 canonical task030draft corrects baseline051reload-view scope andadds a stored-notes barrier before081navigation. The targeted081gate is running; full99 cumulative/syntheticrestart/observation readiness remains pending. Native process restart and deployment checks will still be required for each future submission.
+
+Task031individual-notes draft andTask032project-name draft are prepared; original listing-only observations remain bound to their earlier v008 inputs. Revised listing and behavioral gates remain pending. Task033–040 public requirements are preselected, with no builder dispatch or comparative finding.
+
+All12nativebuilders must complete20, followed byindependent audit andfirstallowedinspection, before any future rounds are frozen. Allprior observations/exposures remain retained.
