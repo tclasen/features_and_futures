@@ -41,7 +41,7 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const moveTask = db.prepare(`UPDATE tasks SET project_id = ?, created_at = (
-  SELECT COALESCE(MAX(created_at) + 1, ?) FROM tasks WHERE project_id = ?
+  SELECT COALESCE(MAX(created_at), 0) + 1 FROM tasks WHERE project_id = ? AND id != ?
 ) WHERE id = ? AND project_id = ?`);
 
 function isValidDueDate(value) {
@@ -127,7 +127,7 @@ const server = http.createServer(async (req, res) => {
       const destination = typeof payload.destinationProjectId === 'string' ? getProject.get(payload.destinationProjectId) : null;
       if (!source) return json(res, 404, { error: 'Project not found' });
       if (source.archived || !destination || destination.archived || destination.id === source.id) return json(res, 400, { error: 'Invalid destination project' });
-      const result = moveTask.run(destination.id, Date.now(), destination.id, moveMatch[2], source.id);
+      const result = moveTask.run(destination.id, destination.id, moveMatch[2], moveMatch[2], source.id);
       return result.changes ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Task not found' });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
