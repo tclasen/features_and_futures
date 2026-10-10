@@ -15,7 +15,9 @@
     input { border: 1px solid #aab4c2; }
     button { border: 0; background: #2459c4; color: white; cursor: pointer; }
     button:hover { background: #19479f; }
-    .project-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid #e3e7ed; }
+    .project-row, .task-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid #e3e7ed; }
+    .task-row label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+    select { font: inherit; padding: 10px 12px; border-radius: 6px; border: 1px solid #aab4c2; }
     .alert { color: #a32626; margin: 12px 0; }
     @media (max-width: 600px) { main { margin: 20px; padding: 22px; } form { align-items: stretch; flex-direction: column; } }
   </style>
@@ -84,6 +86,67 @@
       const heading = document.createElement('h1');
       heading.textContent = project.name;
       app.append(back, heading);
+      const form = document.createElement('form');
+      const label = document.createElement('label');
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Task title');
+      label.append(input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create task';
+      form.append(label, submit);
+      const alert = document.createElement('div');
+      alert.className = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.textContent = value;
+        option.value = value;
+        filter.append(option);
+      }
+      filterLabel.append(filter);
+      app.append(form, alert, filterLabel);
+      async function renderTasks() {
+        app.querySelectorAll('[data-testid="task-row"]').forEach(row => row.remove());
+        const response = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+        const tasks = await response.json();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          const row = document.createElement('div');
+          row.className = 'task-row';
+          row.dataset.testid = 'task-row';
+          const taskLabel = document.createElement('label');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            renderTasks();
+          });
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          taskLabel.append(checkbox, title);
+          row.append(taskLabel);
+          app.append(row);
+        }
+      }
+      filter.addEventListener('change', renderTasks);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+        const response = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (response.ok) { input.value = ''; alert.hidden = true; await renderTasks(); }
+      });
+      await renderTasks();
     }
     const match = location.pathname.match(/^\/projects\/(\d+)$/);
     (match ? renderProject(match[1]) : renderList()).catch(error => {
