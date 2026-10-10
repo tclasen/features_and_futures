@@ -46,7 +46,7 @@ async function renderList(archived = false, appliedQuery = '') {
   searchForm.append(searchLabel, searchInput, searchButton);
   searchForm.addEventListener('submit', event => { event.preventDefault(); renderList(archived, searchInput.value.trim()); });
   app.append(searchForm);
-  const normalizeSearch = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  const normalizeSearch = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
   const query = normalizeSearch(appliedQuery.trim());
   const list = element('section', { className: 'project-list' });
   for (const project of await request(`/api/projects?archived=${archived}`)) {
@@ -136,9 +136,10 @@ async function renderProject(id) {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     if (renderVersion !== taskRenderVersion) return;
     list.replaceChildren();
-    const normalizedTaskQuery = appliedTaskQuery.replace(/[A-Z]/g, letter => letter.toLowerCase());
+    const normalizeTaskSearch = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
+    const normalizedTaskQuery = normalizeTaskSearch(appliedTaskQuery.trim());
     for (const task of tasks) {
-      if (!task.title.replace(/[A-Z]/g, letter => letter.toLowerCase()).includes(normalizedTaskQuery)) continue;
+      if (!normalizeTaskSearch(task.title).includes(normalizedTaskQuery)) continue;
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed || priorityFilter.value !== 'All' && priorityFilter.value !== task.priority) continue;
       if ((appliedDueFrom || appliedDueThrough) && (!task.dueDate || (appliedDueFrom && task.dueDate < appliedDueFrom) || (appliedDueThrough && task.dueDate > appliedDueThrough))) continue;
       const row = element('article', { testId: 'task-row', className: 'task-row' });
