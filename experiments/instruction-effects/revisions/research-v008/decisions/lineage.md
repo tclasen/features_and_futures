@@ -1,0 +1,3 @@
+Eval007 is superseded after12shared checkpoints and155accepted submissions. All1,833dispatched requests have terminal records;9native counters remain unknown. Original047rejections andPMcancellation009 remain preserved with appendedattribution. All24obsolete sandboxes were archived, independently restored andremoved.
+
+Researchv008 changes only047observer readiness: positive Open, High anddue-range results are observed before nextinput; anextraNormal guard activates High filter discrimination. Criteria,20publicpackets, profiles, models, harness/image, math andstopping unchanged. Fresh roots use only pilot015starter. Future21–30 remain unfrozen andinherit selectedrequirements andPMdrafts; nocomparative inspection yet.

@@ -1,0 +1,3 @@
+Eval007 is superseded after12common checkpoints and155accepted submissions.198nativeattempts finished, includingPMcancelledb011Task013attempt009exit143. All1,833requests are closed;1,824nativecounts complete and9unknown. Independently recomputed uncached reference cost is[31.8832013,infinity)USD; cache-aware[23.08543874,infinity). No counterfactual cost or acceptance is inferred.
+
+Eight originalb011Task13rejections are retained withsuperseding PM047observer attribution. Exactunchanged006reproduces old047failure andpassescorrected48cumulative+1upgrade+1actualrestart. No comparativecandidate inspected. All24ownresources archived, independentlyrestored andremoved; two diagnostics andruntimefixture also removed.211originalcheckpointarchives retained.

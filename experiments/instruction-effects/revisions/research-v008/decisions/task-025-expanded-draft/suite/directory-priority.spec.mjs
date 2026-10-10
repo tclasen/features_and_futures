@@ -1,0 +1,69 @@
+import {test,expect} from '@playwright/test';
+import {stage,projectName,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedPriority,expectPersistedCompletion} from './helpers.mjs';
+const rows=p=>p.getByTestId('directory-task-row').filter({visible:true});
+const owners=p=>p.getByTestId('directory-owner-row').filter({visible:true});
+const save=p=>p.getByRole('button',{name:'Set visible priority',exact:true});
+const restore=p=>p.getByRole('button',{name:'Restore visible tasks',exact:true});
+async function titles(p,expected){const r=p.getByTestId('task-row').filter({visible:true});await expect(r).toHaveCount(expected.length);for(const [i,title] of expected.entries())await expect(r.nth(i).getByRole('checkbox',{name:'Complete '+title,exact:true})).toBeVisible();}
+async function result(p,names,counts,expected,total){
+ if(!expected.length)await expect(p.getByText('No matching tasks',{exact:true})).toBeVisible();
+ await expect(rows(p).getByTestId('directory-task-title')).toHaveText(expected);
+ await expect(owners(p).getByTestId('directory-owner-name')).toHaveText(names.map(projectName));
+ await expect(owners(p).getByTestId('directory-owner-summary')).toHaveText(counts);
+ await expect(p.getByTestId('directory-summary')).toHaveText(total);
+}
+async function directory(p,q){await p.goto('/');await p.getByRole('button',{name:'Task directory',exact:true}).click();await p.getByRole('textbox',{name:'Directory search',exact:true}).fill(q);await p.getByRole('button',{name:'Search directory',exact:true}).click();}
+async function returnTo(p,owner){await p.goto('/');await openProject(p,owner);}
+async function observed(p,owner,title,field,value){
+ const o=await p.context().newPage();try{await expect.poll(async()=>{await returnTo(o,owner);return taskRow(o,title).getByRole('textbox',{name:field,exact:true}).inputValue();},{timeout:5000}).toBe(value);}finally{await o.close();}
+ await returnTo(p,owner);
+}
+async function configured(p,owner,title,{priority='Normal',date='',completed=false,deleted=false,notes=''}={}){
+ await createTask(p,title);
+ if(priority!=='Normal'){await taskRow(p,title).getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:priority});await expectPersistedPriority(p,owner,title,priority);await returnTo(p,owner);}
+ if(date){await taskRow(p,title).getByRole('textbox',{name:'Task due date',exact:true}).fill(date);await taskRow(p,title).getByRole('button',{name:'Save due date',exact:true}).click();await observed(p,owner,title,'Task due date',date);}
+ if(notes){await taskRow(p,title).getByRole('textbox',{name:'Task notes',exact:true}).fill(notes);await taskRow(p,title).getByRole('button',{name:'Save notes',exact:true}).click();await observed(p,owner,title,'Task notes',notes);}
+ if(completed){await p.getByRole('checkbox',{name:'Complete '+title,exact:true}).check();await expectPersistedCompletion(p,owner,title,true);await returnTo(p,owner);}
+ if(deleted){await taskRow(p,title).getByRole('button',{name:'Delete task',exact:true}).click();const o=await p.context().newPage();try{await returnTo(o,owner);await o.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Deleted'});await expect(taskRow(o,title)).toBeVisible();}finally{await o.close();}await returnTo(p,owner);}
+}
+
+test.beforeEach(async({context})=>{await isolateBrowser(context);});
+if(stage>=25){
+ test('082 directory priority assignment honors intersected live results and protects nonmatching metadata',async({page})=>{
+  test.setTimeout(90000);
+  const a='Priority batch first owner',b='Priority batch second owner',c='Priority batch archived owner',q=projectName('Priority batch record');
+  const first=q+' target zulu',second=q+' target alpha',low=q+' low guard',late=q+' date guard',done=q+' completed guard',other=projectName('Priority unrelated guard'),deleted=q+' deleted guard',archived=q+' archived guard';
+  const fields={date:'2064-02-29',notes:'Literal Ω\n  retained priority notes'};
+  await createProject(page,a);await openProject(page,a);await configured(page,a,first,fields);await configured(page,a,low,{...fields,priority:'Low'});await configured(page,a,late,{...fields,date:'2064-03-01'});await configured(page,a,done,{...fields,completed:true});await configured(page,a,other,fields);await configured(page,a,deleted,{...fields,deleted:true});
+  await createProject(page,b);await openProject(page,b);await configured(page,b,second,fields);
+  await createProject(page,c);await openProject(page,c);await configured(page,c,archived,fields);await page.getByRole('button',{name:'Projects',exact:true}).click();await projectRow(page,c).getByRole('button',{name:'Archive project',exact:true}).click();await expect(projectRow(page,c)).toHaveCount(0);
+  await directory(page,q);await result(page,[a,b],['1/4 completed','0/1 completed'],[first,low,late,done,second],'1/5 completed');
+  await expect(page.getByRole('combobox',{name:'Visible tasks priority',exact:true}).locator('option:checked')).toHaveText('Normal');
+  await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Open'});await result(page,[a,b],['0/3 completed','0/1 completed'],[first,low,late,second],'0/4 completed');
+  await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'Normal'});await result(page,[a,b],['0/2 completed','0/1 completed'],[first,late,second],'0/3 completed');
+  await page.getByRole('textbox',{name:'Due from',exact:true}).fill(fields.date);await page.getByRole('textbox',{name:'Due through',exact:true}).fill(fields.date);await page.getByRole('button',{name:'Apply due range',exact:true}).click();await result(page,[a,b],['0/1 completed','0/1 completed'],[first,second],'0/2 completed');
+  await page.getByRole('combobox',{name:'Directory order',exact:true}).selectOption({label:'Title'});await result(page,[a,b],['0/1 completed','0/1 completed'],[second,first],'0/2 completed');await page.getByRole('combobox',{name:'Visible tasks priority',exact:true}).selectOption({label:'High'});await save(page).click();await result(page,[],[],[],'0/0 completed');await expect(save(page)).toBeDisabled();
+  const observer=await page.context().newPage();try{
+   await returnTo(observer,a);await titles(observer,[first,low,late,done,other]);
+   for(const [title,priority] of [[first,'High'],[low,'Low'],[late,'Normal'],[done,'Normal'],[other,'Normal']])await expect(taskRow(observer,title).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText(priority);
+   await expect(observer.getByRole('checkbox',{name:'Complete '+done,exact:true})).toBeChecked();await expect(taskRow(observer,first).getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue(fields.date);await expect(taskRow(observer,first).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue(fields.notes);
+   await observer.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Deleted'});await expect(taskRow(observer,deleted).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('Normal');
+   await returnTo(observer,b);await expect(taskRow(observer,second).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('High');await expect(taskRow(observer,second).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue(fields.notes);
+  }finally{await observer.close();}
+  await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'High'});await result(page,[a,b],['0/1 completed','0/1 completed'],[second,first],'0/2 completed');
+  await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Completed'});await result(page,[],[],[],'0/0 completed');await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'Normal'});await result(page,[a],['1/1 completed'],[done],'1/1 completed');await page.getByRole('combobox',{name:'Visible tasks priority',exact:true}).selectOption({label:'Low'});await save(page).click();await result(page,[],[],[],'0/0 completed');await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'Low'});await result(page,[a],['1/1 completed'],[done],'1/1 completed');
+  await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Deleted'});await result(page,[],[],[],'0/0 completed');await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'Normal'});await result(page,[a],['0/1 completed'],[deleted],'0/1 completed');await expect(save(page)).toBeDisabled();
+  await page.getByRole('combobox',{name:'Project scope',exact:true}).selectOption({label:'Archived'});await result(page,[],[],[],'0/0 completed');await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'All'});await result(page,[c],['0/1 completed'],[archived],'0/1 completed');await expect(save(page)).toBeDisabled();
+  await directory(page,q);await result(page,[a,b],['1/4 completed','0/1 completed'],[first,low,late,done,second],'1/5 completed');await expect(page.getByRole('combobox',{name:'Visible tasks priority',exact:true}).locator('option:checked')).toHaveText('Normal');
+ });
+ test('083 bulk priority assignment distinguishes duplicate owners and preserves completion and local order',async({page})=>{
+  test.setTimeout(60000);const a='Priority duplicate owner',b='Priority duplicate temporary',q=projectName('Priority duplicate target'),first=q+' zulu',second=q+' alpha',beforeA='Priority before A',afterA='Priority after A',beforeB='Priority before B',afterB='Priority after B';
+  await createProject(page,a);await openProject(page,a);await createTask(page,beforeA);await configured(page,a,first,{priority:'Low',date:'2068-02-29',notes:'Duplicate first Ω\nkept'});await createTask(page,afterA);
+  await createProject(page,b);await openProject(page,b);await createTask(page,beforeB);await configured(page,b,second,{priority:'Low',completed:true,date:'2064-02-29',notes:'Duplicate second Ω\nkept'});await createTask(page,afterB);
+  await page.getByRole('textbox',{name:'New project name',exact:true}).fill(projectName(a));await page.getByRole('button',{name:'Rename project',exact:true}).click();const observer=await page.context().newPage();try{await expect.poll(async()=>{await observer.goto('/');return projectRow(observer,a).count();},{timeout:5000}).toBe(2);}finally{await observer.close();}
+  await directory(page,q);await result(page,[a,a],['0/1 completed','1/1 completed'],[first,second],'1/2 completed');await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'Low'});await result(page,[a,a],['0/1 completed','1/1 completed'],[first,second],'1/2 completed');await save(page).click();await result(page,[],[],[],'0/0 completed');await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'Normal'});await result(page,[a,a],['0/1 completed','1/1 completed'],[first,second],'1/2 completed');
+  await owners(page).nth(0).getByRole('button',{name:'Open project',exact:true}).click();await titles(page,[beforeA,first,afterA]);await expect(taskRow(page,first).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('Normal');await expect(taskRow(page,first).getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2068-02-29');await expect(taskRow(page,first).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Duplicate first Ω\nkept');await expect(page.getByRole('checkbox',{name:'Complete '+first,exact:true})).not.toBeChecked();
+  await directory(page,q);await result(page,[a,a],['0/1 completed','1/1 completed'],[first,second],'1/2 completed');await owners(page).nth(1).getByRole('button',{name:'Open project',exact:true}).click();await titles(page,[beforeB,second,afterB]);await expect(taskRow(page,second).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('Normal');await expect(taskRow(page,second).getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2064-02-29');await expect(taskRow(page,second).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('Duplicate second Ω\nkept');await expect(page.getByRole('checkbox',{name:'Complete '+second,exact:true})).toBeChecked();await page.goto('/');await expect(projectRow(page,a).getByTestId('project-summary')).toHaveText(['0/3 completed','1/3 completed']);
+ });
+
+}
