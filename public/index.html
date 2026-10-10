@@ -194,7 +194,45 @@
         priorityFilter.append(option);
       }
       priorityFilterLabel.append(priorityFilter);
-      app.append(form, alert, filterLabel, priorityFilterLabel);
+      const dueRangeForm = document.createElement('div');
+      const fromLabel = document.createElement('label');
+      fromLabel.textContent = 'Due from';
+      const fromInput = document.createElement('input');
+      fromInput.type = 'text';
+      fromInput.setAttribute('aria-label', 'Due from');
+      fromLabel.append(fromInput);
+      const throughLabel = document.createElement('label');
+      throughLabel.textContent = 'Due through';
+      const throughInput = document.createElement('input');
+      throughInput.type = 'text';
+      throughInput.setAttribute('aria-label', 'Due through');
+      throughLabel.append(throughInput);
+      const applyRange = document.createElement('button');
+      applyRange.type = 'button';
+      applyRange.textContent = 'Apply due range';
+      let appliedFrom = '';
+      let appliedThrough = '';
+      function validCalendarDate(value) {
+        const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+        if (!match) return false;
+        const [, year, month, day] = match.map(Number);
+        if (year < 1 || month < 1 || month > 12) return false;
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+      }
+      applyRange.addEventListener('click', () => {
+        const from = fromInput.value.trim();
+        const through = throughInput.value.trim();
+        if (from && !validCalendarDate(from) || through && !validCalendarDate(through)) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return;
+        }
+        appliedFrom = from; appliedThrough = through; alert.hidden = true; renderTasks();
+      });
+      dueRangeForm.append(fromLabel, throughLabel, applyRange);
+      app.append(form, alert, filterLabel, priorityFilterLabel, dueRangeForm);
       let taskRenderVersion = 0;
       async function renderTasks() {
         const version = ++taskRenderVersion;
@@ -205,6 +243,8 @@
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
+          if (task.dueDate && (appliedFrom && task.dueDate < appliedFrom || appliedThrough && task.dueDate > appliedThrough)) continue;
           const row = document.createElement('div');
           row.className = 'task-row';
           row.dataset.testid = 'task-row';
