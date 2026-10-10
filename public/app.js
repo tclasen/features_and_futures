@@ -372,10 +372,15 @@ async function showProject(id) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
           });
+          // The server has moved this task, so remove its source row before
+          // waiting for the refreshed task list.
+          row.remove();
           await renderTasks();
         } catch (error) {
           alert.textContent = error.message;
           alert.hidden = false;
+        } finally {
+          moveButton.disabled = project.archived || availableProjects.length === 0;
         }
       });
       destinationLabel.append(destination);
