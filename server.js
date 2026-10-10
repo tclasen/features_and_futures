@@ -36,6 +36,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_prio
   FROM projects p ORDER BY p.created_at, p.rowid`);
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
+const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -111,7 +112,7 @@ const server = http.createServer(async (req, res) => {
       if (owner.archived) return json(res, 403, { error: 'Archived project' });
       const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false };
       task.priority = owner.defaultPriority;
-      insertTask.run(task.id, task.projectId, task.title, Date.now(), task.priority);
+      insertTask.run(task.id, task.projectId, task.title, nextTaskOrder.get().value, task.priority);
       return json(res, 201, task);
     } catch {
       return json(res, 400, { error: 'Invalid request' });
