@@ -27,6 +27,10 @@ Each project has a saved Default task priority, initially Normal. New tasks inhe
 this value; changing it leaves existing tasks and both filters unchanged. Defaults
 persist across restarts, renaming, archival and restoration, and cannot be edited
 while archived.
+Tasks support optional due dates. Save a real Gregorian date in YYYY-MM-DD format
+(years 0001–9999), or leave the textbox blank to clear it. Dates persist without
+timezone conversion. Invalid dates leave saved data unchanged; archived projects
+disable date editing until restoration.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
