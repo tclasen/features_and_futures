@@ -26,12 +26,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+  position INTEGER
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+try { db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER'); } catch {}
+db.exec('UPDATE tasks SET position = id WHERE position IS NULL');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0))');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -93,10 +97,27 @@ const server = http.createServer(async (req, res) => {
         const data = JSON.parse(body);
         const title = typeof data.title === 'string' ? data.title.trim() : '';
         if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-        const result = createTask.run(projectId, title, project.default_priority);
+        const result = createTask.run(projectId, title, project.default_priority, projectId);
         return sendJson(res, 201, getTask.get(Number(result.lastInsertRowid), projectId));
       } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
     }
+  }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move\/?$/);
+  if (req.method === 'POST' && moveMatch) {
+    const sourceId = Number(moveMatch[1]), taskId = Number(moveMatch[2]);
+    const source = getProject.get(sourceId);
+    if (!source) return sendJson(res, 404, { error: 'Project not found' });
+    if (source.archived) return sendJson(res, 403, { error: 'Archived project' });
+    let body = '';
+    try {
+      for await (const chunk of req) body += chunk;
+      const destinationId = Number(JSON.parse(body).destination_id);
+      const destination = getProject.get(destinationId);
+      if (!destination || destination.archived || destinationId === sourceId) return sendJson(res, 400, { error: 'Invalid destination project' });
+      if (!getTask.get(taskId, sourceId)) return sendJson(res, 404, { error: 'Task not found' });
+      moveTask.run(destinationId, destinationId, taskId, sourceId);
+      return sendJson(res, 200, { ok: true });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
   const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/?$/);
   if (req.method === 'PATCH' && renameMatch) {
