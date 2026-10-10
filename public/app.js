@@ -13,6 +13,10 @@ function heading(text) {
   return element;
 }
 
+function foldAsciiCase(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 function isValidCalendarDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
@@ -48,6 +52,17 @@ async function showProjects() {
     option.textContent = value;
     filter.append(option);
   }
+  const searchLabel = document.createElement('label');
+  searchLabel.htmlFor = 'project-search';
+  searchLabel.textContent = 'Project search';
+  const searchInput = document.createElement('input');
+  searchInput.id = 'project-search';
+  searchInput.type = 'text';
+  searchInput.autocomplete = 'off';
+  const searchButton = document.createElement('button');
+  searchButton.type = 'button';
+  searchButton.textContent = 'Search projects';
+  let appliedProjectQuery = '';
   const submit = document.createElement('button');
   submit.type = 'submit';
   submit.textContent = 'Create project';
@@ -59,11 +74,12 @@ async function showProjects() {
   const list = document.createElement('section');
   list.className = 'project-list';
   list.setAttribute('aria-label', 'Projects');
-  view.append(form, filterLabel, filter, list);
+  view.append(form, filterLabel, filter, searchLabel, searchInput, searchButton, list);
 
   async function refresh() {
     const projects = await request(`/api/projects?archived=${filter.value === 'archived'}`);
-    list.replaceChildren(...projects.map((project) => {
+    const query = foldAsciiCase(appliedProjectQuery);
+    list.replaceChildren(...projects.filter((project) => foldAsciiCase(project.name).includes(query)).map((project) => {
       const row = document.createElement('article');
       row.className = 'project-row';
       row.dataset.testid = 'project-row';
@@ -96,6 +112,10 @@ async function showProjects() {
     alert.textContent = error.message;
     alert.hidden = false;
   }));
+  searchButton.addEventListener('click', () => {
+    appliedProjectQuery = searchInput.value.trim();
+    refresh().catch((error) => { alert.textContent = error.message; alert.hidden = false; });
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -238,6 +258,17 @@ async function showProject(id) {
     option.textContent = value;
     priorityFilter.append(option);
   }
+  const taskSearchLabel = document.createElement('label');
+  taskSearchLabel.htmlFor = 'task-search';
+  taskSearchLabel.textContent = 'Task search';
+  const taskSearchInput = document.createElement('input');
+  taskSearchInput.id = 'task-search';
+  taskSearchInput.type = 'text';
+  taskSearchInput.autocomplete = 'off';
+  const taskSearchButton = document.createElement('button');
+  taskSearchButton.type = 'button';
+  taskSearchButton.textContent = 'Search tasks';
+  let appliedTaskQuery = '';
   const dueRange = document.createElement('form');
   dueRange.className = 'due-range';
   const dueFromLabel = document.createElement('label');
@@ -262,7 +293,7 @@ async function showProject(id) {
   const list = document.createElement('section');
   list.className = 'task-list';
   list.setAttribute('aria-label', 'Tasks');
-  view.append(back, renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, dueRange, list);
+  view.append(back, renameForm, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, taskSearchLabel, taskSearchInput, taskSearchButton, dueRange, list);
 
   async function refresh() {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -272,7 +303,8 @@ async function showProject(id) {
       && (!appliedDueRange.from && !appliedDueRange.through || Boolean(task.dueDate))
       && (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
       && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through));
-    list.replaceChildren(...visible.map((task) => {
+    const query = foldAsciiCase(appliedTaskQuery);
+    list.replaceChildren(...visible.filter((task) => foldAsciiCase(task.title).includes(query)).map((task) => {
       const row = document.createElement('article');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -391,6 +423,10 @@ async function showProject(id) {
 
   filter.addEventListener('change', () => refresh().catch(showTaskError));
   priorityFilter.addEventListener('change', () => refresh().catch(showTaskError));
+  taskSearchButton.addEventListener('click', () => {
+    appliedTaskQuery = taskSearchInput.value.trim();
+    refresh().catch(showTaskError);
+  });
   dueRange.addEventListener('submit', async (event) => {
     event.preventDefault();
     const from = dueFrom.value.trim();
