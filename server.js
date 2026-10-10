@@ -37,6 +37,7 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -76,9 +77,19 @@ const server = createServer(async (request, response) => {
   if (request.method === 'PATCH' && projectMatch) {
     try {
       const projectId = Number(projectMatch[1]);
-      const { archived } = await readBody(request);
-      if (typeof archived !== 'boolean') return sendJson(response, 400, { error: 'Invalid archive state' });
-      updateProjectArchive.run(archived ? 1 : 0, projectId);
+      const body = await readBody(request);
+      if (typeof body.name === 'string') {
+        const cleanName = body.name.trim();
+        if (!cleanName) return sendJson(response, 400, { error: 'Project name is required' });
+        const currentProject = getProject.get(projectId);
+        if (!currentProject) return sendJson(response, 404, { error: 'Project not found' });
+        if (currentProject.archived) return sendJson(response, 400, { error: 'Archived projects cannot be renamed' });
+        renameProject.run(cleanName, projectId);
+      } else if (typeof body.archived === 'boolean') {
+        updateProjectArchive.run(body.archived ? 1 : 0, projectId);
+      } else {
+        return sendJson(response, 400, { error: 'Invalid project update' });
+      }
       const project = getProject.get(projectId);
       return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
     } catch {
