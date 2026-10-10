@@ -231,11 +231,14 @@ async function renderTasks(projectId, archived) {
   rangeError.setAttribute('role', 'alert');
   rangeError.hidden = true;
   let appliedRange = { from: '', through: '' };
+  let refreshVersion = 0;
   const rows = element('section', undefined, 'tasks');
   rows.setAttribute('aria-label', 'Tasks');
   async function refresh() {
+    const version = ++refreshVersion;
     const tasks = await getTasks(projectId);
     const projects = await getProjects();
+    if (version !== refreshVersion) return;
     const destinations = projects.filter(project => !project.archived && String(project.id) !== String(projectId));
     rows.replaceChildren();
     for (const task of tasks) {
@@ -256,10 +259,12 @@ async function renderTasks(projectId, archived) {
       checkbox.disabled = archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }),
         });
         if (response.ok) await refresh();
+        else checkbox.disabled = archived;
       });
       row.append(checkbox);
       const priority = element('select');
@@ -296,6 +301,7 @@ async function renderTasks(projectId, archived) {
       dueDateError.setAttribute('role', 'alert');
       saveDueDate.addEventListener('click', async () => {
         saveDueDate.disabled = true;
+        dueDate.disabled = true;
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dueDate: dueDate.value }),
@@ -307,6 +313,7 @@ async function renderTasks(projectId, archived) {
           const result = await response.json().catch(() => ({}));
           dueDateError.textContent = result.error || 'Could not save due date';
           saveDueDate.disabled = archived;
+          dueDate.disabled = archived;
         }
       });
       row.append(dueDate, saveDueDate, dueDateError);
