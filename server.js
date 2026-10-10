@@ -30,6 +30,8 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -67,7 +69,9 @@ function page(title, content) {
     .filter { margin-top: 24px; }
     select { padding: 10px 12px; font: inherit; border: 1px solid #79879a; border-radius: 6px; background: white; }
     .task label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
-    .task input { flex: none; width: 20px; height: 20px; }
+    .task { flex-direction: column; align-items: stretch; }
+    .task input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+    .task .rename label { margin-bottom: 8px; }
     @media (max-width: 540px) { main { margin: 20px auto; padding: 16px; } .fields, .project { flex-direction: column; align-items: stretch; } }
   </style>
 </head>
@@ -137,6 +141,11 @@ function projectPage(project, filter = 'All', error = '') {
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
           <input type="hidden" name="filter" value="${filter}">
           <label><input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-autosubmit><span>${escapeHtml(task.title)}</span></label>
+        </form>
+        <form class="rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="fields"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
         </form>
       </div>`).join('')}${tasks.length ? '' : '<p class="empty">No matching tasks.</p>'}</section>`);
 }
@@ -223,7 +232,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/completion)?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const projectId = Number(parts[2]);
       const project = Number.isSafeInteger(projectId) ? getProject.get(projectId) : undefined;
@@ -250,9 +259,19 @@ const server = http.createServer(async (request, response) => {
         insertTask.run(projectId, title);
       } else {
         const taskId = Number(parts[4]);
-        if (!Number.isSafeInteger(taskId) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId).changes) {
+        if (!Number.isSafeInteger(taskId) || !getTask.get(taskId, projectId)) {
           sendHtml(response, 404, page('Task not found', '<h1>Task not found</h1>'));
           return;
+        }
+        if (parts[5] === 'rename') {
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          renameTask.run(title, taskId, projectId);
+        } else {
+          updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId);
         }
       }
       response.writeHead(303, { Location: `/projects/${projectId}${filter === 'All' ? '' : `?filter=${filter}`}` });

@@ -21,6 +21,11 @@ Names are trimmed and must not be blank. Renaming preserves the project's URL,
 creation order, tasks, and completion state, and persists across restarts.
 Archived projects cannot be renamed until restored.
 
+Each task row has New task title and Rename task controls. Task titles are
+trimmed and must not be blank. Renaming preserves ownership, creation order,
+completion state, filter membership, and project summaries across restarts.
+Task renaming is disabled while the project is archived and enabled on restore.
+
 The Project filter starts with Active projects. Archive a project to move it to
 Archived, or restore it to return it to Active. Each project shows its completed
 and total task counts. Archived projects remain readable with working task
@@ -43,4 +48,5 @@ The integration tests start real server processes, use temporary SQLite
 databases, and check project and task validation, ordering, navigation, HTML
 escaping, task filtering and ownership, completion changes, and persistence
 after restarts, legacy database migration, archive/restore, summaries, and
-archived-project mutation protection, and renaming with identity and data preservation.
+archived-project mutation protection, and project and task renaming with identity
+and data preservation.
