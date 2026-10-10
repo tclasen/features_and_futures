@@ -36,6 +36,7 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -74,8 +75,9 @@ function page(title, content) {
     .task-filter { margin-top: 28px; }
     select { padding: 10px; font: inherit; border: 1px solid #8795ab; border-radius: 6px; }
     .task-row { padding: 18px 0; border-top: 1px solid #dde3ed; }
-    .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
-    .task-row input { flex: none; width: 20px; height: 20px; }
+    .task-row .task-completion { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
+    .task-row input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+    .task-rename { margin-top: 16px; }
     @media (max-width: 600px) { main { margin: 20px 12px; padding: 24px; } .create-fields { flex-direction: column; } }
   </style>
 </head>
@@ -164,10 +166,18 @@ function projectPage(project, filter = 'All', error = '') {
         <div class="task-row" data-testid="task-row">
           <form method="post" action="/projects/${project.id}/tasks/${task.id}">
             <input type="hidden" name="filter" value="${filter}">
-            <label>
+            <label class="task-completion">
               <input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
               <span>${escapeHtml(task.title)}</span>
             </label>
+          </form>
+          <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <div class="create-fields">
+              <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+            </div>
           </form>
         </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </div>`);
@@ -259,7 +269,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const project = getProject.get(taskRoute[1]);
       if (project) {
@@ -274,7 +284,17 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         if (taskRoute[2]) {
-          const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskRoute[2], project.id);
+          let result;
+          if (taskRoute[3]) {
+            const title = (form.get('title') || '').trim();
+            if (!title) {
+              sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+              return;
+            }
+            result = renameTask.run(title, taskRoute[2], project.id);
+          } else {
+            result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskRoute[2], project.id);
+          }
           if (!result.changes) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;
