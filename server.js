@@ -29,6 +29,18 @@ const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some(column => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+function isValidDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 const appJs = await readFile(new URL('./app.js', import.meta.url));
@@ -90,7 +102,7 @@ const server = createServer(async (req, res) => {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
     if (req.method === 'GET' && !taskRoute[2]) {
-      return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (req.method === 'POST' && !taskRoute[2]) {
       const data = await readBody(req);
@@ -116,6 +128,14 @@ const server = createServer(async (req, res) => {
         const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(data.priority, Number(taskRoute[2]), projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
         return json(res, 200, { id: Number(taskRoute[2]), projectId, priority: data.priority });
+      }
+      if (typeof data?.dueDate === 'string') {
+        const dueDate = data.dueDate.trim();
+        if (dueDate && !isValidDueDate(dueDate)) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const savedDate = dueDate || null;
+        const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(savedDate, Number(taskRoute[2]), projectId);
+        if (!result.changes) return json(res, 404, { error: 'Task not found' });
+        return json(res, 200, { id: Number(taskRoute[2]), projectId, dueDate: savedDate });
       }
       if (typeof data?.completed !== 'boolean') return json(res, 400, { error: 'Invalid request' });
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(data.completed ? 1 : 0, Number(taskRoute[2]), projectId);
