@@ -26,5 +26,14 @@ remain in creation order. Completion changes save immediately, and the selected
 filter is retained in the page URL. Project IDs, tasks, and completion state
 persist in SQLite. Existing project databases gain task storage automatically.
 
+The project list starts with the `Active` project filter. Archive projects to
+move them to `Archived`, where they can still be opened or restored. Archived
+project pages allow task filtering but disable task creation and completion;
+the server also rejects task changes while archived. Each project row shows
+completed and total task counts across all tasks. Archiving and restoring
+preserve project IDs, tasks, and completion state. Existing databases gain
+archive state automatically, with existing projects initially active.
+
 `npm test` checks validation, HTML escaping, project isolation, filtering,
-completion updates, database upgrades, and persistence across server restarts.
+completion updates, archive/restore, summaries, read-only archived projects,
+database upgrades, and persistence across server restarts.

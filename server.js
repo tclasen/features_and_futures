@@ -29,6 +29,10 @@ function taskFilter(value) {
   return ['all', 'open', 'completed'].includes(value) ? value : 'all';
 }
 
+function projectFilter(value) {
+  return value === 'archived' ? 'archived' : 'active';
+}
+
 function redirect(response, location) {
   response.writeHead(303, { Location: location });
   response.end();
@@ -41,16 +45,26 @@ const server = createServer(async (request, response) => {
       return send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     }
     if (request.method === 'GET' && pathname === '/') {
-      return send(response, 200, projectsPage(store.list()));
+      const filter = projectFilter(searchParams.get('filter'));
+      return send(response, 200, projectsPage(store.list(filter), '', filter));
     }
     if (request.method === 'POST' && pathname === '/projects') {
       const form = await readForm(request);
       const name = (form.get('name') ?? '').trim();
       if (!name) {
-        return send(response, 422, projectsPage(store.list(), 'Project name is required'));
+        const filter = projectFilter(form.get('filter'));
+        return send(response, 422, projectsPage(store.list(filter), 'Project name is required', filter));
       }
       store.create(name);
       return redirect(response, '/');
+    }
+    const archiveRoute = /^\/projects\/([1-9]\d*)\/(archive|restore)$/.exec(pathname);
+    if (request.method === 'POST' && archiveRoute) {
+      const id = Number(archiveRoute[1]);
+      if (!Number.isSafeInteger(id) || !store.setArchived(id, archiveRoute[2] === 'archive')) {
+        return send(response, 404, notFoundPage());
+      }
+      return redirect(response, `/?filter=${archiveRoute[2] === 'archive' ? 'active' : 'archived'}`);
     }
     const projectRoute = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(pathname);
     if (projectRoute) {
@@ -65,6 +79,9 @@ const server = createServer(async (request, response) => {
       if (request.method === 'POST' && pathname !== projectPath) {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          return send(response, 409, projectPage(project, store.listTasks(id, filter), filter, 'Archived project'));
+        }
         if (projectRoute[2]) {
           const taskId = Number(projectRoute[2]);
           if (!Number.isSafeInteger(taskId) || !store.setTaskCompleted(id, taskId, form.has('completed'))) {

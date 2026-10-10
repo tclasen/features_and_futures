@@ -126,7 +126,7 @@ test('existing project databases gain task storage without changing projects', a
       legacy.close();
     }
     store = openProjectStore(databasePath);
-    assert.deepEqual({ ...store.find(42) }, { id: 42, name: 'Existing project' });
+    assert.deepEqual({ ...store.find(42) }, { id: 42, name: 'Existing project', archived: 0 });
     assert.deepEqual(store.listTasks(42), []);
     assert.throws(() => store.createTask(42, ' \t\n '), /Task title is required/);
     assert.throws(() => store.createTask(999, 'Orphan'), /FOREIGN KEY constraint failed/);
@@ -134,7 +134,7 @@ test('existing project databases gain task storage without changing projects', a
     assert.equal(store.setTaskCompleted(42, taskId, true), true);
     store.close();
     store = openProjectStore(databasePath);
-    assert.deepEqual({ ...store.find(42) }, { id: 42, name: 'Existing project' });
+    assert.deepEqual({ ...store.find(42) }, { id: 42, name: 'Existing project', archived: 0 });
     assert.deepEqual(store.listTasks(42).map((task) => ({ ...task })), [
       { id: taskId, title: 'Preserved task', completed: 1 },
     ]);
@@ -227,6 +227,133 @@ test('tasks validate, filter, stay within their project, and persist completion 
     assert.doesNotMatch(await page('/projects/1'), / checked/);
   } finally {
     if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive and restore preserve tasks, enforce read-only pages, and persist summaries', async () => {
+  const directory = await mkdtemp(join(process.cwd(), '.test-runtime-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const page = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const rowCount = (html, kind) => (html.match(new RegExp(`data-testid="${kind}-row"`, 'g')) ?? []).length;
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const initial = await page('/');
+    assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(initial, /value="active" selected>Active/);
+    assert.match(initial, /value="archived">Archived/);
+    assert.equal((initial.match(/data-testid="project-summary">0\/0 completed/g) ?? []).length, 2);
+    assert.match(initial, />Archive project<\/button>/);
+    assert.doesNotMatch(initial, />Restore project<\/button>/);
+    await post('/projects/1/tasks', { title: 'Done task' });
+    await post('/projects/1/tasks', { title: 'Open task' });
+    await post('/projects/1/tasks/1/completion', { completed: 'on' });
+    await page('/projects/1?filter=open');
+    assert.match(await page('/'), /data-testid="project-summary">1\/2 completed/);
+
+    const archived = await post('/projects/1/archive');
+    assert.equal(archived.status, 303);
+    assert.equal(archived.headers.get('location'), '/?filter=active');
+    assert.equal(rowCount(await page('/'), 'project'), 1);
+    assert.doesNotMatch(await page('/'), /<span>First<\/span>/);
+    const archivedList = await page('/?filter=archived');
+    assert.equal(rowCount(archivedList, 'project'), 1);
+    assert.match(archivedList, /<span>First<\/span>/);
+    assert.match(archivedList, /data-testid="project-summary">1\/2 completed/);
+    assert.match(archivedList, />Open project<\/button>/);
+    assert.match(archivedList, />Restore project<\/button>/);
+    assert.doesNotMatch(archivedList, />Archive project<\/button>/);
+    const detail = await page('/projects/1');
+    assert.match(detail, /<p>Archived project<\/p>/);
+    assert.match(detail, /<button type="submit" disabled>Create task/);
+    assert.equal((detail.match(/type="checkbox"[^>]* disabled/g) ?? []).length, 2);
+    assert.match(detail, /aria-label="Complete Done task" checked disabled/);
+    assert.equal(rowCount(detail, 'task'), 2);
+    const open = await page('/projects/1?filter=open');
+    assert.equal(rowCount(open, 'task'), 1);
+    assert.doesNotMatch(open, /Done task/);
+    const completed = await page('/projects/1?filter=completed');
+    assert.equal(rowCount(completed, 'task'), 1);
+    assert.doesNotMatch(completed, /Open task/);
+    assert.equal((await post('/projects/1/tasks', { title: 'Blocked task' })).status, 409);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 409);
+    assert.equal(await page('/projects/1'), detail);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+    assert.equal((await post('/projects/999999999999999999999/restore')).status, 404);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await page('/?filter=archived'), archivedList);
+    assert.equal(await page('/projects/1'), detail);
+    const restored = await post('/projects/1/restore');
+    assert.equal(restored.status, 303);
+    assert.equal(restored.headers.get('location'), '/?filter=archived');
+    assert.equal(rowCount(await page('/?filter=archived'), 'project'), 0);
+    const active = await page('/');
+    assert.equal(rowCount(active, 'project'), 2);
+    assert.ok(active.indexOf('<span>First') < active.indexOf('<span>Second'));
+    assert.match(active, /data-testid="project-summary">1\/2 completed/);
+    const restoredDetail = await page('/projects/1');
+    assert.doesNotMatch(restoredDetail, /<(?:button|input)\b[^>]* disabled|<p>Archived project<\/p>/);
+    assert.match(restoredDetail, /aria-label="Complete Done task" checked/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await page('/'), active);
+    assert.equal(await page('/projects/1'), restoredDetail);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 303);
+    assert.match(await page('/'), /data-testid="project-summary">0\/2 completed/);
+    assert.equal((await post('/projects/1/tasks', { title: 'After restoration' })).status, 303);
+    assert.match(await page('/'), /data-testid="project-summary">0\/3 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task database upgrade preserves IDs and completion and store rejects archived mutations', async () => {
+  const directory = await mkdtemp(join(process.cwd(), '.test-runtime-'));
+  const databasePath = join(directory, 'legacy-tasks.sqlite');
+  let store;
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    try {
+      legacy.exec(`
+        CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id),
+          title TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO projects (id, name) VALUES (42, 'Existing');
+        INSERT INTO tasks (id, project_id, title, completed) VALUES (17, 42, 'Saved task', 1);
+      `);
+    } finally {
+      legacy.close();
+    }
+    store = openProjectStore(databasePath);
+    assert.deepEqual({ ...store.list()[0] }, {
+      id: 42, name: 'Existing', archived: 0, total_count: 1, completed_count: 1,
+    });
+    store.setArchived(42, true);
+    assert.throws(() => store.createTask(42, 'Blocked'), /Archived project/);
+    assert.throws(() => store.setTaskCompleted(42, 17, false), /Archived project/);
+    store.close();
+    store = openProjectStore(databasePath);
+    assert.deepEqual(store.list(), []);
+    assert.equal(store.list('archived')[0].completed_count, 1);
+    assert.deepEqual({ ...store.listTasks(42)[0] }, { id: 17, title: 'Saved task', completed: 1 });
+    store.setArchived(42, false);
+    assert.equal(store.createTask(42, 'Next task'), 18);
+    assert.equal(store.create('Next project'), 43);
+  } finally {
+    if (store) store.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
