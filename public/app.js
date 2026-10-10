@@ -138,7 +138,26 @@ async function renderTasks() {
         await renderTasks();
       } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
     });
-    row.append(title, checkbox, renameInput, renameButton, priority);
+    const dueDate = document.createElement('input');
+    dueDate.type = 'text';
+    dueDate.value = task.due_date || '';
+    dueDate.setAttribute('aria-label', 'Task due date');
+    dueDate.disabled = Boolean(window.currentProjectArchived);
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'button';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = Boolean(window.currentProjectArchived);
+    saveDueDate.addEventListener('click', async () => {
+      try {
+        await request(`/api/projects/${currentProjectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ due_date: dueDate.value })
+        });
+        taskAlert.hidden = true;
+        await renderTasks();
+      } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate);
     taskList.append(row);
   }
 }
