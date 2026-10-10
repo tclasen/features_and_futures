@@ -47,21 +47,34 @@ async function showProjects() {
       alert.hidden = false;
     }
   });
-  app.append(form, alert, element('div', { id: 'project-list', class: 'project-list' }));
-  await renderProjects();
+  const filterLabel = element('label', { for: 'project-filter' }, 'Project filter');
+  const filter = element('select', { id: 'project-filter' });
+  for (const value of ['Active', 'Archived']) filter.append(element('option', { value }, value));
+  const list = element('div', { id: 'project-list', class: 'project-list' });
+  filter.addEventListener('change', () => renderProjects(filter.value, list));
+  app.append(form, alert, filterLabel, filter, list);
+  await renderProjects(filter.value, list);
 }
 
-async function renderProjects() {
-  const list = document.querySelector('#project-list');
-  if (!list) return;
+async function renderProjects(filter, list) {
   const projects = await request('/api/projects');
   list.replaceChildren();
-  for (const project of projects) {
+  for (const project of projects.filter((item) => item.archived === (filter === 'Archived'))) {
     const row = element('div', { 'data-testid': 'project-row', class: 'project-row' });
     row.append(element('span', {}, project.name));
+    row.append(element('span', { 'data-testid': 'project-summary' }, `${project.completedCount}/${project.totalCount} completed`));
     const open = element('button', { type: 'button' }, 'Open project');
     open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
     row.append(open);
+    const archive = element('button', { type: 'button' }, project.archived ? 'Restore project' : 'Archive project');
+    archive.addEventListener('click', async () => {
+      await request(`/api/projects/${project.id}/archive`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      await renderProjects(filter, list);
+    });
+    row.append(archive);
     list.append(row);
   }
 }
@@ -71,6 +84,7 @@ async function showProject(id) {
   try {
     const project = await request(`/api/projects/${encodeURIComponent(id)}`);
     app.append(element('h1', {}, project.name));
+    if (project.archived) app.append(element('p', { class: 'archived-notice' }, 'Archived project'));
     const back = element('button', { type: 'button' }, 'Projects');
     back.addEventListener('click', () => { window.location.href = '/'; });
     app.append(back);
@@ -78,10 +92,15 @@ async function showProject(id) {
     const label = element('label', { for: 'task-title' }, 'Task title');
     const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
     const submit = element('button', { type: 'submit' }, 'Create task');
+    if (project.archived) {
+      input.disabled = true;
+      submit.disabled = true;
+    }
     const alert = element('p', { class: 'alert', role: 'alert', hidden: '' });
     form.append(label, input, submit);
     const filterLabel = element('label', { for: 'task-filter' }, 'Task filter');
     const filter = element('select', { id: 'task-filter' });
+    filter.setAttribute('aria-label', 'Task filter');
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', { value }, value));
     const list = element('div', { class: 'task-list' });
     form.addEventListener('submit', async (event) => {
@@ -116,6 +135,7 @@ async function showProject(id) {
 }
 
 async function renderTasks(projectId, filter, list) {
+  const project = await request(`/api/projects/${encodeURIComponent(projectId)}`);
   const tasks = await request(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
   list.replaceChildren();
   for (const task of tasks) {
@@ -125,6 +145,7 @@ async function renderTasks(projectId, filter, list) {
     const checkboxId = `task-${task.id}`;
     const checkbox = element('input', { id: checkboxId, type: 'checkbox' });
     checkbox.checked = task.completed;
+    checkbox.disabled = project.archived;
     const label = element('label', { for: checkboxId }, `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       try {
