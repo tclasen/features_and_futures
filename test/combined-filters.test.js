@@ -104,7 +104,7 @@ test('combined filters preserve selections through edits, archive, and restart',
     selected(html, 'Open', 'Low');
     assert.deepEqual(rows(html), ['Second', 'Renamed']);
     assert.match(html, /Archived project/);
-    assert.equal((html.match(/name="priority" disabled/g) || []).length, 2);
+    assert.equal((html.match(/id="task-priority-\d+" name="priority" disabled/g) || []).length, 2);
     response = await post('/projects/1/tasks/4/priority', { filter: 'Open', priorityFilter: 'Low', priority: 'High' });
     assert.equal(response.status, 403);
     selected(await response.text(), 'Open', 'Low');

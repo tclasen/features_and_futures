@@ -255,21 +255,25 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     // Priority edits preserve all other task data and respect project ownership.
     const beforePriority = await (await fetch(base + paths[0])).text();
     assert.equal((beforePriority.match(/>Task priority<\/label>/g) || []).length, 3);
-    assert.equal((beforePriority.match(/<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/g) || []).length, 3);
+    assert.equal((beforePriority.match(/<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/g) || []).length, 4);
     const priorityPath = completionPath + '/priority';
     assert.equal((await postTask(priorityPath, { priority: 'High', filter: 'Completed' })).headers.get('location'), paths[0] + '?filter=Completed');
     const highOptions = '<option>Low</option><option>Normal</option><option selected>High</option>';
     const normalOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
     const lowOptions = '<option selected>Low</option><option>Normal</option><option>High</option>';
     const afterPriority = await (await fetch(base + paths[0])).text();
-    assert.equal(afterPriority, beforePriority.replace(normalOptions, highOptions));
+    const replaceTaskOptions = (html, from, to) => {
+      const boundary = html.indexOf('<section class="tasks"');
+      return html.slice(0, boundary) + html.slice(boundary).replace(from, to);
+    };
+    assert.equal(afterPriority, replaceTaskOptions(beforePriority, normalOptions, highOptions));
     assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
     assert.equal((await postTask(foreignTaskPath + '/priority', { priority: 'Low' })).status, 404);
     assert.equal((await postTask(taskPath + '/999999/priority', { priority: 'Low' })).status, 404);
     assert.equal((await postTask(priorityPath, { priority: 'Urgent' })).status, 400);
     assert.equal(await (await fetch(base + paths[0])).text(), afterPriority);
     await postTask(secondTaskPath + '/priority', { priority: 'Low', filter: 'Open' });
-    const independentPriorities = afterPriority.replace(normalOptions, lowOptions);
+    const independentPriorities = replaceTaskOptions(afterPriority, normalOptions, lowOptions);
     assert.equal(await (await fetch(base + paths[0])).text(), independentPriorities);
     assert.match(await (await fetch(base + paths[0] + '?filter=Completed')).text(), new RegExp(highOptions));
     assert.doesNotMatch(await (await fetch(base + paths[0] + '?filter=Open')).text(), new RegExp(highOptions));
@@ -282,7 +286,7 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
     await postTask(paths[0] + '/archive', {});
     const priorityArchived = await (await fetch(base + paths[0])).text();
-    assert.equal((priorityArchived.match(/name="priority" disabled/g) || []).length, 3);
+    assert.equal((priorityArchived.match(/id="task-priority-\d+" name="priority" disabled/g) || []).length, 3);
     assert.match(priorityArchived, new RegExp(highOptions));
     assert.match(priorityArchived, new RegExp(lowOptions));
     assert.equal((await postTask(priorityPath, { priority: 'Normal' })).status, 403);
