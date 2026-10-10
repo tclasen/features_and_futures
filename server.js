@@ -11,7 +11,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,19 +24,23 @@ CREATE TABLE IF NOT EXISTS tasks (
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
   FROM projects p ORDER BY p.id`);
-const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTaskWithPriority = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -63,13 +68,19 @@ const server = http.createServer(async (req, res) => {
         body += chunk;
         if (body.length > 100_000) return send(res, 413, JSON.stringify({ error: 'Request too large' }));
       }
-      const name = String(JSON.parse(body).name ?? '').trim();
-      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+      const payload = JSON.parse(body);
       const id = Number(renameRoute[1]);
       const project = findProject.get(id);
       if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
       if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
-      renameProject.run(name, id);
+      if (Object.hasOwn(payload, 'defaultPriority')) {
+        if (!['Low', 'Normal', 'High'].includes(payload.defaultPriority)) return send(res, 400, JSON.stringify({ error: 'Invalid default task priority' }));
+        updateProjectDefault.run(payload.defaultPriority, id);
+      } else {
+        const name = String(payload.name ?? '').trim();
+        if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+        renameProject.run(name, id);
+      }
       return send(res, 200, JSON.stringify(findProject.get(id)));
     } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -120,7 +131,7 @@ const server = http.createServer(async (req, res) => {
       }
       const title = String(JSON.parse(body).title ?? '').trim();
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-      const result = createTask.run(projectId, title);
+      const result = createTaskWithPriority.run(projectId, title, project.defaultPriority);
       return send(res, 201, JSON.stringify(findTask.get(Number(result.lastInsertRowid), projectId)));
     } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
