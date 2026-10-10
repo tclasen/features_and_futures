@@ -31,6 +31,9 @@ try { database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT 
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 try {
   database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET position = id');
@@ -56,11 +59,12 @@ const getProject = database.prepare('SELECT id, name, archived, default_task_pri
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const addTaskWithPriority = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
 const addTaskPosition = database.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
@@ -451,6 +455,19 @@ function page() {
             if (!error) { error = element('span', 'Due date must be a valid YYYY-MM-DD date', 'error'); error.setAttribute('role', 'alert'); row.append(error); }
           }
         });
+        const notes = document.createElement('textarea');
+        notes.value = task.notes || '';
+        notes.setAttribute('aria-label', 'Task notes');
+        notes.disabled = Boolean(project.archived);
+        const saveNotes = element('button', 'Save notes');
+        saveNotes.type = 'button';
+        saveNotes.disabled = Boolean(project.archived);
+        saveNotes.addEventListener('click', async () => {
+          const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notes.value })
+          });
+          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
+        });
         const destination = document.createElement('select');
         destination.setAttribute('aria-label', 'Destination project');
         for (const item of destinations) {
@@ -467,7 +484,7 @@ function page() {
           });
           if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough, searchQuery);
         });
-        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton); rows.append(row);
+        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, moveButton); rows.append(row);
       }
     }
 
@@ -603,6 +620,8 @@ const server = createServer(async (request, response) => {
       result = renameTask.run(title, taskMatch[2], projectId);
     } else if (['Low', 'Normal', 'High'].includes(body?.priority)) {
       result = updateTaskPriority.run(body.priority, taskMatch[2], projectId);
+    } else if (typeof body?.notes === 'string') {
+      result = updateTaskNotes.run(body.notes, taskMatch[2], projectId);
     } else {
       return send(response, 400, JSON.stringify({ error: 'Task update is required' }));
     }
