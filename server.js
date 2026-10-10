@@ -22,6 +22,10 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+const taskPriorities = ['Low', 'Normal', 'High'];
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -33,10 +37,11 @@ const getProject = database.prepare('SELECT id, name, archived FROM projects WHE
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -61,7 +66,7 @@ function page(title, content) {
     input { min-width: 0; flex: 1; padding: 12px; border: 1px solid #8795ab; border-radius: 6px; font: inherit; }
     button { border: 0; border-radius: 6px; padding: 12px 18px; background: #284dcc; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #193ba9; }
-    button:disabled, input:disabled { cursor: not-allowed; opacity: 0.6; }
+    button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: 0.6; }
     :focus-visible { outline: 3px solid #e69b12; outline-offset: 3px; }
     .projects { margin-top: 32px; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border-top: 1px solid #dde3ed; }
@@ -77,7 +82,7 @@ function page(title, content) {
     .task-row { padding: 18px 0; border-top: 1px solid #dde3ed; }
     .task-row .task-completion { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
     .task-row input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
-    .task-rename { margin-top: 16px; }
+    .task-rename, .task-priority { margin-top: 16px; }
     @media (max-width: 600px) { main { margin: 20px 12px; padding: 24px; } .create-fields { flex-direction: column; } }
   </style>
 </head>
@@ -170,6 +175,13 @@ function projectPage(project, filter = 'All', error = '') {
               <input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
               <span>${escapeHtml(task.title)}</span>
             </label>
+          </form>
+          <form class="task-priority" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="task-priority-${task.id}">Task priority</label>
+            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+              ${taskPriorities.map(priority => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+            </select>
           </form>
           <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
             <input type="hidden" name="filter" value="${filter}">
@@ -269,7 +281,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(?:\/(rename|priority))?)?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const project = getProject.get(taskRoute[1]);
       if (project) {
@@ -283,17 +295,25 @@ const server = http.createServer(async (request, response) => {
           sendHtml(response, 403, projectPage(project, filter, 'Archived project tasks cannot be changed'));
           return;
         }
-        if (taskRoute[2]) {
+        const taskId = taskRoute[2];
+        if (taskId) {
           let result;
-          if (taskRoute[3]) {
+          if (taskRoute[3] === 'priority') {
+            const priority = form.get('priority');
+            if (!taskPriorities.includes(priority)) {
+              sendHtml(response, 400, projectPage(project, filter, 'Task priority is invalid'));
+              return;
+            }
+            result = updateTaskPriority.run(priority, taskId, project.id);
+          } else if (taskRoute[3] === 'rename') {
             const title = (form.get('title') || '').trim();
             if (!title) {
               sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
               return;
             }
-            result = renameTask.run(title, taskRoute[2], project.id);
+            result = renameTask.run(title, taskId, project.id);
           } else {
-            result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskRoute[2], project.id);
+            result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
           }
           if (!result.changes) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
