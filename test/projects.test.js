@@ -268,7 +268,8 @@ test('combined filters preserve selections, re-evaluate edits, and work while ar
     await post('/projects/1/restore');
     body = await html(view('Completed', 'High'));
     assert.deepEqual(rows(body), ['Renamed high', 'High done']);
-    assert.doesNotMatch(body, / disabled/);
+    // Move controls may be disabled when there are no eligible destinations.
+    assert.doesNotMatch(body.replace(/<form action="\/projects\/\d+\/tasks\/\d+\/move"[\s\S]*?<\/form>/g, ''), / disabled/);
     selections(await html('/projects/1'), 'All', 'All');
     assert.match(await html(), /4\/6 completed/);
   } finally {
@@ -370,13 +371,13 @@ test('archive, restore, summaries, and migration preserve tasks across restarts'
     assert.equal((await post('/projects/1/restore')).status, 303);
     assert.doesNotMatch(await html('/?filter=Archived'), /data-testid="project-row"/);
     assert.match(await html(), /1\/2 completed/);
-    assert.doesNotMatch(await html('/projects/1'), / disabled|Archived project/);
+    assert.doesNotMatch((await html('/projects/1')).replace(/<form action="\/projects\/\d+\/tasks\/\d+\/move"[\s\S]*?<\/form>/g, ''), / disabled|Archived project/);
     await post('/projects/1/tasks/2', { completed: '1' });
     assert.match(await html(), /2\/2 completed/);
     await server.stop();
     server = await start(databasePath);
     assert.match(await html(), /2\/2 completed/);
-    assert.doesNotMatch(await html('/projects/1'), / disabled|Archived project/);
+    assert.doesNotMatch((await html('/projects/1')).replace(/<form action="\/projects\/\d+\/tasks\/\d+\/move"[\s\S]*?<\/form>/g, ''), / disabled|Archived project/);
     assert.equal((await post('/projects/999/archive')).status, 404);
   } finally {
     if (server) await server.stop();

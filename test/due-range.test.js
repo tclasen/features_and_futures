@@ -124,7 +124,8 @@ test('inclusive due ranges intersect filters, validate without changing membersh
     assert.equal(await html(view), body);
     await post('/projects/1/restore');
     body = await html(view);
-    assert.doesNotMatch(body, / disabled/);
+    // Restoration enables editing; moving still requires an eligible destination.
+    assert.doesNotMatch(body.replace(/<form action="\/projects\/\d+\/tasks\/\d+\/move"[\s\S]*?<\/form>/g, ''), / disabled/);
     assert.deepEqual(rows(body), ['End']);
     const reopened = await html('/projects/1');
     assert.match(reopened, /id="due-from" name="from" type="text" value=""/);
