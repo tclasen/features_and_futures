@@ -17,7 +17,9 @@ to Active; select Archived to open or restore archived projects. Archived projec
 pages are read-only, including the rename controls. Active projects can be renamed
 with New project name and Rename project without changing their URL or tasks.
 Each task row has New task title and Rename task controls; renaming preserves
-its order, ownership and completion state. Archived task rename controls are disabled.
+its order, ownership and completion state. Each task also has a Task priority
+selector (Low, Normal, High), defaulting to Normal. Priorities persist independently
+and survive renaming. Archived task rename and priority controls are disabled.
 Project rows show completed/total task counts. Existing
 SQLite databases are migrated automatically to preserve projects and tasks.
 
@@ -31,4 +33,5 @@ Tests use a temporary SQLite database outside the repository and check health,
 validation, ordering, safe rendering, navigation, task ownership, completion,
 filtering, archive/restore, completion summaries, database migration, read-only
 archived pages, project and task rename validation and identity preservation,
-and persistence across restarts.
+task priority defaults, migration, independence and validation, and persistence
+across restarts.

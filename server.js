@@ -21,7 +21,12 @@ CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+// Existing tasks receive the same default as newly created tasks.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -126,6 +131,13 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
             ${project.archived ? 'disabled' : ''} onchange="this.form.requestSubmit()">
         </form>
         <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+        <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${['Low', 'Normal', 'High'].map(option => `<option${option === task.priority ? ' selected' : ''}>${option}</option>`).join('')}
+          </select>
+        </form>
         <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <label for="new-task-title-${task.id}">New task title</label>
@@ -230,6 +242,24 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         renameProject.run(name, project.id);
+        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        return;
+      }
+    }
+    const taskPriorityMatch = /^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/priority$/.exec(url.pathname);
+    if (request.method === 'POST' && taskPriorityMatch) {
+      const project = getProject.get(taskPriorityMatch[1]);
+      const task = project && getTask.get(taskPriorityMatch[2], project.id);
+      if (task) {
+        const form = new URLSearchParams(await readBody(request));
+        const filter = taskFilter(form.get('filter'));
+        const priority = form.get('priority');
+        if (project.archived || !['Low', 'Normal', 'High'].includes(priority)) {
+          sendHtml(response, project.archived ? 403 : 400, projectPage(project, filter,
+            project.archived ? 'Archived project is read-only' : 'Invalid task priority'));
+          return;
+        }
+        setTaskPriority.run(priority, task.id, project.id);
         redirect(response, `/projects/${project.id}?filter=${filter}`);
         return;
       }
