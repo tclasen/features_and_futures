@@ -108,8 +108,52 @@ async function render() {
     const priorityFilter = element('select');
     priorityFilter.id = 'priority-filter';
     for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(new Option(value, value));
+    const dueFromLabel = element('label', 'Due from');
+    const dueFrom = element('input');
+    dueFrom.type = 'text';
+    dueFrom.setAttribute('aria-label', 'Due from');
+    dueFromLabel.append(dueFrom);
+    const dueThroughLabel = element('label', 'Due through');
+    const dueThrough = element('input');
+    dueThrough.type = 'text';
+    dueThrough.setAttribute('aria-label', 'Due through');
+    dueThroughLabel.append(dueThrough);
+    const applyDueRange = element('button', 'Apply due range');
+    applyDueRange.type = 'button';
+    const dueRangeAlert = element('p', '', 'alert');
+    dueRangeAlert.setAttribute('role', 'alert');
+    dueRangeAlert.hidden = true;
+    let appliedFrom = '', appliedThrough = '';
     const list = element('section', undefined, 'task-list');
-    app.append(form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    app.append(form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter,
+      dueFromLabel, dueThroughLabel, applyDueRange, dueRangeAlert, list);
+
+    function validDate(value) {
+      const m = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!m) return false;
+      const year = Number(m[1]), month = Number(m[2]), day = Number(m[3]);
+      const date = new Date(0);
+      date.setUTCHours(0, 0, 0, 0);
+      date.setUTCFullYear(year, month - 1, day);
+      return year >= 1 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+    }
+    applyDueRange.addEventListener('click', () => {
+      const from = dueFrom.value.trim(), through = dueThrough.value.trim();
+      if ((from && !validDate(from)) || (through && !validDate(through))) {
+        dueRangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+        dueRangeAlert.hidden = false;
+        return;
+      }
+      if (from && through && from > through) {
+        dueRangeAlert.textContent = 'Due from must not be after Due through';
+        dueRangeAlert.hidden = false;
+        return;
+      }
+      appliedFrom = from;
+      appliedThrough = through;
+      dueRangeAlert.hidden = true;
+      loadTasks();
+    });
 
     async function loadTasks() {
       const response = await fetch(`/api/projects/${match[1]}/tasks`);
@@ -117,7 +161,8 @@ async function render() {
       list.replaceChildren();
       for (const task of tasks.filter(t =>
         (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
-        (priorityFilter.value === 'All' || priorityFilter.value === t.priority)
+        (priorityFilter.value === 'All' || priorityFilter.value === t.priority) &&
+        ((!appliedFrom && !appliedThrough) || (!!t.due_date && (!appliedFrom || t.due_date >= appliedFrom) && (!appliedThrough || t.due_date <= appliedThrough)))
       )) {
         const row = element('div', undefined, 'task-row');
         row.dataset.testid = 'task-row';
