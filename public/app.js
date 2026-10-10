@@ -298,7 +298,39 @@ async function renderProject(id, selectedFilter = 'all') {
         task.title = newTitle;
         renderTasks();
       });
-      row.append(title, checkboxLabel, renameForm);
+      const priorityField = document.createElement('div');
+      priorityField.className = 'task-priority-field';
+      const priorityLabel = document.createElement('label');
+      const prioritySelect = document.createElement('select');
+      const priorityId = `task-priority-${task.id}`;
+      priorityLabel.htmlFor = priorityId;
+      priorityLabel.textContent = 'Task priority';
+      prioritySelect.id = priorityId;
+      prioritySelect.disabled = project.archived;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        prioritySelect.append(option);
+      }
+      prioritySelect.value = task.priority;
+      prioritySelect.addEventListener('change', async () => {
+        const previousPriority = task.priority;
+        prioritySelect.disabled = true;
+        const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority: prioritySelect.value }),
+        });
+        if (response.ok) {
+          task.priority = prioritySelect.value;
+          prioritySelect.disabled = project.archived;
+        } else {
+          prioritySelect.value = previousPriority;
+          prioritySelect.disabled = project.archived;
+        }
+      });
+      priorityField.append(priorityLabel, prioritySelect);
+      row.append(title, checkboxLabel, renameForm, priorityField);
       taskList.append(row);
     }
   };

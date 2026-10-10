@@ -25,9 +25,15 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   )
 `);
+// Add priority to task databases created by earlier checkpoints.
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -112,7 +118,7 @@ const server = createServer(async (request, response) => {
     const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (!taskId && request.method === 'GET') {
-      const tasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+      const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
         .map((task) => ({ ...task, id: Number(task.id), completed: Boolean(task.completed) }));
       return sendJson(response, 200, tasks);
     }
@@ -122,11 +128,20 @@ const server = createServer(async (request, response) => {
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
     }
     if (taskId && request.method === 'PATCH') {
       if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
       const body = await readJson(request);
+      if (Object.hasOwn(body || {}, 'priority')) {
+        if (!['Low', 'Normal', 'High'].includes(body.priority)) {
+          return sendJson(response, 400, { error: 'Invalid task priority' });
+        }
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?')
+          .run(body.priority, taskId, projectId);
+        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+        return sendJson(response, 200, { id: taskId, priority: body.priority });
+      }
       if (Object.hasOwn(body || {}, 'title')) {
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
