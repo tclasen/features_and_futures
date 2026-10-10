@@ -75,7 +75,7 @@ export function renderProjects(projects, error = '', filter = 'Active') {
   `);
 }
 
-export function renderProject(project, tasks = [], filter = 'All', error = '', renameError = '') {
+export function renderProject(project, tasks = [], filter = 'All', error = '', renameError = '', taskRenameError = null) {
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -114,6 +114,14 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', r
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             <span>${escapeHtml(task.title)}</span>
           </label>
+        </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename?filter=${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="create">
+            <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}${taskRenameError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-rename-error-${task.id}"` : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </div>
+          ${taskRenameError?.id === task.id ? `<p id="task-rename-error-${task.id}" role="alert">${escapeHtml(taskRenameError.message)}</p>` : ''}
         </form>
       </li>`).join('')}</ul>` : '<p class="empty">No matching tasks.</p>'}
   `);

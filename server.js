@@ -39,6 +39,8 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND 
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function projectFilter(url) {
   return url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active';
@@ -53,10 +55,10 @@ function taskFilter(url) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter, error = '', renameError = '') {
+function projectPage(project, filter, error = '', renameError = '', taskRenameError = null) {
   const tasks = listTasks.all(project.id).filter(task =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
-  return renderProject(project, tasks, filter, error, renameError);
+  return renderProject(project, tasks, filter, error, renameError, taskRenameError);
 }
 
 async function formData(req) {
@@ -130,6 +132,27 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         renameProject.run(name, project.id);
+        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.end();
+        return;
+      }
+    }
+    const taskRenameMatch = /^\/projects\/(\d+)\/tasks\/(\d+)\/rename$/.exec(url.pathname);
+    if (req.method === 'POST' && taskRenameMatch) {
+      const project = findProject.get(taskRenameMatch[1]);
+      const task = project && findTask.get(taskRenameMatch[2], project.id);
+      if (task) {
+        const filter = taskFilter(url);
+        if (project.archived) {
+          html(res, 403, projectPage(project, filter, 'Archived project is read-only'));
+          return;
+        }
+        const title = ((await formData(req)).get('title') || '').trim();
+        if (!title) {
+          html(res, 400, projectPage(project, filter, '', '', { id: task.id, message: 'Task title is required' }));
+          return;
+        }
+        renameTask.run(title, task.id, project.id);
         res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
         res.end();
         return;
