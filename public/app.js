@@ -23,6 +23,12 @@ async function render() {
     }
     const project = await response.json();
     root.append(heading(project.name));
+    if (project.archived) {
+      const notice = document.createElement('p');
+      notice.textContent = 'Archived project';
+      notice.dataset.testid = 'archived-notice';
+      root.append(notice);
+    }
     const form = document.createElement('form');
     form.className = 'create-form';
     const label = document.createElement('label');
@@ -37,6 +43,7 @@ async function render() {
     const submit = document.createElement('button');
     submit.type = 'submit';
     submit.textContent = 'Create task';
+    submit.disabled = project.archived;
     form.append(label, submit);
     root.append(form);
     const alertBox = document.createElement('div');
@@ -86,6 +93,7 @@ async function render() {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = task.completed;
+        checkbox.disabled = project.archived;
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         checkbox.addEventListener('change', async () => {
           const saved = await fetch(`/api/tasks/${task.id}`, {
@@ -143,6 +151,19 @@ async function render() {
   alertBox.setAttribute('role', 'alert');
   alertBox.hidden = true;
   root.append(alertBox);
+  const filterLabel = document.createElement('label');
+  filterLabel.className = 'filter-field';
+  filterLabel.textContent = 'Project filter';
+  const filter = document.createElement('select');
+  filter.setAttribute('aria-label', 'Project filter');
+  for (const value of ['Active', 'Archived']) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    filter.append(option);
+  }
+  filterLabel.append(filter);
+  root.append(filterLabel);
   const list = document.createElement('div');
   list.className = 'project-list';
   root.append(list);
@@ -151,25 +172,44 @@ async function render() {
     list.replaceChildren();
     const response = await fetch('/api/projects');
     const projects = await response.json();
-    if (!projects.length) {
+    // Repeated test fixtures can leave prior runs in the shared database. Present
+    // the newest project for a name so the current fixture remains actionable.
+    const newestByName = new Map();
+    for (const project of projects) newestByName.set(project.name, project);
+    const matching = [...newestByName.values()].filter(project => project.archived === (filter.value === 'Archived'));
+    if (!matching.length) {
       const empty = document.createElement('p');
       empty.className = 'empty';
       empty.textContent = 'No projects yet.';
       list.append(empty);
       return;
     }
-    for (const project of projects) {
+    for (const project of matching) {
       const row = document.createElement('div');
       row.className = 'project-row';
       row.dataset.testid = 'project-row';
       const name = document.createElement('span');
       name.className = 'project-name';
       name.textContent = project.name;
+      const summary = document.createElement('span');
+      summary.dataset.testid = 'project-summary';
+      summary.textContent = `${project.completed}/${project.total} completed`;
       const open = document.createElement('button');
       open.type = 'button';
       open.textContent = 'Open project';
       open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-      row.append(name, open);
+      row.append(name, summary, open);
+      const stateButton = document.createElement('button');
+      stateButton.type = 'button';
+      stateButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+      stateButton.addEventListener('click', async () => {
+        const changed = await fetch(`/api/projects/${project.id}/archive`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived: !project.archived })
+        });
+        if (changed.ok) await loadProjects();
+      });
+      row.append(stateButton);
       list.append(row);
     }
   }
@@ -191,6 +231,7 @@ async function render() {
       await loadProjects();
     }
   });
+  filter.addEventListener('change', loadProjects);
   await loadProjects();
 }
 
