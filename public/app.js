@@ -202,11 +202,13 @@ async function renderProject(id) {
       notesForm.addEventListener('submit', async event => {
         event.preventDefault();
         try {
-          const saved = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
-          // Keep the exact textarea contents visible after the save, including
-          // markup-like text which must remain plain text rather than HTML.
-          notes.value = saved.notes;
+          const notesText = notes.value;
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notesText }) });
+          // A textarea is populated through its value property so markup-like
+          // notes stay plain text. Refresh the task list without losing the draft.
           await refreshTasks();
+          const refreshedNotes = list.querySelector(`#task-notes-${task.id}`);
+          if (refreshedNotes) refreshedNotes.value = notesText;
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
       const destinationLabel = element('label', { text: 'Destination project' });
