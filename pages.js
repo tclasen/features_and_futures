@@ -53,7 +53,7 @@ export function projectsPage(projects, error = '', filter = 'active') {
     </section>`);
 }
 
-export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all', dueRange = { from: '', through: '' }) {
+export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all', dueRange = { from: '', through: '' }, destinations = []) {
   const dueFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(dueRange.from)}">
       <input type="hidden" name="dueThrough" value="${escapeHtml(dueRange.through)}">`;
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
@@ -143,6 +143,14 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
               <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
               <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
             </div>
+          </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/move" class="task-move">
+            ${filterFields}
+            <label for="destination-project-${task.id}">Destination project</label>
+            <select id="destination-project-${task.id}" name="destinationId"${project.archived || !destinations.length ? ' disabled' : ''}>
+              ${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+            </select>
+            <button type="submit"${project.archived || !destinations.length ? ' disabled' : ''}>Move task</button>
           </form>
         </div>`).join('') : '<p class="empty">No matching tasks.</p>'}
     </section>`);

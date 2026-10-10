@@ -31,7 +31,8 @@ function taskView(params) {
 
 function renderProject(project, view, error = view.error) {
   const { filter, priority, dueRange } = view;
-  return projectPage(project, projects.tasks.list(project.id, filter, priority, dueRange), filter, error, priority, dueRange);
+  const destinations = projects.list().filter((candidate) => candidate.id !== project.id);
+  return projectPage(project, projects.tasks.list(project.id, filter, priority, dueRange), filter, error, priority, dueRange, destinations);
 }
 
 function projectLocation(id, { filter, priority, dueRange }) {
@@ -139,7 +140,7 @@ const server = createServer(async (request, response) => {
       const view = taskView(url.searchParams);
       send(response, project ? (view.error ? 400 : 200) : 404, project
         ? renderProject(project, view) : notFoundPage());
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date))?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date|move))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const projectId = Number(parts[2]);
       const taskId = parts[4] ? Number(parts[4]) : null;
@@ -157,6 +158,12 @@ const server = createServer(async (request, response) => {
       if (taskId === null) {
         if (!projects.tasks.create(projectId, form.get('title'))) {
           send(response, 400, renderProject(project, view, 'Task title is required'));
+          return;
+        }
+      } else if (parts[5] === 'move') {
+        const destinationId = Number(form.get('destinationId'));
+        if (!projects.tasks.move(projectId, taskId, destinationId)) {
+          send(response, 400, renderProject(project, view, 'Unable to move task to that project'));
           return;
         }
       } else if (parts[5] === 'due-date') {

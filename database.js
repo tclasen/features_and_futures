@@ -20,7 +20,8 @@ export function openWorkboard(databasePath) {
       title TEXT NOT NULL CHECK (length(trim(title)) > 0),
       completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
       priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
-      due_date TEXT NOT NULL DEFAULT ''
+      due_date TEXT NOT NULL DEFAULT '',
+      sort_position INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
   `);
@@ -36,6 +37,13 @@ export function openWorkboard(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'sort_position')) {
+    // Preserve the previous ID order when upgrading existing tasks.
+    database.exec(`BEGIN;
+      ALTER TABLE tasks ADD COLUMN sort_position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET sort_position = id;
+      COMMIT;`);
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -47,8 +55,14 @@ export function openWorkboard(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_position, id');
+  const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, sort_position)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+    sort_position = (SELECT COALESCE(MAX(sort_position), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE project_id = ? AND id = ? AND project_id != ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+      AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
   const updateTask = database.prepare(`UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?
     AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`);
   const renameTask = database.prepare(`UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?
@@ -90,7 +104,7 @@ export function openWorkboard(databasePath) {
         const trimmedTitle = typeof title === 'string' ? title.trim() : '';
         if (!trimmedTitle) return null;
         const priority = project?.default_task_priority ?? 'normal';
-        const result = insertTask.run(projectId, trimmedTitle, priority);
+        const result = insertTask.run(projectId, trimmedTitle, priority, projectId);
         return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority, due_date: '' };
       },
       setCompleted(projectId, taskId, completed) {
@@ -109,6 +123,10 @@ export function openWorkboard(databasePath) {
         const date = normalizeDueDate(value);
         if (date === null) return false;
         return updateDueDate.run(date, projectId, taskId).changes > 0;
+      },
+      move(projectId, taskId, destinationId) {
+        if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return false;
+        return moveTask.run(destinationId, destinationId, projectId, taskId, destinationId, destinationId).changes > 0;
       },
     },
     close: () => database.close(),
