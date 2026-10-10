@@ -104,9 +104,12 @@ async function renderProject(id) {
   const priorityFilter = element('select'); priorityFilter.id = 'priority-filter';
   for (const value of ['All', 'Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; priorityFilter.append(option); }
   const list = element('section', { className: 'task-list' });
+  let taskRenderVersion = 0;
   async function refreshTasks() {
-    list.replaceChildren();
+    const renderVersion = ++taskRenderVersion;
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    if (renderVersion !== taskRenderVersion) return;
+    list.replaceChildren();
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed || priorityFilter.value !== 'All' && priorityFilter.value !== task.priority) continue;
       const row = element('article', { testId: 'task-row', className: 'task-row' });
@@ -156,7 +159,9 @@ async function renderProject(id) {
           await refreshTasks();
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
-      row.append(checkbox, element('span', { text: task.title }), priorityLabel, priority, renameForm, dueForm); list.append(row);
+      const title = element('span', { text: task.title });
+      title.dataset.taskTitle = task.title;
+      row.append(checkbox, title, priorityLabel, priority, renameForm, dueForm); list.append(row);
     }
   }
   form.addEventListener('submit', async event => {
