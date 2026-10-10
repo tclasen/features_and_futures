@@ -10,7 +10,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
   )
 `);
 database.exec(`
@@ -27,6 +28,9 @@ database.exec('PRAGMA foreign_keys = ON');
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+if (!projectColumns.some((column) => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
@@ -93,7 +97,7 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
     }
     const project = Number.isInteger(id) && id > 0
-      ? database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id)
+      ? database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(id)
       : undefined;
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     return sendJson(response, 200, { ...project, archived: Boolean(project.archived) });
@@ -116,6 +120,11 @@ const server = createServer(async (request, response) => {
         if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
         return sendJson(response, 200, { id, name });
       }
+      if (['Low', 'Normal', 'High'].includes(update.defaultPriority)) {
+        const result = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(update.defaultPriority, id);
+        if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+        return sendJson(response, 200, { id, defaultPriority: update.defaultPriority });
+      }
       return sendJson(response, 400, { error: 'Invalid project update' });
     } catch {
       return sendJson(response, 400, { error: 'Invalid request' });
@@ -133,8 +142,10 @@ const server = createServer(async (request, response) => {
         const { title } = await readBody(request);
         const trimmedTitle = typeof title === 'string' ? title.trim() : '';
         if (!trimmedTitle) return sendJson(response, 400, { error: 'Task title is required' });
-        const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, trimmedTitle);
-        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title: trimmedTitle, completed: false, priority: 'Normal' });
+        const project = database.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId);
+        const priority = project.default_priority;
+        const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, trimmedTitle, priority);
+        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title: trimmedTitle, completed: false, priority });
       }
       if (request.method === 'PATCH' && taskId !== null) {
         const update = await readBody(request);
