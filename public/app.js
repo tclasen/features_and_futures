@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskList = document.querySelector('#task-list');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const projectFilter = document.querySelector('#project-filter');
 const taskCreateButton = taskForm.querySelector('button');
 const renameForm = document.querySelector('#rename-form');
@@ -69,8 +70,10 @@ async function renderTasks() {
   const tasks = await request(`/api/projects/${currentProjectId}/tasks`);
   taskList.replaceChildren();
   const filter = taskFilter.value;
+  const selectedPriority = priorityFilter.value;
   for (const task of tasks) {
-    if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
+    if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'project-row';
@@ -206,6 +209,10 @@ projectFilter.addEventListener('change', () => renderList().catch(error => {
   alert.hidden = false;
 }));
 taskFilter.addEventListener('change', () => renderTasks().catch(error => {
+  taskAlert.textContent = error.message;
+  taskAlert.hidden = false;
+}));
+priorityFilter.addEventListener('change', () => renderTasks().catch(error => {
   taskAlert.textContent = error.message;
   taskAlert.hidden = false;
 }));
