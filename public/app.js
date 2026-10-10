@@ -161,6 +161,30 @@ async function renderProject(id) {
           }
         });
         row.append(checkbox);
+        const priorityLabel = element('label', 'Task priority', { for: `task-priority-${task.id}` });
+        const priority = element('select', undefined, { id: `task-priority-${task.id}`, name: 'priority' });
+        for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', value, { value }));
+        let savedPriority = task.priority || 'Normal';
+        priority.value = savedPriority;
+        priority.disabled = project.archived;
+        priority.addEventListener('change', async () => {
+          priority.disabled = true;
+          try {
+            const update = await fetch(`/api/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
+            });
+            if (!update.ok) throw new Error('Could not update task priority');
+            const saved = await update.json();
+            savedPriority = saved.priority;
+            tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          } catch {
+            priority.value = savedPriority;
+            showError('Could not update task priority');
+          } finally {
+            priority.disabled = project.archived;
+          }
+        });
+        row.append(priorityLabel, priority);
         const renameForm = element('form');
         const renameLabel = element('label', 'New task title', { for: `new-task-title-${task.id}` });
         const renameInput = element('input', undefined, { id: `new-task-title-${task.id}`, name: 'title', type: 'text', value: task.title });

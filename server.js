@@ -17,12 +17,16 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
 if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 
 const indexHtml = await readFile(path.join(directory, 'public', 'index.html'));
@@ -95,7 +99,7 @@ const server = http.createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
     return sendJson(response, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && request.method === 'POST') {
@@ -121,10 +125,13 @@ const server = http.createServer(async (request, response) => {
       const title = input.title.trim();
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
       database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskMatch[1]));
+    } else if (typeof input?.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(input.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+      database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(input.priority, Number(taskMatch[1]));
     } else {
-      return sendJson(response, 400, { error: 'A task title or completion value is required' });
+      return sendJson(response, 400, { error: 'A task title, completion value, or priority is required' });
     }
-    const task = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
+    const task = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
     return sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
   }
   if (request.method === 'GET' && url.pathname === '/') {
