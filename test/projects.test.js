@@ -52,11 +52,11 @@ test('archive migration, summaries, read-only tasks, restore and restart persist
     const filter = { value: 'All', addEventListener(type, handler) { this.change = handler; } };
     const rows = [true, false].map(checked => ({
       checkbox: { checked, disabled: true, addEventListener() {} },
-      querySelector() { return this.checkbox; }, hidden: false
+      querySelector(selector) { return selector === '[data-priority-url]' ? { value: 'Normal' } : this.checkbox; }, hidden: false
     }));
     runInNewContext(detail.match(/<script>([\s\S]*?)<\/script>/)[1], {
       document: {
-        getElementById: () => filter,
+        getElementById: id => id === 'task-filter' ? filter : { value: 'All', addEventListener() {} },
         querySelectorAll: selector => selector === '[data-testid="task-row"]' ? rows : rows.map(row => row.checkbox)
       }
     });
@@ -308,6 +308,7 @@ test('priorities migrate, save independently, survive rename/restart and respect
     const scripts = [...detail.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     runInNewContext(scripts[2][1], {
       URLSearchParams,
+      applyFilter() {},
       document: { querySelectorAll: () => [select], getElementById: () => alert },
       fetch: async (path, options) => {
         assert.equal(path, select.dataset.priorityUrl);
@@ -478,19 +479,20 @@ test('project-scoped tasks, validation, completion, filtering and restart persis
 
     // Execute the browser script with a minimal DOM to check filtering and saves.
     const filter = { value: 'All', addEventListener(type, handler) { this.change = handler; } };
+    const priorityFilter = { value: 'All', addEventListener(type, handler) { this.change = handler; } };
     const alert = { textContent: '' };
     const rows = [true, false].map((checked, index) => {
       const checkbox = {
         checked, dataset: { completionUrl: `/projects/1/tasks/${index + 1}/completion` },
         addEventListener(type, handler) { this.change = handler; }
       };
-      return { checkbox, querySelector() { return checkbox; }, hidden: false };
+      return { checkbox, querySelector(selector) { return selector === '[data-priority-url]' ? { value: 'Normal' } : checkbox; }, hidden: false };
     });
     let saveOk = true;
     runInNewContext(content.match(/<script>([\s\S]*?)<\/script>/)[1], {
       URLSearchParams,
       document: {
-        getElementById: id => id === 'task-filter' ? filter : alert,
+        getElementById: id => id === 'task-filter' ? filter : id === 'priority-filter' ? priorityFilter : alert,
         querySelectorAll: selector => selector === '[data-testid="task-row"]' ? rows : rows.map(row => row.checkbox)
       },
       fetch: async (path, options) => {

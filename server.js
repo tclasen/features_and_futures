@@ -126,6 +126,10 @@ function projectPage(project, error = '') {
     <select id="task-filter">
       <option>All</option><option>Open</option><option>Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option>All</option><option>Low</option><option>Normal</option><option>High</option>
+    </select>
     <section aria-label="Tasks">${listTasks.all(project.id).map(task => `
       <div class="task-row" data-testid="task-row">
         <input type="checkbox" aria-label="${escapeHtml(`Complete ${task.title}`)}"
@@ -143,13 +147,18 @@ function projectPage(project, error = '') {
       </div>`).join('')}</section>
     <script>
       const filter = document.getElementById('task-filter');
+      const priorityFilter = document.getElementById('priority-filter');
       function applyFilter() {
         document.querySelectorAll('[data-testid="task-row"]').forEach(row => {
-          const completed = row.querySelector('input').checked;
-          row.hidden = filter.value === 'Open' && completed || filter.value === 'Completed' && !completed;
+          const completed = row.querySelector('[data-completion-url]').checked;
+          const priority = row.querySelector('[data-priority-url]').value;
+          const matchesCompletion = filter.value === 'All' || (filter.value === 'Completed' ? completed : !completed);
+          const matchesPriority = priorityFilter.value === 'All' || priorityFilter.value === priority;
+          row.hidden = !matchesCompletion || !matchesPriority;
         });
       }
       filter.addEventListener('change', applyFilter);
+      priorityFilter.addEventListener('change', applyFilter);
       document.querySelectorAll('[data-completion-url]').forEach(checkbox => {
         checkbox.addEventListener('change', async () => {
           const completed = checkbox.checked;
@@ -219,6 +228,7 @@ function projectPage(project, error = '') {
             alert.textContent = 'Could not save task priority. Please try again.';
           } finally {
             select.disabled = false;
+            applyFilter();
           }
         });
       });
