@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #202b3c; background: #f4f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(760px, calc(100% - 32px)); margin: 64px auto; }
+    h1 { margin: 0 0 28px; font-size: 2rem; letter-spacing: -.03em; }
+    form, .project-row { display: flex; align-items: center; gap: 12px; }
+    form { padding: 20px; background: white; border: 1px solid #e0e6ef; border-radius: 10px; }
+    label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    input { min-width: 0; flex: 1; padding: 10px 12px; border: 1px solid #b8c4d4; border-radius: 6px; font: inherit; }
+    button { padding: 10px 15px; color: white; background: #315fc5; border: 0; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #244caa; }
+    .project-list { display: grid; gap: 10px; margin-top: 22px; }
+    .project-row { justify-content: space-between; padding: 14px 16px; background: white; border: 1px solid #e0e6ef; border-radius: 8px; }
+    .project-name { font-weight: 600; }
+    .error { min-height: 1.5em; margin: 12px 0 0; color: #b42318; }
+    .back { margin-bottom: 22px; }
+    @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+      if (match) {
+        const response = await fetch(`/api/projects/${match[1]}`);
+        if (!response.ok) { history.replaceState({}, '', '/'); return render(); }
+        const project = await response.json();
+        app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+        app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        return;
+      }
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      app.innerHTML = `<h1>Workboard</h1><form><label for="project-name">Project name</label><input id="project-name" name="name" type="text" aria-label="Project name"><button type="submit">Create project</button></form><p class="error" role="alert" aria-live="polite"></p><section class="project-list" aria-label="Projects">${projects.map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(project.name)}</span><button type="button" data-id="${project.id}">Open project</button></div>`).join('')}</section>`;
+      const form = app.querySelector('form');
+      const input = app.querySelector('input');
+      const error = app.querySelector('.error');
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) { error.textContent = 'Project name is required'; input.focus(); return; }
+        const created = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (created.ok) render();
+      });
+      app.querySelectorAll('.project-row button').forEach(button => button.addEventListener('click', () => {
+        history.pushState({}, '', `/projects/${button.dataset.id}`); render();
+      }));
+    }
+    addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
