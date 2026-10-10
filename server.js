@@ -32,6 +32,8 @@ const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const page = readFileSync(new URL('./public/index.html', import.meta.url));
 
 async function readBody(request) {
@@ -115,6 +117,14 @@ const server = http.createServer(async (request, response) => {
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const result = createTask.run(projectId, title);
           return json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+        }
+        if (Object.hasOwn(input ?? {}, 'title')) {
+          const title = typeof input.title === 'string' ? input.title.trim() : '';
+          if (!title) return json(response, 400, { error: 'Task title is required' });
+          const result = renameTask.run(title, projectId, taskId);
+          if (!result.changes) return json(response, 404, { error: 'Task not found' });
+          const task = findTask.get(projectId, taskId);
+          return json(response, 200, { ...task, completed: Boolean(task.completed) });
         }
         if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
         const result = updateTask.run(Number(input.completed), projectId, taskId);

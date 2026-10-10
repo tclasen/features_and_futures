@@ -9,6 +9,8 @@ filters Active or Archived projects and shows completion totals. Archive a
 project to make its tasks read-only; restore it to resume editing.
 Active projects can be renamed from their project page without changing their
 URL, order, tasks, or completion totals. Archived projects cannot be renamed.
+Each task can also be renamed in its row while preserving its completion state,
+project, and order. Archived projects disable task renaming until restored.
 
 ```sh
 npm start

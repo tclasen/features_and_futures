@@ -69,6 +69,11 @@ test('projects and tasks validate, migrate, rename, archive, restore, and persis
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
     });
   }
+  async function renameTask(projectId, taskId, title) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+    });
+  }
   async function tasks(projectId) {
     return (await fetch(`${base}/api/projects/${projectId}/tasks`)).json();
   }
@@ -116,6 +121,22 @@ test('projects and tasks validate, migrate, rename, archive, restore, and persis
     first.total_count = 2;
     first.completed_count = 1;
     second.total_count = 1;
+    for (const title of ['', '  \n\t ', null, 123]) {
+      const response = await renameTask(first.id, firstTask.id, title);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    }
+    assert.equal((await renameTask(second.id, firstTask.id, 'Wrong project')).status, 404);
+    assert.equal((await renameTask(first.id, 99999, 'Missing task')).status, 404);
+    assert.equal((await renameTask(99999, firstTask.id, 'Missing project')).status, 404);
+    const renamedTaskResponse = await renameTask(first.id, firstTask.id, '  Renamed <task> \n ');
+    assert.equal(renamedTaskResponse.status, 200);
+    firstTask.title = 'Renamed <task>';
+    assert.deepEqual(await renamedTaskResponse.json(), firstTask);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
+    assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);
     for (const name of ['', '  \n\t ', null, 123]) {
       const response = await rename(first.id, name);
       assert.equal(response.status, 400);
@@ -162,6 +183,9 @@ test('projects and tasks validate, migrate, rename, archive, restore, and persis
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await complete(first.id, firstTask.id, true)).status, 409);
     assert.equal((await complete(first.id, secondTask.id, false)).status, 409);
+    const blockedTaskRename = await renameTask(first.id, firstTask.id, 'Blocked task rename');
+    assert.equal(blockedTaskRename.status, 409);
+    assert.deepEqual(await blockedTaskRename.json(), { error: 'Archived project' });
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     await start();
@@ -177,6 +201,16 @@ test('projects and tasks validate, migrate, rename, archive, restore, and persis
     assert.equal(restoredRename.status, 200);
     first.name = 'Renamed after restoration';
     assert.deepEqual(await restoredRename.json(), first);
+    const restoredTaskRename = await renameTask(first.id, secondTask.id, '  Task renamed after restoration  ');
+    assert.equal(restoredTaskRename.status, 200);
+    secondTask.title = 'Task renamed after restoration';
+    assert.deepEqual(await restoredTaskRename.json(), secondTask);
+    const openTaskRename = await renameTask(first.id, firstTask.id, '  Renamed open task  ');
+    assert.equal(openTaskRename.status, 200);
+    firstTask.title = 'Renamed open task';
+    assert.deepEqual(await openTaskRename.json(), firstTask);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);

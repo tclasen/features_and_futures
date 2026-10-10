@@ -16,7 +16,9 @@
     .task-filter { margin: 24px 0; }
     .task-row { padding: 16px 0; border-top: 1px solid #dee4ec; }
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 400; overflow-wrap: anywhere; }
-    .task-row input { width: 20px; height: 20px; flex-shrink: 0; }
+    .task-row input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+    .task-rename { margin-top: 16px; }
+    .task-row .task-rename label { margin-bottom: 8px; font-weight: 600; }
     button { border: 0; border-radius: 6px; padding: 12px 16px; background: #244fc4; color: white; font: inherit; cursor: pointer; }
     button:disabled { opacity: 0.5; cursor: default; }
     .project-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -143,6 +145,39 @@
               title.textContent = task.title;
               label.append(checkbox, title);
               row.append(label);
+              const taskRenameForm = document.createElement('form');
+              taskRenameForm.className = 'task-rename';
+              taskRenameForm.innerHTML = `
+                <label for="new-task-title-${task.id}">New task title</label>
+                <div class="fields"><input id="new-task-title-${task.id}" name="title" type="text"><button type="submit">Rename task</button></div>`;
+              const taskRenameInput = taskRenameForm.querySelector('input');
+              const taskRenameButton = taskRenameForm.querySelector('button');
+              taskRenameInput.disabled = Boolean(project.archived);
+              taskRenameButton.disabled = Boolean(project.archived);
+              taskRenameForm.onsubmit = async event => {
+                event.preventDefault();
+                if (project.archived) return;
+                const newTitle = taskRenameInput.value.trim();
+                if (!newTitle) return showAlert('Task title is required');
+                taskRenameButton.disabled = true;
+                showAlert('');
+                try {
+                  const saved = await api(tasksPath + '/' + task.id, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle })
+                  });
+                  task.title = saved.title;
+                  title.textContent = task.title;
+                  checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+                  taskRenameInput.value = '';
+                  taskRenameInput.focus();
+                } catch (error) {
+                  if (version === renderVersion) showAlert(error.message);
+                } finally {
+                  taskRenameButton.disabled = Boolean(project.archived);
+                }
+              };
+              row.append(taskRenameForm);
               taskList.append(row);
               checkbox.onchange = async () => {
                 checkbox.disabled = true;
