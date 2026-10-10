@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { normalizeDueDate } from './task-due-date.js';
 
 export function openProjectStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -28,6 +29,9 @@ export function openProjectStore(path) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
     database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const projectQuery = `SELECT id, name, archived, default_task_priority AS defaultTaskPriority,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS totalCount,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completedCount
@@ -38,12 +42,13 @@ export function openProjectStore(path) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-  const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+  const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+  const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
   const taskRecord = (task) => task && { ...task, completed: Boolean(task.completed) };
   const projectRecord = (project) => project && { ...project, archived: Boolean(project.archived) };
 
@@ -118,6 +123,12 @@ export function openProjectStore(path) {
       requireActiveProject(projectId);
       validatePriority(priority);
       updateTaskPriority.run(priority, projectId, taskId);
+      return taskRecord(findTask.get(projectId, taskId));
+    },
+    setTaskDueDate(projectId, taskId, dueDate) {
+      requireActiveProject(projectId);
+      const normalized = normalizeDueDate(dueDate);
+      updateTaskDueDate.run(normalized, projectId, taskId);
       return taskRecord(findTask.get(projectId, taskId));
     },
     close: () => database.close(),

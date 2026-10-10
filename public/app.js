@@ -343,11 +343,32 @@ async function renderTasks(projectId, archived) {
       renameButton.textContent = 'Rename task';
       renameControls.append(renameInput, renameButton);
       renameForm.append(renameLabel, renameControls);
+      const dueDateForm = document.createElement('form');
+      dueDateForm.className = 'task-due-date';
+      const dueDateLabel = document.createElement('label');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      dueDateLabel.textContent = 'Task due date';
+      const dueDateControls = document.createElement('div');
+      dueDateControls.className = 'create-controls';
+      const dueDateInput = document.createElement('input');
+      dueDateInput.id = dueDateLabel.htmlFor;
+      dueDateInput.type = 'text';
+      dueDateInput.name = 'dueDate';
+      dueDateInput.placeholder = 'YYYY-MM-DD';
+      dueDateInput.autocomplete = 'off';
+      dueDateInput.value = task.dueDate;
+      const dueDateButton = document.createElement('button');
+      dueDateButton.type = 'submit';
+      dueDateButton.textContent = 'Save due date';
+      dueDateControls.append(dueDateInput, dueDateButton);
+      dueDateForm.append(dueDateLabel, dueDateControls);
       function setDisabled(pending) {
         checkbox.disabled = archived || pending;
         priority.disabled = archived || pending;
         renameInput.disabled = archived || pending;
         renameButton.disabled = archived || pending;
+        dueDateInput.disabled = archived || pending;
+        dueDateButton.disabled = archived || pending;
       }
       setDisabled(pendingUpdates.has(task.id));
       priority.addEventListener('change', async () => {
@@ -385,7 +406,16 @@ async function renderTasks(projectId, archived) {
         setDisabled(false);
         if (!row.isConnected) renderList();
       });
-      row.append(title, checkbox, priorityLabel, priority, renameForm);
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (archived || pendingUpdates.has(task.id)) return;
+        setDisabled(true);
+        await updateTask(task, { dueDate: dueDateInput.value });
+        dueDateInput.value = task.dueDate;
+        setDisabled(false);
+        if (!row.isConnected) renderList();
+      });
+      row.append(title, checkbox, priorityLabel, priority, renameForm, dueDateForm);
       return row;
     }));
   }

@@ -7,7 +7,7 @@ npm start
 ```
 
 The server binds to `0.0.0.0`, using `PORT` (default `8080`). Set `DB_PATH`
-to the SQLite file to retain projects, archive state, defaults, tasks, priorities, and completion state across
+to the SQLite file to retain projects, archive state, defaults, tasks, priorities, due dates, and completion state across
 restarts; the default is `data/workboard.sqlite`. Its parent directory is created automatically.
 `GET /health` returns `{"status":"ok"}`.
 
@@ -49,3 +49,10 @@ project. Existing and new projects initially use Normal. New tasks inherit the
 project's saved default; changing it never updates existing tasks or either
 filter. The default survives renaming and restarts. Archived projects show it
 in a disabled dropdown, and restoration enables editing again.
+
+Each task has an optional Task due date textbox and Save due date button. Use a
+real Gregorian date in YYYY-MM-DD format (years 0001–9999), or leave it blank to
+clear the saved date. Surrounding whitespace is trimmed. Invalid dates show an
+alert and preserve the saved date. Dates are calendar days without timezone
+conversion and survive other edits and restarts. Archived projects disable date
+editing; restoration preserves dates and enables editing again.
