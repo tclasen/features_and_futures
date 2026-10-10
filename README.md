@@ -13,6 +13,11 @@ Open http://localhost:8080. The server binds to `0.0.0.0`; `PORT` defaults to
 project names and IDs, project tasks, and task completion across restarts.
 Open a project to create tasks, check or uncheck completion, and filter by All,
 Open, or Completed. `GET /health` returns `{"status":"ok"}`.
+The project list filters Active and Archived projects and shows each project's
+completed/total task count. Archive and restore projects from their rows.
+Archived projects retain their tasks and filters while task creation and
+completion changes are disabled. Archive state also persists across restarts;
+existing databases are upgraded automatically.
 
 Run the integration checks:
 

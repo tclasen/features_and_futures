@@ -4,10 +4,16 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks support validation, filtering, isolation, and restart persistence', async (t) => {
+test('projects and tasks support validation, filtering, isolation, archiving, summaries, and restart persistence', async (t) => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), 'data', 'test-'));
+  // Exercise upgrading the original projects schema without resetting its IDs or names.
+  const previousDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+  previousDatabase.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (name) VALUES ('Existing project')`);
+  previousDatabase.close();
   let child;
   async function stop() {
     if (child && child.exitCode === null) {
@@ -44,6 +50,15 @@ test('projects and tasks support validation, filtering, isolation, and restart p
   assert.match(initial, /<h1>Workboard<\/h1>/);
   assert.match(initial, /<label for="project-name">Project name<\/label>/);
   assert.match(initial, />Create project<\/button>/);
+  assert.match(initial, /Existing project/);
+  assert.match(initial, /action="\/projects\/1"/);
+  assert.match(initial, /data-testid="project-summary">0\/0 completed/);
+  assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
+  assert.match(initial, /<option selected>Active<\/option><option>Archived<\/option>/);
+  // Remove only the seeded migration fixture so the creation assertions remain independent.
+  const fixtureDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+  fixtureDatabase.exec('DELETE FROM projects WHERE id = 1');
+  fixtureDatabase.close();
 
   async function create(name) {
     return fetch(`${base}/projects`, {
@@ -128,10 +143,13 @@ test('projects and tasks support validation, filtering, isolation, and restart p
   assert.equal(taskCount(await taskPage(paths[1])), 1);
   assert.doesNotMatch(await taskPage(), /Other project task/);
   const savedTasks = await taskPage();
+  const savedList = await (await fetch(base)).text();
+  assert.match(savedList, /data-testid="project-summary">1\/2 completed/);
+  assert.match(savedList, /data-testid="project-summary">0\/1 completed/);
 
   await stop();
   base = await start();
-  assert.equal(await (await fetch(base)).text(), list);
+  assert.equal(await (await fetch(base)).text(), savedList);
   assert.equal(await taskPage(), savedTasks);
   assert.equal(await taskPage(paths[0], 'Completed'), completed);
   assert.equal(taskCount(await taskPage(paths[1])), 1);
@@ -142,4 +160,45 @@ test('projects and tasks support validation, filtering, isolation, and restart p
   base = await start();
   assert.equal(taskCount(await taskPage(paths[0], 'Completed')), 0);
   assert.equal(await taskPage(), openTasks);
+
+  assert.equal((await postTask(taskPaths[0], { completed: '1' })).status, 303);
+  const beforeArchive = await taskPage();
+  assert.equal((await postTask(`${paths[0]}/archive`, {})).status, 303);
+  const activeList = await (await fetch(base)).text();
+  assert.doesNotMatch(activeList, /First project/);
+  assert.match(activeList, /Second &lt;project&gt;/);
+  const archivedList = await (await fetch(`${base}/?filter=Archived`)).text();
+  assert.match(archivedList, /First project/);
+  assert.doesNotMatch(archivedList, /Second &lt;project&gt;/);
+  assert.match(archivedList, />Open project<\/button>/);
+  assert.match(archivedList, />Restore project<\/button>/);
+  assert.doesNotMatch(archivedList, />Archive project<\/button>/);
+  assert.match(archivedList, /data-testid="project-summary">1\/2 completed/);
+  const archivedPage = await taskPage();
+  assert.match(archivedPage, /<p>Archived project<\/p>/);
+  assert.match(archivedPage, /<button type="submit" disabled>Create task<\/button>/);
+  assert.equal((archivedPage.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+  assert.equal(taskCount(await taskPage(paths[0], 'Completed')), 1);
+  assert.equal(taskCount(await taskPage(paths[0], 'Open')), 1);
+  assert.equal((await postTask(`${paths[0]}/tasks`, { title: 'Blocked task' })).status, 403);
+  assert.equal((await postTask(taskPaths[0], {})).status, 403);
+  assert.equal(await taskPage(), archivedPage);
+  // Task filters must not affect the project summary.
+  assert.equal(await (await fetch(`${base}/?filter=Archived`)).text(), archivedList);
+  await stop();
+  base = await start();
+  assert.equal(await (await fetch(base)).text(), activeList);
+  assert.equal(await (await fetch(`${base}/?filter=Archived`)).text(), archivedList);
+  assert.equal(await taskPage(), archivedPage);
+  assert.equal((await postTask(`${paths[0]}/restore`, {})).status, 303);
+  assert.equal(await taskPage(), beforeArchive);
+  assert.equal((await (await fetch(base)).text()).match(/data-testid="project-row"/g).length, 2);
+  assert.doesNotMatch(await (await fetch(`${base}/?filter=Archived`)).text(), /data-testid="project-row"/);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), beforeArchive);
+  assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
+  assert.equal((await postTask(taskPaths[0], {})).status, 303);
+  assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
+  assert.equal((await postTask('/projects/99999/archive', {})).status, 404);
 });
