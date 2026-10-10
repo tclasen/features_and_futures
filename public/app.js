@@ -126,6 +126,45 @@ async function renderProject(id) {
     const heading = document.createElement('h1');
     heading.textContent = project.name;
     content.append(heading);
+    const renameForm = document.createElement('form');
+    renameForm.className = 'create-form';
+    const renameLabel = document.createElement('label');
+    renameLabel.htmlFor = 'new-project-name';
+    renameLabel.textContent = 'New project name';
+    const renameInput = document.createElement('input');
+    renameInput.id = 'new-project-name';
+    renameInput.name = 'name';
+    renameInput.type = 'text';
+    renameInput.value = project.name;
+    renameInput.disabled = project.archived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename project';
+    renameButton.disabled = project.archived;
+    renameForm.append(renameLabel, renameInput, renameButton);
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) {
+        content.querySelector('[role="alert"]')?.remove();
+        showError('Project name is required');
+        renameInput.focus();
+        return;
+      }
+      const response = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        showError(result.error || 'Could not rename project');
+        return;
+      }
+      project.name = name;
+      heading.textContent = name;
+      renameInput.value = name;
+      content.querySelector('[role="alert"]')?.remove();
+    });
     const form = document.createElement('form');
     form.className = 'create-form';
     const label = document.createElement('label');
@@ -205,7 +244,7 @@ async function renderProject(id) {
       drawTasks();
       input.focus();
     });
-    content.append(form, filterLabel, filter, list);
+    content.append(renameForm, form, filterLabel, filter, list);
     drawTasks();
   } else {
     const alert = document.createElement('p');

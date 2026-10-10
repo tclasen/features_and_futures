@@ -60,9 +60,17 @@ const server = createServer(async (request, response) => {
     if (projectRoute && request.method === 'PATCH') {
       const id = Number(projectRoute[1]);
       const body = await readJson(request);
+      const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(id);
+      if (!project) return sendJson(response, 404, { error: 'Project not found' });
+      if (typeof body.name === 'string') {
+        if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+        const name = body.name.trim();
+        if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+        db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+        return sendJson(response, 200, { id, name, archived: Boolean(project.archived) });
+      }
       if (typeof body.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
-      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, id);
-      if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+      db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, id);
       return sendJson(response, 200, { id, archived: body.archived });
     }
     const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
