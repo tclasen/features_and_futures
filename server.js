@@ -60,16 +60,28 @@ const server = createServer(async (request, response) => {
   if (projectMatch && request.method === 'PATCH') {
     try {
       const body = await readJson(request);
-      if (typeof body?.archived !== 'boolean') {
-        sendJson(response, 400, { error: 'Archive state is required' });
-        return;
-      }
-      const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), Number(projectMatch[1]));
-      if (!Number(result.changes)) {
+      const projectId = Number(projectMatch[1]);
+      const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) {
         sendJson(response, 404, { error: 'Project not found' });
         return;
       }
-      sendJson(response, 200, { id: Number(projectMatch[1]), archived: body.archived });
+      if (typeof body?.archived === 'boolean') {
+        database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), projectId);
+        sendJson(response, 200, { id: projectId, archived: body.archived });
+        return;
+      }
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      if (!name) {
+        sendJson(response, 400, { error: 'Project name is required' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 400, { error: 'Archived projects cannot be renamed' });
+        return;
+      }
+      database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+      sendJson(response, 200, { id: projectId, name, archived: false });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
