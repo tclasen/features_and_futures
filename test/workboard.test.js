@@ -28,6 +28,71 @@ async function start(dbPath) {
   };
 }
 
+test('combined filters preserve selections, re-evaluate edits, and work in archives', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'workboard.sqlite');
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = (path, values = {}) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual'
+    });
+    const titles = content => [...content.matchAll(/data-testid="task-row">\s*<span>(.*?)<\/span>/g)].map(match => match[1]);
+    await post('/projects', { name: 'Alpha' });
+    for (const title of ['First', 'Second', 'Third', 'Fourth']) {
+      await post('/projects/1/tasks', { title });
+    }
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    await post('/projects/1/tasks/4/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const expected = {
+      All: { All: ['First', 'Second', 'Third', 'Fourth'], Low: ['Second'], Normal: ['Third'], High: ['First', 'Fourth'] },
+      Open: { All: ['Second', 'Third', 'Fourth'], Low: ['Second'], Normal: ['Third'], High: ['Fourth'] },
+      Completed: { All: ['First'], Low: [], Normal: [], High: ['First'] }
+    };
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
+        const content = await get(`/projects/1?filter=${filter}&priorityFilter=${priorityFilter}`);
+        assert.deepEqual(titles(content), expected[filter][priorityFilter]);
+        const selects = [...content.matchAll(/<select id="(?:task-filter|priority-filter)"[^>]*>([\s\S]*?)<\/select>/g)];
+        assert.match(selects[0][1], new RegExp(`<option selected>${filter}</option>`));
+        assert.match(selects[1][1], new RegExp(`<option selected>${priorityFilter}</option>`));
+      }
+    }
+    const values = { filter: 'Open', priorityFilter: 'High' };
+    let response = await post('/projects/1/tasks/4/rename', { ...values, title: ' Renamed ' });
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Open&priorityFilter=High');
+    assert.deepEqual(titles(await get(response.headers.get('location'))), ['Renamed']);
+    response = await post('/projects/1/tasks/4/rename', { ...values, title: ' ' });
+    assert.equal(response.status, 400);
+    assert.match(await response.text(), /<option selected>High<\/option>/);
+    const summaryBefore = await get('/');
+    response = await post('/projects/1/tasks/4/priority', { ...values, priority: 'Low' });
+    assert.deepEqual(titles(await get(response.headers.get('location'))), []);
+    assert.equal(await get('/'), summaryBefore);
+    response = await post('/projects/1/tasks/1', { filter: 'Completed', priorityFilter: 'High' });
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=High');
+    assert.deepEqual(titles(await get(response.headers.get('location'))), []);
+    assert.match(await get('/'), /0\/4 completed/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(titles(await get('/projects/1?filter=Open&priorityFilter=Low')), ['Second', 'Renamed']);
+    assert.match(await get('/projects/1'), /<option selected>All<\/option>/);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1?filter=Open&priorityFilter=Low');
+    assert.deepEqual(titles(archived), ['Second', 'Renamed']);
+    assert.match(archived, /<select id="task-priority-4"[^>]* disabled>/);
+    assert.doesNotMatch(archived, /<select id="(?:task-filter|priority-filter)"[^>]* disabled/);
+    await post('/projects/1/restore');
+    assert.deepEqual(titles(await get('/projects/1?filter=Open&priorityFilter=Low')), ['Second', 'Renamed']);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('priorities migrate, stay independent, survive renaming and restart, and respect archives', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
   let server;
