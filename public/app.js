@@ -163,11 +163,16 @@ async function render() {
       loadTasks();
     });
 
+    let taskLoadVersion = 0;
     async function loadTasks() {
+      const version = ++taskLoadVersion;
       const response = await fetch(`/api/projects/${match[1]}/tasks`);
       const tasks = await response.json();
       const destinationsResponse = await fetch('/api/active-projects');
       const destinations = (await destinationsResponse.json()).filter(p => String(p.id) !== String(match[1]));
+      // Search and edits can trigger overlapping reloads; only render the newest
+      // snapshot so an older response cannot restore rows outside the applied query.
+      if (version !== taskLoadVersion) return;
       list.replaceChildren();
       for (const task of tasks.filter(t =>
         (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
