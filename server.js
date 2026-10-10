@@ -11,10 +11,16 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  FROM projects p ORDER BY p.created_at, p.rowid`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const updateArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
@@ -36,7 +42,17 @@ const json = (res, status, data) => send(res, status, JSON.stringify(data));
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
-  if (req.method === 'GET' && url.pathname === '/api/projects') return json(res, 200, listProjects.all());
+  if (req.method === 'GET' && url.pathname === '/api/projects') return json(res, 200, listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) })));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    try {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      const payload = JSON.parse(raw);
+      if (typeof payload.archived !== 'boolean') return json(res, 400, { error: 'Invalid archive state' });
+      const result = updateArchived.run(payload.archived ? 1 : 0, archiveMatch[1]);
+      return result.changes ? json(res, 200, { archived: payload.archived }) : json(res, 404, { error: 'Project not found' });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let raw = '';
     try {
@@ -69,7 +85,9 @@ const server = http.createServer(async (req, res) => {
       const payload = JSON.parse(raw);
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       if (!title) return json(res, 400, { error: 'Task title is required' });
-      if (!getProject.get(tasksMatch[1])) return json(res, 404, { error: 'Project not found' });
+      const owner = getProject.get(tasksMatch[1]);
+      if (!owner) return json(res, 404, { error: 'Project not found' });
+      if (owner.archived) return json(res, 403, { error: 'Archived project' });
       const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false };
       insertTask.run(task.id, task.projectId, task.title, Date.now());
       return json(res, 201, task);
@@ -84,6 +102,9 @@ const server = http.createServer(async (req, res) => {
       for await (const chunk of req) raw += chunk;
       const payload = JSON.parse(raw);
       if (typeof payload.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
+      const owner = getProject.get(taskMatch[1]);
+      if (!owner) return json(res, 404, { error: 'Project not found' });
+      if (owner.archived) return json(res, 403, { error: 'Archived project' });
       const result = updateTask.run(payload.completed ? 1 : 0, taskMatch[2], taskMatch[1]);
       return result.changes ? json(res, 200, { completed: payload.completed }) : json(res, 404, { error: 'Task not found' });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
