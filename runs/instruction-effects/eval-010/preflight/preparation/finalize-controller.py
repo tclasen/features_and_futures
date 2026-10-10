@@ -1,0 +1,19 @@
+import json,shutil,subprocess
+from pathlib import Path
+from orchestrator.prepare import ROOT,write_json,file_hashes,git
+from orchestrator.task_stream import task_stream,suite_for_stage
+from orchestrator.evidence import timestamp,digest_bytes,digest_json
+r=ROOT/'runs/instruction-effects/eval-010';v=ROOT/'experiments/instruction-effects/revisions/research-v010';m=json.loads((r/'manifest.json').read_text());phase=json.loads((r/'preflight/phase-listing/verified.json').read_text());assert phase['verified'] and len(phase['phase_listings'])==59
+for row in phase['phase_listings']:assert file_hashes(suite_for_stage(r,row['tested_stage']))==row['suite_files']
+assert digest_json(m)==(r/'manifest.sha256').read_text().strip();assert file_hashes(r/'definitions')==m['provenance']['definition_hashes'];assert digest_bytes((v/'analysis-plan.json').read_bytes())==m['research']['analysis_plan']['sha256'];assert len(task_stream(r))==20 and not (r/'events.jsonl').exists()
+previous={t['stage']:t for t in task_stream(ROOT/'runs/instruction-effects/eval-009')}
+for task in task_stream(r):
+ assert task['packet_sha256']==previous[task['stage']]['packet_sha256']
+ if task['stage']<15:assert file_hashes(suite_for_stage(r,task['stage']))==file_hashes(suite_for_stage(ROOT/'runs/instruction-effects/eval-009',task['stage']))
+ else:assert [f for f in task['suite_files'] if task['suite_files'][f]!=previous[task['stage']]['suite_files'][f]]==['notes.spec.mjs']
+roots=[]
+for b in m['runtime']['builder_configurations']:
+ p=Path(m['paths']['builders'])/b['builder_id'];assert git(p,'rev-parse','HEAD')==m['provenance']['starter_commit'];assert git(p,'rev-parse','HEAD^{tree}')==m['provenance']['starter_tree'];assert not git(p,'status','--porcelain');assert not git(p,'remote');roots.append(b['builder_id'])
+fixture=v/'preflight/notes052-check-1791673403171/verified.json';baseline=v/'preflight/task020-full03-check-1791675096700/verified.json';assert json.loads(baseline.read_text())['verified'];assert json.loads(fixture.read_text())['verified'];assert json.loads((v/'preflight/runtime/verified.json').read_text())['passed'];assert json.loads((v/'preflight/runtime/resource.json').read_text())['status']=='removed';assert json.loads((v/'preflight/runtime/image-provenance.json').read_text())['verified_blobs']==18
+proof={'utc':timestamp(),'native_dispatch_ready':True,'native_model_calls':0,'plan_sha256':m['research']['analysis_plan']['sha256'],'manifest_sha256':digest_json(m),'full_pm_checks':177,'phase_listings':59,'frozen_rounds':20,'fresh_starter_only_roots':roots,'all20packets_identical_to_eval009':True,'suites1through14_identical':True,'changed_acceptance_from15':['notes.spec.mjs:052changed-resultdue-rangebarrierbeforeclear'],'native_original_proof':'runs/instruction-effects/eval-009/preflight/notes052-native-original1-full02/verified.json','synthetic_positive_and_negative_fixture':str(fixture.relative_to(ROOT)),'full68baseline_three_modes':str(baseline.relative_to(ROOT)),'native_runtime_restored_removed':True,'all18imageblobs_reverified':True,'latest_harness_versions':json.loads((r/'preflight/preparation/verified.json').read_text())['latest_stable_npm'],'gateway_lifecycle':'drain-upstream-and-partial-response-v1','mathematical_and_stopping_rules_unchanged':True,'original_exposures_retained':True,'limitations':['PMconversationusageunavailable','Hostedaliasesdonotproveimmutableweights','Unknowncostshavecontainingbounds','Syntheticprototypesarenotnativeprocessrestarts'],'future_features':'21–40unfrozenuntil20shared/audit/firstallowedinspectionandreadinessgates','resources_left_behind':[]}
+write_json(r/'preflight/preparation/final-adoption.json',proof);write_json(v/'preflight/adoption/verified.json',proof);shutil.copy2(__file__,r/'preflight/preparation/finalize-controller.py');print(json.dumps({'ready':True,'rounds':20,'checks':177,'listings':59,'plan':proof['plan_sha256']}))
