@@ -35,7 +35,7 @@ class Node {
   querySelector() { return this.all().find(node => node.attributes.role === 'alert'); }
 }
 
-async function page(archived = false) {
+async function page(archived = false, destinations = []) {
   const app = new Node('main');
   const project = { id: 1, name: 'Project', archived, default_priority: 'Normal' };
   const tasks = [
@@ -63,9 +63,12 @@ async function page(archived = false) {
           patch.due_date = patch.due_date.trim();
           if (patch.due_date === 'invalid') return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
         }
-        Object.assign(task, patch);
+        if (Object.hasOwn(patch, 'destination_project_id')) {
+          tasks.splice(tasks.indexOf(task), 1);
+          task.project_id = patch.destination_project_id;
+        } else Object.assign(task, patch);
         data = task;
-      } else data = path.endsWith('/tasks') ? tasks : project;
+      } else data = path === '/api/projects' ? [project, ...destinations] : path.endsWith('/tasks') ? tasks : project;
       return { ok: true, json: async () => structuredClone(data) };
     },
     get ready() { return undefined; },
@@ -326,6 +329,52 @@ test('task edits re-evaluate all filters while rename and defaults preserve appl
   const reopened = await page();
   assert.equal(reopened.control('due-from').value, '');
   assert.equal(reopened.control('due-through').value, '');
+});
+
+test('move controls list only eligible destinations and retain all source filters', async () => {
+  const ui = await page(false, [
+    { id: 2, name: 'Renamed destination', archived: 0 },
+    { id: 3, name: 'Archived destination', archived: 1 },
+    { id: 4, name: 'Last destination', archived: 0 },
+  ]);
+  ui.control('task-due-date-1').value = '2024-02-01';
+  await ui.control('task-due-date-1').parent.fire('submit');
+  ui.control('task-due-date-4').value = '2024-02-02';
+  await ui.control('task-due-date-4').parent.fire('submit');
+  ui.writes.length = 0;
+  const completion = ui.control('task-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  const priority = ui.control('priority-filter');
+  priority.value = 'High';
+  await priority.fire('change');
+  const from = ui.control('due-from');
+  const through = ui.control('due-through');
+  from.value = '2024-02-01';
+  through.value = '2024-02-29';
+  await from.parent.fire('submit');
+  const destination = ui.control('destination-project-1');
+  assert.deepEqual(destination.children.map(node => [node.textContent, node.value]), [
+    ['Renamed destination', '2'], ['Last destination', '4'],
+  ]);
+  destination.value = '4';
+  await ui.rows()[0].children.at(-1).fire('click');
+  assert.deepEqual(ui.titles(), []);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  assert.equal(from.value, '2024-02-01');
+  assert.equal(through.value, '2024-02-29');
+  assert.deepEqual(ui.writes, [{ destination_project_id: 4 }]);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.deepEqual(ui.titles(), ['Fourth']);
+  const noDestinations = await page();
+  assert.equal(noDestinations.control('destination-project-1').children.length, 0);
+  assert.equal(noDestinations.control('destination-project-1').disabled, true);
+  assert.equal(noDestinations.rows()[0].children.at(-1).disabled, true);
+  const archived = await page(true, [{ id: 2, name: 'Active', archived: 0 }]);
+  assert.equal(archived.control('destination-project-1').disabled, true);
+  assert.equal(archived.rows()[0].children.at(-1).disabled, true);
 });
 
 test('archived projects keep both filters usable and editing controls disabled', async () => {

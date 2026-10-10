@@ -82,6 +82,7 @@ async function renderTasks(project) {
   const path = `/api/projects/${project.id}/tasks`;
   const archived = Boolean(project.archived);
   let tasks = [];
+  let destinations = [];
   const defaultPriority = element('select', '', { id: 'default-task-priority' });
   for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(element('option', value, { value }));
   defaultPriority.value = project.default_priority;
@@ -247,8 +248,34 @@ async function renderTasks(project) {
           alertMessage(error.message);
         } finally { saveDue.disabled = archived; }
       });
+      const destination = element('select', '', { id: `destination-project-${task.id}` });
+      for (const project of destinations) {
+        destination.append(element('option', project.name, { value: String(project.id) }));
+      }
+      const move = element('button', 'Move task', { type: 'button' });
+      destination.disabled = archived || destinations.length === 0;
+      move.disabled = destination.disabled;
+      move.addEventListener('click', async () => {
+        if (archived || !destination.value) return;
+        move.disabled = true;
+        destination.disabled = true;
+        try {
+          await request(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+          });
+          tasks = tasks.filter(item => item.id !== task.id);
+          app.querySelector('[role="alert"]')?.remove();
+          draw();
+        } catch (error) { alertMessage(error.message); }
+        finally {
+          destination.disabled = archived || destinations.length === 0;
+          move.disabled = destination.disabled;
+        }
+      });
       row.append(checkbox, title, renameForm,
-        element('label', 'Task priority', { for: priority.id }), priority, dueForm);
+        element('label', 'Task priority', { for: priority.id }), priority, dueForm,
+        element('label', 'Destination project', { for: destination.id }), destination, move);
       list.append(row);
     }
   }
@@ -272,7 +299,12 @@ async function renderTasks(project) {
     finally { create.disabled = archived; }
   });
   create.disabled = true;
-  try { tasks = await request(path); draw(); }
+  try {
+    const [savedTasks, projects] = await Promise.all([request(path), request('/api/projects')]);
+    tasks = savedTasks;
+    destinations = projects.filter(item => !item.archived && item.id !== project.id);
+    draw();
+  }
   catch (error) { alertMessage(error.message); }
   finally { create.disabled = archived; }
 }
