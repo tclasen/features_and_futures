@@ -11,6 +11,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -36,7 +40,21 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return json(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id`).all().map(project => ({
+        ...project, archived: Boolean(project.archived),
+        totalCount: Number(project.totalCount), completedCount: Number(project.completedCount),
+      })));
+  }
+  const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (projectStateRoute && req.method === 'PATCH') {
+    const data = await readBody(req);
+    if (typeof data?.archived !== 'boolean') return json(res, 400, { error: 'Invalid request' });
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(data.archived ? 1 : 0, Number(projectStateRoute[1]));
+    if (!result.changes) return json(res, 404, { error: 'Project not found' });
+    return json(res, 200, { id: Number(projectStateRoute[1]), archived: data.archived });
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     const data = await readBody(req);
