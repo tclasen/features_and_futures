@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High')),
   due_date TEXT,
-  position INTEGER
+  position INTEGER,
+  notes TEXT NOT NULL DEFAULT ''
 )`);
 // Upgrade databases created by earlier checkpoints.
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
@@ -36,6 +37,9 @@ try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column')) throw error;
 }
 try { db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER'); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) throw error;
+}
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
   if (!String(error.message).includes('duplicate column')) throw error;
 }
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -131,7 +135,7 @@ const server = http.createServer(async (req, res) => {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, JSON.stringify({ error: 'Project not found' }));
     if (req.method === 'GET') {
-      const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId);
+      const tasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId);
       return send(200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
     }
     if (req.method === 'POST') {
@@ -185,6 +189,21 @@ const server = http.createServer(async (req, res) => {
       if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) return send(400, JSON.stringify({ error: 'Archived project' }));
       db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(date || null, taskId);
       return send(200, JSON.stringify({ dueDate: date || null }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
+  const taskNotes = url.pathname.match(/^\/api\/tasks\/(\d+)\/notes$/);
+  if (taskNotes && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const notes = JSON.parse(body).notes;
+      if (typeof notes !== 'string') return send(400, JSON.stringify({ error: 'Invalid notes' }));
+      const taskId = Number(taskNotes[1]);
+      const task = db.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+      if (!task) return send(404, JSON.stringify({ error: 'Task not found' }));
+      if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) return send(400, JSON.stringify({ error: 'Archived project' }));
+      db.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(notes, taskId);
+      return send(200, JSON.stringify({ notes }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const taskRename = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
