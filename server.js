@@ -33,7 +33,7 @@ const page = `<!doctype html>
     @media (max-width: 480px) { form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
-<body><main id="app"></main>
+<body><main id="app"><h1>Workboard</h1><form><label>Project name <input type="text" aria-label="Project name"></label><button type="submit">Create project</button></form><p role="alert" hidden></p><section aria-label="Projects"></section></main>
 <script>
 const app = document.getElementById('app');
 const escapePath = (id) => '/projects/' + encodeURIComponent(id);
