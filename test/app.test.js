@@ -614,3 +614,81 @@ test('project defaults preserve filtered rows, apply to new tasks, and follow ar
     }
   }
 });
+
+test('due date controls preserve filters and saved data, report invalid dates, and follow archive state', async () => {
+  let archived = false;
+  let savedTasks = [
+    { id: 1, title: 'Done', completed: true, priority: 'High', due_date: '' },
+    { id: 2, title: 'Other', completed: false, priority: 'Low', due_date: '2027-01-02' },
+  ];
+  const writes = [];
+  const message = 'Due date must be a valid YYYY-MM-DD date';
+  const fetch = async (path, options) => {
+    if (!options) {
+      const data = path.endsWith('/tasks') ? savedTasks : { id: 7, name: 'Project', archived };
+      return { ok: true, json: async () => structuredClone(data) };
+    }
+    const body = JSON.parse(options.body);
+    writes.push(body);
+    if (body.due_date === 'invalid') return { ok: false, json: async () => ({ error: message }) };
+    const id = Number(path.split('/').at(-1));
+    const saved = { ...savedTasks.find((task) => task.id === id), ...body };
+    savedTasks = savedTasks.map((task) => task.id === id ? saved : task);
+    return { ok: true, json: async () => structuredClone(saved) };
+  };
+  const elements = pageElements();
+  await loadPage(elements, '/projects/7', fetch);
+  const rows = () => elements.get('#tasks').children;
+  const dateForm = (row) => row.children[4];
+  const dateInput = (row) => dateForm(row).children[1].children[0];
+  const dateButton = (row) => dateForm(row).children[1].children[1];
+  assert.equal(dateForm(rows()[0]).children[0].textContent, 'Task due date');
+  assert.equal(dateForm(rows()[0]).children[0].htmlFor, dateInput(rows()[0]).id);
+  assert.equal(dateInput(rows()[0]).type, 'text');
+  assert.equal(dateInput(rows()[0]).value, '');
+  assert.equal(dateButton(rows()[0]).textContent, 'Save due date');
+  assert.equal(dateInput(rows()[1]).value, '2027-01-02');
+  elements.get('#task-filter').value = 'Completed';
+  await elements.get('#task-filter').fire('change');
+  elements.get('#priority-filter').value = 'High';
+  await elements.get('#priority-filter').fire('change');
+  dateInput(rows()[0]).value = '  0001-01-01  ';
+  await dateForm(rows()[0]).fire('submit');
+  assert.deepEqual(writes, [{ due_date: '0001-01-01' }]);
+  assert.equal(dateInput(rows()[0]).value, '0001-01-01');
+  const original = structuredClone(savedTasks);
+  dateInput(rows()[0]).value = 'invalid';
+  await dateForm(rows()[0]).fire('submit');
+  assert.equal(elements.get('#error').textContent, message);
+  assert.equal(elements.get('#error').hidden, false);
+  assert.equal(dateButton(rows()[0]).disabled, false);
+  assert.deepEqual(savedTasks, original);
+  const renameForm = rows()[0].children[2];
+  renameForm.children[1].children[0].value = 'Renamed';
+  await renameForm.fire('submit');
+  assert.equal(dateInput(rows()[0]).value, '0001-01-01');
+  dateInput(rows()[0]).value = ' \t ';
+  await dateForm(rows()[0]).fire('submit');
+  assert.equal(dateInput(rows()[0]).value, '');
+  assert.equal(elements.get('#error').hidden, true);
+  assert.equal(elements.get('#task-filter').value, 'Completed');
+  assert.equal(elements.get('#priority-filter').value, 'High');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[0].checked, true);
+  assert.equal(rows()[0].children[1].textContent, 'Renamed');
+  assert.equal(rows()[0].children[3].children[1].value, 'High');
+  assert.deepEqual(savedTasks[1], original[1]);
+  for (const state of [true, false]) {
+    archived = state;
+    const reloaded = pageElements();
+    await loadPage(reloaded, '/projects/7', fetch);
+    const reloadedRows = reloaded.get('#tasks').children;
+    assert.deepEqual(reloadedRows.map((row) => dateInput(row).value), ['', '2027-01-02']);
+    assert.ok(reloadedRows.every((row) => dateInput(row).disabled === state && dateButton(row).disabled === state));
+    if (state) {
+      const count = writes.length;
+      await dateForm(reloadedRows[0]).fire('submit');
+      assert.equal(writes.length, count);
+    }
+  }
+});

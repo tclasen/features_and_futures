@@ -20,6 +20,8 @@ Default task priority on each project page offers Low, Normal, and High. Existin
 
 The Priority filter offers All, Low, Normal, and High and starts at All when opening a project. It combines with Task filter to show tasks matching both selections in creation order. Editing completion or priority immediately updates the matching rows without resetting either filter. Renames preserve both selections. Filters remain usable in archived projects and do not change saved data or completion summaries.
 
+Each task row has a Task due date textbox and Save due date button. Save a real Gregorian date in YYYY-MM-DD format (years 0001–9999), or leave it blank to clear it. Surrounding whitespace is trimmed. Invalid dates show an alert and preserve the saved date. Dates persist independently without timezone conversion and leave other task data, filters, and summaries unchanged. Archived projects disable both date controls until restored.
+
 Run the integration checks:
 
 ```sh
@@ -31,3 +33,5 @@ Tests also cover project and task renaming, unchanged identity and completion st
 UI event-handler checks use a minimal DOM adapter to verify validation, checkbox names, completion changes, filters, summaries, renaming, and archived controls without external dependencies.
 Priority checks cover migration of existing tasks, independent saved values, invalid input, filters, renames, archived controls, restoration, and server restarts.
 Default-priority checks cover project migration, independent defaults, inheritance by new tasks only, unchanged existing tasks and filters, failed-save recovery, archived controls, restoration, and restart persistence.
+
+Due-date checks cover schema migration, calendar and leap-year validation, trimming and clearing, independent dates, unchanged task data and summaries, rename preservation, filters, archived controls, restoration, and restart persistence.

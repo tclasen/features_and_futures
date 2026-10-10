@@ -58,8 +58,8 @@ test('priorities migrate existing tasks and persist independently across archive
     assert.equal((await get('/api/projects/1')).default_priority, 'Normal');
     assert.equal((await get('/api/projects/2')).default_priority, 'Normal');
     assert.deepEqual(tasks, [
-      { id: 1, title: 'Existing done', completed: true, priority: 'Normal' },
-      { id: 2, title: 'Existing open', completed: false, priority: 'Normal' },
+      { id: 1, title: 'Existing done', completed: true, priority: 'Normal', due_date: '' },
+      { id: 2, title: 'Existing open', completed: false, priority: 'Normal', due_date: '' },
     ]);
     const otherTasks = await get('/api/projects/2/tasks');
     const created = await (await write(tasksPath, { title: 'New' }, 'POST')).json();

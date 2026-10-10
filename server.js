@@ -19,7 +19,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id),
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT NOT NULL DEFAULT ''
   );
   CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
 `);
@@ -32,6 +33,9 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
   database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `SELECT id, name, archived, default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed
@@ -42,12 +46,23 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+
+function validDueDate(value) {
+  if (value === '') return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
 
 function taskData(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -114,6 +129,14 @@ const server = http.createServer(async (request, response) => {
         if (project.archived) return json(response, 409, { error: 'Archived project' });
         if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readInput(request);
+        if (Object.hasOwn(input ?? {}, 'due_date')) {
+          const dueDate = typeof input.due_date === 'string' ? input.due_date.trim() : null;
+          if (dueDate === null || !validDueDate(dueDate)) {
+            return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+          updateTaskDueDate.run(dueDate, projectId, taskId);
+          return json(response, 200, taskData(getTask.get(projectId, taskId)));
+        }
         if (Object.hasOwn(input ?? {}, 'priority')) {
           if (!['Low', 'Normal', 'High'].includes(input.priority)) {
             return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
