@@ -29,7 +29,7 @@ const projectQuery = `SELECT projects.id, projects.name, projects.archived,
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
 const listProjects = database.prepare(`${projectQuery} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
-const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProject = database.prepare('UPDATE projects SET archived = ?, name = ? WHERE id = ?');
 function projectValue(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
@@ -120,10 +120,20 @@ const server = http.createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const body = await readJson(request);
-        if (typeof body?.archived !== 'boolean') {
+        const renaming = Object.hasOwn(body ?? {}, 'name');
+        const changingArchive = Object.hasOwn(body ?? {}, 'archived');
+        if ((changingArchive || !renaming) && typeof body?.archived !== 'boolean') {
           return json(response, 400, { error: 'Archived must be a boolean' });
         }
-        updateProject.run(Number(body.archived), projectId);
+        let name = project.name;
+        if (renaming) {
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project cannot be changed' });
+          }
+          name = typeof body.name === 'string' ? body.name.trim() : '';
+          if (!name) return json(response, 400, { error: 'Project name is required' });
+        }
+        updateProject.run(changingArchive ? Number(body.archived) : project.archived, name, projectId);
       }
       return json(response, 200, projectValue(findProject.get(projectId)));
     }
