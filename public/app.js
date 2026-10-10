@@ -109,7 +109,34 @@ async function renderTasks(project) {
           alertMessage(error.message);
         } finally { checkbox.disabled = false; }
       });
-      row.append(checkbox, element('span', task.title));
+      const title = element('span', task.title);
+      const renameForm = element('form');
+      const renameInput = element('input', '', { id: `new-task-title-${task.id}`, type: 'text', autocomplete: 'off' });
+      const rename = element('button', 'Rename task', { type: 'submit' });
+      renameInput.value = task.title;
+      renameInput.disabled = archived;
+      rename.disabled = archived;
+      renameForm.append(element('label', 'New task title', { for: renameInput.id }), renameInput, rename);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (archived) return;
+        const newTitle = renameInput.value.trim();
+        if (!newTitle) { alertMessage('Task title is required'); return; }
+        rename.disabled = true;
+        try {
+          const saved = await request(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle }),
+          });
+          task.title = saved.title;
+          title.textContent = saved.title;
+          checkbox.setAttribute('aria-label', `Complete ${saved.title}`);
+          renameInput.value = saved.title;
+          app.querySelector('[role="alert"]')?.remove();
+        } catch (error) { alertMessage(error.message); }
+        finally { rename.disabled = archived; }
+      });
+      row.append(checkbox, title, renameForm);
       list.append(row);
     }
   }

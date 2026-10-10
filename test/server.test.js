@@ -88,6 +88,21 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.equal((await complete(first.id, task.id, true)).status, 200);
     task.completed = true;
     assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
+    async function renameTask(projectId, taskId, title) {
+      return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+    }
+    const blankRename = await renameTask(first.id, task.id, ' \t ');
+    assert.equal(blankRename.status, 400);
+    assert.match((await blankRename.json()).error, /Task title is required/);
+    assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
+    assert.equal((await renameTask(second.id, task.id, 'Wrong project')).status, 404);
+    const renamedTask = await renameTask(first.id, task.id, '  Renamed task  ');
+    assert.equal(renamedTask.status, 200);
+    task.title = 'Renamed task';
+    assert.deepEqual(await renamedTask.json(), task);
+    assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
     first.total = 2;
     first.completed = 1;
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
@@ -117,6 +132,7 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     assert.equal((await rename('Forbidden rename')).status, 409);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.equal((await renameTask(first.id, task.id, 'Forbidden title')).status, 409);
     assert.equal((await addTask('Forbidden')).status, 409);
     assert.equal((await complete(first.id, task.id, false)).status, 409);
     assert.deepEqual(await (await fetch(taskPath)).json(), [task, secondTask]);
@@ -130,6 +146,11 @@ test('projects and scoped tasks are validated, ordered, and persisted across res
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     assert.equal((await rename(' Restored project ')).status, 200);
     first.name = 'Restored project';
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    const restoredRename = await renameTask(first.id, task.id, ' Restored task ');
+    assert.equal(restoredRename.status, 200);
+    task.title = 'Restored task';
+    assert.deepEqual(await restoredRename.json(), task);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     const reopened = await complete(first.id, task.id, false);
     assert.equal((await reopened.json()).completed, false);

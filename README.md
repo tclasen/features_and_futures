@@ -24,4 +24,6 @@ The project list filters Active or Archived projects and shows completion summar
 
 Active project pages also support renaming. Names are trimmed and required; renaming preserves the project's URL, list position, tasks, and completion summary. Archived projects cannot be renamed until restored.
 
+Each task row supports renaming its title. Titles are trimmed and required; renaming preserves ownership, order, completion, and summary counts. Archived projects disable task renaming until restored. Task titles persist across restarts.
+
 The built-in Node test verifies health, validation and trimming, creation order, project isolation, completion summaries, archive/restore, renaming, read-only enforcement, migration from the prior schema, and SQLite persistence across server restarts. Tests use a temporary database outside the repository.
