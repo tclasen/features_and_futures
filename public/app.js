@@ -12,18 +12,33 @@ function showError(container, message) {
   container.hidden = false;
 }
 
-function projectRow(project) {
+function projectRow(project, onArchiveChange, pending) {
   const row = document.createElement('li');
   row.dataset.testid = 'project-row';
   const name = document.createElement('span');
   name.textContent = project.name;
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
   const open = document.createElement('button');
   open.type = 'button';
   open.textContent = 'Open project';
   open.addEventListener('click', () => {
     window.location.assign(`/projects/${project.id}`);
   });
-  row.append(name, open);
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.disabled = pending;
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    try {
+      await onArchiveChange(project);
+    } finally {
+      archive.disabled = false;
+    }
+  });
+  row.append(name, summary, open, archive);
   return row;
 }
 
@@ -40,6 +55,13 @@ async function renderProjects() {
         </div>
       </form>
       <p role="alert" hidden></p>
+      <div class="project-filter">
+        <label for="project-filter">Project filter</label>
+        <select id="project-filter">
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+        </select>
+      </div>
       <ul aria-label="Projects"></ul>
     </section>`;
   const form = app.querySelector('form');
@@ -47,11 +69,40 @@ async function renderProjects() {
   const button = form.querySelector('button');
   const alert = app.querySelector('[role="alert"]');
   const list = app.querySelector('ul');
+  const filter = app.querySelector('select');
+  let projects = [];
+  const pendingArchives = new Set();
+
+  async function changeArchive(project) {
+    if (pendingArchives.has(project.id)) return;
+    pendingArchives.add(project.id);
+    alert.hidden = true;
+    try {
+      const updated = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, updated);
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      pendingArchives.delete(project.id);
+      renderList();
+    }
+  }
+
+  function renderList() {
+    list.replaceChildren(...projects
+      .filter((project) => project.archived === (filter.value === 'archived'))
+      .map((project) => projectRow(project, changeArchive, pendingArchives.has(project.id))));
+  }
+  filter.addEventListener('change', renderList);
   // Load before accepting writes so a late list response cannot duplicate a new row.
   button.disabled = true;
   try {
-    const projects = await api('/api/projects');
-    list.append(...projects.map(projectRow));
+    projects = await api('/api/projects');
+    renderList();
     button.disabled = false;
   } catch (error) {
     showError(alert, error.message);
@@ -73,7 +124,8 @@ async function renderProjects() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      list.append(projectRow(project));
+      projects.push(project);
+      renderList();
       input.value = '';
       input.focus();
     } catch (error) {
@@ -91,14 +143,19 @@ async function renderProject(id) {
     const project = await api(`/api/projects/${id}`);
     app.querySelector('h1').textContent = project.name;
     document.title = `${project.name} · Workboard`;
-    await renderTasks(id);
+    if (project.archived) {
+      const notice = document.createElement('p');
+      notice.textContent = 'Archived project';
+      app.append(notice);
+    }
+    await renderTasks(id, project.archived);
   } catch (error) {
     app.querySelector('h1').textContent = 'Project unavailable';
     showError(app.querySelector('[role="alert"]'), error.message);
   }
 }
 
-async function renderTasks(projectId) {
+async function renderTasks(projectId, archived) {
   const section = document.createElement('section');
   section.setAttribute('aria-label', 'Tasks');
   section.innerHTML = `
@@ -141,7 +198,7 @@ async function renderTasks(projectId) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
-      checkbox.disabled = pendingUpdates.has(task.id);
+      checkbox.disabled = archived || pendingUpdates.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -159,7 +216,7 @@ async function renderTasks(projectId) {
           showError(alert, error.message);
         } finally {
           pendingUpdates.delete(task.id);
-          checkbox.disabled = false;
+          checkbox.disabled = archived;
           // Refresh filtered or replaced rows; otherwise preserve the focused checkbox.
           if (filter.value !== 'all' || !checkbox.isConnected) renderList();
         }
@@ -193,13 +250,13 @@ async function renderTasks(projectId) {
     } catch (error) {
       showError(alert, error.message);
     } finally {
-      button.disabled = false;
+      button.disabled = archived;
     }
   });
   try {
     tasks = await api(path);
     renderList();
-    button.disabled = false;
+    button.disabled = archived;
   } catch (error) {
     showError(alert, error.message);
   }

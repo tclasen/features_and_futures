@@ -73,6 +73,9 @@ test('projects validate, retain creation order, and persist across server restar
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.totalCount, 0);
+    assert.equal(first.completedCount, 0);
     assert.ok(Number.isInteger(first.id));
     const second = await (await create('<script>Special & safe</script>')).json();
     assert.notEqual(second.id, first.id);
@@ -133,7 +136,8 @@ test('tasks validate, belong to their project, and retain completion across rest
     const taskPath = '/api/projects/1/tasks';
     const list = async (path = taskPath) => (await request(path)).json();
     assert.deepEqual(await (await request('/api/projects')).json(), [
-      { id: 1, name: 'Existing project' }, { id: 2, name: 'Other project' },
+      { id: 1, name: 'Existing project', archived: false, totalCount: 0, completedCount: 0 },
+      { id: 2, name: 'Other project', archived: false, totalCount: 0, completedCount: 0 },
     ]);
     assert.deepEqual(await list(), []);
     for (const title of ['', ' \t\n ', null, 123]) {
@@ -178,6 +182,97 @@ test('tasks validate, belong to their project, and retain completion across rest
     await server.stop();
     server = await startServer(databasePath);
     assert.deepEqual(await list(), [first, second]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive migration, summaries, and restoration preserve tasks across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  // A Task 002 database already contains tasks but has no archive column.
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    INSERT INTO projects (name) VALUES ('Existing project'), ('Other project');
+    INSERT INTO tasks (project_id, title, completed)
+    VALUES (1, 'Completed task', 1), (1, 'Open task', 0), (2, 'Other task', 1);
+  `);
+  database.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const request = (path, method = 'GET', body) => fetch(server.baseUrl + path, {
+      method,
+      ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    });
+    const projectPath = '/api/projects/1';
+    const taskPath = `${projectPath}/tasks`;
+    const getProject = async () => (await request(projectPath)).json();
+    const getTasks = async () => (await request(taskPath)).json();
+    const original = { id: 1, name: 'Existing project', archived: false, totalCount: 2, completedCount: 1 };
+    const other = { id: 2, name: 'Other project', archived: false, totalCount: 1, completedCount: 1 };
+    assert.deepEqual(await getProject(), original);
+    assert.deepEqual(await (await request('/api/projects')).json(), [original, other]);
+    const tasks = await getTasks();
+    assert.deepEqual(tasks, [
+      { id: 1, title: 'Completed task', completed: true },
+      { id: 2, title: 'Open task', completed: false },
+    ]);
+    for (const archived of ['true', 1, null]) {
+      assert.equal((await request(projectPath, 'PATCH', { archived })).status, 400);
+    }
+    assert.deepEqual(await getProject(), original);
+    assert.equal((await request('/api/projects/999', 'PATCH', { archived: true })).status, 404);
+    const archived = { ...original, archived: true };
+    const archiveResponse = await request(projectPath, 'PATCH', { archived: true });
+    assert.equal(archiveResponse.status, 200);
+    assert.deepEqual(await archiveResponse.json(), archived);
+    assert.deepEqual(await getTasks(), tasks);
+    assert.equal((await request(taskPath, 'POST', { title: 'Forbidden task' })).status, 409);
+    for (const task of tasks) {
+      assert.equal((await request(`${taskPath}/${task.id}`, 'PATCH', { completed: !task.completed })).status, 409);
+    }
+    assert.deepEqual(await getTasks(), tasks);
+    assert.deepEqual(await (await request('/api/projects')).json(), [archived, other]);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await getProject(), archived);
+    assert.deepEqual(await getTasks(), tasks);
+    assert.equal((await request('/projects/1')).status, 200);
+    const restoreResponse = await request(projectPath, 'PATCH', { archived: false });
+    assert.equal(restoreResponse.status, 200);
+    assert.deepEqual(await restoreResponse.json(), original);
+    assert.deepEqual(await getTasks(), tasks);
+    assert.equal((await request(`${taskPath}/2`, 'PATCH', { completed: true })).status, 200);
+    const added = await request(taskPath, 'POST', { title: '  Restored task  ' });
+    assert.equal(added.status, 201);
+    const newTask = await added.json();
+    assert.equal(newTask.title, 'Restored task');
+    assert.equal(newTask.completed, false);
+    const restored = { ...original, totalCount: 3, completedCount: 2 };
+    assert.deepEqual(await getProject(), restored);
+    tasks[1].completed = true;
+    tasks.push(newTask);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await getProject(), restored);
+    assert.deepEqual(await getTasks(), tasks);
+    assert.deepEqual(await (await request('/api/projects')).json(), [restored, other]);
+    assert.equal((await request(`${taskPath}/1`, 'PATCH', { completed: false })).status, 200);
+    assert.deepEqual(await getProject(), { ...restored, completedCount: 1 });
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

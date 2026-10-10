@@ -75,11 +75,23 @@ const server = createServer(async (request, response) => {
       }
     }
     const projectApi = pathname.match(/^\/api\/projects\/([1-9]\d*)$/);
-    if (request.method === 'GET' && projectApi) {
-      const project = store.find(projectApi[1]);
-      return project
-        ? json(response, 200, project)
-        : json(response, 404, { error: 'Project not found' });
+    if (projectApi) {
+      if (request.method === 'GET') {
+        const project = store.find(projectApi[1]);
+        return project
+          ? json(response, 200, project)
+          : json(response, 404, { error: 'Project not found' });
+      }
+      if (request.method === 'PATCH') {
+        const input = await readJson(request);
+        if (typeof input?.archived !== 'boolean') {
+          return json(response, 400, { error: 'Project archive state must be a boolean' });
+        }
+        const project = store.setArchived(projectApi[1], input.archived);
+        return project
+          ? json(response, 200, project)
+          : json(response, 404, { error: 'Project not found' });
+      }
     }
     if (request.method === 'GET') {
       const asset = assets.get(/^\/projects\/[1-9]\d*$/.test(pathname) ? '/' : pathname);
