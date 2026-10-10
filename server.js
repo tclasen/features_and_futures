@@ -48,6 +48,16 @@ const server = createServer(async (req, res) => {
         totalCount: Number(project.totalCount), completedCount: Number(project.completedCount),
       })));
   }
+  const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectRoute && req.method === 'PATCH') {
+    const data = await readBody(req);
+    const name = data?.name;
+    if (typeof name !== 'string' || !name.trim()) return json(res, 400, { error: 'Project name is required' });
+    const cleanName = name.trim();
+    const result = db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(cleanName, Number(projectRoute[1]));
+    if (!result.changes) return json(res, 404, { error: 'Project not found' });
+    return json(res, 200, { id: Number(projectRoute[1]), name: cleanName });
+  }
   const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (projectStateRoute && req.method === 'PATCH') {
     const data = await readBody(req);
