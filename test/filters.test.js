@@ -34,16 +34,26 @@ async function page(archived = false) {
     { id: 3, title: 'Third', completed: false, priority: 'High' },
     { id: 4, title: 'Fourth', completed: true, priority: 'Normal' },
   ];
+  const project = { id: 1, name: 'Project', archived, default_priority: 'Normal' };
   const context = vm.createContext({
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     location: { pathname: '/projects/1' },
     fetch: async (path, options) => {
       let data;
       if (options) {
-        const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
-        Object.assign(task, JSON.parse(options.body));
-        data = task;
-      } else data = path.endsWith('/tasks') ? tasks : { id: 1, name: 'Project', archived };
+        const input = JSON.parse(options.body);
+        if (path === '/api/projects/1') {
+          Object.assign(project, input);
+          data = project;
+        } else if (path.endsWith('/tasks')) {
+          data = { id: tasks.length + 1, ...input, completed: false, priority: project.default_priority };
+          tasks.push(data);
+        } else {
+          const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
+          Object.assign(task, input);
+          data = task;
+        }
+      } else data = path.endsWith('/tasks') ? tasks : project;
       return { ok: true, json: async () => structuredClone(data) };
     },
   });
@@ -52,7 +62,7 @@ async function page(archived = false) {
   const byId = id => descendants(app).find(node => node.id === id);
   const rows = () => descendants(app).filter(node => node.dataset.testid === 'task-row');
   const titles = () => rows().map(row => row.children[0].textContent);
-  return { app, tasks, byId, rows, titles };
+  return { app, tasks, project, byId, rows, titles };
 }
 
 test('combined filters retain selections, creation order, and re-evaluate edits', async () => {
@@ -103,6 +113,40 @@ test('combined filters retain selections, creation order, and re-evaluate edits'
   assert.ok(descendants(app).every(node => node.attributes.role !== 'alert' || node.hidden));
 });
 
+test('project default changes preserve filters and existing tasks; creation inherits the default', async () => {
+  const { app, tasks, project, byId, titles } = await page();
+  const defaults = byId('default-task-priority');
+  assert.equal(defaults.value, 'Normal');
+  assert.deepEqual(defaults.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.ok(!defaults.disabled);
+  const completion = byId('task-filter');
+  const priority = byId('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const originalTasks = structuredClone(tasks);
+  defaults.value = 'High';
+  await defaults.fire('change');
+  assert.equal(project.default_priority, 'High');
+  assert.deepEqual(tasks, originalTasks);
+  assert.deepEqual(titles(), ['Third']);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  const input = byId('task-title');
+  input.value = 'Inherited';
+  const form = descendants(app).find(node => node.tag === 'form' && node.children.includes(input));
+  await form.fire('submit');
+  assert.deepEqual(titles(), ['Third', 'Inherited']);
+  assert.equal(tasks.at(-1).priority, 'High');
+  defaults.value = 'Low';
+  await defaults.fire('change');
+  assert.equal(tasks.at(-1).priority, 'High');
+  assert.deepEqual(titles(), ['Third', 'Inherited']);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+});
+
 test('archived projects keep both filters usable and all task edits disabled', async () => {
   const { byId, rows, titles } = await page(true);
   for (const row of rows()) {
@@ -112,6 +156,8 @@ test('archived projects keep both filters usable and all task edits disabled', a
   }
   const completion = byId('task-filter');
   const priority = byId('priority-filter');
+  assert.equal(byId('default-task-priority').disabled, true);
+  assert.equal(byId('default-task-priority').value, 'Normal');
   assert.ok(!completion.disabled && !priority.disabled);
   completion.value = 'Completed';
   await completion.fire('change');

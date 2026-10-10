@@ -158,6 +158,35 @@ async function showProject(id) {
       } catch (error) { showError(error); }
       finally { rename.disabled = Boolean(project.archived); }
     });
+    const defaultLabel = element('label', 'Default task priority');
+    defaultLabel.htmlFor = 'default-task-priority';
+    const defaultPriority = element('select');
+    defaultPriority.id = defaultLabel.htmlFor;
+    for (const name of ['Low', 'Normal', 'High']) {
+      const option = element('option', name);
+      option.value = name;
+      defaultPriority.append(option);
+    }
+    defaultPriority.value = project.default_priority;
+    defaultPriority.disabled = Boolean(project.archived);
+    app.append(defaultLabel, defaultPriority);
+    defaultPriority.addEventListener('change', async () => {
+      if (project.archived) return;
+      defaultPriority.disabled = true;
+      alert.hidden = true;
+      try {
+        const saved = await request(`/api/projects/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ default_priority: defaultPriority.value }),
+        });
+        project.default_priority = saved.default_priority;
+      } catch (error) { showError(error); }
+      finally {
+        defaultPriority.value = project.default_priority;
+        defaultPriority.disabled = Boolean(project.archived);
+      }
+    });
     const form = element('form');
     const label = element('label', 'Task title');
     label.htmlFor = 'task-title';
