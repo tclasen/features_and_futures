@@ -367,6 +367,39 @@
             alert.hidden = true;
             drawTasks();
           });
+          const moveForm = document.createElement('form');
+          moveForm.className = 'task-rename';
+          const destination = document.createElement('select');
+          destination.setAttribute('aria-label', 'Destination project');
+          const eligibleProjects = projects.filter((candidate) => !candidate.archived && String(candidate.id) !== String(id));
+          for (const candidate of eligibleProjects) {
+            const option = document.createElement('option');
+            option.value = candidate.id;
+            option.textContent = candidate.name;
+            destination.append(option);
+          }
+          const moveButton = document.createElement('button');
+          moveButton.type = 'submit';
+          moveButton.textContent = 'Move task';
+          destination.disabled = project.archived || eligibleProjects.length === 0;
+          moveButton.disabled = destination.disabled;
+          moveForm.append(destination, moveButton);
+          moveForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/move`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+            });
+            if (!saved.ok) {
+              alert.textContent = (await saved.json()).error || 'Could not move task';
+              alert.hidden = false;
+              return;
+            }
+            const index = tasks.findIndex((item) => item.id === task.id);
+            if (index !== -1) tasks.splice(index, 1);
+            alert.hidden = true;
+            drawTasks();
+          });
           const renameForm = document.createElement('form');
           renameForm.className = 'task-rename';
           const renameInput = document.createElement('input');
@@ -411,7 +444,7 @@
             checkbox.disabled = false;
             drawTasks();
           });
-          row.append(checkbox, title, renameForm, priority, dueDateForm);
+          row.append(checkbox, title, renameForm, priority, dueDateForm, moveForm);
           list.append(row);
         }
       }

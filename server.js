@@ -37,6 +37,16 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+const needsTaskOrderMigration = !db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'sort_order');
+if (needsTaskOrderMigration) {
+  db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  // Keep the original ID order when upgrading older task tables.
+  for (const project of db.prepare('SELECT DISTINCT project_id FROM tasks').all()) {
+    const ordered = db.prepare('SELECT id FROM tasks WHERE project_id = ? ORDER BY id').all(project.project_id);
+    const updateOrder = db.prepare('UPDATE tasks SET sort_order = ? WHERE id = ?');
+    ordered.forEach((task, index) => updateOrder.run(index, task.id));
+  }
+}
 
 const json = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -51,6 +61,7 @@ async function handle(req, res) {
   const taskPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority\/?$/);
   const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority\/?$/);
   const taskDueDateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date\/?$/);
+  const taskMoveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move\/?$/);
   async function readBody() {
     let body = '';
     for await (const chunk of req) {
@@ -63,7 +74,7 @@ async function handle(req, res) {
   if (taskRoute && req.method === 'GET') {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId)
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, id ASC').all(projectId)
       .map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), completed: Boolean(task.completed) }));
     return json(res, 200, tasks);
   }
@@ -92,6 +103,23 @@ async function handle(req, res) {
     if (!result.changes) return json(res, 404, { error: 'Task not found' });
     return json(res, 200, { id: taskId, projectId, dueDate });
   }
+  if (taskMoveRoute && req.method === 'POST') {
+    const sourceId = Number(taskMoveRoute[1]);
+    const taskId = Number(taskMoveRoute[2]);
+    let body;
+    try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
+    const destinationId = Number(body.destinationProjectId);
+    const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+    const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    if (!source || !destination) return json(res, 404, { error: 'Project not found' });
+    if (source.archived || destination.archived) return json(res, 400, { error: 'Archived projects cannot move tasks' });
+    if (sourceId === destinationId) return json(res, 400, { error: 'Choose another project' });
+    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!task) return json(res, 404, { error: 'Task not found' });
+    const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next);
+    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+    return json(res, 200, { id: taskId, sourceProjectId: sourceId, destinationProjectId: destinationId });
+  }
   if (taskPriorityRoute && req.method === 'PATCH') {
     const projectId = Number(taskPriorityRoute[1]);
     const taskId = Number(taskPriorityRoute[2]);
@@ -114,7 +142,8 @@ async function handle(req, res) {
     try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
     const title = String(body.title ?? '').trim();
     if (!title) return json(res, 400, { error: 'Task title is required' });
-    const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+    const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next);
+    const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_task_priority, nextOrder);
     return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_task_priority });
   }
   if (taskRenameRoute && req.method === 'PATCH') {
