@@ -10,6 +10,8 @@ Open `http://localhost:8080`. Defaults are port 8080 and database file `data/wor
 
 Open a project to create tasks and toggle their completion checkboxes. The Task filter offers All (the default), Open, and Completed; tasks remain in creation order and belong only to their project.
 
+The Project filter defaults to Active. Archive projects from their rows, or choose Archived to open or restore them. Archived project pages retain task filtering but cannot create tasks or change completion. Every project row shows completed/total task counts, independent of task filters. Archive state and all tasks survive restarts.
+
 `GET /health` returns `{"status":"ok"}`.
 
-Run integration tests with `npm test`. Tests use an isolated temporary database and verify project/task validation, ordering, project isolation, completion changes, page serving, and persistence across process restarts.
+Run integration tests with `npm test`. Tests use an isolated temporary database and verify schema migration, project/task validation, ordering, project isolation, completion summaries, archive write protection, restoration, page serving, and persistence across process restarts.
