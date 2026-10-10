@@ -23,6 +23,7 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -36,6 +37,21 @@ if (!projectColumns.some(column => column.name === 'default_task_priority')) {
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
+if (!taskColumns.some(column => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+function isValidDueDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
 }
 
 const indexHtml = await readFile(join(root, 'index.html'));
@@ -100,7 +116,7 @@ const server = createServer(async (request, response) => {
     }
     if (route.length === 2 && route[1] === 'tasks') {
       if (request.method === 'GET') {
-        sendJson(response, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(id));
+        sendJson(response, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(id));
         return;
       }
       if (request.method === 'POST') {
@@ -157,6 +173,17 @@ const server = createServer(async (request, response) => {
         if (['Low', 'Normal', 'High'].includes(payload.priority)) {
           database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(payload.priority, taskId, id);
           sendJson(response, 200, { id: taskId, projectId: id, title: task.title, completed: task.completed, priority: payload.priority });
+          return;
+        }
+        if (typeof payload.dueDate === 'string') {
+          const dueDate = payload.dueDate.trim();
+          if (dueDate && !isValidDueDate(dueDate)) {
+            sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+            return;
+          }
+          const savedDate = dueDate || null;
+          database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(savedDate, taskId, id);
+          sendJson(response, 200, { id: taskId, projectId: id, dueDate: savedDate });
           return;
         }
         if (typeof payload.title === 'string') {

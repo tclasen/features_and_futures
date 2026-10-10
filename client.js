@@ -232,6 +232,28 @@ async function showProject(id) {
           } catch (error) { showError(error.message); }
         });
         row.append(renameForm);
+        const dueDateForm = element('form', { className: 'task-due-date-form' });
+        const dueDateInput = element('input', { type: 'text', label: 'Task due date' });
+        dueDateInput.value = task.dueDate || '';
+        dueDateInput.disabled = archived;
+        const saveDueDate = element('button', { type: 'submit', text: 'Save due date' });
+        saveDueDate.disabled = archived;
+        dueDateForm.append(dueDateInput, saveDueDate);
+        dueDateForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dueDate: dueDateInput.value })
+            });
+            task.dueDate = updated.dueDate;
+            dueDateInput.value = task.dueDate || '';
+          } catch (error) {
+            dueDateInput.value = task.dueDate || '';
+            showError(error.message);
+          }
+        });
+        row.append(dueDateForm);
         const priority = element('select', { label: 'Task priority' });
         for (const value of ['Low', 'Normal', 'High']) {
           const option = element('option', { text: value });
