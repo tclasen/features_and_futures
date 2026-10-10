@@ -92,6 +92,8 @@ test('projects validate, escape, navigate, and persist across process restarts',
 
     const invalid = await create(' ');
     assert.equal((await invalid.text()).match(/data-testid="project-row"/g).length, 2);
+    html = await (await get('/')).text();
+    assert.match(html, /data-testid="project-summary">1\/1 completed/);
     await server.stop();
     server = undefined;
     server = await start(databasePath);

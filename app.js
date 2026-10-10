@@ -23,7 +23,8 @@ function page(title, content) {
   input { border: 1px solid #8794a8; max-width: 100%; box-sizing: border-box; }
   button { background: #244db2; color: white; border: 0; cursor: pointer; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #e59e16; outline-offset: 3px; }
-  .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid #dbe1eb; }
+  button:disabled, input:disabled { cursor: not-allowed; opacity: 0.6; }
+  .project-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid #dbe1eb; }
   .project-name { overflow-wrap: anywhere; min-width: 0; }
   .project-row form { flex-shrink: 0; }
   .task-row { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-bottom: 1px solid #dbe1eb; }
@@ -64,18 +65,34 @@ export function createApplication(databasePath) {
       completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);`);
+  // Upgrade existing project databases without changing IDs or task ownership.
+  if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+  }
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
-  const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
+    COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+    WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id`);
+  const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const setArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
-  function projectsPage(error = '') {
-    const rows = listProjects.all().map(project => `
+  function projectFilter(value) {
+    return value === 'Archived' ? 'Archived' : 'Active';
+  }
+
+  function projectsPage(error = '', filter = 'Active') {
+    const rows = listProjects.all(filter === 'Archived' ? 1 : 0).map(project => `
       <div class="project-row" data-testid="project-row">
         <span class="project-name">${escapeHtml(project.name)}</span>
+        <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
+        <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+          <button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button>
+        </form>
       </div>`).join('');
     return page('Projects', `<h1>Workboard</h1>
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
@@ -83,6 +100,12 @@ export function createApplication(databasePath) {
         <label for="project-name">Project name</label>
         <input id="project-name" name="name" type="text">
         <button type="submit">Create project</button>
+      </form>
+      <form class="task-controls" action="/" method="get">
+        <label for="project-filter">Project filter</label>
+        <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
+          ${['Active', 'Archived'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+        </select>
       </form>
       <section aria-label="Projects">${rows}</section>`);
   }
@@ -99,19 +122,20 @@ export function createApplication(databasePath) {
         <form action="${path}/tasks/${task.id}" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input id="task-${task.id}" type="checkbox" name="completed" value="1"
-            aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}
+            aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}
             onchange="this.form.requestSubmit()">
           <label for="task-${task.id}">${escapeHtml(task.title)}</label>
         </form>
       </div>`).join('');
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
       <form action="/" method="get"><button type="submit">Projects</button></form>
+      ${project.archived ? '<p>Archived project</p>' : ''}
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <form class="task-controls" action="${path}/tasks" method="post">
         <input type="hidden" name="filter" value="${filter}">
         <label for="task-title">Task title</label>
         <input id="task-title" name="title" type="text">
-        <button type="submit">Create task</button>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
       </form>
       <form class="task-controls" action="${path}" method="get">
         <label for="task-filter">Task filter</label>
@@ -134,7 +158,7 @@ export function createApplication(databasePath) {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
       } else if (request.method === 'GET' && pathname === '/') {
-        html(response, 200, projectsPage());
+        html(response, 200, projectsPage('', projectFilter(searchParams.get('filter'))));
       } else if (request.method === 'POST' && pathname === '/projects') {
         const form = await readForm(request);
         const name = (form.get('name') ?? '').trim();
@@ -144,6 +168,17 @@ export function createApplication(databasePath) {
         }
         insertProject.run(name);
         response.writeHead(303, { Location: '/' });
+        response.end();
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/(archive|restore)$/.test(pathname)) {
+        const [, , projectId, action] = pathname.split('/');
+        const id = Number(projectId);
+        const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
+        if (!project) {
+          html(response, 404, page('Not found', '<h1>Project not found</h1>'));
+          return;
+        }
+        setArchived.run(action === 'archive' ? 1 : 0, id);
+        response.writeHead(303, { Location: action === 'archive' ? '/' : '/?filter=Archived' });
         response.end();
       } else if (request.method === 'GET' && /^\/projects\/\d+$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
@@ -163,6 +198,10 @@ export function createApplication(databasePath) {
         }
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          html(response, 403, projectPage(project, filter, 'Archived project cannot be changed'));
+          return;
+        }
         if (taskId === undefined) {
           const title = (form.get('title') ?? '').trim();
           if (!title) {
