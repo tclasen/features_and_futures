@@ -83,6 +83,9 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.equal((html.match(/>Archive project<\/button>/g) || []).length, 2);
     const detail = await (await fetch(base + paths[0])).text();
     assert.match(detail, /<h1>First project<\/h1>/);
+    assert.match(detail, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(detail, /<input id="new-project-name" name="name" type="text">/);
+    assert.match(detail, /<button type="submit">Rename project<\/button>/);
     assert.match(detail, /action="\/".*button type="submit">Projects/);
     assert.equal((await fetch(`${base}/projects/999999`)).status, 404);
     async function postTask(path, values) {
@@ -148,6 +151,10 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.doesNotMatch(archivedHtml, />Archive project<\/button>/);
     const archivedDetail = await (await fetch(base + paths[0])).text();
     assert.match(archivedDetail, /Archived project/);
+    assert.match(archivedDetail, /<input id="new-project-name" name="name" type="text" disabled>/);
+    assert.match(archivedDetail, /<button type="submit" disabled>Rename project/);
+    assert.equal((await postTask(paths[0] + '/rename', { name: 'Blocked rename' })).status, 403);
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedDetail);
     assert.match(archivedDetail, /<button type="submit" disabled>Create task/);
     assert.equal((archivedDetail.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
     assert.match(archivedDetail, /aria-label="Complete First task" checked disabled/);
@@ -176,6 +183,27 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     await start();
     assert.equal(await (await fetch(base)).text(), restoredList);
     assert.equal(await (await fetch(base + paths[0])).text(), restoredDetail);
+    const renamePath = paths[0] + '/rename';
+    for (const name of ['', '  \t\n ']) {
+      const invalid = await postTask(renamePath, { name });
+      assert.equal(invalid.status, 200);
+      const invalidHtml = await invalid.text();
+      assert.match(invalidHtml, /role="alert">Project name is required/);
+      assert.match(invalidHtml, /<h1>First project<\/h1>/);
+      assert.equal(await (await fetch(base)).text(), restoredList);
+    }
+    assert.equal((await postTask('/projects/999999/rename', { name: 'Missing' })).status, 404);
+    const renamed = await postTask(renamePath, { name: '  <Renamed & project>  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), paths[0] + '?filter=Completed');
+    const renamedDetail = await (await fetch(base + paths[0])).text();
+    assert.equal(renamedDetail, restoredDetail.replaceAll('First project', '&lt;Renamed &amp; project&gt;'));
+    const renamedList = await (await fetch(base)).text();
+    assert.equal(renamedList, restoredList.replace('First project', '&lt;Renamed &amp; project&gt;'));
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedDetail);
     await postTask(completionPath, {});
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
     assert.equal((await postTask(taskPath, { title: 'After restore' })).status, 303);
