@@ -30,6 +30,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 
 const page = await readFile(new URL('./index.html', import.meta.url));
 
@@ -106,7 +109,7 @@ const server = createServer(async (req, res) => {
     const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return sendJson(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+      return sendJson(res, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
     }
     if (req.method === 'POST') {
       if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
@@ -120,6 +123,30 @@ const server = createServer(async (req, res) => {
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  const taskDueDateMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
+  if (req.method === 'POST' && taskDueDateMatch) {
+    let data;
+    try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    const rawDate = typeof data.due_date === 'string' ? data.due_date.trim() : '';
+    let dueDate = null;
+    if (rawDate) {
+      const match = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (year < 1 || month < 1 || month > 12 || day < 1 || day > monthDays[month - 1]) {
+        return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      }
+      dueDate = rawDate;
+    }
+    const taskId = Number(taskDueDateMatch[1]);
+    const task = db.prepare('SELECT t.id, p.archived FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(taskId);
+    if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    if (task.archived) return sendJson(res, 409, { error: 'Archived project' });
+    db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, taskId);
+    return sendJson(res, 200, { due_date: dueDate });
+  }
   if (req.method === 'POST' && taskRenameMatch) {
     let data;
     try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
