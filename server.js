@@ -10,12 +10,15 @@ const db = new DatabaseSync(databasePath);
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
   )
 `);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 db.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +28,10 @@ db.exec(`
   )
 `);
 db.exec('PRAGMA foreign_keys = ON');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -60,6 +67,20 @@ const server = createServer(async (req, res) => {
     }
     return;
   }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (req.method === 'PATCH' && archiveMatch) {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const { archived } = JSON.parse(body);
+      if (typeof archived !== 'boolean') { sendJson(res, 400, { error: 'Invalid archive state' }); return; }
+      const project = getProject.get(Number(archiveMatch[1]));
+      if (!project) { sendJson(res, 404, { error: 'Project not found' }); return; }
+      setArchived.run(archived ? 1 : 0, Number(archiveMatch[1]));
+      sendJson(res, 200, { archived });
+    } catch { sendJson(res, 400, { error: 'Invalid request' }); }
+    return;
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (req.method === 'GET' && tasksMatch) {
     const projectId = Number(tasksMatch[1]);
@@ -74,7 +95,9 @@ const server = createServer(async (req, res) => {
       const title = JSON.parse(body).title;
       const projectId = Number(tasksMatch[1]);
       if (typeof title !== 'string' || !title.trim()) { sendJson(res, 400, { error: 'Task title is required' }); return; }
-      if (!getProject.get(projectId)) { sendJson(res, 404, { error: 'Project not found' }); return; }
+      const project = getProject.get(projectId);
+      if (!project) { sendJson(res, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(res, 409, { error: 'Archived projects cannot have tasks' }); return; }
       const result = createTask.run(projectId, title.trim());
       sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title: title.trim(), completed: false });
     } catch { sendJson(res, 400, { error: 'Invalid request' }); }
@@ -87,6 +110,9 @@ const server = createServer(async (req, res) => {
       for await (const chunk of req) body += chunk;
       const { completed } = JSON.parse(body);
       if (typeof completed !== 'boolean') { sendJson(res, 400, { error: 'Invalid completion state' }); return; }
+      const project = getProject.get(Number(taskMatch[1]));
+      if (!project) { sendJson(res, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(res, 409, { error: 'Archived project tasks are read-only' }); return; }
       const result = updateTask.run(completed ? 1 : 0, Number(taskMatch[2]), Number(taskMatch[1]));
       if (!result.changes) { sendJson(res, 404, { error: 'Task not found' }); return; }
       sendJson(res, 200, { completed });
