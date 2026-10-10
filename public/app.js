@@ -142,6 +142,32 @@ async function render() {
           if (response.ok) await loadTasks();
         });
         row.append(priority);
+        const dueForm = element('form', undefined, 'create-form');
+        const dueInput = element('input');
+        dueInput.type = 'text';
+        dueInput.value = task.due_date || '';
+        dueInput.setAttribute('aria-label', 'Task due date');
+        dueInput.disabled = project.archived;
+        const dueButton = element('button', 'Save due date');
+        dueButton.type = 'submit';
+        dueButton.disabled = project.archived;
+        dueForm.append(dueInput, dueButton);
+        const dueAlert = element('p', '', 'alert');
+        dueAlert.setAttribute('role', 'alert');
+        dueAlert.hidden = true;
+        dueForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const response = await fetch(`/api/tasks/${task.id}/due-date`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date: dueInput.value }) });
+          if (!response.ok) {
+            dueAlert.textContent = 'Due date must be a valid YYYY-MM-DD date';
+            dueAlert.hidden = false;
+            return;
+          }
+          dueAlert.hidden = true;
+          const saved = await response.json();
+          dueInput.value = saved.due_date || '';
+        });
+        row.append(dueForm, dueAlert);
         const renameForm = element('form', undefined, 'create-form');
         const renameInput = element('input');
         renameInput.type = 'text';

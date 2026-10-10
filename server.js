@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+  due_date TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 // Upgrade databases created before project archiving was introduced.
@@ -29,6 +30,7 @@ if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER T
 if (!projectColumns.some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+if (!taskColumns.some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -76,7 +78,7 @@ const server = http.createServer(async (req, res) => {
   }
   const taskListMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskListMatch && req.method === 'GET') {
-    return send(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC').all(Number(taskListMatch[1])).map(t => ({ ...t, completed: !!t.completed })));
+    return send(res, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id ASC').all(Number(taskListMatch[1])).map(t => ({ ...t, completed: !!t.completed })));
   }
   if (taskListMatch && req.method === 'POST') {
     try {
@@ -90,6 +92,28 @@ const server = http.createServer(async (req, res) => {
       const priority = ['Low', 'Normal', 'High'].includes(body.priority) ? body.priority : owner.default_priority;
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
       return send(res, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
+  if (dueDateMatch && req.method === 'PATCH') {
+    try {
+      const body = await readBody(req);
+      const raw = typeof body.due_date === 'string' ? body.due_date.trim() : '';
+      let dueDate = null;
+      if (raw) {
+        const match = raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return send(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const candidate = new Date(0);
+        candidate.setUTCHours(0, 0, 0, 0);
+        candidate.setUTCFullYear(year, month - 1, day);
+        if (year < 1 || candidate.getUTCFullYear() !== year || candidate.getUTCMonth() !== month - 1 || candidate.getUTCDate() !== day)
+          return send(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        dueDate = raw;
+      }
+      const result = db.prepare(`UPDATE tasks SET due_date = ? WHERE id = ? AND project_id IN
+        (SELECT id FROM projects WHERE archived = 0)`).run(dueDate, Number(dueDateMatch[1]));
+      return result.changes ? send(res, 200, { ok: true, due_date: dueDate }) : send(res, 404, { error: 'Task not found or project archived' });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
