@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
-const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -42,6 +46,16 @@ const findProject = db.prepare('SELECT id, name, archived, default_priority FROM
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
+
+function validDueDate(value) {
+  if (value === '') return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -152,6 +166,11 @@ function projectPage(project, error = '') {
           <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
+        <form action="/projects/${project.id}/tasks/${task.id}/due-date" method="post" data-task-due-date>
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <input id="task-due-date-${task.id}" name="due_date" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
       </div>`).join('')}</section>
     <script>
       const filter = document.getElementById('task-filter');
@@ -242,6 +261,32 @@ function projectPage(project, error = '') {
       });
     </script>
     <script>
+      document.querySelectorAll('[data-task-due-date]').forEach(form => {
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          const input = form.elements.due_date;
+          const dueDate = input.value.trim();
+          const button = form.querySelector('button');
+          const alert = document.getElementById('task-error');
+          alert.textContent = '';
+          button.disabled = true;
+          try {
+            const response = await fetch(form.action, {
+              method: 'POST', body: new URLSearchParams({ due_date: dueDate })
+            });
+            if (response.status === 422) {
+              alert.textContent = 'Due date must be a valid YYYY-MM-DD date';
+              return;
+            }
+            if (!response.ok) throw new Error('Due date update failed');
+            input.value = dueDate;
+          } catch {
+            alert.textContent = 'Could not save task due date. Please try again.';
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
       const defaultPriority = document.getElementById('default-task-priority');
       defaultPriority.addEventListener('change', async () => {
         const priority = defaultPriority.value;
@@ -352,7 +397,7 @@ const server = http.createServer(async (req, res) => {
       renameProject.run(name, project.id);
       res.writeHead(303, { Location: `/projects/${project.id}` });
       res.end();
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename|priority))?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(completion|rename|priority|due-date))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(Number(parts[2]));
       if (!project) {
@@ -372,6 +417,15 @@ const server = http.createServer(async (req, res) => {
         }
         createTask.run(project.id, title, project.default_priority);
         res.writeHead(303, { Location: `/projects/${project.id}` });
+        res.end();
+      } else if (parts[5] === 'due-date') {
+        const dueDate = (form.get('due_date') || '').trim();
+        if (!validDueDate(dueDate)) {
+          html(res, 422, projectPage(project, 'Due date must be a valid YYYY-MM-DD date'));
+          return;
+        }
+        const result = setTaskDueDate.run(dueDate, Number(parts[4]), project.id);
+        res.writeHead(result.changes ? 204 : 404);
         res.end();
       } else if (parts[5] === 'priority') {
         const priority = form.get('priority');

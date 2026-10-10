@@ -29,6 +29,10 @@ test('combined filters retain selections and reevaluate completion, priority and
     const row = { hidden: false, checkbox, select, span,
       querySelector: selector => selector === '[data-priority-url]' ? select : selector === 'span' ? span : checkbox
     };
+    row.dueDateForm = Object.assign(control(''), {
+      action: `/due-date/${index}`, elements: { due_date: control('') },
+      querySelector: () => button
+    });
     row.form = Object.assign(control(''), {
       action: `/rename/${index}`, elements: { title: control(span.textContent) },
       querySelector: () => button, closest: () => row
@@ -36,16 +40,18 @@ test('combined filters retain selections and reevaluate completion, priority and
     return row;
   });
   let saveOk = true;
+  let responseStatus = 204;
   const context = {
     URLSearchParams,
-    fetch: async () => ({ ok: saveOk }),
+    fetch: async () => ({ ok: saveOk, status: responseStatus }),
     document: {
       getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : alert,
       querySelectorAll: selector => ({
         '[data-testid="task-row"]': rows,
         '[data-completion-url]': rows.map(row => row.checkbox),
         '[data-priority-url]': rows.map(row => row.select),
-        '[data-task-rename]': rows.map(row => row.form)
+        '[data-task-rename]': rows.map(row => row.form),
+        '[data-task-due-date]': rows.map(row => row.dueDateForm)
       })[selector]
     }
   };
@@ -74,6 +80,21 @@ test('combined filters retain selections and reevaluate completion, priority and
   assert.equal(completionFilter.value, 'Open');
   assert.equal(priorityFilter.value, 'High');
   assert.deepEqual(visible(), [2]);
+  rows[2].dueDateForm.elements.due_date.value = '  2024-02-29  ';
+  await rows[2].dueDateForm.submit({ preventDefault() {} });
+  assert.equal(rows[2].dueDateForm.elements.due_date.value, '2024-02-29');
+  assert.equal(completionFilter.value, 'Open');
+  assert.equal(priorityFilter.value, 'High');
+  assert.deepEqual(visible(), [2]);
+  responseStatus = 422;
+  rows[2].dueDateForm.elements.due_date.value = '2023-02-29';
+  await rows[2].dueDateForm.submit({ preventDefault() {} });
+  assert.equal(alert.textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.deepEqual(visible(), [2]);
+  responseStatus = 204;
+  rows[2].dueDateForm.elements.due_date.value = '  ';
+  await rows[2].dueDateForm.submit({ preventDefault() {} });
+  assert.equal(rows[2].dueDateForm.elements.due_date.value, '');
   rows[2].form.elements.title.value = '  Renamed task  ';
   await rows[2].form.submit({ preventDefault() {} });
   assert.equal(rows[2].span.textContent, 'Renamed task');
