@@ -10,6 +10,8 @@ Open http://localhost:8080. Defaults are port 8080 and `data/workboard.sqlite`; 
 
 Use the Project filter to switch between Active and Archived projects. Archive or restore projects from their rows; summaries count all completed tasks. Archived project pages allow viewing and filtering tasks but not creating or completing them. Archive state persists in SQLite, and existing databases are migrated automatically.
 
+On active project pages, use New project name and Rename project to rename without changing the URL, order, or tasks. Names are trimmed and cannot be blank. Archived projects cannot be renamed until restored. Renamed names persist across restarts.
+
 Health: `GET /health` returns `{"status":"ok"}`.
 
 Run the isolated integration tests (including process-restart persistence):
