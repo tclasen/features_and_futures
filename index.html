@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17202b; background: #f5f7fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(760px, calc(100% - 32px)); margin: 56px auto; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    form, .project-row, .detail-header { display: flex; align-items: center; gap: 12px; }
+    form { margin-bottom: 20px; }
+    label { font-weight: 600; }
+    input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #aeb8c4; border-radius: 5px; font: inherit; background: white; }
+    button { padding: 10px 14px; border: 0; border-radius: 5px; color: white; background: #2459a6; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #194681; }
+    .project-row { justify-content: space-between; padding: 14px 16px; margin: 8px 0; background: white; border: 1px solid #dce2e9; border-radius: 6px; }
+    .project-name { overflow-wrap: anywhere; }
+    [role="alert"] { color: #a32222; margin: 12px 0; }
+    .detail-header { margin-bottom: 18px; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function projects() {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error('Unable to load projects');
+      return response.json();
+    }
+    async function renderList() {
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" aria-label="Project name"><button type="submit">Create project</button></form>
+        <div id="message" role="alert" hidden></div><section id="project-list" aria-label="Projects"></section>`;
+      const list = app.querySelector('#project-list');
+      const renderRows = async () => {
+        list.innerHTML = (await projects()).map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(project.name)}</span><button type="button" data-open="${project.id}">Open project</button></div>`).join('');
+        list.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
+          window.location.href = `/projects/${encodeURIComponent(button.dataset.open)}`;
+        }));
+      };
+      await renderRows();
+      app.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = app.querySelector('#project-name');
+        const message = app.querySelector('#message');
+        const name = input.value.trim();
+        if (!name) { message.textContent = 'Project name is required'; message.hidden = false; return; }
+        const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!response.ok) { message.textContent = 'Project name is required'; message.hidden = false; return; }
+        message.hidden = true;
+        input.value = '';
+        await renderRows();
+      });
+    }
+    async function renderDetail(id) {
+      const project = await fetch(`/api/projects/${encodeURIComponent(id)}`).then(async response => response.ok ? response.json() : null);
+      if (!project) { app.innerHTML = '<h1>Project not found</h1><button id="back">Projects</button>'; }
+      else app.innerHTML = `<div class="detail-header"><button id="back" type="button">Projects</button></div><h1>${escapeHtml(project.name)}</h1>`;
+      app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
+    }
+    const match = window.location.pathname.match(/^\/projects\/(\d+)\/?$/);
+    if (match) renderDetail(match[1]).catch(() => { app.innerHTML = '<h1>Unable to load project</h1>'; });
+    else renderList().catch(() => { app.innerHTML = '<h1>Unable to load projects</h1>'; });
+  </script>
+</body>
+</html>
