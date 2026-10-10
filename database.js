@@ -62,10 +62,10 @@ export function openWorkboard(databasePath) {
       return { id: Number(result.lastInsertRowid), name: trimmedName };
     },
     tasks: {
-      list(projectId, filter = 'all') {
+      list(projectId, filter = 'all', priorityFilter = 'all') {
         return listTasks.all(projectId).filter((task) => (
           filter === 'open' ? !task.completed : filter === 'completed' ? task.completed : true
-        ));
+        ) && (priorityFilter === 'all' || task.priority === priorityFilter));
       },
       create(projectId, title) {
         if (find.get(projectId)?.archived) return null;

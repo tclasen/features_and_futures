@@ -53,13 +53,15 @@ export function projectsPage(projects, error = '', filter = 'active') {
     </section>`);
 }
 
-export function projectPage(project, tasks, filter = 'all', error = '') {
+export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all') {
+  const filterFields = `<input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="post" action="/projects/${project.id}/rename" class="create-form">
-      <input type="hidden" name="filter" value="${filter}">
+      ${filterFields}
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
         <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
@@ -67,7 +69,7 @@ export function projectPage(project, tasks, filter = 'all', error = '') {
       </div>
     </form>
     <form method="post" action="/projects/${project.id}/tasks" class="create-form">
-      <input type="hidden" name="filter" value="${filter}">
+      ${filterFields}
       <label for="task-title">Task title</label>
       <div class="form-controls">
         <input id="task-title" name="title" type="text">
@@ -81,17 +83,22 @@ export function projectPage(project, tasks, filter = 'all', error = '') {
         ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
           `<option value="${value}"${filter === value ? ' selected' : ''}>${label}</option>`).join('')}
       </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter">
+        ${[['all', 'All'], ['low', 'Low'], ['normal', 'Normal'], ['high', 'High']].map(([value, label]) =>
+          `<option value="${value}"${priorityFilter === value ? ' selected' : ''}>${label}</option>`).join('')}
+      </select>
     </form>
     <section aria-label="Tasks" class="tasks">
       ${tasks.length ? tasks.map((task) => `
         <div data-testid="task-row" class="task-row">
           <span>${escapeHtml(task.title)}</span>
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion" data-submit-on-change>
-            <input type="hidden" name="filter" value="${filter}">
+            ${filterFields}
             <input type="checkbox" name="completed" value="true" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
           </form>
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority" data-submit-on-change>
-            <input type="hidden" name="filter" value="${filter}">
+            ${filterFields}
             <label for="task-priority-${task.id}">Task priority</label>
             <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}>
               ${[['low', 'Low'], ['normal', 'Normal'], ['high', 'High']].map(([value, label]) =>
@@ -99,7 +106,7 @@ export function projectPage(project, tasks, filter = 'all', error = '') {
             </select>
           </form>
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename">
-            <input type="hidden" name="filter" value="${filter}">
+            ${filterFields}
             <label for="new-task-title-${task.id}">New task title</label>
             <div class="form-controls">
               <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
