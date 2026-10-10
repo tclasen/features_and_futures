@@ -16,7 +16,9 @@
     button:hover { background: #104a99; }
     #alert { color: #a51c30; margin: 0 0 16px; }
     #alert:empty { display: none; }
-    #projects { display: grid; gap: 10px; }
+    #projects, #tasks { display: grid; gap: 10px; }
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border: 1px solid #d9e0e6; border-radius: 6px; }
+    .task-row input { min-height: auto; }
     .project-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #d9e0e6; border-radius: 6px; }
     @media (max-width: 520px) { main { margin-top: 28px; } form { align-items: stretch; flex-direction: column; } }
   </style>
@@ -31,8 +33,35 @@
     if (path.startsWith('/projects/')) {
       const id = decodeURIComponent(path.slice('/projects/'.length));
       const project = projects.find(item => String(item.id) === id);
-      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${project ? escapeHtml(project.name) : 'Project not found'}</h1>`;
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${project ? escapeHtml(project.name) : 'Project not found'}</h1>${project ? `<form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"><button type="submit">Create task</button></form><p id="alert" role="alert" aria-live="polite"></p><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><section id="tasks" aria-label="Tasks"></section>` : ''}`;
       document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+      if (project) {
+        const endpoint = `/api/projects/${encodeURIComponent(id)}/tasks`;
+        const tasks = await fetch(endpoint).then(r => r.json());
+        const list = document.querySelector('#tasks');
+        const alert = document.querySelector('#alert');
+        function renderTasks() {
+          const filter = document.querySelector('#task-filter').value;
+          list.innerHTML = tasks.filter(task => filter === 'All' || (filter === 'Completed') === task.completed).map(task => `<div class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} data-id="${task.id}"></div>`).join('');
+          list.querySelectorAll('input').forEach(input => input.addEventListener('change', async () => {
+            const task = tasks.find(item => String(item.id) === input.dataset.id);
+            const response = await fetch(`${endpoint}/${input.dataset.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: input.checked }) });
+            if (response.ok) { task.completed = input.checked; renderTasks(); }
+          }));
+        }
+        renderTasks();
+        document.querySelector('#task-filter').addEventListener('change', renderTasks);
+        document.querySelector('#task-form').addEventListener('submit', async event => {
+          event.preventDefault();
+          const input = document.querySelector('#task-title');
+          const title = input.value.trim();
+          if (!title) { alert.textContent = 'Task title is required'; return; }
+          const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+          if (!response.ok) { alert.textContent = 'Task title is required'; return; }
+          tasks.push(await response.json());
+          input.value = ''; alert.textContent = ''; renderTasks();
+        });
+      }
     } else {
       app.innerHTML = `<h1>Workboard</h1>
         <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" aria-label="Project name"><button type="submit">Create project</button></form>

@@ -10,7 +10,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
-)`);
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);`);
 const html = await readFile(path.join(here, 'index.html'));
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -37,6 +44,28 @@ const server = http.createServer(async (req, res) => {
     if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), name }));
+  }
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+  if (taskRoute) {
+    const projectId = Number(taskRoute[1]);
+    if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (!taskRoute[2] && req.method === 'GET') {
+      return send(res, 200, JSON.stringify(db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(t => ({ ...t, completed: Boolean(t.completed) }))));
+    }
+    if (!taskRoute[2] && req.method === 'POST') {
+      const body = await requestBody(req);
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
+    }
+    if (taskRoute[2] && req.method === 'PATCH') {
+      const body = await requestBody(req);
+      if (typeof body?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), Number(taskRoute[2]), projectId);
+      if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+      return send(res, 200, JSON.stringify({ ok: true }));
+    }
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
     return send(res, 200, html, 'text/html; charset=utf-8');
