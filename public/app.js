@@ -74,7 +74,28 @@ function renderTasks() {
       task.title = newTitle;
       renderTasks();
     });
-    row.append(title, renameInput, renameButton, priority, checkbox);
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.value = task.dueDate || '';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.disabled = Boolean(window.currentProjectArchived);
+    const dueDateButton = document.createElement('button');
+    dueDateButton.type = 'button';
+    dueDateButton.textContent = 'Save due date';
+    dueDateButton.disabled = Boolean(window.currentProjectArchived);
+    dueDateButton.addEventListener('click', async () => {
+      const dueDate = dueDateInput.value.trim();
+      const response = await fetch(`/api/tasks/${task.id}/due-date`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate }) });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        showTaskError(result.error || 'Unable to save due date');
+        return;
+      }
+      task.dueDate = dueDate || null;
+      dueDateInput.value = task.dueDate || '';
+      taskMessage.hidden = true;
+    });
+    row.append(title, renameInput, renameButton, priority, checkbox, dueDateInput, dueDateButton);
     container.append(row);
   }
 }
