@@ -113,10 +113,16 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let input;
     try { input = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
-    if (typeof input.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
     const task = db.prepare('SELECT project_id FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
     if (!task) return json(res, 404, { error: 'Task not found' });
     if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) return json(res, 409, { error: 'Archived project' });
+    if (typeof input.title === 'string') {
+      const title = input.title.trim();
+      if (!title) return json(res, 400, { error: 'Task title is required' });
+      db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, title });
+    }
+    if (typeof input.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
     db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]));
     return json(res, 200, { ok: true });
   }
