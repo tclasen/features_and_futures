@@ -26,7 +26,7 @@ const taskIds = html => [...html.matchAll(/data-completion-url="\/projects\/\d+\
 const destinations = html => [...html.matchAll(/<select id="destination-project-\d+"[^>]*>([\s\S]*?)<\/select>/g)]
   .map(match => [...match[1].matchAll(/<option value="(\d+)">([^<]*)<\/option>/g)].map(option => [Number(option[1]), option[2]]));
 
-test('task moves append, preserve identity and data, validate destinations and persist across restarts', async () => {
+test('task moves append on first arrival, restore prior positions, preserve data and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const dbPath = join(directory, 'db.sqlite');
   const legacy = new DatabaseSync(dbPath);
@@ -86,7 +86,7 @@ test('task moves append, preserve identity and data, validate destinations and p
     server = await start(dbPath);
     assert.deepEqual(taskIds(await get('/projects/2')), [3, 1, 5]);
     assert.equal((await move(2, 1, '1')).status, 204);
-    assert.deepEqual(taskIds(await get('/projects/1')), [2, 4, 1]);
+    assert.deepEqual(taskIds(await get('/projects/1')), [1, 2, 4]);
     assert.equal((await move(1, 2, '2')).status, 204); // Blank date and Normal priority survive.
     detail = await get('/projects/2');
     assert.deepEqual(taskIds(detail), [3, 5, 2]);
@@ -105,10 +105,10 @@ test('task moves append, preserve identity and data, validate destinations and p
     assert.doesNotMatch(detail, /id="destination-project-1"[^>]* disabled/);
     assert.match(detail, /id="task-due-date-1"[^>]*value="0001-01-01"/);
     assert.equal((await move(1, 1, '2')).status, 204);
-    assert.deepEqual(taskIds(await get('/projects/2')), [3, 5, 2, 1]);
+    assert.deepEqual(taskIds(await get('/projects/2')), [3, 1, 5, 2]);
     await server.stop();
     server = await start(dbPath);
-    assert.deepEqual(taskIds(await get('/projects/2')), [3, 5, 2, 1]);
+    assert.deepEqual(taskIds(await get('/projects/2')), [3, 1, 5, 2]);
     assert.match(await get('/'), /data-testid="project-summary">1\/4 completed/);
   } finally {
     if (server) await server.stop();
