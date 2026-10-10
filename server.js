@@ -173,22 +173,42 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
     }
     if (taskId && taskRoute[3] === '/move' && request.method === 'POST') {
-      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
       const body = await readJson(request);
       const destinationId = Number(body?.destination_project_id);
-      const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
-      if (!destination || destination.archived || destinationId === projectId) {
-        return sendJson(response, 400, { error: 'Invalid destination project' });
+      // Validate ownership and both project states in the same write transaction
+      // as the move so a task can never be appended using a stale destination.
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+        if (!source || source.archived) {
+          db.exec('ROLLBACK');
+          return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+        }
+        const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
+        if (!destination || destination.archived || destinationId === projectId) {
+          db.exec('ROLLBACK');
+          return sendJson(response, 400, { error: 'Invalid destination project' });
+        }
+        const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+        if (!task) {
+          db.exec('ROLLBACK');
+          return sendJson(response, 404, { error: 'Task not found' });
+        }
+        const result = db.prepare(`
+          UPDATE tasks
+          SET project_id = ?,
+              position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0)
+          WHERE id = ? AND project_id = ?
+        `).run(destinationId, destinationId, taskId, projectId);
+        if (!result.changes) {
+          db.exec('ROLLBACK');
+          return sendJson(response, 404, { error: 'Task not found' });
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
       }
-      const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
-      if (!task) return sendJson(response, 404, { error: 'Task not found' });
-      db.prepare(`
-        UPDATE tasks
-        SET project_id = ?,
-            position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0)
-        WHERE id = ? AND project_id = ?
-      `)
-        .run(destinationId, destinationId, taskId, projectId);
       return sendJson(response, 200, { id: taskId, project_id: destinationId });
     }
     if (taskId && request.method === 'PATCH') {
