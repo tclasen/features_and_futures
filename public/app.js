@@ -330,7 +330,24 @@ async function renderProject(id) {
       priority.addEventListener('change', () => {
         saveTask(task, { priority: priority.value }, row);
       });
-      row.append(taskRenameForm, priorityLabel, priority);
+      const dueDateForm = element('form');
+      const dueDateLabel = element('label', 'Task due date');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      const dueDateInput = element('input');
+      dueDateInput.type = 'text';
+      dueDateInput.id = dueDateLabel.htmlFor;
+      dueDateInput.name = 'due_date';
+      dueDateInput.value = task.due_date;
+      dueDateInput.disabled = checkbox.disabled;
+      const saveDueDate = element('button', 'Save due date');
+      saveDueDate.type = 'submit';
+      saveDueDate.disabled = checkbox.disabled;
+      dueDateForm.append(dueDateLabel, dueDateInput, saveDueDate);
+      dueDateForm.addEventListener('submit', event => {
+        event.preventDefault();
+        saveTask(task, { due_date: dueDateInput.value }, row);
+      });
+      row.append(taskRenameForm, priorityLabel, priority, dueDateForm);
       list.append(row);
     }
   }

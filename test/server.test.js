@@ -436,11 +436,75 @@ test('archive and priority migrations preserve existing project IDs, tasks, and 
     const expected = { id: 17, name: 'Existing project', archived: false, default_priority: 'Normal', total: 1, completed: 1 };
     assert.deepEqual(await (await request('/api/projects')).json(), [expected]);
     assert.deepEqual(await (await request('/api/projects/17/tasks')).json(), [
-      { id: 23, title: 'Existing task', completed: true, priority: 'Normal' },
+      { id: 23, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
     ]);
     await server.stop();
     server = await start(databasePath);
     assert.deepEqual(await (await request('/api/projects/17')).json(), expected);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
+test('due dates preserve task data, ownership and summaries across restart and archive/restore', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${server.url}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const project = await (await request('/api/projects', 'POST', { name: 'Owner' })).json();
+    const other = await (await request('/api/projects', 'POST', { name: 'Other' })).json();
+    const path = `/api/projects/${project.id}`;
+    const tasksPath = `${path}/tasks`;
+    const first = await (await request(tasksPath, 'POST', { title: 'First' })).json();
+    const second = await (await request(tasksPath, 'POST', { title: 'Second' })).json();
+    const taskPath = `${tasksPath}/${first.id}`;
+    assert.equal(first.due_date, '');
+    assert.equal(second.due_date, '');
+    await request(taskPath, 'PATCH', { completed: true });
+    await request(taskPath, 'PATCH', { priority: 'High' });
+    first.completed = true;
+    first.priority = 'High';
+    const summary = { ...project, total: 2, completed: 1 };
+    for (const due_date of [' 0001-01-01 ', '2000-02-29', '9999-12-31']) {
+      const response = await request(taskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 200);
+      first.due_date = due_date.trim();
+      assert.deepEqual(await response.json(), first);
+      assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+      assert.deepEqual(await (await request(path)).json(), summary);
+    }
+    for (const due_date of ['1900-02-29', '2024-04-31', '0000-01-01', '2024-1-01', null, 123]) {
+      const response = await request(taskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    }
+    assert.equal((await request(`/api/projects/${other.id}/tasks/${first.id}`, 'PATCH', { due_date: '2024-01-01' })).status, 404);
+    assert.equal((await request(taskPath, 'PATCH', { due_date: '', title: 'Mixed' })).status, 400);
+    first.title = 'Renamed';
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { title: 'Renamed' })).json(), first);
+    await request(path, 'PATCH', { archived: true });
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    assert.equal((await request(taskPath, 'PATCH', { due_date: '' })).status, 409);
+    await request(path, 'PATCH', { archived: false });
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    for (const due_date of ['', ' \t\n ']) {
+      first.due_date = '';
+      assert.deepEqual(await (await request(taskPath, 'PATCH', { due_date })).json(), first);
+    }
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(tasksPath)).json(), [first, second]);
+    assert.deepEqual(await (await request(path)).json(), summary);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

@@ -43,7 +43,7 @@ async function page(archived = false, beforeSave = async () => {}) {
     { id: 2, title: 'Second', completed: true, priority: 'Low' },
     { id: 3, title: 'Third', completed: false, priority: 'Normal' },
     { id: 4, title: 'Fourth', completed: true, priority: 'High' },
-  ];
+  ].map(task => ({ ...task, due_date: '' }));
   const writes = [];
   const project = { id: 1, name: 'Example', archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -63,7 +63,7 @@ async function page(archived = false, beforeSave = async () => {}) {
         data = target;
       } else if (options?.method === 'POST' && path.endsWith('/tasks')) {
         data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
-          completed: false, priority: project.default_priority };
+          completed: false, priority: project.default_priority, due_date: '' };
         tasks.push(data);
       } else if (path.endsWith('/tasks')) data = tasks;
       else data = project;
@@ -125,7 +125,7 @@ test('task edits re-evaluate both filters without resetting them; rename retains
   assert.equal(p.byId('priority-filter').value, 'Low');
   await p.choose('task-filter', 'Completed');
   assert.deepEqual(p.titles(), ['Renamed', 'Second']);
-  assert.deepEqual(p.tasks[0], { id: 1, title: 'Renamed', completed: true, priority: 'Low' });
+  assert.deepEqual(p.tasks[0], { id: 1, title: 'Renamed', completed: true, priority: 'Low', due_date: '' });
 });
 
 test('completion edits keep the clicked checkbox attached until saving finishes', async () => {
@@ -224,5 +224,39 @@ test('archived projects keep both filters usable and all task edits disabled', a
   for (const node of p.rows()[0].all().filter(node => ['input', 'button', 'select'].includes(node.tag))) {
     assert.equal(node.disabled, true);
   }
+  assert.deepEqual(p.writes, []);
+});
+
+
+test('due date saves and clears preserve selected filters and other task fields', async () => {
+  const p = await page();
+  await p.choose('task-filter', 'Open');
+  await p.choose('priority-filter', 'High');
+  const original = { ...p.tasks[0] };
+  for (const value of ['2024-02-29', '']) {
+    const input = p.byId('task-due-date-1');
+    assert.equal(input.type, 'text');
+    assert.ok(p.app.all().some(node => node.textContent === 'Task due date' && node.htmlFor === input.id));
+    assert.equal(input.parent.children.at(-1).textContent, 'Save due date');
+    input.value = value;
+    await input.parent.fire('submit');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(p.byId(input.id).value, value);
+    assert.deepEqual(p.tasks[0], { ...original, due_date: value });
+    assert.equal(p.byId('task-filter').value, 'Open');
+    assert.equal(p.byId('priority-filter').value, 'High');
+    assert.deepEqual(p.titles(), ['First']);
+  }
+});
+
+test('failed due date saves show an alert and restore the saved date', async () => {
+  const p = await page(false, async () => { throw new Error('Due date must be a valid YYYY-MM-DD date'); });
+  const input = p.byId('task-due-date-1');
+  input.value = '2024-02-30';
+  await input.parent.fire('submit');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(p.byId(input.id).value, '');
+  assert.equal(p.byId(input.id).disabled, false);
+  assert.equal(p.app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
   assert.deepEqual(p.writes, []);
 });
