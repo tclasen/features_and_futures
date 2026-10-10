@@ -60,6 +60,10 @@ test('projects validate, keep creation order, and survive server restarts', asyn
     const health = await request('/health');
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
+    const filterModule = await request('/task-filters.js');
+    assert.equal(filterModule.status, 200);
+    assert.match(filterModule.headers.get('content-type'), /text\/javascript/);
+    assert.match(await filterModule.text(), /export function filterTasks/);
     for (const name of ['', '   ', null, 42]) {
       const response = await create(name);
       assert.equal(response.status, 400);

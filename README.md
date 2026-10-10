@@ -52,7 +52,14 @@ projects disable priority changes; restoring preserves priorities and enables ed
 Send `{ "priority": "High" }` to the task PATCH endpoint, separately from title
 or completion changes. Existing task databases migrate automatically.
 
-Run integration tests:
+The Priority filter starts at All and can show Low, Normal, or High tasks. It
+combines with the Task filter: rows must match both selections and retain their
+creation order. Changing a filter or editing a task keeps both selections;
+completion and priority edits immediately update which rows match. Both filters
+remain usable in archived projects. Filtering never changes saved tasks or the
+project completion summary.
+
+Run tests:
 
 ```sh
 npm test
@@ -63,3 +70,5 @@ creation order, the health endpoint, detail routes, project isolation, completio
 validation, archive/restore protections, completion summaries, migration from
 existing databases, renaming, priorities and their read-only protections, and restart
 persistence for projects and tasks.
+Filter tests cover every completion/priority combination, creation order,
+unchanged source data, and membership after task edits.
