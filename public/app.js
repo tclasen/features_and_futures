@@ -211,6 +211,7 @@ async function render() {
           dueAlert.hidden = true;
           const saved = await response.json();
           dueInput.value = saved.due_date || '';
+          await loadTasks();
         });
         row.append(dueForm, dueAlert);
         const renameForm = element('form', undefined, 'create-form');
