@@ -201,7 +201,16 @@ async function renderProject(id) {
   }
   const filters = element('div');
   filters.className = 'task-filters';
-  filters.append(filterLabel, filter);
+  const priorityFilterLabel = element('label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    priorityFilter.append(option);
+  }
+  filters.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
   const list = element('ul');
   list.className = 'tasks';
   list.setAttribute('aria-label', 'Tasks');
@@ -233,6 +242,7 @@ async function renderProject(id) {
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       const row = element('li');
       row.dataset.testid = 'task-row';
       const checkbox = element('input');
@@ -287,6 +297,7 @@ async function renderProject(id) {
     }
   }
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   renderTasks();
   create.disabled = project.archived;
   form.addEventListener('submit', async (event) => {
