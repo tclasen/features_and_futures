@@ -12,11 +12,26 @@ function projectRow(project) {
   row.dataset.testid = 'project-row';
   const name = document.createElement('span');
   name.textContent = project.name;
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
   const open = document.createElement('button');
   open.type = 'button';
   open.textContent = 'Open project';
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(name, open);
+  row.append(name, summary, open);
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    const response = await fetch(`/api/projects/${project.id}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ archived: !project.archived }),
+    });
+    if (!response.ok) { showError('Could not update project'); return; }
+    await renderList();
+  });
+  row.append(archive);
   return row;
 }
 
@@ -47,7 +62,25 @@ async function renderList() {
   form.append(label, input, submit);
   const list = document.createElement('div');
   list.className = 'project-list';
-  content.append(heading, form, list);
+  const filterLabel = document.createElement('label');
+  filterLabel.htmlFor = 'project-filter';
+  filterLabel.textContent = 'Project filter';
+  const filter = document.createElement('select');
+  filter.id = 'project-filter';
+  for (const value of ['Active', 'Archived']) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    filter.append(option);
+  }
+  content.append(heading, form, filterLabel, filter, list);
+  let projects = await getProjects();
+  function drawProjects() {
+    list.replaceChildren();
+    const archived = filter.value === 'Archived';
+    for (const project of projects) if (project.archived === archived) list.append(projectRow(project));
+  }
+  filter.addEventListener('change', drawProjects);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = input.value.trim();
@@ -67,11 +100,12 @@ async function renderList() {
     }
     const project = await response.json();
     content.querySelector('[role="alert"]')?.remove();
-    list.append(projectRow(project));
+    projects.push(project);
+    drawProjects();
     form.reset();
     input.focus();
   });
-  for (const project of await getProjects()) list.append(projectRow(project));
+  drawProjects();
 }
 
 async function renderProject(id) {
@@ -84,6 +118,11 @@ async function renderProject(id) {
   back.addEventListener('click', () => { window.location.href = '/'; });
   content.append(back);
   if (project) {
+    if (project.archived) {
+      const archivedMessage = document.createElement('p');
+      archivedMessage.textContent = 'Archived project';
+      content.append(archivedMessage);
+    }
     const heading = document.createElement('h1');
     heading.textContent = project.name;
     content.append(heading);
@@ -99,6 +138,8 @@ async function renderProject(id) {
     const submit = document.createElement('button');
     submit.type = 'submit';
     submit.textContent = 'Create task';
+    submit.disabled = project.archived;
+    input.disabled = project.archived;
     form.append(label, input, submit);
     const filterLabel = document.createElement('label');
     filterLabel.htmlFor = 'task-filter';
@@ -129,6 +170,7 @@ async function renderProject(id) {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = task.completed;
+        checkbox.disabled = project.archived;
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         checkbox.addEventListener('change', async () => {
           const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {

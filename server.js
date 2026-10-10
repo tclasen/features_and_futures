@@ -11,6 +11,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -37,14 +41,29 @@ const server = createServer(async (request, response) => {
   try {
     if (url.pathname === '/health' && request.method === 'GET') return sendJson(response, 200, { status: 'ok' });
     if (url.pathname === '/api/projects' && request.method === 'GET') {
-      return sendJson(response, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+      return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+        COUNT(t.id) AS totalCount,
+        COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
+        FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+        GROUP BY p.id ORDER BY p.id`).all().map((project) => ({
+          ...project, archived: Boolean(project.archived),
+        })));
     }
     if (url.pathname === '/api/projects' && request.method === 'POST') {
       const body = await readJson(request);
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return sendJson(response, 400, { error: 'Project name is required' });
       const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), name, archived: false, totalCount: 0, completedCount: 0 });
+    }
+    const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+    if (projectRoute && request.method === 'PATCH') {
+      const id = Number(projectRoute[1]);
+      const body = await readJson(request);
+      if (typeof body.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
+      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, id);
+      if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+      return sendJson(response, 200, { id, archived: body.archived });
     }
     const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (taskRoute) {
@@ -57,6 +76,9 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
       }
       if (!taskRoute[2] && request.method === 'POST') {
+        if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
+          return sendJson(response, 409, { error: 'Archived projects cannot accept tasks' });
+        }
         const body = await readJson(request);
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
@@ -64,6 +86,9 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
       }
       if (taskRoute[2] && request.method === 'PATCH') {
+        if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
+          return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        }
         const taskId = Number(taskRoute[2]);
         const body = await readJson(request);
         if (typeof body.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
