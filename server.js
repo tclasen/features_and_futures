@@ -185,14 +185,18 @@ const server = createServer(async (request, response) => {
         }
         const remembered = database.prepare('SELECT task_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
         let order = remembered?.task_order;
-        const move = database.transaction(() => {
+        database.exec('BEGIN IMMEDIATE');
+        try {
           if (order === undefined) {
             order = database.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(destinationId).next;
             database.prepare('INSERT INTO task_project_positions (task_id, project_id, task_order) VALUES (?, ?, ?)').run(taskId, destinationId, order);
           }
           database.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ? AND project_id = ?').run(destinationId, order, taskId, id);
-        });
-        move();
+          database.exec('COMMIT');
+        } catch (error) {
+          database.exec('ROLLBACK');
+          throw error;
+        }
         sendJson(response, 200, { id: taskId, projectId: destinationId });
       } catch (error) {
         if (error instanceof SyntaxError) { sendJson(response, 400, { error: 'Invalid JSON' }); return; }
