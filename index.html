@@ -9,16 +9,18 @@
     body { margin: 0; }
     main { max-width: 760px; margin: 56px auto; padding: 0 24px; }
     h1 { margin: 0 0 28px; font-size: 2rem; }
-    form, .project-row { background: white; border: 1px solid #dce2ea; border-radius: 8px; padding: 20px; }
+    form, .project-row, .task-row { background: white; border: 1px solid #dce2ea; border-radius: 8px; padding: 20px; }
     form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
     label { display: grid; gap: 7px; font-weight: 600; flex: 1; min-width: 200px; }
     input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #aab5c4; border-radius: 5px; font: inherit; }
     button { border: 0; border-radius: 5px; background: #2459a6; color: white; padding: 11px 16px; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #194780; }
     #error { color: #a4262c; margin: 12px 0 0; }
-    #projects { display: grid; gap: 10px; margin-top: 24px; }
+    #projects, #tasks { display: grid; gap: 10px; margin-top: 24px; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .project-name { font-weight: 600; overflow-wrap: anywhere; }
+    .task-row { display: flex; align-items: center; gap: 12px; }
+    .task-row input { width: auto; }
   </style>
 </head>
 <body>
@@ -67,11 +69,37 @@
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (!response.ok) { window.history.replaceState({}, '', '/'); return showProjects(); }
       const project = await response.json();
-      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
+        <form id="create-task"><label for="task-title">Task title<input id="task-title" name="title" type="text" autocomplete="off"></label><button type="submit">Create task</button></form>
+        <p id="task-error" role="alert" hidden></p>
+        <label for="task-filter">Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
+        <section id="tasks" aria-label="Tasks"></section>`;
       app.querySelector('#back').addEventListener('click', () => {
         window.history.pushState({}, '', '/');
         showProjects();
       });
+      const taskUrl = `/api/projects/${encodeURIComponent(id)}/tasks`;
+      const filter = app.querySelector('#task-filter');
+      async function renderTasks() {
+        const tasks = await fetch(taskUrl).then((result) => result.json());
+        const selected = filter.value;
+        const visible = tasks.filter((task) => selected === 'All' || (selected === 'Open' && !task.completed) || (selected === 'Completed' && task.completed));
+        app.querySelector('#tasks').innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('');
+        app.querySelectorAll('[data-task-id]').forEach((checkbox) => checkbox.addEventListener('change', async () => {
+          await fetch(`${taskUrl}/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+          renderTasks();
+        }));
+      }
+      filter.addEventListener('change', renderTasks);
+      app.querySelector('#create-task').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = app.querySelector('#task-title').value.trim();
+        const error = app.querySelector('#task-error');
+        if (!title) { error.textContent = 'Task title is required'; error.hidden = false; return; }
+        const result = await fetch(taskUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (result.ok) { error.hidden = true; app.querySelector('#task-title').value = ''; renderTasks(); }
+      });
+      renderTasks();
     }
 
     function renderRoute() {
