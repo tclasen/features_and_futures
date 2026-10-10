@@ -132,6 +132,18 @@ class RetainedIncidentTests(unittest.TestCase):
             changed = copy.deepcopy(plan); changed[field] = value
             with self.assertRaises(ValueError): validate_policy(manifest, changed)
 
+    def test_action_revision_cannot_reuse_prior_plan_or_change_missing_cost_rules(self):
+        manifest = {'experiment_revision': 'research-v005', 'execution': {'provider_incident_policy': POLICY},
+                    'research': {'analysis_method': METHOD}}
+        plan = {'revision_id': 'research-v005', 'status': 'frozen-before-main-dispatch',
+                'execution': {'provider_incident_policy': POLICY}, 'analysis_method': METHOD,
+                'submission_outcome_definition': ASSESSMENT}
+        self.assertTrue(validate_policy(manifest, plan))
+        for field, value in [('revision_id', 'research-v004'), ('status', 'prepared-not-frozen'),
+                             ('analysis_method', 'complete-native-point-v1')]:
+            changed = copy.deepcopy(plan); changed[field] = value
+            with self.assertRaises(ValueError): validate_policy(manifest, changed)
+
     def partial_fixture(self, root):
         from orchestrator.partial_report import augment
         run, records, events, identity, prices = self.fixture(root)
