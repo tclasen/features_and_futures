@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {stage,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedCompletion,expectPersistedPriority,requiredAlert} from './helpers.mjs';
+import {stage,projectName,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedCompletion,expectPersistedPriority,requiredAlert} from './helpers.mjs';
 const from=page=>page.getByRole('textbox',{name:'Due from',exact:true});
 const through=page=>page.getByRole('textbox',{name:'Due through',exact:true});
 const completion=page=>page.getByRole('combobox',{name:'Task filter',exact:true});
@@ -54,4 +54,19 @@ if(stage>=10){
   await range(page,'2030-01-01','2030-01-01');await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(1);await expect(taskRow(page,'Archived date renamed').getByRole('textbox',{name:'Task due date',exact:true})).toBeDisabled();await expect(taskRow(page,'Archived date renamed').getByRole('button',{name:'Save due date',exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'Projects',exact:true}).click();await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});await projectRow(page,'Range archival').getByRole('button',{name:'Restore project',exact:true}).click();await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Active'});await openProject(page,'Range archival');await expect(from(page)).toHaveValue('');await expect(through(page)).toHaveValue('');await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(2);await expect(taskRow(page,'Archived date renamed').getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2030-01-01');
  });
+ test('038 project default rename and hidden creation retain the applied range',async({page})=>{
+  await createProject(page,'Range identity');await openProject(page,'Range identity');await createTask(page,'Retained range member');await createTask(page,'Retained undated outsider');
+  await taskRow(page,'Retained range member').getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,'Range identity','Retained range member','High');await saveDate(page,'Range identity','Retained range member','2031-03-01');
+  await completion(page).selectOption({label:'Open'});await priorityFilter(page).selectOption({label:'High'});await range(page,'2031-03-01','2031-03-01');
+  await page.getByRole('combobox',{name:'Default task priority',exact:true}).selectOption({label:'Low'});
+  const observer=await page.context().newPage();
+  try {await expect.poll(async()=>{await observer.goto('/');await openProject(observer,'Range identity');return observer.getByRole('combobox',{name:'Default task priority',exact:true}).locator('option:checked').textContent();},{timeout:5000}).toBe('Low');}finally{await observer.close();}
+  await expect(from(page)).toHaveValue('2031-03-01');await expect(through(page)).toHaveValue('2031-03-01');await expect(completion(page).locator('option:checked')).toHaveText('Open');await expect(priorityFilter(page).locator('option:checked')).toHaveText('High');await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(1);
+  await page.getByRole('textbox',{name:'New project name',exact:true}).fill(projectName('Range owner renamed'));await page.getByRole('button',{name:'Rename project',exact:true}).click();await expect(page.getByRole('heading',{name:projectName('Range owner renamed'),exact:true}).first()).toBeVisible();
+  await expect(from(page)).toHaveValue('2031-03-01');await expect(through(page)).toHaveValue('2031-03-01');await expect(completion(page).locator('option:checked')).toHaveText('Open');await expect(priorityFilter(page).locator('option:checked')).toHaveText('High');
+  await page.getByRole('textbox',{name:'Task title',exact:true}).fill('Created outside range');await page.getByRole('button',{name:'Create task',exact:true}).click();
+  await expectPersistedPriority(page,'Range owner renamed','Created outside range','Low');await expect(from(page)).toHaveValue('2031-03-01');await expect(through(page)).toHaveValue('2031-03-01');await expect(completion(page).locator('option:checked')).toHaveText('Open');await expect(priorityFilter(page).locator('option:checked')).toHaveText('High');await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(1);
+  await page.getByRole('button',{name:'Projects',exact:true}).click();await expect(projectRow(page,'Range owner renamed').getByTestId('project-summary')).toHaveText('0/3 completed');await openProject(page,'Range owner renamed');await expect(taskRow(page,'Created outside range').getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('');
+ });
+
 }
