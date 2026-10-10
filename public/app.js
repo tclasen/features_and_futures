@@ -103,6 +103,16 @@ async function renderProject(id) {
           await refreshTasks();
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
+      const priorityLabel = element('label', { text: 'Task priority' });
+      const priority = element('select'); priorityLabel.htmlFor = `task-priority-${task.id}`; priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; priority.append(option); }
+      priority.value = task.priority;
+      priority.disabled = Boolean(project.archived);
+      priority.addEventListener('change', async () => {
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+        } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+      });
       const renameForm = element('form', { className: 'create-form' });
       const renameLabel = element('label', { text: 'New task title' });
       const renameInput = element('input'); renameInput.type = 'text'; renameInput.value = task.title;
@@ -117,7 +127,7 @@ async function renderProject(id) {
           await refreshTasks();
         } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
       });
-      row.append(checkbox, element('span', { text: task.title }), renameForm); list.append(row);
+      row.append(checkbox, element('span', { text: task.title }), priorityLabel, priority, renameForm); list.append(row);
     }
   }
   form.addEventListener('submit', async event => {
