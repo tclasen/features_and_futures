@@ -125,7 +125,7 @@ test('projects validate, navigate, and persist across restarts', async () => {
     const archivedPage = await detailPage();
     assert.match(archivedPage, /<p>Archived project<\/p>/);
     assert.match(archivedPage, /disabled>Create task/);
-    assert.equal((archivedPage.match(/ disabled onchange/g) || []).length, 2);
+    assert.equal((archivedPage.match(/type="checkbox"[^>]* disabled onchange/g) || []).length, 2);
     assert.match(await detailPage('Completed'), /<span>First task/);
     assert.doesNotMatch(await detailPage('Open'), /<span>First task/);
     assert.equal((await post(completion, {})).status, 403);
@@ -238,6 +238,60 @@ test('projects validate, navigate, and persist across restarts', async () => {
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
     assert.equal((await post(completion, {})).status, 303);
     assert.match(await detailPage('Open'), /<span>Restored task<\/span>/);
+
+    // Priorities default independently and edits preserve all other task fields.
+    const priorityRoute = completion.replace('/completion', '/priority');
+    const defaultOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    assert.equal((await detailPage()).split(defaultOptions).length - 1, 2);
+    const beforePriorityList = await (await fetch(base)).text();
+    assert.equal((await post(priorityRoute, { priority: 'High', filter: 'Open' })).headers.get('location'), `${path}?filter=Open`);
+    let priorityPage = await detailPage();
+    assert.match(priorityPage, /<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
+    assert.equal(priorityPage.split(defaultOptions).length - 1, 1);
+    assert.match(priorityPage, /aria-label="Complete Restored task" onchange/);
+    assert.ok(priorityPage.indexOf('<span>Restored task') < priorityPage.indexOf('<span>Second &lt;task&gt;'));
+    assert.equal(await (await fetch(base)).text(), beforePriorityList);
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(priorityRoute, { priority })).status, 400);
+      assert.equal(await detailPage(), priorityPage);
+    }
+    assert.equal((await post(priorityRoute.replace('/projects/1/', '/projects/2/'), { priority: 'Low' })).status, 404);
+    assert.equal((await post(`${path}/tasks/999999/priority`, { priority: 'Low' })).status, 404);
+    await stop();
+    await start();
+    assert.equal(await detailPage(), priorityPage);
+    await post(taskRename, { title: 'Priority retained' });
+    await post(completion, { completed: '1' });
+    assert.match(await detailPage('Completed'), /<option selected>High<\/option>/);
+    assert.doesNotMatch(await detailPage('Open'), /<option selected>High<\/option>/);
+    await post(`${path}/archive`, {});
+    priorityPage = await detailPage();
+    assert.equal((priorityPage.match(/name="priority" disabled/g) || []).length, 2);
+    assert.equal((await post(priorityRoute, { priority: 'Low' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await detailPage(), priorityPage);
+    await post(`${path}/restore`, {});
+    assert.doesNotMatch(await detailPage(), /name="priority" disabled/);
+    assert.match(await detailPage(), /<option selected>High<\/option>/);
+    assert.equal((await post(priorityRoute, { priority: 'Low' })).status, 303);
+    assert.match(await detailPage(), /<option selected>Low<\/option>/);
+    await post(`${path}/tasks`, { title: 'New normal task' });
+    assert.equal((await detailPage()).split(defaultOptions).length - 1, 2);
+    priorityPage = await detailPage();
+    await stop();
+    await start();
+    assert.equal(await detailPage(), priorityPage);
+
+    // Upgrade a pre-priority database containing tasks without losing their data.
+    await stop();
+    const previous = new DatabaseSync(join(directory, 'projects.sqlite'));
+    previous.exec('ALTER TABLE tasks DROP COLUMN priority');
+    previous.close();
+    await start();
+    assert.equal((await detailPage()).split(defaultOptions).length - 1, 3);
+    assert.match(await detailPage(), /aria-label="Complete Priority retained" checked/);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/3 completed/);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

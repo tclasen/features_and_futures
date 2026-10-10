@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -105,6 +109,11 @@ ${tasks.map(task => `<div class="task" data-testid="task-row">
 <input type="hidden" name="filter" value="${filter}">
 <input type="checkbox" name="completed" value="1" aria-label="Complete ${escape(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
 </form><span>${escape(task.title)}</span>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+<input type="hidden" name="filter" value="${filter}">
+<label for="task-priority-${task.id}">Task priority</label>
+<select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">${['Low', 'Normal', 'High'].map(value => `<option${value === task.priority ? ' selected' : ''}>${value}</option>`).join('')}</select>
+</form>
 <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
 <input type="hidden" name="filter" value="${filter}">
 <div class="field"><label for="new-task-title-${task.id}">New task title</label><input id="new-task-title-${task.id}" name="title"${project.archived ? ' disabled' : ''}></div>
@@ -186,7 +195,7 @@ const server = http.createServer(async (req, res) => {
       renameProject.run(name, project.id);
       res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       res.end();
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename))?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority))?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(parts[2]);
       if (!project) {
@@ -208,6 +217,13 @@ const server = http.createServer(async (req, res) => {
             return;
           }
           result = renameTask.run(title, parts[4], project.id);
+        } else if (parts[5] === 'priority') {
+          const priority = body.get('priority');
+          if (!['Low', 'Normal', 'High'].includes(priority)) {
+            html(res, 400, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
+          result = updatePriority.run(priority, parts[4], project.id);
         } else {
           result = updateTask.run(body.get('completed') === '1' ? 1 : 0, parts[4], project.id);
         }
