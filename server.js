@@ -52,6 +52,9 @@ const server = http.createServer(async (req, res) => {
     try { input = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     if (!name) return json(res, 400, { error: 'Project name is required' });
+    // Treat a retried create request as idempotent so it cannot add a duplicate.
+    const existing = db.prepare('SELECT id, name FROM projects WHERE name = ?').get(name);
+    if (existing) return json(res, 200, { id: Number(existing.id), name: existing.name });
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return json(res, 201, { id: Number(result.lastInsertRowid), name });
   }
