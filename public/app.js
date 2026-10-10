@@ -10,6 +10,11 @@ const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueRangeForm = document.querySelector('#due-range-form');
+const dueFrom = document.querySelector('#due-from');
+const dueThrough = document.querySelector('#due-through');
+let appliedDueFrom = '';
+let appliedDueThrough = '';
 const defaultTaskPriority = document.querySelector('#default-task-priority');
 const taskList = document.querySelector('#task-list');
 const detailError = document.querySelector('#detail-error');
@@ -59,6 +64,10 @@ async function render() {
   taskInput.value = '';
   taskFilter.value = 'All';
   priorityFilter.value = 'All';
+  dueFrom.value = '';
+  dueThrough.value = '';
+  appliedDueFrom = '';
+  appliedDueThrough = '';
   document.querySelector('#task-controls').hidden = true;
   if (match) {
     const title = document.querySelector('#project-title');
@@ -147,6 +156,11 @@ function renderTasks() {
     if (taskFilter.value === 'Open' && task.completed) continue;
     if (taskFilter.value === 'Completed' && !task.completed) continue;
     if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+    if (appliedDueFrom || appliedDueThrough) {
+      if (!task.due_date) continue;
+      if (appliedDueFrom && task.due_date < appliedDueFrom) continue;
+      if (appliedDueThrough && task.due_date > appliedDueThrough) continue;
+    }
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -304,6 +318,34 @@ function renderTasks() {
 
 taskFilter.addEventListener('change', renderTasks);
 priorityFilter.addEventListener('change', renderTasks);
+function validRangeDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
+dueRangeForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const from = dueFrom.value.trim();
+  const through = dueThrough.value.trim();
+  if ((from && !validRangeDate(from)) || (through && !validRangeDate(through))) {
+    showError(detailError, 'Due range must use valid YYYY-MM-DD dates');
+    return;
+  }
+  if (from && through && from > through) {
+    showError(detailError, 'Due from must not be after Due through');
+    return;
+  }
+  appliedDueFrom = from;
+  appliedDueThrough = through;
+  dueFrom.value = from;
+  dueThrough.value = through;
+  showError(detailError, '');
+  renderTasks();
+});
 defaultTaskPriority.addEventListener('change', async () => {
   if (archivedProject || activeProjectId === null) return;
   const projectId = activeProjectId;

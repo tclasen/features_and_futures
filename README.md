@@ -24,6 +24,8 @@ Each project has a Default task priority selector, initially Normal. Saving Low,
 
 Every task has a Task due date textbox and Save due date button. Dates are optional: an empty or whitespace-only value clears the date. Nonempty values are trimmed and must be real Gregorian dates in YYYY-MM-DD format, with years 0001–9999. Invalid values show an alert and leave saved data unchanged. Dates persist independently across reloads, restarts, renames, archival, and restoration without changing task filters or summaries. Archived projects disable due-date editing.
 
+Project pages provide Due from and Due through textboxes and Apply due range. Boundaries are inclusive, use the same calendar-date rules as task dates, and may be blank for an unbounded side. A nonempty range excludes undated tasks and combines with both task filters. Invalid dates or reversed boundaries show an alert and keep the previous applied range. Task edits immediately update matching rows without resetting filters; the summary still counts every task. Range controls remain available in archived projects. Reopening a project resets both boundaries to empty.
+
 Health check:
 
 ```sh
