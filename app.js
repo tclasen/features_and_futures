@@ -270,11 +270,16 @@ async function renderTasks(projectId, archived) {
       priority.value = task.priority || 'Normal';
       priority.disabled = archived;
       priority.addEventListener('change', async () => {
+        const selectedPriority = priority.value;
+        priority.disabled = true;
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }),
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: selectedPriority }),
         });
         if (response.ok) await refresh();
-        else priority.value = task.priority || 'Normal';
+        else {
+          priority.value = task.priority || 'Normal';
+          priority.disabled = false;
+        }
       });
       row.append(priority);
       const dueDate = element('input');
