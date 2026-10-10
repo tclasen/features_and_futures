@@ -21,6 +21,10 @@
     .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
     .task-row input { flex: 0 0 auto; width: 18px; height: 18px; }
     .task-row.completed span { color: #687385; text-decoration: line-through; }
+    .project-details { display: grid; gap: 5px; }
+    [data-testid="project-summary"] { color: #687385; font-size: .9rem; }
+    .project-actions { display: flex; align-items: center; gap: 8px; }
+    .project-actions button:last-child { background: #465367; }
     .filters { margin: 20px 0 12px; display: flex; align-items: center; gap: 10px; }
     select { padding: 9px 12px; border: 1px solid #aeb8c5; border-radius: 6px; font: inherit; background: white; }
     @media (max-width: 480px) { form { flex-direction: column; } }
@@ -38,29 +42,58 @@
       return response.json();
     }
 
-    async function showList(error = '') {
+    async function showList(error = '', selectedFilter = 'Active') {
       app.innerHTML = `<h1>Workboard</h1>
         ${error ? `<p class="alert" role="alert">${esc(error)}</p>` : ''}
         <form id="create-form">
           <input id="project-name" name="name" aria-label="Project name" placeholder="Project name">
           <button type="submit">Create project</button>
         </form>
+        <div class="filters"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
         <section class="rows" aria-label="Projects" id="project-list"></section>`;
       const list = app.querySelector('#project-list');
-      for (const project of await loadProjects()) {
-        const row = document.createElement('div');
-        row.dataset.testid = 'project-row';
-        row.innerHTML = `<span>${esc(project.name)}</span><button type="button" data-id="${project.id}">Open project</button>`;
-        row.querySelector('button').addEventListener('click', () => navigate(`/projects/${project.id}`));
-        list.append(row);
+      const filter = app.querySelector('#project-filter');
+      filter.value = selectedFilter;
+      async function renderProjects() {
+        list.replaceChildren();
+        for (const project of await loadProjects()) {
+          if ((filter.value === 'Archived') !== project.archived) continue;
+          const row = document.createElement('div');
+          row.dataset.testid = 'project-row';
+          const details = document.createElement('div');
+          details.className = 'project-details';
+          const name = document.createElement('span');
+          name.textContent = project.name;
+          const summary = document.createElement('span');
+          summary.dataset.testid = 'project-summary';
+          summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+          details.append(name, summary);
+          const actions = document.createElement('div');
+          actions.className = 'project-actions';
+          const open = document.createElement('button');
+          open.type = 'button'; open.textContent = 'Open project';
+          open.addEventListener('click', () => navigate(`/projects/${project.id}`));
+          const stateButton = document.createElement('button');
+          stateButton.type = 'button';
+          stateButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+          stateButton.addEventListener('click', async () => {
+            await fetch(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+            await renderProjects();
+          });
+          actions.append(open, stateButton);
+          row.append(details, actions);
+          list.append(row);
+        }
       }
+      filter.addEventListener('change', renderProjects);
+      await renderProjects();
       app.querySelector('#create-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = app.querySelector('#project-name').value.trim();
-        if (!name) return showList('Project name is required');
+        if (!name) return showList('Project name is required', filter.value);
         const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
         if (!response.ok) return showList('Could not create project');
-        showList();
+        showList('', filter.value);
       });
     }
 
@@ -69,8 +102,9 @@
       if (!response.ok) { history.replaceState({}, '', '/'); return showList(); }
       const project = await response.json();
       app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>
+        ${project.archived ? '<p>Archived project</p>' : ''}
         <p id="task-alert" class="alert" role="alert" hidden></p>
-        <form id="task-form"><input id="task-title" aria-label="Task title" placeholder="Task title"><button type="submit">Create task</button></form>
+        <form id="task-form"><input id="task-title" aria-label="Task title" placeholder="Task title" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
         <div class="filters"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
         <section class="rows" id="task-list" aria-label="Tasks"></section>`;
       app.querySelector('.back').addEventListener('click', () => navigate('/'));
@@ -90,6 +124,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = project.archived;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
