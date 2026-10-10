@@ -15,12 +15,17 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   )
 `);
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
@@ -112,7 +117,7 @@ const server = createServer(async (request, response) => {
       sendJson(response, 404, { error: 'Project not found' });
       return;
     }
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId)
       .map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), completed: Boolean(task.completed) }));
     sendJson(response, 200, tasks);
     return;
@@ -137,7 +142,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
@@ -159,14 +164,19 @@ const server = createServer(async (request, response) => {
         sendJson(response, 400, { error: 'Archived projects cannot be changed' });
         return;
       }
-      const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+      const task = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
       if (!task) {
         sendJson(response, 404, { error: 'Task not found' });
         return;
       }
       if (typeof body?.completed === 'boolean') {
         database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
-        sendJson(response, 200, { id: taskId, projectId, title: task.title, completed: body.completed });
+        sendJson(response, 200, { id: taskId, projectId, title: task.title, completed: body.completed, priority: task.priority });
+        return;
+      }
+      if (['Low', 'Normal', 'High'].includes(body?.priority)) {
+        database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(body.priority, taskId, projectId);
+        sendJson(response, 200, { id: taskId, projectId, title: task.title, completed: Boolean(task.completed), priority: body.priority });
         return;
       }
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
@@ -175,7 +185,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
-      sendJson(response, 200, { id: taskId, projectId, title, completed: Boolean(task.completed) });
+      sendJson(response, 200, { id: taskId, projectId, title, completed: Boolean(task.completed), priority: task.priority });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
