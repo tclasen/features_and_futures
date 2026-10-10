@@ -58,6 +58,80 @@ function rows(html) {
     }));
 }
 
+function taskRows(html) {
+  return [...html.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)]
+    .map((match) => ({
+      title: /<span>(.*?)<\/span>/.exec(match[1])[1],
+      action: /action="([^"]+)"/.exec(match[1])[1],
+      completed: / checked/.test(match[1]),
+    }));
+}
+
+async function post(url, path, fields) {
+  return fetch(`${url}${path}`, {
+    method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+  });
+}
+
+test('tasks validate, filter, remain isolated, and persist completion', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let app;
+  try {
+    app = await start(databasePath);
+    await createProject(app.url, 'First');
+    await createProject(app.url, 'Second');
+    const [first, second] = rows(await (await fetch(app.url)).text());
+    const detail = async (path = first.path) => (await fetch(`${app.url}${path}`)).text();
+    const initial = await detail();
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await post(app.url, `${first.path}/tasks`, { title });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.deepEqual(taskRows(html), []);
+    }
+    for (const title of ['  Plan  ', '<b>Build</b> & ship']) {
+      const created = await post(app.url, `${first.path}/tasks`, { title });
+      assert.equal(created.status, 303);
+    }
+    const tasks = taskRows(await detail());
+    assert.deepEqual(tasks.map((task) => task.title), ['Plan', '&lt;b&gt;Build&lt;/b&gt; &amp; ship']);
+    assert.ok(tasks.every((task) => !task.completed));
+    assert.match(await detail(), /aria-label="Complete Plan"/);
+    assert.deepEqual(taskRows(await detail(second.path)), []);
+    assert.equal((await post(app.url, tasks[0].action.replace(first.path, second.path), { completed: '1' })).status, 404);
+    assert.equal((await post(app.url, '/projects/99999/tasks', { title: 'No' })).status, 404);
+    const completed = await post(app.url, tasks[0].action, { completed: '1', filter: 'Open' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), `${first.path}?filter=Open`);
+    assert.deepEqual(taskRows(await detail(`${first.path}?filter=Open`)).map((task) => task.title), [tasks[1].title]);
+    assert.deepEqual(taskRows(await detail(`${first.path}?filter=Completed`)).map((task) => task.title), ['Plan']);
+    const saved = taskRows(await detail());
+    assert.equal(saved[0].completed, true);
+    assert.equal(saved[1].completed, false);
+    assert.deepEqual(taskRows(await detail(`${first.path}?filter=invalid`)), saved);
+    const invalid = await post(app.url, `${first.path}/tasks`, { title: '   ' });
+    assert.deepEqual(taskRows(await invalid.text()), saved);
+    await app.stop();
+    app = await start(databasePath);
+    assert.deepEqual(taskRows(await detail()), saved);
+    assert.deepEqual(taskRows(await detail(second.path)), []);
+    assert.equal((await post(app.url, tasks[0].action, {})).status, 303);
+    assert.deepEqual(taskRows(await detail(`${first.path}?filter=Completed`)), []);
+    await app.stop();
+    app = await start(databasePath);
+    assert.ok(taskRows(await detail()).every((task) => !task.completed));
+  } finally {
+    if (app) await app.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, navigate, escape HTML, and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const databasePath = join(directory, 'nested', 'projects.sqlite');
