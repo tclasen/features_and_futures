@@ -22,6 +22,9 @@ database.exec(`
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
@@ -31,10 +34,11 @@ const getProject = database.prepare('SELECT id, name, archived FROM projects WHE
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 function send(response, status, body, contentType = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
@@ -293,7 +297,19 @@ function page() {
           });
           if (result.ok) await loadTasks(projectId, rows, filter);
         });
-        row.append(checkbox, title, renameInput, renameButton); rows.append(row);
+        const priority = document.createElement('select');
+        priority.setAttribute('aria-label', 'Task priority');
+        for (const value of ['Low', 'Normal', 'High']) {
+          const option = element('option', value); option.value = value; priority.append(option);
+        }
+        priority.value = task.priority;
+        priority.disabled = Boolean(project.archived);
+        priority.addEventListener('change', async () => {
+          await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
+          });
+        });
+        row.append(checkbox, title, renameInput, renameButton, priority); rows.append(row);
       }
     }
 
@@ -368,6 +384,8 @@ const server = createServer(async (request, response) => {
       const title = body.title.trim();
       if (!title) return send(response, 400, JSON.stringify({ error: 'Task title is required' }));
       result = renameTask.run(title, taskMatch[2], projectId);
+    } else if (['Low', 'Normal', 'High'].includes(body?.priority)) {
+      result = updateTaskPriority.run(body.priority, taskMatch[2], projectId);
     } else {
       return send(response, 400, JSON.stringify({ error: 'Task update is required' }));
     }
