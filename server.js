@@ -44,8 +44,14 @@ if (!taskColumns.some(column => column.name === 'priority')) {
 if (!taskColumns.some(column => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+if (!taskColumns.some(column => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER');
+  db.exec('UPDATE tasks SET position = id');
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0))');
+const eligibleDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -108,7 +114,7 @@ async function handle(request, response) {
     const project = getProject.get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
-    const result = createTask.run(projectId, title, project.default_priority);
+    const result = createTask.run(projectId, title, project.default_priority, projectId);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: 0, priority: project.default_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
@@ -121,6 +127,18 @@ async function handle(request, response) {
     } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
+    if (body?.destination_project_id !== undefined) {
+      const destinationId = Number(body.destination_project_id);
+      const task = getTask.get(taskId);
+      const source = getProject.get(projectId);
+      const destination = getProject.get(destinationId);
+      if (!task || task.project_id !== projectId) return sendJson(response, 404, { error: 'Task not found' });
+      if (!source || source.archived || !destination || destination.archived || destinationId === projectId) {
+        return sendJson(response, 400, { error: 'Invalid destination project' });
+      }
+      moveTask.run(destinationId, destinationId, taskId, projectId);
+      return sendJson(response, 200, { id: taskId, project_id: destinationId });
+    }
     if (typeof body?.due_date === 'string') {
       const value = body.due_date.trim();
       if (value && !isValidDate(value)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });

@@ -81,8 +81,11 @@ async function renderList() {
 }
 
 async function renderTasks() {
-  const tasks = await request(`/api/projects/${currentProjectId}/tasks`);
+  const [tasks, projects] = await Promise.all([
+    request(`/api/projects/${currentProjectId}/tasks`), request('/api/projects')
+  ]);
   taskList.replaceChildren();
+  const destinations = projects.filter(project => !project.archived && project.id !== currentProjectId);
   const filter = taskFilter.value;
   const selectedPriority = priorityFilter.value;
   for (const task of tasks) {
@@ -175,7 +178,29 @@ async function renderTasks() {
         await renderTasks();
       } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
     });
-    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate);
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    for (const project of destinations) {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    destination.disabled = Boolean(window.currentProjectArchived) || destinations.length === 0;
+    const moveButton = document.createElement('button');
+    moveButton.type = 'button';
+    moveButton.textContent = 'Move task';
+    moveButton.disabled = destination.disabled;
+    moveButton.addEventListener('click', async () => {
+      try {
+        await request(`/api/projects/${currentProjectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination_project_id: Number(destination.value) })
+        });
+        await renderTasks();
+      } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton);
     taskList.append(row);
   }
 }
