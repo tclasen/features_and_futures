@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Workboard</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      main { width: min(720px, calc(100% - 32px)); margin: 64px auto; }
+      h1 { margin: 0 0 28px; font-size: 2rem; }
+      .panel { padding: 24px; background: white; border: 1px solid #dce2eb; border-radius: 12px; box-shadow: 0 4px 16px #1720330b; }
+      form { display: flex; gap: 12px; align-items: end; }
+      label { display: grid; gap: 8px; flex: 1; font-weight: 600; }
+      input { min-width: 0; padding: 11px 12px; border: 1px solid #aeb9c9; border-radius: 6px; font: inherit; }
+      button { padding: 11px 16px; border: 0; border-radius: 6px; background: #2457c5; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+      button:hover { background: #1946a8; }
+      button:focus-visible, input:focus-visible { outline: 3px solid #8eb3ff; outline-offset: 2px; }
+      [role="alert"] { margin: 12px 0 0; color: #a32020; }
+      ul { list-style: none; padding: 0; margin: 20px 0 0; }
+      .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid #e3e7ee; }
+      .project-name { overflow-wrap: anywhere; }
+      .back-button { margin-bottom: 20px; background: #e8edf6; color: #172033; }
+      .back-button:hover { background: #dce4f1; }
+      @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
+    </style>
+  </head>
+  <body>
+    <main id="app" aria-live="polite"></main>
+    <script type="module">
+      const app = document.querySelector('#app');
+
+      function element(tag, text, className) {
+        const node = document.createElement(tag);
+        if (text !== undefined) node.textContent = text;
+        if (className) node.className = className;
+        return node;
+      }
+
+      async function loadProjects() {
+        const response = await fetch('/api/projects');
+        if (!response.ok) throw new Error('Could not load projects');
+        return response.json();
+      }
+
+      async function showList() {
+        app.replaceChildren();
+        app.append(element('h1', 'Workboard'));
+        const panel = element('section', undefined, 'panel');
+        const form = document.createElement('form');
+        const label = element('label', 'Project name');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = 'projectName';
+        input.autocomplete = 'off';
+        label.append(input);
+        const submit = element('button', 'Create project');
+        submit.type = 'submit';
+        form.append(label, submit);
+        const alert = element('p', undefined);
+        alert.setAttribute('role', 'alert');
+        alert.hidden = true;
+        const list = element('ul');
+        panel.append(form, alert, list);
+        app.append(panel);
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const name = input.value.trim();
+          if (!name) {
+            alert.textContent = 'Project name is required';
+            alert.hidden = false;
+            input.focus();
+            return;
+          }
+          const response = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name }),
+          });
+          if (!response.ok) {
+            alert.textContent = 'Project name is required';
+            alert.hidden = false;
+            return;
+          }
+          const project = await response.json();
+          alert.hidden = true;
+          input.value = '';
+          appendProject(list, project);
+        });
+
+        for (const project of await loadProjects()) appendProject(list, project);
+      }
+
+      function appendProject(list, project) {
+        const row = element('li', undefined, 'project-row');
+        row.dataset.testid = 'project-row';
+        row.append(element('span', project.name, 'project-name'));
+        const open = element('button', 'Open project');
+        open.type = 'button';
+        open.addEventListener('click', () => {
+          history.pushState({}, '', `/projects/${project.id}`);
+          showProject(project);
+        });
+        row.append(open);
+        list.append(row);
+      }
+
+      async function showProject(project) {
+        app.replaceChildren();
+        const back = element('button', 'Projects', 'back-button');
+        back.type = 'button';
+        back.addEventListener('click', () => {
+          history.pushState({}, '', '/');
+          showList();
+        });
+        app.append(back, element('h1', project.name));
+      }
+
+      async function renderRoute() {
+        const match = location.pathname.match(/^\/projects\/(\d+)$/);
+        if (!match) return showList();
+        const projects = await loadProjects();
+        const project = projects.find((item) => String(item.id) === match[1]);
+        if (project) return showProject(project);
+        history.replaceState({}, '', '/');
+        return showList();
+      }
+
+      addEventListener('popstate', renderRoute);
+      renderRoute();
+    </script>
+  </body>
+</html>
