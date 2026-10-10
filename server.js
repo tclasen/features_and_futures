@@ -72,7 +72,7 @@ function page() {
   </style>
 </head>
 <body>
-  <main id="app" aria-live="polite"></main>
+  <main id="app"></main>
   <script>
     const app = document.querySelector('#app');
     const escapePath = (id) => '/projects/' + encodeURIComponent(id);
