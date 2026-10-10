@@ -38,6 +38,21 @@ function renderTasks() {
       if (response.ok) { task.completed = checkbox.checked; renderTasks(); }
       else showTaskError('Unable to update task');
     });
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.disabled = Boolean(window.currentProjectArchived);
+    priority.addEventListener('change', async () => {
+      const response = await fetch(`/api/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+      if (response.ok) task.priority = priority.value;
+      else showTaskError('Unable to update task priority');
+    });
     const renameInput = document.createElement('input');
     renameInput.type = 'text';
     renameInput.value = task.title;
@@ -55,7 +70,7 @@ function renderTasks() {
       task.title = newTitle;
       renderTasks();
     });
-    row.append(title, renameInput, renameButton, checkbox);
+    row.append(title, renameInput, renameButton, priority, checkbox);
     container.append(row);
   }
 }
