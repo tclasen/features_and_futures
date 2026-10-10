@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 
-test('projects validate, retain creation order, and persist across restart', async () => {
+test('projects and tasks validate, retain order and ownership, and persist across restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const socket = createServer();
   socket.listen(0, '127.0.0.1');
@@ -68,8 +68,49 @@ test('projects validate, retain creation order, and persist across restart', asy
       assert.equal(response.status, 200);
       assert.match(await response.text(), /<script type="module" src="\/app.js">/);
     }
+    const tasksPath = `/api/projects/${first.id}/tasks`;
+    async function tasks(project = first) {
+      return (await fetch(`${base}/api/projects/${project.id}/tasks`)).json();
+    }
+    async function createTask(title) {
+      return fetch(base + tasksPath, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+    }
+    async function complete(task, completed, project = first) {
+      return fetch(`${base}/api/projects/${project.id}/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
+      });
+    }
+    assert.deepEqual(await tasks(), []);
+    for (const title of ['', '  \t\n']) {
+      const response = await createTask(title);
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error, 'Task title is required');
+    }
+    assert.deepEqual(await tasks(), []);
+    const created = await createTask('  First task  ');
+    assert.equal(created.status, 201);
+    const task = await created.json();
+    assert.equal(task.title, 'First task');
+    assert.equal(task.completed, false);
+    const next = await (await createTask('Second task')).json();
+    assert.deepEqual(await tasks(), [task, next]);
+    assert.deepEqual(await tasks(second), []);
+    assert.equal((await complete(task, true, second)).status, 404);
+    assert.equal((await complete(task, 'true')).status, 400);
+    assert.equal((await complete(task, true)).status, 200);
+    assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
+    assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
     await stop();
     await start();
+    assert.deepEqual(await tasks(), [{ ...task, completed: true }, next]);
+    assert.deepEqual(await tasks(second), []);
+    assert.equal((await complete(task, false)).status, 200);
+    assert.deepEqual(await tasks(), [task, next]);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(), [task, next]);
     assert.deepEqual(await list(), [first, second]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
   } finally {
