@@ -10,6 +10,10 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function projectFilter(value) {
+  return value === 'Archived' ? 'Archived' : 'Active';
+}
+
 function redirect(response, location) {
   response.writeHead(303, { Location: location });
   response.end();
@@ -47,7 +51,8 @@ export function createWorkboardServer(databasePath) {
       } else if (request.method === 'GET' && pathname === '/app.js') {
         send(response, 200, browserScript, 'text/javascript; charset=utf-8');
       } else if (request.method === 'GET' && pathname === '/') {
-        send(response, 200, projectsPage(store.list()));
+        const filter = projectFilter(searchParams.get('filter'));
+        send(response, 200, projectsPage(store.list(filter), '', '', filter));
       } else if (request.method === 'POST' && pathname === '/projects') {
         const form = await readForm(request);
         const name = form.get('name') ?? '';
@@ -57,7 +62,7 @@ export function createWorkboardServer(databasePath) {
         } else {
           redirect(response, '/');
         }
-      } else if (/^\/projects\/[1-9]\d*(?:\/tasks(?:\/[1-9]\d*\/completion)?)?$/.test(pathname)) {
+      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|tasks(?:\/[1-9]\d*\/completion)?))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const id = Number(parts[2]);
         const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -66,7 +71,15 @@ export function createWorkboardServer(databasePath) {
         } else if (request.method === 'GET' && parts.length === 3) {
           const filter = taskFilter(searchParams.get('filter'));
           send(response, 200, projectPage(project, store.tasks.list(id, filter), filter));
+        } else if (request.method === 'POST' && ['archive', 'restore'].includes(parts[3])) {
+          const archived = parts[3] === 'archive';
+          store.setArchived(id, archived);
+          redirect(response, archived ? '/' : '/?filter=Archived');
         } else if (request.method === 'POST' && parts[3] === 'tasks') {
+          if (project.archived) {
+            send(response, 409, 'Archived project cannot be changed', 'text/plain; charset=utf-8');
+            return;
+          }
           const form = await readForm(request);
           const filter = taskFilter(form.get('filter'));
           if (parts.length === 4) {

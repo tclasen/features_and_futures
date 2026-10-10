@@ -9,7 +9,8 @@ npm start
 The server binds to `0.0.0.0` at `PORT` (default `8080`). Set `DB_PATH` to the
 SQLite file to use (default `data/workboard.sqlite`). Its parent directory is
 created automatically. Keep this file to preserve projects, tasks, and completion
-state between restarts.
+state and archive status between restarts. Existing project databases are migrated
+automatically without changing project IDs or tasks.
 
 ```sh
 PORT=8080 DB_PATH=data/workboard.sqlite npm start
@@ -23,3 +24,10 @@ Each project has its own tasks. Titles are trimmed and blank titles show a
 validation alert. Checkboxes save completion immediately; the task filter shows
 All (the default), Open, or Completed tasks in creation order. Direct project
 URLs remain usable after reloads and restarts.
+
+The project filter defaults to Active and also offers Archived. Archive project
+moves a project to Archived; Restore project returns it to Active, retaining its
+tasks and completion state. Archived project pages allow viewing and filtering
+tasks but disable creation and completion changes. The server also rejects task
+changes on archived projects. Each project row shows completed/total task counts
+across all its tasks.
