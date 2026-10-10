@@ -3,14 +3,20 @@ import assert from 'node:assert/strict';
 import { matchesSearch, matchesProjectFilters } from '../public/search.js';
 import { matchesTaskFilters } from '../public/task-filters.js';
 
-test('search trims only query edges, matches substrings, and folds only ASCII case', () => {
+test('search trims query edges, collapses spaces and tabs, and folds only ASCII case', () => {
   const cases = [
     ['Alpha BETA', '  bEt  ', true],
     ['Alpha BETA', '\t\n ', true],
-    ['Alpha  Beta', 'alpha beta', false],
+    ['Alpha  Beta', 'alpha beta', true],
     ['Alpha  Beta', 'ALPHA  BETA', true],
-    ['Alpha\tBeta', 'alpha beta', false],
+    ['Alpha\tBeta', 'alpha beta', true],
     ['Alpha\tBeta', 'ALPHA\tBETA', true],
+    ['Alpha \t \tBeta', ' \tALPHA\t  BETA\n', true],
+    ['Alpha Beta', 'alpha \t  beta', true],
+    ['Alpha\nBeta', 'alpha beta', false],
+    ['Alpha\rBeta', 'alpha beta', false],
+    ['Alpha\u00a0Beta', 'alpha beta', false],
+    ['Alpha\vBeta', 'alpha beta', false],
     ['Café', 'CAFé', true],
     ['Café', 'CAFÉ', false],
     ['A project [draft].*', '[draft].*', true],
@@ -24,16 +30,18 @@ test('search trims only query edges, matches substrings, and folds only ASCII ca
 
 test('project search intersects archive state in creation order without changing summaries', () => {
   const projects = [
-    { id: 1, name: 'Alpha', archived: false, completedCount: 1, totalCount: 2 },
+    { id: 1, name: 'Alpha \t  project', archived: false, completedCount: 1, totalCount: 2 },
     { id: 2, name: 'Other', archived: false, completedCount: 0, totalCount: 0 },
-    { id: 3, name: 'ALPHA archive', archived: true, completedCount: 2, totalCount: 3 },
-    { id: 4, name: 'New alpha', archived: false, completedCount: 0, totalCount: 1 },
+    { id: 3, name: 'ALPHA\tproject archive', archived: true, completedCount: 2, totalCount: 3 },
+    { id: 4, name: 'New alpha project', archived: false, completedCount: 0, totalCount: 1 },
   ];
   const original = structuredClone(projects);
   const visible = (filter, query) => projects.filter((project) => matchesProjectFilters(project, filter, query))
     .map((project) => project.id);
   assert.deepEqual(visible('Active', '  AlPhA  '), [1, 4]);
   assert.deepEqual(visible('Archived', '  AlPhA  '), [3]);
+  assert.deepEqual(visible('Active', '  AlPhA\t project  '), [1, 4]);
+  assert.deepEqual(visible('Archived', 'alpha project'), [3]);
   assert.deepEqual(visible('Active', ''), [1, 2, 4]);
   assert.deepEqual(visible('Archived', ''), [3]);
   assert.deepEqual(projects, original);
@@ -47,7 +55,7 @@ test('project search intersects archive state in creation order without changing
 
 test('task search intersects completion, priority, and due range without changing task data or order', () => {
   const tasks = [];
-  for (const title of ['Alpha task', 'Other task', 'ALPHA  task']) {
+  for (const title of ['Alpha task', 'Other task', 'ALPHA  task', 'Alpha \t\ttask']) {
     for (const completed of [false, true]) {
       for (const priority of ['Low', 'Normal', 'High']) {
         for (const dueDate of ['', '2026-10-09', '2026-10-10', '2026-10-12', '2026-10-13']) {
@@ -57,12 +65,13 @@ test('task search intersects completion, priority, and due range without changin
     }
   }
   const original = structuredClone(tasks);
-  for (const query of ['', ' alpha ', 'alpha task', 'alpha  task', 'missing']) {
+  for (const query of ['', ' alpha ', 'alpha task', 'alpha  task', 'alpha \t task', 'missing']) {
     const matchingTitles = {
-      '': ['Alpha task', 'Other task', 'ALPHA  task'],
-      ' alpha ': ['Alpha task', 'ALPHA  task'],
-      'alpha task': ['Alpha task'],
-      'alpha  task': ['ALPHA  task'],
+      '': ['Alpha task', 'Other task', 'ALPHA  task', 'Alpha \t\ttask'],
+      ' alpha ': ['Alpha task', 'ALPHA  task', 'Alpha \t\ttask'],
+      'alpha task': ['Alpha task', 'ALPHA  task', 'Alpha \t\ttask'],
+      'alpha  task': ['Alpha task', 'ALPHA  task', 'Alpha \t\ttask'],
+      'alpha \t task': ['Alpha task', 'ALPHA  task', 'Alpha \t\ttask'],
       missing: [],
     }[query];
     for (const completion of ['All', 'Open', 'Completed']) {

@@ -6,6 +6,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { matchesProjectFilters } from '../public/search.js';
+import { matchesTaskFilters } from '../public/task-filters.js';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -35,6 +37,57 @@ async function start(dbPath) {
     },
   };
 }
+
+test('normalized searches preserve original names, titles, and task data across restart and archival', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-'));
+  const dbPath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const send = async (path, method, body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      assert.ok(response.ok);
+      return response.json();
+    };
+    const list = async (path) => (await fetch(`${server.url}${path}`)).json();
+    const project = await send('/api/projects', 'POST', { name: '  MiXeD \t  Project  ' });
+    const projectPath = `/api/projects/${project.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const task = await send(tasksPath, 'POST', { title: '  MiXeD\t \t Task  ' });
+    const taskPath = `${tasksPath}/${task.id}`;
+    await send(taskPath, 'PATCH', { completed: true });
+    await send(taskPath, 'PATCH', { priority: 'High' });
+    const savedTask = await send(taskPath, 'PATCH', { dueDate: '2026-10-10' });
+    assert.equal(project.name, 'MiXeD \t  Project');
+    assert.equal(savedTask.title, 'MiXeD\t \t Task');
+    const range = { from: '2026-10-10', through: '2026-10-10' };
+    for (const archived of [false, true, false]) {
+      const savedProject = await send(projectPath, 'PATCH', { archived });
+      await server.stop();
+      server = undefined;
+      server = await start(dbPath);
+      const projects = await list('/api/projects');
+      const tasks = await list(tasksPath);
+      assert.deepEqual(projects, [savedProject]);
+      assert.deepEqual(tasks, [savedTask]);
+      assert.deepEqual(projects.filter((entry) => matchesProjectFilters(
+        entry, archived ? 'Archived' : 'Active', ' mixed\t project ',
+      )), [savedProject]);
+      assert.deepEqual(tasks.filter((entry) => matchesTaskFilters(
+        entry, 'Completed', 'High', range, ' mixed  task ',
+      )), [savedTask]);
+      assert.deepEqual(tasks.filter((entry) => matchesTaskFilters(entry, 'All', 'All')), [savedTask]);
+      // Matching must not mutate the fetched objects used for display.
+      assert.deepEqual(projects, [savedProject]);
+      assert.deepEqual(tasks, [savedTask]);
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('due dates preserve other task data and persist through rename, archive, clearing, and restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-'));

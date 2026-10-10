@@ -1,10 +1,11 @@
-// Fold only ASCII letters; other characters and internal whitespace stay significant.
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+// Normalize only for matching; preserve the original saved and displayed text.
+function normalizeSearchText(value) {
+  return value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 export function matchesSearch(value, query) {
-  return foldAscii(value).includes(foldAscii(query.trim()));
+  return normalizeSearchText(value).includes(normalizeSearchText(query.trim()));
 }
 
 export function matchesProjectFilters(project, archiveFilter, query = '') {
