@@ -16,10 +16,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -30,12 +34,12 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
 const page = await readFile(new URL('./index.html', import.meta.url));
@@ -58,14 +62,18 @@ const server = http.createServer(async (req, res) => {
     const id = Number(renameRoute[1]);
     const project = Number.isSafeInteger(id) && id > 0 ? getProject.get(id) : null;
     if (!project) return send(res, 404, JSON.stringify({ error: 'Not found' }));
-    if (project.archived) return send(res, 400, JSON.stringify({ error: 'Archived projects cannot be renamed' }));
+    if (project.archived) return send(res, 400, JSON.stringify({ error: 'Archived projects cannot be changed' }));
     try {
       let body = '';
       for await (const chunk of req) body += chunk;
       const data = JSON.parse(body);
-      const name = typeof data.name === 'string' ? data.name.trim() : '';
-      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
-      renameProject.run(name, id);
+      if (typeof data.defaultPriority === 'string' && ['Low', 'Normal', 'High'].includes(data.defaultPriority)) {
+        updateProjectDefault.run(data.defaultPriority, id);
+      } else {
+        const name = typeof data.name === 'string' ? data.name.trim() : '';
+        if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+        renameProject.run(name, id);
+      }
       return send(res, 200, JSON.stringify(getProject.get(id)));
     } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -103,7 +111,7 @@ const server = http.createServer(async (req, res) => {
         const data = JSON.parse(body);
         const title = typeof data.title === 'string' ? data.title.trim() : '';
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-        const result = createTask.run(projectId, title);
+        const result = createTask.run(projectId, title, project.defaultPriority);
         return send(res, 201, JSON.stringify(getTask.get(Number(result.lastInsertRowid), projectId)));
       } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
     }
