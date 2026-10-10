@@ -10,6 +10,7 @@ const newNameInput = document.querySelector('#new-project-name');
 const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const tasksElement = document.querySelector('#tasks');
 const projectId = window.location.pathname.match(/^\/projects\/([1-9]\d*)$/)?.[1];
 let tasks = [];
@@ -141,6 +142,7 @@ function renderTasks() {
   for (const task of tasks) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
+    if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -232,6 +234,7 @@ function renderTasks() {
           body: JSON.stringify({ priority: prioritySelect.value }),
         });
         task.priority = saved.priority;
+        renderTasks();
       } catch (error) {
         showError(error.message);
       } finally {
@@ -245,6 +248,7 @@ function renderTasks() {
 }
 
 taskFilter.addEventListener('change', renderTasks);
+priorityFilter.addEventListener('change', renderTasks);
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (archived) return;
