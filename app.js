@@ -203,6 +203,28 @@ async function renderTasks(projectId, archived) {
         if (response.ok) await refresh();
       });
       row.append(checkbox);
+      const renameInput = element('input');
+      renameInput.type = 'text';
+      renameInput.setAttribute('aria-label', 'New task title');
+      renameInput.disabled = archived;
+      const renameButton = element('button', 'Rename task');
+      renameButton.type = 'button';
+      renameButton.disabled = archived;
+      const renameError = element('span');
+      renameError.setAttribute('role', 'alert');
+      renameButton.addEventListener('click', async () => {
+        const title = renameInput.value.trim();
+        if (!title) {
+          renameError.textContent = 'Task title is required';
+          renameInput.focus();
+          return;
+        }
+        const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+        });
+        if (response.ok) await refresh();
+      });
+      row.append(renameInput, renameButton, renameError);
       rows.append(row);
     }
   }

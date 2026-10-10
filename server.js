@@ -90,6 +90,13 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'PATCH' && taskRoute[2]) {
       const data = await readBody(req);
+      if (typeof data?.title === 'string') {
+        if (!data.title.trim()) return json(res, 400, { error: 'Task title is required' });
+        const title = data.title.trim();
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, Number(taskRoute[2]), projectId);
+        if (!result.changes) return json(res, 404, { error: 'Task not found' });
+        return json(res, 200, { id: Number(taskRoute[2]), projectId, title });
+      }
       if (typeof data?.completed !== 'boolean') return json(res, 400, { error: 'Invalid request' });
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(data.completed ? 1 : 0, Number(taskRoute[2]), projectId);
       if (!result.changes) return json(res, 404, { error: 'Task not found' });
