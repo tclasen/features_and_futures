@@ -34,6 +34,7 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function send(response, status, body, contentType = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
@@ -271,7 +272,28 @@ function page() {
           });
           await loadTasks(projectId, rows, filter);
         });
-        row.append(checkbox, element('span', task.title, 'task-title')); rows.append(row);
+        const title = element('span', task.title, 'task-title');
+        const renameInput = document.createElement('input');
+        renameInput.type = 'text';
+        renameInput.value = task.title;
+        renameInput.setAttribute('aria-label', 'New task title');
+        renameInput.disabled = Boolean(project.archived);
+        const renameButton = element('button', 'Rename task');
+        renameButton.type = 'button';
+        renameButton.disabled = Boolean(project.archived);
+        renameButton.addEventListener('click', async () => {
+          const newTitle = renameInput.value.trim();
+          if (!newTitle) {
+            let error = row.querySelector('[role="alert"]');
+            if (!error) { error = element('span', 'Task title is required', 'error'); error.setAttribute('role', 'alert'); row.append(error); }
+            return;
+          }
+          const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle })
+          });
+          if (result.ok) await loadTasks(projectId, rows, filter);
+        });
+        row.append(checkbox, title, renameInput, renameButton); rows.append(row);
       }
     }
 
@@ -335,9 +357,20 @@ const server = createServer(async (request, response) => {
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (request.method === 'PATCH' && taskMatch) {
     const projectId = Number(taskMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+    if (project.archived) return send(response, 409, JSON.stringify({ error: 'Archived project' }));
     const body = await readJson(request);
-    if (typeof body?.completed !== 'boolean') return send(response, 400, JSON.stringify({ error: 'Completion state is required' }));
-    const result = updateTask.run(body.completed ? 1 : 0, taskMatch[2], projectId);
+    let result;
+    if (typeof body?.completed === 'boolean') {
+      result = updateTask.run(body.completed ? 1 : 0, taskMatch[2], projectId);
+    } else if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) return send(response, 400, JSON.stringify({ error: 'Task title is required' }));
+      result = renameTask.run(title, taskMatch[2], projectId);
+    } else {
+      return send(response, 400, JSON.stringify({ error: 'Task update is required' }));
+    }
     return result.changes ? send(response, 200, JSON.stringify({ status: 'ok' })) : send(response, 404, JSON.stringify({ error: 'Task not found' }));
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
