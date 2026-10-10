@@ -11,6 +11,9 @@ const taskFilter = document.querySelector('#task-filter');
 const taskList = document.querySelector('#task-list');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
+const renameForm = document.querySelector('#rename-project');
+const renameInput = document.querySelector('#new-project-name');
+const renameButton = renameForm.querySelector('button');
 let projects = [];
 let archived = false;
 let projectId = null;
@@ -128,6 +131,9 @@ async function render() {
   taskFilter.value = 'All';
   taskList.replaceChildren();
   taskForm.querySelector('button').disabled = true;
+  renameInput.value = '';
+  renameInput.disabled = true;
+  renameButton.disabled = true;
   try {
     if (match) {
       const [project, savedTasks] = await Promise.all([
@@ -141,6 +147,9 @@ async function render() {
       tasks = savedTasks;
       renderTasks();
       taskForm.querySelector('button').disabled = archived;
+      renameInput.value = project.name;
+      renameInput.disabled = archived;
+      renameButton.disabled = archived;
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
     } else {
@@ -215,6 +224,32 @@ taskForm.addEventListener('submit', async (event) => {
     if (version === renderVersion) showError(error.message);
   } finally {
     if (version === renderVersion) submit.disabled = archived;
+  }
+});
+
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (projectId === null || archived) return;
+  alert.hidden = true;
+  const name = renameInput.value.trim();
+  if (!name) return showError('Project name is required');
+  const owner = projectId;
+  const version = renderVersion;
+  renameButton.disabled = true;
+  try {
+    const project = await api(`/api/projects/${owner}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (version !== renderVersion) return;
+    heading.textContent = project.name;
+    document.title = `${project.name} · Workboard`;
+    renameInput.value = project.name;
+  } catch (error) {
+    if (version === renderVersion) showError(error.message);
+  } finally {
+    if (version === renderVersion) renameButton.disabled = archived;
   }
 });
 

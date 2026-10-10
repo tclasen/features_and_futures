@@ -20,4 +20,6 @@ Open a project to create tasks, toggle their completion, and filter by All, Open
 
 The project list initially shows Active projects. Archive a project and select Archived to open or restore it. Archived projects show their tasks and allow filtering, but task creation and completion changes are disabled. Every project row shows the completed/total task count. Archive state persists across restarts; restoration preserves tasks and completion. Existing databases are migrated automatically.
 
-The integration tests use isolated temporary SQLite files and check validation, trimmed names and titles, creation order, page routes, health, project isolation, legacy database migration, archive restrictions, summaries, and persistence across server restarts.
+On an active project page, use New project name and Rename project to change its name. Names are trimmed and blank names are rejected. Renaming preserves the project URL, creation order, tasks, completion, and summary. Archived projects cannot be renamed; restore them first. Renamed names persist across restarts.
+
+The integration tests use isolated temporary SQLite files and check validation, trimmed names and titles, creation order, page routes, health, project isolation, legacy database migration, archive restrictions, summaries, renaming, and persistence across server restarts.
