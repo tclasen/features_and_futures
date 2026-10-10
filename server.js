@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+  due_date TEXT
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -28,6 +29,9 @@ try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DE
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
@@ -39,13 +43,23 @@ const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const createTaskWithPriority = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const page = await readFile(path.join(here, 'index.html'));
+
+function isValidDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day >= 1 && day <= days;
+}
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' });
@@ -153,6 +167,10 @@ const server = http.createServer(async (req, res) => {
       } else if (Object.hasOwn(payload, 'priority')) {
         if (!['Low', 'Normal', 'High'].includes(payload.priority)) return send(res, 400, JSON.stringify({ error: 'Invalid task priority' }));
         updatePriority.run(payload.priority, taskId, projectId);
+      } else if (Object.hasOwn(payload, 'dueDate')) {
+        const value = String(payload.dueDate ?? '').trim();
+        if (value && !isValidDate(value)) return send(res, 400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+        updateDueDate.run(value || null, taskId, projectId);
       } else {
         if (typeof payload.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
         updateTask.run(payload.completed ? 1 : 0, taskId, projectId);
