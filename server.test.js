@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, rename, archive, summaries, isolation, migration, and persistence', async () => {
+test('projects and tasks: validation, rename, archive, priorities, summaries, isolation, migration, and persistence', async () => {
   const directory = await mkdtemp(join(process.cwd(), '.workboard-test-'));
   let child;
   async function start() {
@@ -279,6 +279,73 @@ test('projects and tasks: validation, rename, archive, summaries, isolation, mig
     base = await start();
     assert.equal(await (await fetch(base + paths[0])).text(), restoredTasksDetail);
     assert.equal(await (await fetch(base)).text(), restoredRenamedList);
+    // Upgrade a populated Task 005 database; every existing task gets Normal.
+    await stop();
+    const priorDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+    priorDatabase.exec('ALTER TABLE tasks DROP COLUMN priority');
+    priorDatabase.close();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), restoredTasksDetail);
+    const prioritySelects = body => [...body.matchAll(/<select id="task-priority-\d+"[^>]*>([\s\S]*?)<\/select>/g)];
+    const selectedPriorities = body => prioritySelects(body).map(match => match[1].match(/<option selected>(\w+)<\/option>/)[1]);
+    assert.deepEqual(selectedPriorities(restoredTasksDetail), ['Normal', 'Normal', 'Normal']);
+    for (const select of prioritySelects(restoredTasksDetail)) {
+      assert.equal(select[1].trim(), '<option>Low</option><option selected>Normal</option><option>High</option>');
+    }
+    assert.equal((restoredTasksDetail.match(/>Task priority<\/label>/g) || []).length, 3);
+    const savePriority = async (path, priority, filter = 'All') => fetch(`${base}${path}/priority`, {
+      method: 'POST', body: new URLSearchParams({ priority, filter }), redirect: 'manual',
+    });
+    const priorityResponse = await savePriority(taskPaths[1], 'High', 'Completed');
+    assert.equal(priorityResponse.status, 303);
+    assert.equal(priorityResponse.headers.get('location'), `${paths[0]}?filter=Completed`);
+    assert.equal((await savePriority(taskPaths[0], 'Low', 'Open')).status, 303);
+    const prioritizedDetail = await (await fetch(base + paths[0])).text();
+    assert.deepEqual(selectedPriorities(prioritizedDetail), ['Low', 'High', 'Normal']);
+    // Removing only the selected flags makes the whole page identical: title,
+    // completion, order, ownership, and every other control are unchanged.
+    const withoutPrioritySelection = body => body.replace(/(<select id="task-priority-\d+"[^>]*>)([\s\S]*?)(<\/select>)/g,
+      (_, opening, options, closing) => opening + options.replaceAll(' selected', '') + closing);
+    assert.equal(withoutPrioritySelection(prioritizedDetail), withoutPrioritySelection(restoredTasksDetail));
+    assert.equal(await (await fetch(base)).text(), restoredRenamedList);
+    assert.deepEqual(selectedPriorities(await (await fetch(`${base}${paths[0]}?filter=Completed`)).text()), ['High']);
+    assert.deepEqual(selectedPriorities(await (await fetch(`${base}${paths[0]}?filter=Open`)).text()), ['Low', 'Normal']);
+    assert.equal((await savePriority(wrongProjectPath, 'Low')).status, 404);
+    assert.equal((await savePriority(`${paths[0]}/tasks/999999`, 'High')).status, 404);
+    assert.equal((await savePriority(taskPaths[1], 'Urgent')).status, 400);
+    assert.equal(await (await fetch(base + paths[0])).text(), prioritizedDetail);
+    assert.equal((await fetch(`${base}${paths[1]}/tasks`, {
+      method: 'POST', body: new URLSearchParams({ title: 'Independent task' }), redirect: 'manual',
+    })).status, 303);
+    const otherProject = await (await fetch(base + paths[1])).text();
+    assert.deepEqual(selectedPriorities(otherProject), ['Normal']);
+    assert.equal((await savePriority(taskPaths[0], 'Normal')).status, 303);
+    assert.equal((await savePriority(taskPaths[0], 'Low')).status, 303);
+    assert.equal(await (await fetch(base + paths[1])).text(), otherProject);
+    assert.equal((await renameTask(taskPaths[1], '  Priority preserved  ')).status, 303);
+    const renamedPriorityDetail = await (await fetch(base + paths[0])).text();
+    assert.deepEqual(selectedPriorities(renamedPriorityDetail), ['Low', 'High', 'Normal']);
+    assert.match(renamedPriorityDetail, /aria-label="Complete Priority preserved" checked/);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedPriorityDetail);
+    await fetch(`${base}${paths[0]}/archive`, { method: 'POST' });
+    const archivedPriorityDetail = await (await fetch(base + paths[0])).text();
+    assert.equal((archivedPriorityDetail.match(/<select id="task-priority-\d+" name="priority" disabled/g) || []).length, 3);
+    assert.deepEqual(selectedPriorities(archivedPriorityDetail), ['Low', 'High', 'Normal']);
+    assert.equal((await savePriority(taskPaths[1], 'Low')).status, 403);
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedPriorityDetail);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedPriorityDetail);
+    await fetch(`${base}${paths[0]}/restore`, { method: 'POST' });
+    assert.equal(await (await fetch(base + paths[0])).text(), renamedPriorityDetail);
+    assert.equal((await savePriority(taskPaths[2], 'High')).status, 303);
+    const finalDetail = await (await fetch(base + paths[0])).text();
+    assert.deepEqual(selectedPriorities(finalDetail), ['Low', 'High', 'High']);
+    await stop();
+    base = await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), finalDetail);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
