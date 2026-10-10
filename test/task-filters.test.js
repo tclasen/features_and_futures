@@ -52,7 +52,11 @@ async function page(archived = false) {
     fetch: async (path, options) => {
       let data;
       if (options) {
-        const task = path === '/api/projects/1' ? project : tasks.find(item => item.id === Number(path.split('/').at(-1)));
+        let task = path === '/api/projects/1' ? project : tasks.find(item => item.id === Number(path.split('/').at(-1)));
+        if (options.method === 'POST') {
+          task = { id: tasks.length + 1, completed: false, priority: project.default_priority, due_date: '' };
+          tasks.push(task);
+        }
         const patch = JSON.parse(options.body);
         writes.push(patch);
         if (Object.hasOwn(patch, 'due_date')) {
@@ -189,6 +193,141 @@ test('due-date controls save and clear without resetting filters or changing mat
   assert.deepEqual(ui.titles(), ['Renamed']);
 });
 
+test('due range is inclusive, intersects filters, and retains the last valid application', async () => {
+  const ui = await page();
+  const from = ui.control('due-from');
+  const through = ui.control('due-through');
+  assert.equal(from.value, '');
+  assert.equal(through.value, '');
+  assert.equal(from.attributes.type, 'text');
+  assert.equal(through.attributes.type, 'text');
+  assert.equal(from.parent.children.at(-1).textContent, 'Apply due range');
+  async function range(a, b) {
+    from.value = a;
+    through.value = b;
+    await from.parent.fire('submit');
+  }
+  for (const [id, date] of [[1, '2024-02-28'], [2, '2024-02-29'], [4, '2024-03-01']]) {
+    const input = ui.control(`task-due-date-${id}`);
+    input.value = date;
+    await input.parent.fire('submit');
+  }
+  const original = structuredClone(ui.tasks);
+  const writes = ui.writes.length;
+  await range(' 2024-02-28 ', ' 2024-02-29 ');
+  assert.equal(from.value, '2024-02-28');
+  assert.deepEqual(ui.titles(), ['First', 'Second']);
+  for (const bad of ['2023-02-29', '1900-02-29', '2024-04-31', '0000-01-01', '10000-01-01', '2024-2-28', '2024-01-01T00:00:00Z']) {
+    await range(bad, '');
+    assert.match(ui.app.querySelector().textContent, /Due range must use valid YYYY-MM-DD dates/);
+    assert.deepEqual(ui.titles(), ['First', 'Second']);
+    await range('', bad);
+    assert.deepEqual(ui.titles(), ['First', 'Second']);
+  }
+  await range('2024-03-01', '2024-02-29');
+  assert.match(ui.app.querySelector().textContent, /Due from must not be after Due through/);
+  assert.deepEqual(ui.titles(), ['First', 'Second']);
+  const completion = ui.control('task-filter');
+  const priority = ui.control('priority-filter');
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.deepEqual(ui.titles(), ['Second']);
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.deepEqual(ui.titles(), []);
+  await range('', '2024-03-01');
+  assert.deepEqual(ui.titles(), ['Fourth']);
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'High');
+  priority.value = 'All';
+  await priority.fire('change');
+  completion.value = 'All';
+  await completion.fire('change');
+  await range('2024-02-29', '');
+  assert.deepEqual(ui.titles(), ['Second', 'Fourth']);
+  await range('2024-02-29', '2024-02-29');
+  assert.deepEqual(ui.titles(), ['Second']);
+  await range('0001-01-01', '9999-12-31');
+  assert.deepEqual(ui.titles(), ['First', 'Second', 'Fourth']);
+  await range('2000-02-29', '2000-02-29');
+  assert.deepEqual(ui.titles(), []);
+  await range(' ', ' ');
+  assert.deepEqual(ui.titles(), ['First', 'Second', 'Third', 'Fourth']);
+  assert.deepEqual(ui.tasks, original);
+  assert.equal(ui.writes.length, writes);
+});
+
+test('task edits re-evaluate all filters while rename and defaults preserve applied range', async () => {
+  const ui = await page();
+  const due = ui.control('task-due-date-1');
+  due.value = '2024-02-29';
+  await due.parent.fire('submit');
+  const from = ui.control('due-from');
+  const through = ui.control('due-through');
+  from.value = '2024-02-29';
+  through.value = '2024-02-29';
+  await from.parent.fire('submit');
+  const completion = ui.control('task-filter');
+  const priority = ui.control('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const rename = ui.control('new-task-title-1');
+  rename.value = 'Renamed';
+  await rename.parent.fire('submit');
+  const projectRename = ui.control('new-project-name');
+  projectRename.value = 'New project';
+  await projectRename.parent.fire('submit');
+  const defaults = ui.control('default-task-priority');
+  defaults.value = 'Low';
+  await defaults.fire('change');
+  assert.deepEqual(ui.titles(), ['Renamed']);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  const newTask = ui.control('task-title');
+  newTask.value = 'New undated task';
+  await newTask.parent.fire('submit');
+  assert.deepEqual(ui.titles(), ['Renamed']);
+  assert.equal(ui.tasks.at(-1).priority, 'Low');
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  // Editing an unapplied field must not affect the active range.
+  from.value = '2025-01-01';
+  const selector = ui.control('task-priority-1');
+  selector.value = 'Low';
+  await selector.fire('change');
+  assert.deepEqual(ui.titles(), []);
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.deepEqual(ui.titles(), ['Renamed']);
+  const checkbox = ui.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(ui.titles(), []);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.deepEqual(ui.titles(), ['Renamed']);
+  const savedDue = ui.control('task-due-date-1');
+  savedDue.value = '2024-03-01';
+  await savedDue.parent.fire('submit');
+  assert.deepEqual(ui.titles(), []);
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'Low');
+  from.value = '';
+  through.value = '';
+  await from.parent.fire('submit');
+  const clear = ui.control('task-due-date-1');
+  clear.value = '';
+  await clear.parent.fire('submit');
+  from.value = '0001-01-01';
+  await from.parent.fire('submit');
+  assert.deepEqual(ui.titles(), []);
+  const reopened = await page();
+  assert.equal(reopened.control('due-from').value, '');
+  assert.equal(reopened.control('due-through').value, '');
+});
+
 test('archived projects keep both filters usable and editing controls disabled', async () => {
   const ui = await page(true);
   const completion = ui.control('task-filter');
@@ -197,6 +336,16 @@ test('archived projects keep both filters usable and editing controls disabled',
   assert.equal(ui.control('default-task-priority').disabled, true);
   assert.equal(completion.disabled, false);
   assert.equal(priority.disabled, false);
+  const from = ui.control('due-from');
+  const through = ui.control('due-through');
+  assert.equal(from.disabled, false);
+  assert.equal(through.disabled, false);
+  assert.equal(from.parent.children.at(-1).disabled, false);
+  from.value = '2024-01-01';
+  await from.parent.fire('submit');
+  assert.deepEqual(ui.titles(), []);
+  from.value = '';
+  await from.parent.fire('submit');
   completion.value = 'Completed';
   await completion.fire('change');
   priority.value = 'High';
