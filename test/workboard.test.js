@@ -84,7 +84,7 @@ test('due dates validate calendar days, preserve task data, and survive archive 
     assert.doesNotMatch(dateInput(await get('/projects/1')), /disabled/);
     const saved = new DatabaseSync(dbPath);
     assert.deepEqual({ ...saved.prepare('SELECT * FROM tasks WHERE id = 1').get() }, {
-      id: 1, project_id: 1, title: 'Renamed', completed: 1, priority: 'High', due_date: '2024-02-29'
+      id: 1, project_id: 1, title: 'Renamed', completed: 1, priority: 'High', due_date: '2024-02-29', position: 1
     });
     assert.equal(saved.prepare('SELECT due_date FROM tasks WHERE id = 2').get().due_date, '');
     saved.close();
