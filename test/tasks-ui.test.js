@@ -230,6 +230,15 @@ test('archived project UI keeps tasks filterable and disables all task mutations
   assert.equal(filter.disabled, false);
   assert.equal(list.children.length, 2);
   assert.ok(list.children.every((row) => row.children[1].disabled));
+  for (const row of list.children) {
+    const renameForm = row.children[2];
+    assert.equal(renameForm.children[0].textContent, 'New task title');
+    assert.equal(renameForm.children[1].disabled, true);
+    assert.equal(renameForm.children[2].textContent, 'Rename task');
+    assert.equal(renameForm.children[2].disabled, true);
+    renameForm.children[1].value = 'Blocked title';
+    await renameForm.fire('submit');
+  }
   assert.equal(list.children[1].children[1].checked, true);
   await list.children[0].children[1].fire('change');
   await form.fire('submit');
@@ -290,4 +299,69 @@ test('rename UI validates names, updates heading, and preserves navigation and t
   assert.equal(row.children[1].textContent, '1/2 completed');
   await row.find((node) => node.textContent === 'Open project').fire('click');
   assert.equal(home.window.location.href, '/projects/7');
+});
+
+test('task rename updates title and checkbox label while preserving filters, order, and reload state', async () => {
+  const project = { id: 7, name: 'Project', archived: 0, completed_count: 1, total_count: 2 };
+  const tasks = [
+    { id: 1, project_id: 7, title: 'Open task', completed: false },
+    { id: 2, project_id: 7, title: 'Done task', completed: true },
+  ];
+  const requests = [];
+  const fetch = async (path, options = {}) => {
+    requests.push({ path, options });
+    if (options.method === 'PATCH') {
+      const task = tasks.find((task) => path === `/api/projects/7/tasks/${task.id}`);
+      task.title = JSON.parse(options.body).title;
+      return jsonResponse(task);
+    }
+    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+  };
+  const { app } = await renderUI('/projects/7', fetch);
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  const filter = app.find((node) => node.id === 'task-filter');
+  for (const row of list.children) {
+    const form = row.children[2];
+    assert.equal(form.children[0].textContent, 'New task title');
+    assert.equal(form.children[0].htmlFor, form.children[1].id);
+    assert.equal(form.children[1].disabled, false);
+    assert.equal(form.children[2].textContent, 'Rename task');
+    assert.equal(form.children[2].disabled, false);
+  }
+  assert.notEqual(list.children[0].children[2].children[1].id, list.children[1].children[2].children[1].id);
+  filter.value = 'Completed';
+  await filter.fire('change');
+  const form = list.children[0].children[2];
+  for (const title of ['', ' \t\n ']) {
+    form.children[1].value = title;
+    await form.fire('submit');
+    assert.equal(app.querySelector('[role="alert"]').textContent, 'Task title is required');
+    assert.equal(list.children[0].children[0].textContent, 'Done task');
+    assert.equal(requests.length, 2);
+  }
+  form.children[1].value = '  Renamed <task>  ';
+  await form.fire('submit');
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].children[0].textContent, 'Renamed <task>');
+  assert.equal(list.children[0].children[1].attributes['aria-label'], 'Complete Renamed <task>');
+  assert.equal(list.children[0].children[1].checked, true);
+  assert.equal(app.querySelector('[role="alert"]'), null);
+  filter.value = 'Open';
+  await filter.fire('change');
+  assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Open task']);
+  filter.value = 'All';
+  await filter.fire('change');
+  assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Open task', 'Renamed <task>']);
+  const reloaded = await renderUI('/projects/7', fetch);
+  const reloadedList = reloaded.app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  assert.deepEqual(reloadedList.children.map((row) => row.children[0].textContent), ['Open task', 'Renamed <task>']);
+  assert.deepEqual(reloadedList.children.map((row) => row.children[1].checked), [false, true]);
+  project.archived = 1;
+  const archived = await renderUI('/projects/7', fetch);
+  assert.equal(archived.app.find((node) => node.id === 'new-task-title-2').disabled, true);
+  project.archived = 0;
+  const restored = await renderUI('/projects/7', fetch);
+  assert.equal(restored.app.find((node) => node.id === 'new-task-title-2').disabled, false);
+  const home = await renderUI('/', async () => jsonResponse([project]));
+  assert.equal(home.app.find((node) => node.dataset.testid === 'project-summary').textContent, '1/2 completed');
 });

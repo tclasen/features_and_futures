@@ -117,7 +117,40 @@ async function renderTasks(project) {
         checkbox.disabled = Boolean(project.archived);
       }
     });
-    row.append(element('span', task.title), checkbox);
+    const renameForm = element('form');
+    const renameLabel = element('label', 'New task title');
+    renameLabel.htmlFor = `new-task-title-${task.id}`;
+    const renameInput = element('input');
+    renameInput.id = renameLabel.htmlFor;
+    renameInput.name = 'title';
+    renameInput.type = 'text';
+    renameInput.disabled = Boolean(project.archived);
+    const renameButton = element('button', 'Rename task');
+    renameButton.type = 'submit';
+    renameButton.disabled = Boolean(project.archived);
+    renameForm.append(renameLabel, renameInput, renameButton);
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (project.archived) return;
+      const title = renameInput.value.trim();
+      if (!title) return showError('Task title is required');
+      renameButton.disabled = true;
+      try {
+        const saved = await request(`${endpoint}/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        task.title = saved.title;
+        drawTasks();
+        app.querySelector('[role="alert"]')?.remove();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        renameButton.disabled = Boolean(project.archived);
+      }
+    });
+    row.append(element('span', task.title), checkbox, renameForm);
     return row;
   }
 
