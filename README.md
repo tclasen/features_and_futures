@@ -22,6 +22,12 @@ npm test
 and are listed in creation order. Creating a project trims the name; blank
 names return a visible validation alert without inserting a row.
 
+Project pages support task creation, completion checkboxes, and All/Open/Completed
+filters. Titles are trimmed and required. Tasks belong to their project and retain
+creation order; completion and task IDs are saved in SQLite. Filters are stored in
+the page URL and default to All. Checkbox and filter changes submit using browser
+JavaScript; creation and navigation use ordinary HTML forms.
+
 Tests launch isolated servers and temporary databases, covering validation,
-HTML escaping, ordering, navigation routes, health, reloads, and persistence
-across process restarts.
+HTML escaping, ordering, navigation routes, health, project isolation, filtering,
+completion toggles, reloads, and persistence across process restarts.
