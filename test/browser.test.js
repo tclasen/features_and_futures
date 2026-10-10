@@ -29,10 +29,14 @@ class Node {
   querySelector(selector) {
     return this.all().find(node => selector === '[role="alert"]' && node.attributes.role === 'alert');
   }
+  querySelectorAll(selector) {
+    const tags = selector.split(',').map(tag => tag.trim());
+    return this.all().slice(1).filter(node => tags.includes(node.tag));
+  }
   all() { return [this, ...this.children.flatMap(node => node.all())]; }
 }
 
-async function page(archived = false) {
+async function page(archived = false, beforeSave = async () => {}) {
   const app = new Node('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
@@ -48,6 +52,7 @@ async function page(archived = false) {
     fetch: async (path, options) => {
       let data;
       if (options?.method === 'PATCH') {
+        await beforeSave();
         const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
         const changes = JSON.parse(options.body);
         writes.push(changes);
@@ -114,6 +119,52 @@ test('task edits re-evaluate both filters without resetting them; rename retains
   await p.choose('task-filter', 'Completed');
   assert.deepEqual(p.titles(), ['Renamed', 'Second']);
   assert.deepEqual(p.tasks[0], { id: 1, title: 'Renamed', completed: true, priority: 'Low' });
+});
+
+test('completion edits keep the clicked checkbox attached until saving finishes', async () => {
+  for (const completion of ['Open', 'Completed']) {
+    let finishSave;
+    const saving = new Promise(resolve => { finishSave = resolve; });
+    const p = await page(false, () => saving);
+    await p.choose('task-filter', completion);
+    await p.choose('priority-filter', 'High');
+    const row = p.rows()[0];
+    const checkbox = row.children[0];
+    checkbox.checked = completion === 'Open';
+    await checkbox.fire('change');
+
+    assert.equal(p.rows()[0], row);
+    assert.equal(p.rows()[0].children[0], checkbox);
+    assert.equal(checkbox.checked, completion === 'Open');
+    assert.ok(row.querySelectorAll('input, button, select').every(control => control.disabled));
+    assert.equal(p.byId('task-filter').value, completion);
+    assert.equal(p.byId('priority-filter').value, 'High');
+
+    finishSave();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(p.titles(), []);
+    assert.equal(p.byId('task-filter').value, completion);
+    assert.equal(p.byId('priority-filter').value, 'High');
+    await p.choose('task-filter', completion === 'Open' ? 'Completed' : 'Open');
+    assert.ok(p.titles().includes(row.children[1].textContent));
+  }
+});
+
+test('failed completion saves restore saved state and enable editing', async () => {
+  const p = await page(false, async () => { throw new Error('Save failed'); });
+  await p.choose('task-filter', 'Open');
+  await p.choose('priority-filter', 'High');
+  const checkbox = p.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(p.titles(), ['First']);
+  assert.equal(p.rows()[0].children[0].checked, false);
+  assert.ok(p.rows()[0].querySelectorAll('input, button, select').every(control => !control.disabled));
+  assert.equal(p.app.querySelector('[role="alert"]').textContent, 'Save failed');
+  assert.equal(p.byId('task-filter').value, 'Open');
+  assert.equal(p.byId('priority-filter').value, 'High');
+  assert.deepEqual(p.writes, []);
 });
 
 test('archived projects keep both filters usable and all task edits disabled', async () => {

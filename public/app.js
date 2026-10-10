@@ -218,11 +218,15 @@ async function renderProject(id) {
 
   const tasks = await api(`/api/projects/${id}/tasks`);
   const pendingTasks = new Set();
-  async function saveTask(task, changes) {
+  async function saveTask(task, changes, row) {
     if (project.archived || pendingTasks.has(task.id)) return;
     pendingTasks.add(task.id);
     app.querySelector('[role="alert"]')?.remove();
-    renderTasks();
+    // Keep the edited control attached with its new value during the request.
+    // Rebuilding here would undo a checkbox click before the browser observes it.
+    for (const control of row.querySelectorAll('input, button, select')) {
+      control.disabled = true;
+    }
     try {
       const saved = await api(`/api/projects/${id}/tasks/${task.id}`, {
         method: 'PATCH',
@@ -252,7 +256,7 @@ async function renderProject(id) {
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       row.append(checkbox, element('span', task.title));
       checkbox.addEventListener('change', () => {
-        saveTask(task, { completed: checkbox.checked });
+        saveTask(task, { completed: checkbox.checked }, row);
       });
       const taskRenameForm = element('form');
       const renameLabel = element('label', 'New task title');
@@ -276,7 +280,7 @@ async function renderProject(id) {
           showAlert('Task title is required');
           return;
         }
-        saveTask(task, { title });
+        saveTask(task, { title }, row);
       });
       const priorityLabel = element('label', 'Task priority');
       priorityLabel.htmlFor = `task-priority-${task.id}`;
@@ -290,7 +294,7 @@ async function renderProject(id) {
       priority.value = task.priority;
       priority.disabled = checkbox.disabled;
       priority.addEventListener('change', () => {
-        saveTask(task, { priority: priority.value });
+        saveTask(task, { priority: priority.value }, row);
       });
       row.append(taskRenameForm, priorityLabel, priority);
       list.append(row);
