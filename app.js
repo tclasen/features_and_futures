@@ -121,6 +121,8 @@ async function renderList() {
 async function renderProject(id) {
   const project = await request(`/api/projects/${id}`);
   const tasks = await request(`/api/projects/${id}/tasks`);
+  const projects = await request('/api/projects');
+  const destinations = projects.filter(candidate => !candidate.archived && String(candidate.id) !== String(id));
   content.replaceChildren();
   const back = element('button', 'back-button', 'Projects');
   back.type = 'button';
@@ -349,6 +351,35 @@ async function renderProject(id) {
         }
       });
       row.append(dueDateForm);
+      const destinationLabel = element('label', 'destination-field', 'Destination project');
+      const destination = element('select', 'task-destination');
+      destination.setAttribute('aria-label', 'Destination project');
+      for (const candidate of destinations) {
+        const option = element('option', '', candidate.name);
+        option.value = candidate.id;
+        destination.append(option);
+      }
+      const moveButton = element('button', 'move-task-button', 'Move task');
+      moveButton.type = 'button';
+      destination.disabled = project.archived || !destinations.length;
+      moveButton.disabled = project.archived || !destinations.length;
+      moveButton.addEventListener('click', async () => {
+        if (!destination.value) return;
+        try {
+          await request(`/api/projects/${id}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+          });
+          const index = tasks.findIndex(item => item.id === task.id);
+          if (index !== -1) tasks.splice(index, 1);
+          drawTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      destinationLabel.append(destination);
+      row.append(destinationLabel, moveButton);
       list.append(row);
     }
   }

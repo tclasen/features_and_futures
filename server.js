@@ -26,6 +26,7 @@ db.exec(`
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
+    task_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -43,6 +44,10 @@ if (!taskColumns.some(column => column.name === 'priority')) {
 }
 if (!taskColumns.some(column => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some(column => column.name === 'task_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE tasks SET task_order = id');
 }
 db.exec('PRAGMA foreign_keys = ON');
 
@@ -126,7 +131,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId);
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY task_order ASC, id ASC').all(projectId);
     return send(res, 200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
 
@@ -139,7 +144,8 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req);
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      const nextOrder = db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(projectId).nextOrder;
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, nextOrder);
       return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority }));
     } catch {
       return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
@@ -152,6 +158,19 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req);
       const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(taskMatch[1]));
       if (project?.archived) return send(res, 409, JSON.stringify({ error: 'Archived projects cannot be changed' }));
+      if (input.destinationProjectId !== undefined) {
+        const sourceProjectId = Number(taskMatch[1]);
+        const taskId = Number(taskMatch[2]);
+        const destinationProjectId = Number(input.destinationProjectId);
+        const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationProjectId);
+        if (!destination || destination.archived || destinationProjectId === sourceProjectId) {
+          return send(res, 400, JSON.stringify({ error: 'Invalid destination project' }));
+        }
+        const nextOrder = db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS nextOrder FROM tasks WHERE project_id = ?').get(destinationProjectId).nextOrder;
+        const result = db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE project_id = ? AND id = ?').run(destinationProjectId, nextOrder, sourceProjectId, taskId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ id: taskId, projectId: destinationProjectId }));
+      }
       if (typeof input.title === 'string') {
         const title = input.title.trim();
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
