@@ -8,14 +8,36 @@ const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = new DatabaseSync(databasePath);
 database.exec(`
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL CHECK(length(trim(name)) > 0)
   );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1))
+  );
+  CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
 `);
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
 const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+
+function taskFilter(value) {
+  return ['all', 'open', 'completed'].includes(value) ? value : 'all';
+}
+
+function projectPage(project, filter, error = '') {
+  const tasks = listTasks.all(project.id).filter((task) => (
+    filter === 'all' || Boolean(task.completed) === (filter === 'completed')
+  ));
+  return renderProject(project, tasks, filter, error);
+}
 
 function sendHtml(response, status, html) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -39,7 +61,8 @@ async function readForm(request) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    const path = new URL(request.url, 'http://localhost').pathname;
+    const url = new URL(request.url, 'http://localhost');
+    const path = url.pathname;
     if (request.method === 'GET' && path === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -58,7 +81,33 @@ const server = http.createServer(async (request, response) => {
     } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(path)) {
       const id = Number(path.split('/')[2]);
       const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
-      sendHtml(response, project ? 200 : 404, project ? renderProject(project) : renderNotFound());
+      sendHtml(response, project ? 200 : 404, project ? projectPage(project, taskFilter(url.searchParams.get('filter'))) : renderNotFound());
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*)?$/.test(path)) {
+      const [, , projectId, , taskId] = path.split('/');
+      const id = Number(projectId);
+      const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
+      if (!project) {
+        sendHtml(response, 404, renderNotFound());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (taskId) {
+        const task = Number(taskId);
+        if (!Number.isSafeInteger(task) || updateTask.run(form.get('completed') === 'on' ? 1 : 0, task, id).changes === 0) {
+          sendHtml(response, 404, renderNotFound());
+          return;
+        }
+      } else {
+        const title = (form.get('title') || '').trim();
+        if (!title) {
+          sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+          return;
+        }
+        createTask.run(id, title);
+      }
+      response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
+      response.end();
     } else {
       sendHtml(response, 404, renderNotFound());
     }

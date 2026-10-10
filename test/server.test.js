@@ -16,7 +16,7 @@ async function unusedPort() {
   return port;
 }
 
-test('project validation, ordering, navigation and restart persistence', async () => {
+test('projects and tasks: validation, ownership, filtering, completion and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = await unusedPort();
   const base = `http://127.0.0.1:${port}`;
@@ -88,6 +88,62 @@ test('project validation, ordering, navigation and restart persistence', async (
     assert.equal(await (await fetch(base)).text(), list);
     assert.equal(await (await fetch(`${base}${routes[0]}`)).text(), detail);
     assert.equal((await fetch(`${base}/projects/99999`)).status, 404);
+
+    const projectPath = routes[0];
+    async function postTask(path, fields) {
+      return fetch(`${base}${path}`, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+    }
+    async function tasksPage(filter = 'all', path = projectPath) {
+      return (await fetch(`${base}${path}?filter=${filter}`)).text();
+    }
+    const emptyTasks = await tasksPage();
+    assert.match(emptyTasks, /<label for="task-title">Task title<\/label>/);
+    assert.match(emptyTasks, />Create task<\/button>/);
+    assert.match(emptyTasks, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(emptyTasks, /value="all" selected>All/);
+    assert.match(emptyTasks, />Open<\/option>/);
+    assert.match(emptyTasks, />Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await postTask(`${projectPath}/tasks`, { title });
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.doesNotMatch(html, /data-testid="task-row"/);
+    }
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: '  First task  ' })).status, 303);
+    assert.equal((await postTask(`${projectPath}/tasks`, { title: '<b>Second & "task"</b>' })).status, 303);
+    const taskList = await tasksPage();
+    assert.equal((taskList.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.ok(taskList.indexOf('First task') < taskList.indexOf('&lt;b&gt;Second'));
+    assert.match(taskList, /aria-label="Complete First task"/);
+    assert.match(taskList, /&lt;b&gt;Second &amp; &quot;task&quot;&lt;\/b&gt;/);
+    assert.doesNotMatch(taskList, / checked/);
+    const openTasks = await tasksPage('open');
+    assert.equal((openTasks.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(openTasks, /value="open" selected>Open/);
+    assert.doesNotMatch(await tasksPage('completed'), /data-testid="task-row"/);
+    assert.doesNotMatch(await tasksPage('all', routes[1]), /data-testid="task-row"/);
+    const taskPaths = [...taskList.matchAll(/action="(\/projects\/\d+\/tasks\/\d+)"/g)].map((match) => match[1]);
+    const update = await postTask(taskPaths[0], { completed: 'on', filter: 'open' });
+    assert.equal(update.status, 303);
+    assert.equal(update.headers.get('location'), `${projectPath}?filter=open`);
+    assert.doesNotMatch(await tasksPage('open'), /<span>First task<\/span>/);
+    assert.match(await tasksPage('completed'), /<span>First task<\/span>/);
+    assert.doesNotMatch(await tasksPage('completed'), /<span>&lt;b&gt;Second/);
+    const wrongOwnerPath = taskPaths[0].replace(projectPath, routes[1]);
+    assert.equal((await postTask(wrongOwnerPath, {})).status, 404);
+    assert.equal((await postTask('/projects/99999/tasks', { title: 'No owner' })).status, 404);
+    const savedTasks = await tasksPage();
+    assert.match(savedTasks, /aria-label="Complete First task" checked/);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), savedTasks);
+    assert.equal(await tasksPage('unknown'), savedTasks);
+    assert.equal((await postTask(taskPaths[0], {})).status, 303);
+    assert.doesNotMatch(await tasksPage(), / checked/);
+    assert.doesNotMatch(await tasksPage('completed'), /data-testid="task-row"/);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
