@@ -122,7 +122,8 @@ async function render() {
         priority.value = task.priority;
         priority.disabled = project.archived;
         priority.addEventListener('change', async () => {
-          await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+          const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+          if (response.ok) await loadTasks();
         });
         row.append(priority);
         const renameForm = element('form', undefined, 'create-form');
