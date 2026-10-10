@@ -57,6 +57,21 @@ const server = http.createServer((request, response) => {
     });
     return;
   }
+  const taskRenameRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (taskRenameRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const title = String(JSON.parse(body).title ?? '').trim();
+        if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(title, Number(taskRenameRoute[1]));
+        return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active task not found' });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
   const completionRoute = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (completionRoute && request.method === 'PATCH') {
     let body = '';
