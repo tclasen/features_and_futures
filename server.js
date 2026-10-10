@@ -177,6 +177,10 @@ function page() {
 
     function asciiLower(value) { return value.replace(/[A-Z]/g, character => character.toLowerCase()); }
 
+    function normalizeSearch(value) {
+      return asciiLower(value.replace(/[ \t]+/g, ' '));
+    }
+
     async function loadRows(rows, filterSelect, query = '') {
       const filter = filterSelect.value;
       const appliedQuery = query.trim();
@@ -190,7 +194,8 @@ function page() {
         rowElements = new Map();
         projectRowElements.set(rows, rowElements);
       }
-      const matchingProjects = projects.filter(project => !appliedQuery || asciiLower(project.name).includes(asciiLower(appliedQuery)));
+      const normalizedQuery = normalizeSearch(appliedQuery);
+      const matchingProjects = projects.filter(project => !normalizedQuery || normalizeSearch(project.name).includes(normalizedQuery));
       const visibleIds = new Set(matchingProjects.map(project => String(project.id)));
       for (const [id, row] of rowElements) {
         if (!visibleIds.has(id)) {
@@ -374,7 +379,8 @@ function page() {
       const destinations = (await destinationsResponse.json()).filter(item => String(item.id) !== String(projectId));
       rows.replaceChildren();
       for (const task of tasks) {
-        if (searchQuery && !asciiLower(task.title).includes(asciiLower(searchQuery.trim()))) continue;
+        const normalizedQuery = normalizeSearch(searchQuery);
+        if (normalizedQuery && !normalizeSearch(task.title).includes(normalizedQuery)) continue;
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
         if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
         if ((dueFrom || dueThrough) && !task.due_date) continue;
