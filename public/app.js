@@ -214,7 +214,40 @@ async function showProject(id) {
             showError(error);
           } finally { checkbox.disabled = false; }
         });
-        row.append(element('span', task.title), checkbox);
+        const titleText = element('span', task.title);
+        const taskRenameForm = element('form');
+        const taskRenameLabel = element('label', 'New task title');
+        taskRenameLabel.htmlFor = `new-task-title-${task.id}`;
+        const taskRenameInput = element('input');
+        taskRenameInput.id = taskRenameLabel.htmlFor;
+        taskRenameInput.type = 'text';
+        taskRenameInput.disabled = Boolean(project.archived);
+        const taskRename = element('button', 'Rename task');
+        taskRename.type = 'submit';
+        taskRename.disabled = Boolean(project.archived);
+        taskRenameForm.append(taskRenameLabel, taskRenameInput, taskRename);
+        taskRenameForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (project.archived) return;
+          const title = taskRenameInput.value.trim();
+          if (!title) return showError(new Error('Task title is required'));
+          taskRename.disabled = true;
+          alert.hidden = true;
+          try {
+            const saved = await request(`/api/projects/${id}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title }),
+            });
+            task.title = saved.title;
+            titleText.textContent = saved.title;
+            checkbox.setAttribute('aria-label', `Complete ${saved.title}`);
+            taskRenameInput.value = '';
+            taskRenameInput.focus();
+          } catch (error) { showError(error); }
+          finally { taskRename.disabled = Boolean(project.archived); }
+        });
+        row.append(titleText, checkbox, taskRenameForm);
         list.append(row);
       }
     }
