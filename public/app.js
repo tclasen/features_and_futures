@@ -136,7 +136,40 @@ async function renderTasks(project) {
           showAlert(error.message);
         } finally { checkbox.disabled = false; }
       });
-      row.append(checkbox, title);
+      const renameForm = document.createElement('form');
+      renameForm.className = 'task-rename';
+      const renameLabel = document.createElement('label');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      renameLabel.textContent = 'New task title';
+      const renameInput = document.createElement('input');
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.type = 'text';
+      renameInput.value = task.title;
+      renameInput.disabled = Boolean(project.archived);
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename task';
+      renameButton.disabled = Boolean(project.archived);
+      renameForm.append(renameLabel, renameInput, renameButton);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (renameButton.disabled) return;
+        const newTitle = renameInput.value.trim();
+        if (!newTitle) { showAlert('Task title is required'); return; }
+        showAlert('');
+        renameButton.disabled = true;
+        try {
+          const saved = await api(`${path}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle }),
+          });
+          Object.assign(task, saved);
+          displayTasks();
+        } catch (error) { showAlert(error.message); }
+        finally { renameButton.disabled = Boolean(project.archived); }
+      });
+      row.append(checkbox, title, renameForm);
       return row;
     }));
   }

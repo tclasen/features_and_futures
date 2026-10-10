@@ -25,6 +25,7 @@ const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 function taskData(task) { return { ...task, completed: Boolean(task.completed) }; }
 const projectSelect = `SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
@@ -107,8 +108,14 @@ const server = http.createServer(async (request, response) => {
       if (taskId && request.method === 'PATCH') {
         if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJson(request);
-        if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
-        updateTask.run(Number(input.completed), projectId, taskId);
+        if (input && Object.hasOwn(input, 'title')) {
+          const title = typeof input.title === 'string' ? input.title.trim() : '';
+          if (!title) return json(response, 400, { error: 'Task title is required' });
+          renameTask.run(title, projectId, taskId);
+        } else {
+          if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
+          updateTask.run(Number(input.completed), projectId, taskId);
+        }
         return json(response, 200, taskData(getTask.get(projectId, taskId)));
       }
     }
