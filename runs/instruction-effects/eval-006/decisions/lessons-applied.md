@@ -13,3 +13,5 @@ InheritedL029/L040/L041/L042: positive result anchors, namespaced prior matching
 L007:1000second native Pi foreground commands in oldrunexpired naturally; requests and accepted followups preserved. No rewritten tool arguments, automatickill or mid-run timeout policy.
 
 Later021–023remain unfrozen. Do not extend beyond20until the complete20-round audit/report and first allowed comparative inspection; then freeze the next ten requirements before dispatch. No candidate inspected. Pending control gates remain a hard native-dispatch hold.
+
+Final adoption: Full68baseline now passes3modes,3reloadsentinels and24genuinefaults. Final050/051/054/057replacements separatelypass3modes and8activatedfaults; no all68post-final-replacement execution claim.59listings bind everyfinal20roundsuite. All20publicpackets matcheval005exactly; suites1–12identical.171PMtests, pinnedruntime/isolation, allimageblobs and12fresh cleanstarterroots verified. Native dispatch remains dependent on committing these final inputs; no model calls yet.
