@@ -1,0 +1,5 @@
+# Return-position revision preparation
+
+Chosen at task009 shared barrier before comparative inspection. Task012 explicitly changes always-append movement for returning tasks while retaining first-arrival append and current field values. Current positions and separate per-project histories must survive project renaming/archive/restoration.
+
+[Fixture verification](../../preflight/priority-fixtures/stage-12-check-1791626127487/verified.json) records two44-check positive modes, two1-check reload sentinels and17intentional defects each selecting/failing1assertion: five return-order defects plus twelve selected inherited defects. Full cumulative positives include all earlier behavior. The restart sentinel also reads the completed per-project return order seeded in acceptance. Synthetic HTTP observations prove reload only; actual native process restart, SQLite upgrade, promotion and30second observations remain mandatory. Still unfrozen/undispatched until task011shared barrier and full report pass.
