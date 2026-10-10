@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    body { margin: 0; padding: 48px 20px; }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 { margin-top: 0; }
+    form, .project-row, .project-detail { background: white; border: 1px solid #dce2eb; border-radius: 10px; padding: 18px; }
+    form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+    label { display: grid; gap: 6px; flex: 1; min-width: 200px; font-weight: 600; }
+    input { font: inherit; padding: 10px; border: 1px solid #aab4c3; border-radius: 6px; }
+    button { font: inherit; padding: 10px 14px; border: 0; border-radius: 6px; color: white; background: #3157c8; cursor: pointer; }
+    button:hover { background: #2445a7; }
+    .project-list { display: grid; gap: 10px; margin-top: 20px; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    [role="alert"] { color: #b42318; margin: 12px 0; }
+    .back { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <main id="app"><h1>Workboard</h1><p>Loading projects…</p></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapeText = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Request failed');
+      return body;
+    }
+    async function showList(error = '') {
+      const projects = await request('/api/projects');
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form>
+        <div id="message" role="alert" aria-live="polite">${escapeText(error)}</div>
+        <section class="project-list" aria-label="Projects">${projects.map(project => `<div class="project-row" data-testid="project-row"><span>${escapeText(project.name)}</span><button type="button" data-project="${encodeURIComponent(project.id)}">Open project</button></div>`).join('')}</section>`;
+      app.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = new FormData(event.currentTarget).get('name');
+        try {
+          await request('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          await showList();
+        } catch (error) {
+          app.querySelector('#message').textContent = error.message;
+        }
+      });
+      app.querySelectorAll('[data-project]').forEach(button => button.addEventListener('click', () => {
+        history.pushState({}, '', `/projects/${button.dataset.project}`);
+        render();
+      }));
+    }
+    async function showProject(id) {
+      try {
+        const project = await request(`/api/projects/${encodeURIComponent(id)}`);
+        app.innerHTML = `<button class="back" type="button">Projects</button><section class="project-detail"><h1>${escapeText(project.name)}</h1></section>`;
+        app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+      } catch {
+        app.innerHTML = `<button class="back" type="button">Projects</button><h1>Project not found</h1>`;
+        app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+      }
+    }
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+      if (match) await showProject(decodeURIComponent(match[1]));
+      else await showList();
+    }
+    addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
