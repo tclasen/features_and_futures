@@ -14,7 +14,11 @@ to preserve projects, archive state, tasks, and completion state across restarts
 
 Open a project to create tasks, toggle their completion checkboxes, and choose
 All, Open, or Completed in the Task filter. Tasks belong to their project and
-appear in creation order.
+appear in creation order. The Priority filter offers All, Low, Normal, and High;
+only tasks matching both filters appear. Opening a project starts both filters
+at All. Filter selections stay in place when either filter changes or a task is
+edited; changing completion or priority immediately updates the matching rows.
+Both filters work while archived, and project summaries always count all tasks.
 
 Use New project name and Rename project on an active project page to rename it.
 Names are trimmed and must not be blank. Renaming preserves the project's URL,
@@ -54,4 +58,5 @@ databases, and check project and task validation, ordering, navigation, HTML
 escaping, task filtering and ownership, completion changes, and persistence
 after restarts, legacy database migration, archive/restore, summaries, and
 archived-project mutation protection, and project and task renaming with identity
-and data preservation, and task priorities including migration and persistence.
+and data preservation, task priorities including migration and persistence, and
+combined completion/priority filtering with edits and archive/restore.
