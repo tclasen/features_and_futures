@@ -53,9 +53,12 @@ export function projectsPage(projects, error = '', filter = 'active') {
     </section>`);
 }
 
-export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all') {
+export function projectPage(project, tasks, filter = 'all', error = '', priorityFilter = 'all', dueRange = { from: '', through: '' }) {
+  const dueFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(dueRange.from)}">
+      <input type="hidden" name="dueThrough" value="${escapeHtml(dueRange.through)}">`;
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
-      <input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      ${dueFields}`;
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -86,6 +89,7 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form method="get" action="/projects/${project.id}" class="task-filter" data-submit-on-change>
+      ${dueFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter">
         ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
@@ -96,6 +100,17 @@ export function projectPage(project, tasks, filter = 'all', error = '', priority
         ${[['all', 'All'], ['low', 'Low'], ['normal', 'Normal'], ['high', 'High']].map(([value, label]) =>
           `<option value="${value}"${priorityFilter === value ? ' selected' : ''}>${label}</option>`).join('')}
       </select>
+    </form>
+    <form method="get" action="/projects/${project.id}" class="due-range">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      <input type="hidden" name="appliedDueFrom" value="${escapeHtml(dueRange.from)}">
+      <input type="hidden" name="appliedDueThrough" value="${escapeHtml(dueRange.through)}">
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="dueFrom" type="text" value="${escapeHtml(dueRange.from)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="dueThrough" type="text" value="${escapeHtml(dueRange.through)}">
+      <button type="submit">Apply due range</button>
     </form>
     <section aria-label="Tasks" class="tasks">
       ${tasks.length ? tasks.map((task) => `

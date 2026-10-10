@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizeDueDate } from '../due-date.js';
+import { normalizeDueDate, normalizeDueRange, matchesDueRange } from '../due-date.js';
 import { openWorkboard } from '../database.js';
 
 test('due dates validate Gregorian days without timezone conversion', () => {
@@ -53,4 +53,28 @@ test('due-date storage protects task ownership, archive state and other task fie
   } finally {
     store.close();
   }
+});
+
+test('due ranges normalize calendar boundaries and distinguish invalid order', () => {
+  assert.deepEqual(normalizeDueRange(' 0001-01-01 ', ' 9999-12-31 '), {
+    range: { from: '0001-01-01', through: '9999-12-31' }, error: '',
+  });
+  assert.deepEqual(normalizeDueRange(' \t', ''), { range: { from: '', through: '' }, error: '' });
+  for (const invalid of ['0000-01-01', '1900-02-29', '2024-04-31', '2024-1-01', '10000-01-01']) {
+    for (const boundaries of [[invalid, ''], ['', invalid]]) {
+      assert.deepEqual(normalizeDueRange(...boundaries), {
+        range: null, error: 'Due range must use valid YYYY-MM-DD dates',
+      });
+    }
+  }
+  assert.deepEqual(normalizeDueRange('2024-03-01', '2024-02-29'), {
+    range: null, error: 'Due from must not be after Due through',
+  });
+  const dates = ['', '0001-01-01', '2024-02-28', '2024-02-29', '2024-03-01', '9999-12-31'];
+  const matching = (from, through) => dates.filter((date) => matchesDueRange(date, normalizeDueRange(from, through).range));
+  assert.deepEqual(matching('', ''), dates);
+  assert.deepEqual(matching('2024-02-29', ''), dates.slice(3));
+  assert.deepEqual(matching('', '2024-02-29'), dates.slice(1, 4));
+  assert.deepEqual(matching('2024-02-29', '2024-02-29'), ['2024-02-29']);
+  assert.deepEqual(matching('2024-02-28', '2024-03-01'), dates.slice(2, 5));
 });

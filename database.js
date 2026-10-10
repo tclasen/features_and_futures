@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { normalizeDueDate } from './due-date.js';
+import { normalizeDueDate, matchesDueRange } from './due-date.js';
 
 export function openWorkboard(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -78,10 +78,11 @@ export function openWorkboard(databasePath) {
       return { id: Number(result.lastInsertRowid), name: trimmedName };
     },
     tasks: {
-      list(projectId, filter = 'all', priorityFilter = 'all') {
+      list(projectId, filter = 'all', priorityFilter = 'all', dueRange = {}) {
         return listTasks.all(projectId).filter((task) => (
           filter === 'open' ? !task.completed : filter === 'completed' ? task.completed : true
-        ) && (priorityFilter === 'all' || task.priority === priorityFilter));
+        ) && (priorityFilter === 'all' || task.priority === priorityFilter)
+          && matchesDueRange(task.due_date, dueRange));
       },
       create(projectId, title) {
         const project = find.get(projectId);
