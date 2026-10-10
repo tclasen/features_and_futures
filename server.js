@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = process.env.DB_PATH
-  ? path.resolve(process.env.DB_PATH)
+const configuredDbPath = process.env.DB_PATH;
+const dbPath = configuredDbPath
+  ? (path.isAbsolute(configuredDbPath) ? configuredDbPath : path.resolve(appDirectory, configuredDbPath))
   : path.join(appDirectory, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
