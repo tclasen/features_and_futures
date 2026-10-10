@@ -27,8 +27,51 @@ async function render() {
       document.querySelector('#back').addEventListener('click', () => navigate('/'));
       return;
     }
-    app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+    const taskResponse = await fetch(`/api/projects/${projectId}/tasks`);
+    if (!taskResponse.ok) throw new Error('Could not load tasks');
+    const tasks = await taskResponse.json();
+    app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
+      <form id="task-form">
+        <label for="task-title">Task title</label>
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit">Create task</button>
+        <p id="task-error" role="alert" hidden></p>
+      </form>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+      <section id="tasks" aria-label="Tasks"></section>`;
     document.querySelector('#back').addEventListener('click', () => navigate('/'));
+    const list = document.querySelector('#tasks');
+    const filter = document.querySelector('#task-filter');
+    const drawTasks = () => {
+      const shown = tasks.filter((task) => filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed));
+      list.innerHTML = shown.map((task) => `<div data-testid="task-row" class="task-row">
+        <span>${escapeHtml(task.title)}</span>
+        <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}>
+      </div>`).join('');
+      list.querySelectorAll('[data-task-id]').forEach((checkbox) => checkbox.addEventListener('change', async () => {
+        const task = tasks.find((item) => item.id === Number(checkbox.dataset.taskId));
+        checkbox.disabled = true;
+        try {
+          const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+          if (!response.ok) throw new Error('Could not save task');
+          task.completed = checkbox.checked;
+          drawTasks();
+        } catch (error) { checkbox.checked = task.completed; checkbox.disabled = false; showError(error); }
+      }));
+    };
+    filter.addEventListener('change', drawTasks);
+    drawTasks();
+    document.querySelector('#task-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = document.querySelector('#task-title');
+      const error = document.querySelector('#task-error');
+      const title = input.value.trim();
+      if (!title) { error.textContent = 'Task title is required'; error.hidden = false; return; }
+      const response = await fetch(`/api/projects/${projectId}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      if (!response.ok) { const result = await response.json(); error.textContent = result.error ?? 'Could not create task'; error.hidden = false; return; }
+      navigate(`/projects/${projectId}`);
+    });
     return;
   }
 

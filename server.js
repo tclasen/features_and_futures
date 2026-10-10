@@ -14,6 +14,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
 
 const send = (res, status, body, contentType = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
@@ -44,6 +51,37 @@ const server = http.createServer(async (req, res) => {
       if (!name) return send(res, 400, { error: 'Project name is required' });
       const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
       return send(res, 201, { id: Number(result.lastInsertRowid), name });
+    } catch {
+      return send(res, 400, { error: 'Invalid request' });
+    }
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && req.method === 'GET') {
+    const projectId = Number(tasksMatch[1]);
+    if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
+    return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
+  }
+  if (tasksMatch && req.method === 'POST') {
+    try {
+      const projectId = Number(tasksMatch[1]);
+      if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
+      const payload = await readJson(req);
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return send(res, 400, { error: 'Task title is required' });
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return send(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    } catch {
+      return send(res, 400, { error: 'Invalid request' });
+    }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskMatch && req.method === 'PATCH') {
+    try {
+      const payload = await readJson(req);
+      if (typeof payload.completed !== 'boolean') return send(res, 400, { error: 'Completion state is required' });
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, Number(taskMatch[1]));
+      if (!result.changes) return send(res, 404, { error: 'Task not found' });
+      return send(res, 200, { id: Number(taskMatch[1]), completed: payload.completed });
     } catch {
       return send(res, 400, { error: 'Invalid request' });
     }
