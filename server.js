@@ -13,7 +13,8 @@ database.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    default_task_priority TEXT NOT NULL DEFAULT 'Normal'
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -30,6 +31,9 @@ const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
@@ -41,12 +45,13 @@ const listProjects = database.prepare(`
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid
 `);
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = database.prepare('SELECT id, name, archived, default_task_priority AS defaultTaskPriority FROM projects WHERE id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
+const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, ?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -120,6 +125,19 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'PATCH') {
       const body = await readJson(request);
+      if (typeof body?.defaultTaskPriority === 'string') {
+        if (project.archived) {
+          sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+          return;
+        }
+        if (!['Low', 'Normal', 'High'].includes(body.defaultTaskPriority)) {
+          sendJson(response, 400, { error: 'Default task priority must be Low, Normal, or High' });
+          return;
+        }
+        updateProjectDefaultPriority.run(body.defaultTaskPriority, projectId);
+        sendJson(response, 200, { ...project, defaultTaskPriority: body.defaultTaskPriority });
+        return;
+      }
       const name = typeof body?.name === 'string' ? body.name.trim() : '';
       if (!name) {
         sendJson(response, 400, { error: 'Project name is required' });
@@ -160,8 +178,8 @@ const server = createServer(async (request, response) => {
         sendJson(response, 400, { error: 'Task title is required' });
         return;
       }
-      const task = { id: randomUUID(), projectId, title, completed: 0, priority: 'Normal' };
-      insertTask.run(task.id, projectId, title, Date.now());
+      const task = { id: randomUUID(), projectId, title, completed: 0, priority: project.defaultTaskPriority };
+      insertTask.run(task.id, projectId, title, task.priority, Date.now());
       sendJson(response, 201, task);
       return;
     }

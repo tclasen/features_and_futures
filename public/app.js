@@ -84,7 +84,32 @@ async function renderProject(id) {
     const archived = Boolean(project.archived);
     if (archived) app.append(element('p', 'Archived project'));
 
+    const defaultPriorityLabel = element('label', 'Default task priority', { for: 'default-task-priority' });
+    const defaultPriority = element('select', undefined, {
+      id: 'default-task-priority', 'aria-label': 'Default task priority',
+    });
+    for (const value of ['Low', 'Normal', 'High']) {
+      defaultPriority.append(element('option', value, { value }));
+    }
+    defaultPriority.value = project.defaultTaskPriority || 'Normal';
+    defaultPriority.disabled = archived;
+
     const alert = element('p', undefined, { role: 'alert', hidden: '' });
+    defaultPriority.addEventListener('change', async () => {
+      const previous = project.defaultTaskPriority || 'Normal';
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ defaultTaskPriority: defaultPriority.value }),
+        });
+        project.defaultTaskPriority = updated.defaultTaskPriority;
+      } catch (error) {
+        defaultPriority.value = previous;
+        alert.textContent = error.message;
+        alert.hidden = false;
+      }
+    });
     const renameForm = element('form');
     const renameLabel = element('label', 'New project name', { for: 'new-project-name' });
     const renameInput = element('input', undefined, {
@@ -237,7 +262,7 @@ async function renderProject(id) {
       }
     });
     renderTasks();
-    app.append(renameForm, alert, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    app.append(renameForm, alert, defaultPriorityLabel, defaultPriority, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
   } catch {
     app.append(element('h1', 'Project not found'));
     const back = element('button', 'Projects', { type: 'button' });
