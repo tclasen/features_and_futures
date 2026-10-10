@@ -87,14 +87,22 @@ async function render() {
     const filter = element('select');
     filter.id = 'task-filter';
     for (const value of ['All', 'Open', 'Completed']) filter.append(new Option(value, value));
+    const priorityFilterLabel = element('label', 'Priority filter');
+    priorityFilterLabel.htmlFor = 'priority-filter';
+    const priorityFilter = element('select');
+    priorityFilter.id = 'priority-filter';
+    for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(new Option(value, value));
     const list = element('section', undefined, 'task-list');
-    app.append(form, alert, filterLabel, filter, list);
+    app.append(form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
 
     async function loadTasks() {
       const response = await fetch(`/api/projects/${match[1]}/tasks`);
       const tasks = await response.json();
       list.replaceChildren();
-      for (const task of tasks.filter(t => filter.value === 'All' || (filter.value === 'Completed') === t.completed)) {
+      for (const task of tasks.filter(t =>
+        (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
+        (priorityFilter.value === 'All' || priorityFilter.value === t.priority)
+      )) {
         const row = element('div', undefined, 'task-row');
         row.dataset.testid = 'task-row';
         row.append(element('span', task.title));
@@ -154,6 +162,7 @@ async function render() {
       }
     }
     filter.addEventListener('change', loadTasks);
+    priorityFilter.addEventListener('change', loadTasks);
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const title = input.value.trim();
