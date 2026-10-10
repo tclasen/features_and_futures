@@ -72,7 +72,7 @@ export function createWorkboardServer(databasePath) {
         } else {
           redirect(response, '/');
         }
-      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|tasks(?:\/[1-9]\d*\/(?:completion|rename|priority))?))?$/.test(pathname)) {
+      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|default-task-priority|tasks(?:\/[1-9]\d*\/(?:completion|rename|priority))?))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const id = Number(parts[2]);
         const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -86,6 +86,14 @@ export function createWorkboardServer(databasePath) {
           const archived = parts[3] === 'archive';
           store.setArchived(id, archived);
           redirect(response, archived ? '/' : '/?filter=Archived');
+        } else if (request.method === 'POST' && parts[3] === 'default-task-priority') {
+          const form = await readForm(request);
+          const result = store.setDefaultTaskPriority(id, form.get('priority'));
+          if (result.error) {
+            send(response, result.status, result.error, 'text/plain; charset=utf-8');
+          } else {
+            redirect(response, projectLocation(id, taskFilter(form.get('filter')), taskPriorityFilter(form.get('priorityFilter'))));
+          }
         } else if (request.method === 'POST' && parts[3] === 'rename') {
           const form = await readForm(request);
           const filter = taskFilter(form.get('filter'));

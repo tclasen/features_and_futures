@@ -45,7 +45,7 @@ alert without changing the saved task. Archived projects disable task renaming;
 the server rejects changes until restoration. Task titles persist between restarts.
 
 Each task row has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Changes save immediately and persist
+Existing tasks default to Normal when migrated. Changes save immediately and persist
 between restarts, independently of completion and renaming. Archived projects
 disable priority changes in the browser and on the server; restoration preserves
 the saved priorities.
@@ -56,3 +56,10 @@ remain in creation order. Changing either filter or editing a task preserves
 both selected filters; edits immediately update the matching rows. Filters do
 not change saved tasks or completion summaries and remain usable when archived.
 Opening a project from the project list starts with both filters set to All.
+
+Each project has a Default task priority selector with Low, Normal, and High
+options, initially Normal. Changes save immediately and apply only to tasks
+created afterward in that project. Existing tasks and both selected filters
+remain unchanged. Defaults persist through reloads, restarts, renaming, archival,
+and restoration. Archived projects display the saved default but disable changes;
+the server also rejects edits until restoration.

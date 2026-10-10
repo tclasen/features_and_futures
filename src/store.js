@@ -10,7 +10,8 @@ export function openWorkboardStore(databasePath) {
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL CHECK(length(trim(name)) > 0),
-      archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))
+      archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
+      default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))
     );
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,6 +28,9 @@ export function openWorkboardStore(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
     database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -34,12 +38,13 @@ export function openWorkboardStore(databasePath) {
     WHERE projects.archived = ?
     GROUP BY projects.id ORDER BY projects.id
   `);
-  const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const find = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
   const setArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const rename = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
+  const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare(`
     UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
@@ -73,6 +78,16 @@ export function openWorkboardStore(databasePath) {
       rename.run(trimmedName, id);
       return { id, name: trimmedName };
     },
+    setDefaultTaskPriority(id, priority) {
+      const project = find.get(id);
+      if (!project) return { error: 'Project not found', status: 404 };
+      if (project.archived) return { error: 'Archived project cannot be changed', status: 409 };
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        return { error: 'Invalid task priority', status: 400 };
+      }
+      setDefaultTaskPriority.run(priority, id);
+      return { id, default_task_priority: priority };
+    },
     tasks: {
       list(projectId, filter = 'All', priorityFilter = 'All') {
         return listTasks.all(projectId).filter((task) =>
@@ -85,8 +100,8 @@ export function openWorkboardStore(databasePath) {
         if (project.archived) return { error: 'Archived project cannot be changed' };
         const trimmedTitle = title.trim();
         if (!trimmedTitle) return { error: 'Task title is required' };
-        const result = insertTask.run(projectId, trimmedTitle);
-        return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority: 'Normal' };
+        const result = insertTask.run(projectId, trimmedTitle, project.default_task_priority);
+        return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority: project.default_task_priority };
       },
       rename(projectId, taskId, title) {
         const project = find.get(projectId);

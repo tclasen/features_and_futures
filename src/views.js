@@ -73,6 +73,15 @@ export function projectPage(project, tasks = [], {
       </div>
       ${renameState.error ? `<p class="alert" role="alert">${escapeHtml(renameState.error)}</p>` : ''}
     </form>
+    <form class="create-form" action="/projects/${project.id}/default-task-priority" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} data-submit-on-change>
+        ${['Low', 'Normal', 'High'].map((priority) => `<option${project.default_task_priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+      </select>
+      <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save default priority</button></noscript>
+    </form>
     <form class="create-form" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
