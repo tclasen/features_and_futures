@@ -15,7 +15,7 @@ Set `PORT` to override the default port and `DB_PATH` to select the SQLite file:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-The database directory and schema are created on startup. Retain the database file to preserve projects across restarts. `GET /health` returns `{"status":"ok"}`.
+The database directory and schema are created on startup. Retain the database file to preserve projects, tasks, and completion state across restarts. `GET /health` returns `{"status":"ok"}`.
 
 ## Verify
 
@@ -24,4 +24,4 @@ npm test
 node --check server.js
 ```
 
-Tests use a temporary database and check validation, creation order, safe HTML rendering, navigation, health, and persistence across process restarts. The UI uses standard HTML forms and requires no client-side dependencies.
+Tests use temporary databases and check validation, creation order, safe HTML rendering, navigation, health, project isolation, filtering, completion updates, and persistence across process restarts. The UI uses standard HTML forms and requires no client-side dependencies. Task checkboxes and the task filter submit automatically using browser JavaScript; fallback submit buttons are available when JavaScript is disabled.
