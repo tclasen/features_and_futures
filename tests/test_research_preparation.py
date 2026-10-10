@@ -13,10 +13,10 @@ from orchestrator.bounded_confirmation import METHOD
 
 class ResearchPreparationTests(unittest.TestCase):
     def plans(self, root):
-        for revision in ('research-v001','research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009'):
+        for revision in ('research-v001','research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010'):
             plan={'revision_id':revision,'status':'frozen-before-main-dispatch','execution':{}}
-            if revision in ('research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009'):plan.update(analysis_method=METHOD,submission_outcome_definition=ASSESSMENT,execution={'provider_incident_policy':POLICY})
-            if revision in ('research-v007','research-v008','research-v009'):plan['execution']['inference_observation_lifecycle']='drain-upstream-and-partial-response-v1'
+            if revision in ('research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010'):plan.update(analysis_method=METHOD,submission_outcome_definition=ASSESSMENT,execution={'provider_incident_policy':POLICY})
+            if revision in ('research-v007','research-v008','research-v009','research-v010'):plan['execution']['inference_observation_lifecycle']='drain-upstream-and-partial-response-v1'
             write_json(root/'experiments/instruction-effects/revisions'/revision/'analysis-plan.json',plan)
 
     def test_new_revision_selects_bound_rules_while_default_and_replays_preserve_their_plan(self):
@@ -59,7 +59,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v003')
-                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v010')
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v011')
 
     def test_positive_anchor_revision_preserves_bounds_and_refuses_cross_revision_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -76,7 +76,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v004')
-                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v010')
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v011')
 
     def test_action_revision_requires_own_freeze_and_exact_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,6 +160,23 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v009')
+
+    def test_notes_clear_observer_revision_requires_own_freeze_and_exact_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.plans(root)
+            source={'experiment_revision':'pilot-v015','execution':{'timing_revision':'harness-return-v2'}}
+            with patch('orchestrator.prepare_evaluation.ROOT',root):
+                revision,research,execution=research_inputs(source,'research-v010')
+                self.assertEqual(revision,'research-v010')
+                self.assertEqual(execution['provider_incident_policy'],POLICY)
+                self.assertEqual(research['analysis_method'],METHOD)
+                self.assertEqual(execution['inference_observation_lifecycle'],'drain-upstream-and-partial-response-v1')
+                prepared={'experiment_revision':revision,'execution':execution,'research':research}
+                self.assertEqual(research_inputs(prepared,replay=True),(revision,research,execution))
+                with self.assertRaises(InfrastructureError):research_inputs(prepared,'research-v009',replay=True)
+                path=root/research['analysis_plan']['path']
+                plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v010')
 
     def test_prepared_manifest_is_assigned_once_before_dispatch_with_exact_plan_and_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:

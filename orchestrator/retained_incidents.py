@@ -7,7 +7,7 @@ from .audit_request_coverage import reconcile
 from .evidence import digest_bytes
 from .bounded_confirmation import METHOD
 
-BOUNDED_REVISIONS = ('research-v002', 'research-v003', 'research-v004', 'research-v005', 'research-v006', 'research-v007', 'research-v008', 'research-v009')
+BOUNDED_REVISIONS = ('research-v002', 'research-v003', 'research-v004', 'research-v005', 'research-v006', 'research-v007', 'research-v008', 'research-v009', 'research-v010')
 OBSERVATION_LIFECYCLE = 'drain-upstream-and-partial-response-v1'
 POLICY = 'retained-terminal-incidents-v1'
 ASSESSMENT = 'first-observed-pm-assessment-v1'
@@ -23,7 +23,7 @@ def validate_policy(manifest, plan):
         return False
     if revision not in BOUNDED_REVISIONS:
         raise ValueError('Unsupported research revision')
-    if revision in ('research-v007', 'research-v008', 'research-v009') and (
+    if revision in ('research-v007', 'research-v008', 'research-v009', 'research-v010') and (
             manifest['execution'].get('inference_observation_lifecycle') != OBSERVATION_LIFECYCLE
             or plan['execution'].get('inference_observation_lifecycle') != OBSERVATION_LIFECYCLE):
         raise ValueError('Frozen gateway observation lifecycle required')
