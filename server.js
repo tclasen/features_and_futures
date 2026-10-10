@@ -78,6 +78,7 @@ function page() {
     .project-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .task-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px; }
     .task-row input { width: 20px; min-height: 20px; }
+    .task-row input[type="text"] { width: 160px; }
     .task-title { overflow-wrap: anywhere; }
     .project-name { overflow-wrap: anywhere; }
     .error { color: #b91c1c; margin: -12px 0 18px; }
@@ -271,9 +272,21 @@ function page() {
       for (const value of ['All', 'Low', 'Normal', 'High']) {
         const option = element('option', value); option.value = value; priorityFilter.append(option);
       }
+      const dueFromLabel = element('label', 'Due from'); dueFromLabel.htmlFor = 'due-from';
+      const dueFrom = document.createElement('input'); dueFrom.id = 'due-from'; dueFrom.type = 'text';
+      const dueThroughLabel = element('label', 'Due through'); dueThroughLabel.htmlFor = 'due-through';
+      const dueThrough = document.createElement('input'); dueThrough.id = 'due-through'; dueThrough.type = 'text';
+      const applyDueRange = element('button', 'Apply due range'); applyDueRange.type = 'button';
+      const dueRangeError = element('p', 'Due range must use valid YYYY-MM-DD dates', 'error');
+      dueRangeError.setAttribute('role', 'alert'); dueRangeError.hidden = true;
+      const dueOrderError = element('p', 'Due from must not be after Due through', 'error');
+      dueOrderError.setAttribute('role', 'alert'); dueOrderError.hidden = true;
+      let appliedDueFrom = '';
+      let appliedDueThrough = '';
       const rows = element('div', undefined, 'rows');
       rows.setAttribute('aria-label', 'Tasks');
-      app.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
+      app.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter,
+        dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, dueRangeError, dueOrderError, rows);
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const title = input.value.trim();
@@ -282,14 +295,32 @@ function page() {
         const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
         });
-        if (result.ok) { input.value = ''; await loadTasks(id, rows, filter.value, priorityFilter.value); }
+        if (result.ok) { input.value = ''; await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough); }
       });
-      filter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value));
-      priorityFilter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value));
-      await loadTasks(id, rows, filter.value, priorityFilter.value);
+      filter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough));
+      priorityFilter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough));
+      applyDueRange.addEventListener('click', async () => {
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        dueRangeError.hidden = true; dueOrderError.hidden = true;
+        if ((from && !isValidDate(from)) || (through && !isValidDate(through))) { dueRangeError.hidden = false; return; }
+        if (from && through && from > through) { dueOrderError.hidden = false; return; }
+        appliedDueFrom = from; appliedDueThrough = through;
+        dueFrom.value = from; dueThrough.value = through;
+        await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough);
+      });
+      await loadTasks(id, rows, filter.value, priorityFilter.value, appliedDueFrom, appliedDueThrough);
     }
 
-    async function loadTasks(projectId, rows, filter, priorityFilter) {
+    function isValidDate(value) {
+      const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!match) return false;
+      const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+      const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+    }
+
+    async function loadTasks(projectId, rows, filter, priorityFilter, dueFrom = '', dueThrough = '') {
       const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks');
       const tasks = await response.json();
       const projectResponse = await fetch('/api/projects/' + encodeURIComponent(projectId));
@@ -298,6 +329,8 @@ function page() {
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
         if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+        if ((dueFrom || dueThrough) && !task.due_date) continue;
+        if (dueFrom && task.due_date < dueFrom || dueThrough && task.due_date > dueThrough) continue;
         const row = element('div', undefined, 'task-row'); row.dataset.testid = 'task-row';
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed);
         checkbox.disabled = Boolean(project.archived);
@@ -306,7 +339,7 @@ function page() {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
           });
-          await loadTasks(projectId, rows, filter, priorityFilter);
+          await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
         });
         const title = element('span', task.title, 'task-title');
         const renameInput = document.createElement('input');
@@ -327,7 +360,7 @@ function page() {
           const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle })
           });
-          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter);
+          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
         });
         const priority = document.createElement('select');
         priority.setAttribute('aria-label', 'Task priority');
@@ -340,7 +373,7 @@ function page() {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
           });
-          await loadTasks(projectId, rows, filter, priorityFilter);
+          await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
         });
         const dueDate = document.createElement('input');
         dueDate.type = 'text';
@@ -358,6 +391,7 @@ function page() {
             const saved = await result.json();
             dueDate.value = saved.due_date || '';
             const error = row.querySelector('[role="alert"]'); if (error) error.remove();
+            await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
           } else {
             let error = row.querySelector('[role="alert"]');
             if (!error) { error = element('span', 'Due date must be a valid YYYY-MM-DD date', 'error'); error.setAttribute('role', 'alert'); row.append(error); }
