@@ -190,7 +190,34 @@ async function showProject(id) {
         }
       });
       checkboxLabel.append(checkbox, element('span', task.title, 'task-title'));
-      row.append(checkboxLabel);
+      const renameForm = element('form', undefined, 'create-form task-rename-form');
+      const renameLabel = element('label', 'New task title');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      const renameInput = element('input');
+      renameInput.id = `new-task-title-${task.id}`;
+      renameInput.type = 'text';
+      renameInput.value = task.title;
+      renameInput.disabled = project.archived;
+      const renameButton = element('button', 'Rename task');
+      renameButton.type = 'submit';
+      renameButton.disabled = project.archived;
+      renameForm.append(renameLabel, renameInput, renameButton);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        alert.hidden = true;
+        try {
+          await request(`/api/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ title: renameInput.value }),
+          });
+          await renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      row.append(checkboxLabel, renameForm);
       taskList.append(row);
     }
   };

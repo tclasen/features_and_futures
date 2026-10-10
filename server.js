@@ -123,7 +123,7 @@ const server = createServer(async (request, response) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
-    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) {
       sendJson(response, 404, { error: 'Project not found' });
       return;
@@ -134,6 +134,10 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST') {
+      if (project.archived) {
+        sendJson(response, 400, { error: 'Archived projects cannot be changed' });
+        return;
+      }
       try {
         const body = await readBody(request);
         const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -154,6 +158,26 @@ const server = createServer(async (request, response) => {
   if (request.method === 'PATCH' && taskMatch) {
     try {
       const body = await readBody(request);
+      const task = database.prepare(`SELECT tasks.project_id AS projectId, projects.archived
+        FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?`).get(Number(taskMatch[1]));
+      if (!task) {
+        sendJson(response, 404, { error: 'Task not found' });
+        return;
+      }
+      if (task.archived) {
+        sendJson(response, 400, { error: 'Archived projects cannot be changed' });
+        return;
+      }
+      if (typeof body.title === 'string') {
+        const title = body.title.trim();
+        if (!title) {
+          sendJson(response, 400, { error: 'Task title is required' });
+          return;
+        }
+        database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskMatch[1]));
+        sendJson(response, 200, { title });
+        return;
+      }
       if (typeof body.completed !== 'boolean') {
         sendJson(response, 400, { error: 'Completion must be a boolean' });
         return;
