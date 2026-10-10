@@ -10,8 +10,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -20,6 +21,13 @@ db.exec(`PRAGMA foreign_keys = ON;
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   )`);
+const projectQuery = `SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total_count,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed_count
+  FROM projects p`;
+const listProjects = db.prepare(`${projectQuery} ORDER BY p.id`);
+const findProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
+const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -68,12 +76,14 @@ const server = createServer(async (request, response) => {
     if (tasksMatch) {
       const projectId = Number(tasksMatch[1]);
       const taskId = tasksMatch[2] ? Number(tasksMatch[2]) : null;
-      if (!findProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
+      const project = findProject.get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'GET' && taskId === null) {
         return json(response, 200, listTasks.all(projectId).map(taskJSON));
       }
       if (request.method === 'POST' && taskId === null) {
         const input = await readJSON(request);
+        if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
         const result = insertTask.run(projectId, title);
@@ -82,12 +92,21 @@ const server = createServer(async (request, response) => {
       if (request.method === 'PATCH' && taskId !== null) {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJSON(request);
+        if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
         if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
         updateTask.run(Number(input.completed), projectId, taskId);
         return json(response, 200, taskJSON(findTask.get(projectId, taskId)));
       }
     }
     const projectMatch = path.match(/^\/api\/projects\/(\d+)$/);
+    if (request.method === 'PATCH' && projectMatch) {
+      const id = Number(projectMatch[1]);
+      if (!findProject.get(id)) return json(response, 404, { error: 'Project not found' });
+      const input = await readJSON(request);
+      if (typeof input?.archived !== 'boolean') return json(response, 400, { error: 'Archive state must be a boolean' });
+      updateProject.run(Number(input.archived), id);
+      return json(response, 200, findProject.get(id));
+    }
     if (request.method === 'GET' && projectMatch) {
       const project = findProject.get(Number(projectMatch[1]));
       return json(response, project ? 200 : 404, project || { error: 'Project not found' });

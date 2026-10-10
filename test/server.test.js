@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -135,6 +136,72 @@ test('tasks validate titles, belong to a project, and persist completion through
     await server.stop();
     server = await start(dbPath);
     assert.deepEqual((await request(path)).body, [task, next]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('existing databases migrate; archive, summaries, and restored tasks persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'workboard.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));
+      INSERT INTO projects (name) VALUES ('Existing project');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Pending', 0);`);
+    legacy.close();
+    server = await start(dbPath);
+    const request = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const projectPath = '/api/projects/1';
+    const tasksPath = `${projectPath}/tasks`;
+    const active = { id: 1, name: 'Existing project', archived: 0, total_count: 2, completed_count: 1 };
+    assert.deepEqual((await request(projectPath)).body, active);
+    const originalTasks = (await request(tasksPath)).body;
+    const empty = (await request('/api/projects', 'POST', { name: 'Empty' })).body;
+    assert.equal(empty.archived, 0);
+    assert.equal(empty.total_count, 0);
+    assert.equal(empty.completed_count, 0);
+    assert.equal((await request(projectPath, 'PATCH', { archived: 'true' })).status, 400);
+    assert.equal((await request('/api/projects/999', 'PATCH', { archived: true })).status, 404);
+    const archived = { ...active, archived: 1 };
+    assert.deepEqual(await request(projectPath, 'PATCH', { archived: true }), { status: 200, body: archived });
+    assert.deepEqual((await request('/api/projects')).body, [archived, empty]);
+    assert.deepEqual((await request(tasksPath)).body, originalTasks);
+    assert.equal((await request(tasksPath, 'POST', { title: 'Blocked task' })).status, 409);
+    for (const task of originalTasks) {
+      assert.equal((await request(`${tasksPath}/${task.id}`, 'PATCH', { completed: !task.completed })).status, 409);
+    }
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual((await request(projectPath)).body, archived);
+    assert.deepEqual((await request(tasksPath)).body, originalTasks);
+    assert.equal((await fetch(`${server.url}/projects/1`)).status, 200);
+    assert.deepEqual((await request(projectPath, 'PATCH', { archived: false })).body, active);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual((await request(projectPath)).body, active);
+    assert.deepEqual((await request(tasksPath)).body, originalTasks);
+    await request(`${tasksPath}/${originalTasks[1].id}`, 'PATCH', { completed: true });
+    assert.equal((await request(projectPath)).body.completed_count, 2);
+    await request(tasksPath, 'POST', { title: 'New task' });
+    assert.equal((await request(projectPath)).body.total_count, 3);
+    assert.equal((await request(projectPath)).body.completed_count, 2);
+    assert.equal((await request('/api/projects')).body[1].total_count, 0);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual((await request(projectPath)).body, { ...active, total_count: 3, completed_count: 2 });
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

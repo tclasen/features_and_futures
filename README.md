@@ -18,4 +18,6 @@ npm test
 
 Open a project to create tasks, toggle their completion, and filter by All, Open, or Completed. Each project has its own tasks. Projects, tasks, and completion persist in the configured database.
 
-The integration tests use isolated temporary SQLite files and check validation, trimmed names and titles, creation order, page routes, health, project isolation, and persistence of projects, tasks, and completion across server restarts.
+The project list initially shows Active projects. Archive a project and select Archived to open or restore it. Archived projects show their tasks and allow filtering, but task creation and completion changes are disabled. Every project row shows the completed/total task count. Archive state persists across restarts; restoration preserves tasks and completion. Existing databases are migrated automatically.
+
+The integration tests use isolated temporary SQLite files and check validation, trimmed names and titles, creation order, page routes, health, project isolation, legacy database migration, archive restrictions, summaries, and persistence across server restarts.
