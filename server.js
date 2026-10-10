@@ -65,8 +65,12 @@ function priorityFilter(value) {
   return ['Low', 'Normal', 'High'].includes(value) ? value : 'All';
 }
 
-function projectLocation(id, filter, priority) {
-  return `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}`;
+function projectLocation(id, filter, priority, range = { from: '', through: '' }) {
+  const params = new URLSearchParams({ filter });
+  if (priority !== 'All') params.set('priorityFilter', priority);
+  if (range.from) params.set('dueFrom', range.from);
+  if (range.through) params.set('dueThrough', range.through);
+  return `/projects/${id}?${params}`;
 }
 
 async function readForm(request) {
@@ -154,11 +158,15 @@ function projectList(error = '', filter = 'Active') {
     ${rows ? `<ul>${rows}</ul>` : '<p>No projects yet.</p>'}`);
 }
 
-function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All') {
-  const filterFields = `<input type="hidden" name="filter" value="${filter}"><input type="hidden" name="priorityFilter" value="${priority}">`;
+function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All', range = { from: '', through: '' }) {
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}"><input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
+  const filterFields = `<input type="hidden" name="filter" value="${filter}"><input type="hidden" name="priorityFilter" value="${priority}">${rangeFields}`;
   const tasks = listTasks.all(project.id).filter(task =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
-    (priority === 'All' || task.priority === priority));
+    (priority === 'All' || task.priority === priority) &&
+    ((!range.from && !range.through) || (task.due_date &&
+      (!range.from || task.due_date >= range.from) &&
+      (!range.through || task.due_date <= range.through))));
   const rows = tasks.map(task => `<li data-testid="task-row">
     <span>${escapeHtml(task.title)}</span>
     <form action="/projects/${project.id}/tasks/${task.id}" method="post">
@@ -212,6 +220,7 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <form class="filter" action="/projects/${project.id}" method="get">
+      ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
@@ -221,6 +230,14 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
         ${['All', 'Low', 'Normal', 'High'].map(option => `<option${option === priority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
+    <form class="filter" action="/projects/${project.id}/due-range" method="post">
+      ${filterFields}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="from" type="text" value="${escapeHtml(range.from)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="through" type="text" value="${escapeHtml(range.through)}">
+      <button type="submit">Apply due range</button>
+    </form>
     ${rows ? `<ul>${rows}</ul>` : '<p>No matching tasks.</p>'}`);
 }
 
@@ -229,9 +246,31 @@ function html(response, status, content) {
   response.end(content);
 }
 
+function readRange(params) {
+  const from = (params.get('dueFrom') || '').trim();
+  const through = (params.get('dueThrough') || '').trim();
+  if ((from && !validDueDate(from)) || (through && !validDueDate(through)) ||
+      (from && through && from > through)) return { from: '', through: '' };
+  return { from, through };
+}
+
+const parseForm = readForm;
+const renderProjectPage = projectPage;
+const buildProjectLocation = projectLocation;
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
+    let range = readRange(url.searchParams);
+    // Request-local helpers carry only the applied range through every edit.
+    const readForm = async request => {
+      const form = await parseForm(request);
+      range = readRange(form);
+      return form;
+    };
+    const projectPage = (project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All') =>
+      renderProjectPage(project, filter, error, renameError, taskRenameError, priority, range);
+    const projectLocation = (id, filter, priority) => buildProjectLocation(id, filter, priority, range);
     if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -251,6 +290,30 @@ const server = http.createServer(async (request, response) => {
       createProject.run(name);
       redirect(response, '/');
       return;
+    }
+    const rangeMatch = /^\/projects\/(\d+)\/due-range$/.exec(url.pathname);
+    if (request.method === 'POST' && rangeMatch) {
+      const project = findProject.get(rangeMatch[1]);
+      if (project) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        const priority = priorityFilter(form.get('priorityFilter'));
+        const from = (form.get('from') || '').trim();
+        const through = (form.get('through') || '').trim();
+        let error = '';
+        if ((from && !validDueDate(from)) || (through && !validDueDate(through))) {
+          error = 'Due range must use valid YYYY-MM-DD dates';
+        } else if (from && through && from > through) {
+          error = 'Due from must not be after Due through';
+        }
+        if (error) {
+          html(response, 400, projectPage(project, filter, error, '', null, priority));
+        } else {
+          range = { from, through };
+          redirect(response, projectLocation(project.id, filter, priority));
+        }
+        return;
+      }
     }
     const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(url.pathname);
     if (request.method === 'POST' && renameMatch) {
