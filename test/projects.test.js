@@ -370,6 +370,99 @@ test('projects and tasks: validation, filtering, archive, project/task rename, p
     assert.match(afterNewTask[2], normalOptions);
     assert.doesNotMatch(afterNewTask[2], / checked/);
 
+    // Exercise every intersection, including creation order and independent selections.
+    for (const [title, priority, completed] of [
+      ['High open', 'High', '0'], ['High completed', 'High', '1'], ['Low completed', 'Low', '1'],
+    ]) {
+      await post(`/projects/${ids[0]}/tasks`, { title });
+      const newRows = rows(await projectHtml(ids[0]));
+      const newId = /action="\/projects\/\d+\/tasks\/(\d+)"/.exec(newRows.at(-1))[1];
+      await post(`/projects/${ids[0]}/tasks/${newId}/priority`, { priority });
+      await post(`/projects/${ids[0]}/tasks/${newId}`, { completed });
+    }
+    const allRows = rows(await projectHtml(ids[0]));
+    const records = allRows.map(row => ({
+      id: /action="\/projects\/\d+\/tasks\/(\d+)"/.exec(row)[1],
+      priority: /<option selected>(Low|Normal|High)<\/option>/.exec(row)[1],
+      completed: /type="checkbox"[^>]* checked/.test(row),
+    }));
+    async function combinedHtml(filter, priority) {
+      return (await fetch(`${base}/projects/${ids[0]}?filter=${filter}&priorityFilter=${priority}`)).text();
+    }
+    function assertSelections(html, filter, priority) {
+      for (const [id, value] of [['task-filter', filter], ['priority-filter', priority]]) {
+        const select = new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)[1];
+        assert.match(select, new RegExp(`<option selected>${value}</option>`));
+        assert.doesNotMatch(new RegExp(`<select id="${id}"[^>]*>`).exec(html)[0], /disabled/);
+      }
+    }
+    const beforeCombinedList = await (await fetch(base)).text();
+    assert.match(projectRows(beforeCombinedList)[0], /data-testid="project-summary">3\/6 completed/);
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const html = await combinedHtml(filter, priority);
+        assertSelections(html, filter, priority);
+        const visibleIds = rows(html).map(row => /action="\/projects\/\d+\/tasks\/(\d+)"/.exec(row)[1]);
+        assert.deepEqual(visibleIds, records.filter(task =>
+          (filter === 'All' || task.completed === (filter === 'Completed')) &&
+          (priority === 'All' || task.priority === priority)).map(task => task.id));
+        // Both selects share a GET form, so changing either submits both values.
+        assert.match(html, /<form class="filter" method="get"[^>]*>[\s\S]*?id="task-filter"[\s\S]*?id="priority-filter"[\s\S]*?<\/form>/);
+        for (const row of rows(html)) {
+          for (const form of row.matchAll(/<form[^>]*>([\s\S]*?)<\/form>/g)) {
+            assert.ok(form[1].includes(`name="filter" value="${filter}"`));
+            assert.ok(form[1].includes(`name="priorityFilter" value="${priority}"`));
+          }
+        }
+      }
+    }
+    assert.equal(await (await fetch(base)).text(), beforeCombinedList);
+    const defaultPriority = /<select id="priority-filter"[^>]*>([\s\S]*?)<\/select>/.exec(await projectHtml(ids[0]))[1];
+    assert.equal(defaultPriority.trim(), '<option selected>All</option><option>Low</option><option>Normal</option><option>High</option>');
+
+    const selection = { filter: 'Open', priorityFilter: 'High' };
+    const highOpen = records.find(task => task.priority === 'High' && !task.completed);
+    const highOpenPath = `/projects/${ids[0]}/tasks/${highOpen.id}`;
+    const invalid = await post(`${highOpenPath}/rename`, { ...selection, title: '  ' });
+    assert.equal(invalid.status, 422);
+    assertSelections(await invalid.text(), 'Open', 'High');
+    const renamed = await post(`${highOpenPath}/rename`, { ...selection, title: '  Renamed high open  ' });
+    assert.equal(renamed.headers.get('location'), `/projects/${ids[0]}?filter=Open&priorityFilter=High`);
+    const renamedView = await (await fetch(`${base}${renamed.headers.get('location')}`)).text();
+    assertSelections(renamedView, 'Open', 'High');
+    assert.equal(rows(renamedView).length, 1);
+    assert.match(rows(renamedView)[0], /aria-label="Complete Renamed high open"/);
+    assert.equal(await (await fetch(base)).text(), beforeCombinedList);
+
+    const reprioritized = await post(`${highOpenPath}/priority`, { ...selection, priority: 'Low' });
+    const reprioritizedView = await (await fetch(`${base}${reprioritized.headers.get('location')}`)).text();
+    assertSelections(reprioritizedView, 'Open', 'High');
+    assert.equal(rows(reprioritizedView).length, 0);
+    assert.equal(await (await fetch(base)).text(), beforeCombinedList);
+    await post(`${highOpenPath}/priority`, { ...selection, priority: 'High' });
+    const completed = await post(highOpenPath, { ...selection, completed: '1' });
+    const completedView = await (await fetch(`${base}${completed.headers.get('location')}`)).text();
+    assertSelections(completedView, 'Open', 'High');
+    assert.equal(rows(completedView).length, 0);
+    assert.equal(rows(await combinedHtml('Completed', 'High')).length, 2);
+    const savedView = await combinedHtml('Completed', 'High');
+    await stop();
+    await start();
+    assert.equal(await combinedHtml('Completed', 'High'), savedView);
+    assert.match(projectRows(await (await fetch(base)).text())[0], /data-testid="project-summary">4\/6 completed/);
+    await post(`/projects/${ids[0]}/archive`, {});
+    const archivedCombined = await combinedHtml('Completed', 'High');
+    assertSelections(archivedCombined, 'Completed', 'High');
+    assert.equal(rows(archivedCombined).length, 2);
+    assert.ok(rows(archivedCombined).every(row => /type="checkbox"[^>]* disabled/.test(row) &&
+      /name="title"[^>]* disabled/.test(row) && /name="priority"[^>]* disabled/.test(row)));
+    assert.equal(rows(await combinedHtml('Open', 'Low')).length, 1);
+    await stop();
+    await start();
+    assert.equal(await combinedHtml('Completed', 'High'), archivedCombined);
+    await post(`/projects/${ids[0]}/restore`, {});
+    assert.equal(await combinedHtml('Completed', 'High'), savedView);
+
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
