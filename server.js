@@ -13,7 +13,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -24,12 +25,23 @@ database.exec(`
     created_at INTEGER NOT NULL
   )
 `);
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Upgrade databases created by earlier checkpoints without disturbing their data.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const listProjects = database.prepare(`
+  SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+    COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid
+`);
+const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const mimeType = (path) => contentTypes[path.slice(path.lastIndexOf('.'))] || 'application/octet-stream';
@@ -47,7 +59,12 @@ async function readJson(req) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
-  if (url.pathname === '/api/projects' && req.method === 'GET') return sendJson(res, 200, listProjects.all());
+  if (url.pathname === '/api/projects' && req.method === 'GET') {
+    const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
+    return sendJson(res, 200, listProjects.all(archived).map((project) => ({
+      ...project, archived: Boolean(project.archived), totalCount: Number(project.totalCount), completedCount: Number(project.completedCount),
+    })));
+  }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     const body = await readJson(req);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
@@ -59,7 +76,18 @@ const server = createServer(async (req, res) => {
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
   if (req.method === 'GET' && projectMatch) {
     const project = findProject.get(projectMatch[1]);
-    return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    const counts = database.prepare(`SELECT COUNT(*) AS totalCount, COALESCE(SUM(completed), 0) AS completedCount FROM tasks WHERE project_id = ?`).get(project.id);
+    return sendJson(res, 200, { ...project, archived: Boolean(project.archived), totalCount: Number(counts.totalCount), completedCount: Number(counts.completedCount) });
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    const project = findProject.get(archiveMatch[1]);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    const body = await readJson(req);
+    if (typeof body?.archived !== 'boolean') return sendJson(res, 400, { error: 'Archive state is required' });
+    updateProjectArchive.run(body.archived ? 1 : 0, project.id);
+    return sendJson(res, 200, { ...project, archived: body.archived });
   }
 
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
@@ -68,7 +96,9 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 200, listTasks.all(tasksMatch[1]).map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
-    if (!findProject.get(tasksMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
+    const project = findProject.get(tasksMatch[1]);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
     const body = await readJson(req);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return sendJson(res, 400, { error: 'Task title is required' });
@@ -78,7 +108,9 @@ const server = createServer(async (req, res) => {
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (taskMatch && req.method === 'PATCH') {
-    if (!findProject.get(taskMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
+    const project = findProject.get(taskMatch[1]);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
     const body = await readJson(req);
     if (typeof body?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     const result = updateTaskCompletion.run(body.completed ? 1 : 0, taskMatch[2], taskMatch[1]);
