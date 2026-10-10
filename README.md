@@ -101,3 +101,13 @@ inclusive due-range intersections, validation, and preservation across edits,
 and task moves with migrated ordering, filter and data preservation, active
 destination validation, summaries, repeat moves, remembered return ordering,
 and restart persistence.
+
+Use Project search and Search projects to match project names within the current
+Active or Archived filter. Use Task search and Search tasks to match titles
+within the selected completion, priority, and due-range filters. Searches trim
+surrounding whitespace, ignore ASCII letter case, and preserve internal
+whitespace. Blank queries match all rows allowed by the other filters. Applied
+queries stay in place across filter changes and edits, including task moves;
+matching rows retain their remembered order and summaries still count all tasks.
+Task search also works in archived projects. Opening a project from the list or
+returning with Projects starts with an empty search. Search does not alter data.
