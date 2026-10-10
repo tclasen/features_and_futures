@@ -194,6 +194,30 @@ async function renderProject(id) {
           }
         });
         row.append(renameForm);
+        const dueDateForm = element('form');
+        const dueDateInput = element('input', undefined, { type: 'text', 'aria-label': 'Task due date', value: task.dueDate || '' });
+        const dueDateButton = element('button', 'Save due date', { type: 'submit' });
+        dueDateInput.disabled = project.archived;
+        dueDateButton.disabled = project.archived;
+        dueDateForm.append(dueDateInput, dueDateButton);
+        dueDateForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const dueDate = dueDateInput.value.trim();
+          try {
+            const updated = await request(`/api/projects/${id}/tasks/${task.id}/due-date`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ dueDate })
+            });
+            task.dueDate = updated.dueDate;
+            dueDateInput.value = updated.dueDate || '';
+            alert.hidden = true;
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
+        row.append(dueDateForm);
         const priority = element('select', undefined, { 'aria-label': 'Task priority' });
         for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', value, { value }));
         priority.value = task.priority;
