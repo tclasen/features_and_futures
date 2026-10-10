@@ -39,3 +39,7 @@ Default-priority checks cover project migration, independent defaults, inheritan
 Due-date checks cover schema migration, calendar and leap-year validation, trimming and clearing, independent dates, unchanged task data and summaries, rename preservation, filters, archived controls, restoration, and restart persistence.
 
 Due-range UI checks cover inclusive and one-sided boundaries, undated tasks, calendar validation, reversed ranges, combined filters, immediate updates after edits, preserved selections, archived controls, and reset on reopening. The HTTP checks also verify the shared calendar-validation module is served.
+
+Each task row offers Destination project and Move task. Destinations are other active projects in project creation order, using their current names. Moving appends the task after the destination's existing tasks and preserves its title, completion, priority, and due date. The source page stays open with all selected filters and its applied due range retained. Both projects' summaries reflect their current tasks. Archived projects cannot send or receive tasks; controls are also disabled when there are no eligible destinations. Moves and task order persist across reloads and restarts.
+
+Move checks cover upgrading existing databases, append order, subsequent creation and repeated moves, independent task data, ownership validation, active-project restrictions, summary updates, restart persistence, destination options, source filter retention, and failed-move recovery.

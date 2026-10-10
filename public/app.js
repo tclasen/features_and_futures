@@ -227,7 +227,53 @@ function taskRow(task) {
       saveDueDate.disabled = archived;
     }
   });
-  row.append(checkbox, title, renameTaskForm, priorityControls, dueDateForm);
+  const moveForm = document.createElement('form');
+  moveForm.className = 'move-task';
+  const destinationLabel = document.createElement('label');
+  const destination = document.createElement('select');
+  destination.id = `destination-project-${task.id}`;
+  destinationLabel.htmlFor = destination.id;
+  destinationLabel.textContent = 'Destination project';
+  const eligibleProjects = projectData.filter((project) => !project.archived && project.id !== Number(projectMatch[1]));
+  for (const project of eligibleProjects) {
+    const option = document.createElement('option');
+    option.value = String(project.id);
+    option.textContent = project.name;
+    destination.append(option);
+  }
+  if (eligibleProjects.length) destination.value = String(eligibleProjects[0].id);
+  const movingDisabled = archived || !eligibleProjects.length;
+  destination.disabled = movingDisabled;
+  const moveButton = document.createElement('button');
+  moveButton.type = 'submit';
+  moveButton.textContent = 'Move task';
+  moveButton.disabled = movingDisabled;
+  const moveControls = document.createElement('div');
+  moveControls.className = 'form-controls';
+  moveControls.append(destination, moveButton);
+  moveForm.append(destinationLabel, moveControls);
+  moveForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (movingDisabled) return;
+    moveButton.disabled = true;
+    destination.disabled = true;
+    showError();
+    try {
+      await request(`${tasksPath}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+      });
+      tasks = tasks.filter((item) => item.id !== task.id);
+      renderTasks();
+    } catch (failure) {
+      showError(failure.message);
+    } finally {
+      moveButton.disabled = movingDisabled;
+      destination.disabled = movingDisabled;
+    }
+  });
+  row.append(checkbox, title, renameTaskForm, priorityControls, dueDateForm, moveForm);
   return row;
 }
 
@@ -378,6 +424,7 @@ async function load() {
       taskForm.querySelector('button').disabled = archived;
       document.querySelector('#project-heading').textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      projectData = await request('/api/projects');
       tasks = await request(tasksPath);
       renderTasks();
     } else {

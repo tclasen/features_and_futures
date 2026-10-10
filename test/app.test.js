@@ -37,14 +37,16 @@ function pageElements() {
   return elements;
 }
 
-async function loadPage(elements, pathname, fetch, assign = () => {}) {
+async function loadPage(elements, pathname, fetch, assign = () => {}, destinations = []) {
   const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8')).replace("import { validDueDate } from './date.js';", '');
   await runInNewContext(`(async () => { ${source} })()`, {
     document: {
       querySelector: (selector) => elements.get(selector),
       createElement: (tag) => new Element(tag),
     },
-    fetch,
+    fetch: (path, options) => pathname !== '/' && path === '/api/projects' && !options
+      ? Promise.resolve({ ok: true, json: async () => structuredClone(destinations) })
+      : fetch(path, options),
     validDueDate,
     window: { location: { pathname, assign } },
   });
@@ -858,6 +860,88 @@ test('edits re-evaluate due ranges, retain all filters, and archived or reopened
       for (const index of [2, 4]) {
         assert.equal(row.children[index].children[1].children[0].disabled, archived);
         assert.equal(row.children[index].children[1].children[1].disabled, archived);
+      }
+    }
+  }
+});
+
+test('task moves list eligible projects, retain source filters, and recover from rejected moves', async () => {
+  const destinations = [
+    { id: 7, name: 'Source', archived: 0 },
+    { id: 2, name: 'Renamed destination', archived: 0 },
+    { id: 9, name: 'Archived destination', archived: 1 },
+    { id: 12, name: 'Last destination', archived: 0 },
+  ];
+  let savedTasks = [
+    { id: 1, title: 'First', completed: true, priority: 'High', due_date: '2026-10-10' },
+    { id: 2, title: 'Second', completed: true, priority: 'High', due_date: '2026-10-11' },
+    { id: 3, title: 'Hidden', completed: false, priority: 'Low', due_date: '' },
+  ];
+  let rejectMove = true;
+  const writes = [];
+  const fetch = async (path, options) => {
+    if (!options) return { ok: true, json: async () => structuredClone(path.endsWith('/tasks')
+      ? savedTasks : { id: 7, name: 'Source', archived: 0 }) };
+    const body = JSON.parse(options.body);
+    writes.push({ path, body });
+    if (rejectMove) return { ok: false, json: async () => ({ error: 'Archived project' }) };
+    const task = savedTasks.find((task) => task.id === Number(path.split('/').at(-1)));
+    savedTasks = savedTasks.filter((item) => item.id !== task.id);
+    return { ok: true, json: async () => structuredClone(task) };
+  };
+  const elements = pageElements();
+  await loadPage(elements, '/projects/7', fetch, () => assert.fail('Moving must stay on the source page'), destinations);
+  const element = (id) => elements.get(`#${id}`);
+  const rows = () => element('tasks').children;
+  const moveForm = (row) => row.children[5];
+  const destination = (row) => moveForm(row).children[1].children[0];
+  const button = (row) => moveForm(row).children[1].children[1];
+  assert.equal(moveForm(rows()[0]).children[0].textContent, 'Destination project');
+  assert.equal(moveForm(rows()[0]).children[0].htmlFor, destination(rows()[0]).id);
+  assert.deepEqual(destination(rows()[0]).children.map((option) => [option.value, option.textContent]),
+    [['2', 'Renamed destination'], ['12', 'Last destination']]);
+  assert.equal(destination(rows()[0]).value, '2');
+  assert.equal(button(rows()[0]).textContent, 'Move task');
+  element('task-filter').value = 'Completed';
+  element('priority-filter').value = 'High';
+  element('due-from').value = '2026-10-10';
+  element('due-through').value = '2026-10-11';
+  await element('due-range').fire('submit');
+  destination(rows()[0]).value = '12';
+  await moveForm(rows()[0]).fire('submit');
+  assert.equal(element('error').textContent, 'Archived project');
+  assert.equal(destination(rows()[0]).disabled, false);
+  assert.equal(button(rows()[0]).disabled, false);
+  assert.equal(rows().length, 2);
+  rejectMove = false;
+  await moveForm(rows()[0]).fire('submit');
+  assert.deepEqual(writes[1], { path: '/api/projects/7/tasks/1', body: { destination_project_id: 12 } });
+  assert.deepEqual(rows().map((row) => row.children[1].textContent), ['Second']);
+  assert.equal(element('task-filter').value, 'Completed');
+  assert.equal(element('priority-filter').value, 'High');
+  assert.equal(element('due-from').value, '2026-10-10');
+  assert.equal(element('due-through').value, '2026-10-11');
+  assert.equal(element('error').hidden, true);
+  // Changing another filter still uses the applied range after the move.
+  element('task-filter').value = 'All';
+  element('priority-filter').value = 'All';
+  await element('priority-filter').fire('change');
+  assert.deepEqual(rows().map((row) => row.children[1].textContent), ['Second']);
+
+  for (const [archived, available, disabled] of [
+    [true, destinations, true], [false, destinations.slice(0, 1), true], [false, destinations, false],
+  ]) {
+    const reopened = pageElements();
+    const read = async (path) => ({ ok: true, json: async () => structuredClone(path.endsWith('/tasks')
+      ? savedTasks : { id: 7, name: 'Source', archived }) });
+    await loadPage(reopened, '/projects/7', read, () => {}, available);
+    for (const row of reopened.get('#tasks').children) {
+      assert.equal(destination(row).disabled, disabled);
+      assert.equal(button(row).disabled, disabled);
+      if (available.length === 1) assert.equal(destination(row).children.length, 0);
+      if (disabled) {
+        await moveForm(row).fire('submit');
+        assert.equal(writes.length, 2);
       }
     }
   }
