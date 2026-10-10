@@ -122,11 +122,21 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: defaultPriority });
       }
       if (taskRoute[2] && request.method === 'PATCH') {
+        const taskId = Number(taskRoute[2]);
+        const body = await readJson(request);
+        if (Object.hasOwn(body, 'destinationProjectId')) {
+          const destinationId = Number(body.destinationProjectId);
+          const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+          const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+          if (source.archived) return sendJson(response, 409, { error: 'Archived projects cannot move tasks' });
+          if (!destination || destination.archived || destinationId === projectId) return sendJson(response, 400, { error: 'Invalid destination project' });
+          const result = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?').run(destinationId, taskId, projectId);
+          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          return sendJson(response, 200, { id: taskId, projectId: destinationId });
+        }
         if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
           return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
         }
-        const taskId = Number(taskRoute[2]);
-        const body = await readJson(request);
         if (Object.hasOwn(body, 'dueDate')) {
           const dueDate = typeof body.dueDate === 'string' ? body.dueDate.trim() : '';
           if (dueDate && !isValidDueDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });

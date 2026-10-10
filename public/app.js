@@ -355,7 +355,31 @@ async function renderProject(id) {
           content.querySelector('[role="alert"]')?.remove();
           drawTasks();
         });
-        row.append(title, renameForm, priority, checkbox, dueDateInput, saveDueDate);
+        const destination = document.createElement('select');
+        destination.setAttribute('aria-label', 'Destination project');
+        const destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== project.id);
+        for (const candidate of destinations) {
+          const option = document.createElement('option');
+          option.value = String(candidate.id);
+          option.textContent = candidate.name;
+          destination.append(option);
+        }
+        destination.disabled = project.archived || destinations.length === 0;
+        const move = document.createElement('button');
+        move.type = 'button';
+        move.textContent = 'Move task';
+        move.disabled = project.archived || destinations.length === 0;
+        move.addEventListener('click', async () => {
+          const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+          });
+          if (!response.ok) { showError('Could not move task'); return; }
+          tasks = tasks.filter((item) => item.id !== task.id);
+          content.querySelector('[role="alert"]')?.remove();
+          drawTasks();
+        });
+        row.append(title, renameForm, priority, checkbox, dueDateInput, saveDueDate, destination, move);
         list.append(row);
       }
     }
