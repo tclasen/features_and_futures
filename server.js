@@ -80,7 +80,7 @@ const server = createServer(async (req, res) => {
     const project = getProject.get(Number(match[1]));
     return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
   }
-  if (req.method === 'GET' && url.pathname === '/') {
+  if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
     try {
       const html = await readFile(path.join(root, 'index.html'));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
