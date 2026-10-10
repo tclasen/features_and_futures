@@ -220,6 +220,24 @@ async function renderProject(id) {
           task.completed = checkbox.checked;
           drawTasks();
         });
+        const priority = document.createElement('select');
+        priority.setAttribute('aria-label', 'Task priority');
+        priority.disabled = project.archived;
+        for (const value of ['Low', 'Normal', 'High']) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          priority.append(option);
+        }
+        priority.value = task.priority || 'Normal';
+        priority.addEventListener('change', async () => {
+          const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          if (!response.ok) { priority.value = task.priority || 'Normal'; showError('Could not update task priority'); return; }
+          task.priority = priority.value;
+        });
         const renameForm = document.createElement('form');
         renameForm.className = 'task-rename-form';
         const renameInput = document.createElement('input');
@@ -254,7 +272,7 @@ async function renderProject(id) {
           content.querySelector('[role="alert"]')?.remove();
           drawTasks();
         });
-        row.append(title, renameForm, checkbox);
+        row.append(title, renameForm, priority, checkbox);
         list.append(row);
       }
     }

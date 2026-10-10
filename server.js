@@ -22,6 +22,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
@@ -80,7 +84,7 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 404, { error: 'Project not found' });
       }
       if (!taskRoute[2] && request.method === 'GET') {
-        const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+        const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
         return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
       }
       if (!taskRoute[2] && request.method === 'POST') {
@@ -91,7 +95,7 @@ const server = createServer(async (request, response) => {
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
         const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
       }
       if (taskRoute[2] && request.method === 'PATCH') {
         if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
@@ -99,12 +103,18 @@ const server = createServer(async (request, response) => {
         }
         const taskId = Number(taskRoute[2]);
         const body = await readJson(request);
+        if (Object.hasOwn(body, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+          const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(body.priority, taskId, projectId);
+          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          return sendJson(response, 200, { id: taskId, projectId, priority: body.priority });
+        }
         if (typeof body.title === 'string') {
           const title = body.title.trim();
           if (!title) return sendJson(response, 400, { error: 'Task title is required' });
           const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
           if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
-          const task = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?').get(taskId);
+          const task = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?').get(taskId);
           return sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
         }
         if (typeof body.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
