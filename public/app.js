@@ -309,6 +309,31 @@ async function renderProject(id) {
             alert.hidden = false;
           }
         });
+        const notesForm = element('form');
+        const notesInput = element('textarea', undefined, {
+          'aria-label': 'Task notes',
+          rows: '3',
+        });
+        notesInput.value = task.notes || '';
+        const saveNotes = element('button', 'Save notes', { type: 'submit' });
+        notesInput.disabled = archived;
+        saveNotes.disabled = archived;
+        notesForm.append(notesInput, saveNotes);
+        notesForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          alert.hidden = true;
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ notes: notesInput.value }),
+            });
+            task.notes = updated.notes;
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
         const destinationSelect = element('select', undefined, { 'aria-label': 'Destination project' });
         for (const destination of destinations) {
           destinationSelect.append(element('option', destination.name, { value: destination.id }));
@@ -329,7 +354,7 @@ async function renderProject(id) {
             alert.hidden = false;
           }
         });
-        row.append(title, checkbox, priority, renameForm, dueDateForm, destinationSelect, moveButton);
+        row.append(title, checkbox, priority, renameForm, dueDateForm, notesForm, destinationSelect, moveButton);
         list.append(row);
       }
     };

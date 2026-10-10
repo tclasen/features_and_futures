@@ -58,6 +58,9 @@ database.exec(`
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 
 const listProjects = database.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
@@ -71,17 +74,18 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = database.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
-  t.due_date AS dueDate FROM tasks t
+  t.due_date AS dueDate, t.notes FROM tasks t
   JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, ?, ?)');
 const insertTaskPosition = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
   VALUES (?, ?, COALESCE((SELECT MAX(position) + 1 FROM task_project_positions WHERE project_id = ?), 0))`);
-const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const listMoveDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY created_at, rowid');
 const moveTask = database.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?');
 const rememberTaskPosition = database.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
@@ -233,7 +237,7 @@ const server = createServer(async (request, response) => {
         sendJson(response, 400, { error: 'Task title is required' });
         return;
       }
-      const task = { id: randomUUID(), projectId, title, completed: 0, priority: project.defaultTaskPriority };
+      const task = { id: randomUUID(), projectId, title, completed: 0, priority: project.defaultTaskPriority, dueDate: null, notes: '' };
       insertTask.run(task.id, projectId, title, task.priority, Date.now());
       insertTaskPosition.run(task.id, projectId, projectId);
       sendJson(response, 201, task);
@@ -324,7 +328,17 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, { ...existing, dueDate: dueDate || null });
       return;
     }
-    sendJson(response, 400, { error: 'Task update must include a title, completion state, priority, or due date' });
+    if (typeof body?.notes === 'string') {
+      const project = getProject.get(projectId);
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      updateTaskNotes.run(body.notes, taskId, projectId);
+      sendJson(response, 200, { ...existing, notes: body.notes });
+      return;
+    }
+    sendJson(response, 400, { error: 'Task update must include a title, completion state, priority, due date, or notes' });
     return;
   }
 
