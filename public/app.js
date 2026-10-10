@@ -26,6 +26,22 @@ async function render() {
     app.append(back);
     if (project.archived) app.append(element('p', {}, 'Archived project'));
 
+    const renameForm = element('form');
+    const renameLabel = element('label', { for: 'new-project-name' }, 'New project name');
+    const renameInput = element('input', { id: 'new-project-name', type: 'text' });
+    const renameButton = element('button', { type: 'submit' }, 'Rename project');
+    const renameAlert = element('p', { role: 'alert', 'aria-live': 'assertive', hidden: '' });
+    if (project.archived) { renameInput.disabled = true; renameButton.disabled = true; }
+    renameForm.append(renameLabel, renameInput, renameButton);
+    app.append(renameForm, renameAlert);
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const name = renameInput.value.trim();
+      if (!name) { renameAlert.textContent = 'Project name is required'; renameAlert.hidden = false; renameInput.focus(); return; }
+      const response = await fetch(`/api/projects/${match[1]}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (response.ok) render();
+    });
+
     const form = element('form');
     const label = element('label', { for: 'task-title' }, 'Task title');
     const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
