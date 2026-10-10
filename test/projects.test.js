@@ -100,3 +100,74 @@ test('project validation, ordering, navigation and durable IDs', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, stay in their project and persist completion', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async (path) => (await fetch(`${server.base}${path}`)).text();
+    const rows = (content) => [...content.matchAll(/<div class="task" data-testid="task-row">([\s\S]*?)<\/div>/g)]
+      .map((match) => match[1]);
+    await post('/projects', { name: 'One' });
+    await post('/projects', { name: 'Two' });
+    const initial = await html('/projects/1');
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 400);
+      const invalid = await response.text();
+      assert.match(invalid, /role="alert"[^>]*>Task title is required/);
+      assert.equal(rows(invalid).length, 0);
+    }
+    for (const title of ['  First task  ', '<script>Second</script>']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1');
+    }
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    const created = rows(await html('/projects/1'));
+    assert.equal(created.length, 2);
+    assert.match(created[0], /aria-label="Complete First task"/);
+    assert.match(created[0], /<label[^>]*>First task<\/label>/);
+    assert.match(created[1], /&lt;script&gt;Second&lt;\/script&gt;/);
+    assert.doesNotMatch(created.join(''), / checked/);
+    assert.equal(rows(await html('/projects/1?filter=Open')).length, 2);
+    assert.equal(rows(await html('/projects/1?filter=Completed')).length, 0);
+    assert.equal((await post('/projects/1/tasks/1', { completed: '1' })).status, 204);
+    assert.match(rows(await html('/projects/1'))[0], / checked/);
+    const open = rows(await html('/projects/1?filter=Open'));
+    assert.equal(open.length, 1);
+    assert.match(open[0], /Second/);
+    const completed = rows(await html('/projects/1?filter=Completed'));
+    assert.equal(completed.length, 1);
+    assert.match(completed[0], /First task/);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '0' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/1', { completed: 'invalid' })).status, 400);
+    assert.equal((await post('/projects/999/tasks', { title: 'Orphan' })).status, 404);
+    const other = rows(await html('/projects/2'));
+    assert.equal(other.length, 1);
+    assert.match(other[0], /Other project task/);
+    assert.doesNotMatch(other[0], /First task|Second/);
+    const beforeRestart = await html('/projects/1');
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html('/projects/1'), beforeRestart);
+    assert.equal((await post('/projects/1/tasks/1', { completed: '0' })).status, 204);
+    assert.equal(rows(await html('/projects/1?filter=Completed')).length, 0);
+    assert.equal(rows(await html('/projects/1?filter=Open')).length, 2);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.doesNotMatch(rows(await html('/projects/1')).join(''), / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
