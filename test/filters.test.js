@@ -259,8 +259,16 @@ test('combined filters retain selections and reevaluate completion, priority and
   rows[2].checkbox.checked = true;
   await rows[2].checkbox.change();
   assert.deepEqual(visible(), [2]);
-  applySearch('Different  title');
-  assert.deepEqual(visible(), []); // Internal whitespace is significant.
+  applySearch('Different  \t title');
+  assert.deepEqual(visible(), [2]);
+  rows[2].form.elements.title.value = 'Different \t  TITLE';
+  await rows[2].form.submit({ preventDefault() {} });
+  assert.deepEqual(visible(), [2]);
+  assert.equal(rows[2].span.textContent, 'Different \t  TITLE');
+  applySearch('different title');
+  assert.deepEqual(visible(), [2]);
+  applySearch('differenttitle');
+  assert.deepEqual(visible(), []); // Runs collapse to one space, not zero.
   applySearch('  ');
   assert.deepEqual(visible(), [0, 2]);
   rows[2].span.textContent = 'École';

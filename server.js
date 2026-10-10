@@ -107,8 +107,8 @@ function validDueDate(value) {
 }
 
 function matchesSearch(value, query) {
-  const fold = text => text.replace(/[A-Z]/g, char => char.toLowerCase());
-  return fold(value).includes(fold(query));
+  const normalize = text => text.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
+  return normalize(value).includes(normalize(query.trim()));
 }
 
 function escapeHtml(value) {

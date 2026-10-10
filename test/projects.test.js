@@ -615,8 +615,9 @@ test('project search intersects archive filter with ASCII-only matching and fres
     assert.deepEqual(names(result), ['Alpha Board', 'ALPHA  Board']);
     assert.match(result, /data-testid="project-summary">1\/1 completed/);
     assert.match(result, /name="query" value="aLpHa"/);
-    assert.deepEqual(names(await search('alpha board')), ['Alpha Board']);
-    assert.deepEqual(names(await search('alpha  board')), ['ALPHA  Board']);
+    assert.deepEqual(names(await search('alpha board')), ['Alpha Board', 'ALPHA  Board']);
+    assert.deepEqual(names(await search('  alpha \t  board  ')), ['Alpha Board', 'ALPHA  Board']);
+    assert.deepEqual(names(await search('alphaboard')), []);
     assert.deepEqual(names(await search('école')), []);
     assert.deepEqual(names(await search('ÉCOLE')), ['École']);
     assert.deepEqual(names(await search('   ')), ['Alpha Board', 'ALPHA  Board', 'Beta', 'École']);
@@ -636,9 +637,15 @@ test('project search intersects archive filter with ASCII-only matching and fres
     await post('/projects/1/rename', { name: 'Gamma' });
     assert.deepEqual(names(await search('alpha')), ['ALPHA  Board']);
     assert.deepEqual(names(await search('gamma')), ['Gamma']);
+    await post('/projects/1/rename', { name: 'Gamma \t  Board' });
+    await post('/projects/1/tasks/1/rename', { title: 'Saved \t  TASK' });
+    assert.deepEqual(names(await search('gamma board')), ['Gamma \t  Board']);
+    assert.match(await get('/projects/1'), /Saved \t  TASK/);
     await server.stop();
     server = await start(dbPath);
-    assert.deepEqual(names(await get('/')), ['Gamma', 'ALPHA  Board', 'Beta', 'École']);
+    assert.deepEqual(names(await get('/')), ['Gamma \t  Board', 'ALPHA  Board', 'Beta', 'École']);
+    assert.deepEqual(names(await search('gamma  \t board')), ['Gamma \t  Board']);
+    assert.match(await get('/projects/1'), /Saved \t  TASK/);
     assert.deepEqual(names(await search('alpha')), ['ALPHA  Board']);
     assert.match(await get('/health'), /"status":"ok"/);
   } finally {
