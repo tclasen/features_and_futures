@@ -23,6 +23,7 @@
     .task-row input { flex: initial; width: 18px; height: 18px; }
     .task-row label { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
     #task-filter { margin-bottom: 14px; padding: 9px 12px; border: 1px solid #b8c2ce; border-radius: 6px; font: inherit; }
+    #project-filter { margin-bottom: 14px; padding: 9px 12px; border: 1px solid #b8c2ce; border-radius: 6px; font: inherit; }
   </style>
 </head>
 <body>
@@ -45,25 +46,38 @@
           <button type="submit">Create project</button>
         </form>
         <p id="message" role="alert" hidden></p>
+        <label for="project-filter">Project filter</label>
+        <select id="project-filter"><option>Active</option><option>Archived</option></select>
         <section id="projects" aria-label="Projects"></section>`;
       const form = app.querySelector('#create-project');
       const input = app.querySelector('#project-name');
       const message = app.querySelector('#message');
       const list = app.querySelector('#projects');
+      const filter = app.querySelector('#project-filter');
 
       async function refresh() {
-        const response = await fetch('/api/projects');
+        const response = await fetch(`/api/projects?filter=${filter.value}`);
         const projects = await response.json();
         list.innerHTML = projects.map((project) => `
           <div class="project-row" data-testid="project-row">
             <span class="project-name">${escapeHtml(project.name)}</span>
+            <span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span>
             <button type="button" data-project-id="${project.id}">Open project</button>
+            <button type="button" data-archive-id="${project.id}">${filter.value === 'Active' ? 'Archive project' : 'Restore project'}</button>
           </div>`).join('');
         list.querySelectorAll('button[data-project-id]').forEach((button) => {
           button.addEventListener('click', () => { window.location.href = `/projects/${button.dataset.projectId}`; });
         });
+        list.querySelectorAll('button[data-archive-id]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const action = filter.value === 'Active' ? 'archive' : 'restore';
+            await fetch(`/api/projects/${button.dataset.archiveId}/${action}`, { method: 'POST' });
+            await refresh();
+          });
+        });
       }
 
+      filter.addEventListener('change', refresh);
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         message.hidden = true;
@@ -91,10 +105,11 @@
         app.innerHTML = `
           <h1>${escapeHtml(project.name)}</h1>
           <button type="button" id="back">Projects</button>
+          ${project.archived ? '<p>Archived project</p>' : ''}
           <form id="create-task">
             <label for="task-title">Task title</label>
-            <input id="task-title" name="title" type="text" aria-label="Task title">
-            <button type="submit">Create task</button>
+            <input id="task-title" name="title" type="text" aria-label="Task title" ${project.archived ? 'disabled' : ''}>
+            <button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button>
           </form>
           <p id="message" role="alert" hidden></p>
           <label for="task-filter">Task filter</label>
@@ -116,7 +131,7 @@
             || (filter.value === 'Completed' && task.completed));
           list.innerHTML = visible.map((task) => `
             <div class="task-row" data-testid="task-row">
-              <input type="checkbox" id="task-${task.id}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} aria-label="Complete ${escapeHtml(task.title)}">
+              <input type="checkbox" id="task-${task.id}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} aria-label="Complete ${escapeHtml(task.title)}">
               <label for="task-${task.id}">${escapeHtml(task.title)}</label>
             </div>`).join('');
           list.querySelectorAll('input[data-task-id]').forEach((checkbox) => {

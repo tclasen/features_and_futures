@@ -24,9 +24,22 @@ database.exec(`
 `);
 database.exec('PRAGMA foreign_keys = ON');
 
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+
+const listProjects = database.prepare(`
+  SELECT p.id, p.name, p.archived,
+    COUNT(t.id) AS totalCount,
+    COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ?
+  GROUP BY p.id ORDER BY p.id
+`);
+const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const updateProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -55,7 +68,8 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    sendJson(response, 200, listProjects.all());
+    const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
+    sendJson(response, 200, listProjects.all(filter));
     return;
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
@@ -70,6 +84,18 @@ const server = createServer(async (request, response) => {
     return;
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (request.method === 'POST' && archiveMatch) {
+    const projectId = Number(archiveMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    updateProjectArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, projectId);
+    sendJson(response, 200, findProject.get(projectId));
+    return;
+  }
   if (request.method === 'GET' && projectMatch) {
     const project = findProject.get(Number(projectMatch[1]));
     sendJson(response, project ? 200 : 404, project || { error: 'Project not found' });
@@ -87,6 +113,10 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST') {
+      if (findProject.get(projectId).archived) {
+        sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+        return;
+      }
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) {
@@ -103,6 +133,15 @@ const server = createServer(async (request, response) => {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
     const body = await readJson(request);
+    const project = findProject.get(projectId);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    if (project.archived) {
+      sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+      return;
+    }
     if (typeof body?.completed !== 'boolean') {
       sendJson(response, 400, { error: 'Completion must be a boolean' });
       return;
