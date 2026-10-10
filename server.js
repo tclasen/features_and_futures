@@ -12,13 +12,14 @@ CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL 
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE projects ADD COLUMN renamed_at INTEGER'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const html = await readFile(new URL('./index.html', import.meta.url));
 const sendJson = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
 async function bodyJson(req) { let raw = ''; for await (const chunk of req) raw += chunk; return JSON.parse(raw); }
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
-  if (req.method === 'GET' && url.pathname === '/api/projects') return sendJson(res, 200, db.prepare('SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed),0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id=p.id GROUP BY p.id ORDER BY p.created_at,p.rowid').all().map(p => ({ ...p, archived: Boolean(p.archived) })));
+  if (req.method === 'GET' && url.pathname === '/api/projects') return sendJson(res, 200, db.prepare('SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS total, COALESCE(SUM(t.completed),0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id=p.id GROUP BY p.id ORDER BY p.created_at,p.rowid').all().map(p => ({ ...p, archived: Boolean(p.archived) })));
   const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/rename$/);
   if (req.method === 'POST' && renameMatch) {
     const id = decodeURIComponent(renameMatch[1]);
@@ -27,6 +28,15 @@ const server = http.createServer(async (req, res) => {
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return sendJson(res, 400, { error: 'Project name is required' });
       const result = db.prepare('UPDATE projects SET name=?, renamed_at=? WHERE id=? AND archived=0').run(name, Date.now(), id);
+      return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Active project not found' });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority$/);
+  if (req.method === 'PATCH' && defaultPriorityMatch) {
+    try {
+      const body = await bodyJson(req);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(res, 400, { error: 'Invalid default task priority' });
+      const result = db.prepare('UPDATE projects SET default_priority=? WHERE id=? AND archived=0').run(body.priority, decodeURIComponent(defaultPriorityMatch[1]));
       return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Active project not found' });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
@@ -43,7 +53,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return sendJson(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id=? ORDER BY created_at,rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (db.prepare('SELECT archived FROM projects WHERE id=?').get(projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
-      try { const body = await bodyJson(req); const title = typeof body.title === 'string' ? body.title.trim() : ''; if (!title) return sendJson(res, 400, { error: 'Task title is required' }); const task = { id: randomUUID(), projectId, title, completed: false }; db.prepare('INSERT INTO tasks (id,project_id,title,created_at) VALUES (?,?,?,?)').run(task.id, projectId, title, Date.now()); return sendJson(res, 201, task); }
+      try { const body = await bodyJson(req); const title = typeof body.title === 'string' ? body.title.trim() : ''; if (!title) return sendJson(res, 400, { error: 'Task title is required' }); const priority = db.prepare('SELECT default_priority FROM projects WHERE id=?').get(projectId).default_priority; const task = { id: randomUUID(), projectId, title, completed: false, priority }; db.prepare('INSERT INTO tasks (id,project_id,title,priority,created_at) VALUES (?,?,?,?,?)').run(task.id, projectId, title, priority, Date.now()); return sendJson(res, 201, task); }
       catch { return sendJson(res, 400, { error: 'Invalid request' }); }
     }
   }
