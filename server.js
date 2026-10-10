@@ -32,6 +32,19 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+// Seed the current order before enabling remembered positions for older databases.
+const tasksWithoutPosition = db.prepare(`SELECT t.id, t.project_id,
+  (SELECT COUNT(*) FROM tasks earlier WHERE earlier.project_id = t.project_id AND earlier.id < t.id) AS position
+  FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE p.task_id IS NULL ORDER BY t.project_id, t.id`).all();
+const addTaskPosition = db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+for (const task of tasksWithoutPosition) addTaskPosition.run(task.id, task.project_id, task.position);
 
 function isValidDueDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -107,7 +120,9 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 404, { error: 'Project not found' });
       }
       if (!taskRoute[2] && request.method === 'GET') {
-        const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+        const tasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+          FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+          WHERE t.project_id = ? ORDER BY p.position, t.id`).all(projectId);
         return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
       }
       if (!taskRoute[2] && request.method === 'POST') {
@@ -118,7 +133,10 @@ const server = createServer(async (request, response) => {
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
         const defaultPriority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
-        const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
+        const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+        const result = insertTask.run(projectId, title, defaultPriority);
+        const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM task_project_positions WHERE project_id = ?').get(projectId).nextPosition;
+        db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, position);
         return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: defaultPriority });
       }
       if (taskRoute[2] && request.method === 'PATCH') {
@@ -130,8 +148,24 @@ const server = createServer(async (request, response) => {
           const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
           if (source.archived) return sendJson(response, 409, { error: 'Archived projects cannot move tasks' });
           if (!destination || destination.archived || destinationId === projectId) return sendJson(response, 400, { error: 'Invalid destination project' });
-          const result = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?').run(destinationId, taskId, projectId);
-          if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+          db.exec('BEGIN IMMEDIATE');
+          try {
+            const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+            if (!task) {
+              db.exec('ROLLBACK');
+              return sendJson(response, 404, { error: 'Task not found' });
+            }
+            let position = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId)?.position;
+            if (position === undefined) {
+              position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM task_project_positions WHERE project_id = ?').get(destinationId).nextPosition;
+              db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, position);
+            }
+            db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?').run(destinationId, taskId, projectId);
+            db.exec('COMMIT');
+          } catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+          }
           return sendJson(response, 200, { id: taskId, projectId: destinationId });
         }
         if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
