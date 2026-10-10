@@ -43,6 +43,9 @@ for (const duplicate of duplicateProjects) {
     throw error;
   }
 }
+// Serialize same-name retries at the database boundary. The migration above
+// first consolidates any duplicates already present in a persistent database.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS projects_name_unique ON projects(name)');
 
 const indexHtml = await readFile(new URL('./public/index.html', import.meta.url));
 const styles = await readFile(new URL('./public/styles.css', import.meta.url));
@@ -78,10 +81,9 @@ const server = http.createServer(async (req, res) => {
     const data = await readJson(req);
     const name = typeof data?.name === 'string' ? data.name.trim() : '';
     if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
-    const existing = db.prepare('SELECT id, name, archived FROM projects WHERE name = ? ORDER BY id LIMIT 1').get(name);
-    if (existing) return send(res, 200, JSON.stringify({ ...existing, id: Number(existing.id), archived: Boolean(existing.archived) }));
-    const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
-    return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), name, archived: false }));
+    const result = db.prepare('INSERT INTO projects (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(name);
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE name = ?').get(name);
+    return send(res, result.changes ? 201 : 200, JSON.stringify({ ...project, id: Number(project.id), archived: Boolean(project.archived) }));
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (req.method === 'PATCH' && archiveMatch) {
