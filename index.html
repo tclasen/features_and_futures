@@ -42,8 +42,35 @@
       if (match) {
         try {
           const project = await request(`/api/projects/${encodeURIComponent(match[1])}`);
-          app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1>`;
+          app.innerHTML = `<button class="back" type="button">Projects</button><h1>${esc(project.name)}</h1><div id="message" role="alert" aria-live="polite"></div><form><div class="field"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"></div><button type="submit">Create task</button></form><div class="field"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div><section id="tasks" aria-label="Tasks"></section>`;
           app.querySelector('.back').addEventListener('click', () => { location.href = '/'; });
+          const tasksList = app.querySelector('#tasks');
+          const filter = app.querySelector('#task-filter');
+          let tasks = [];
+          const refreshTasks = async () => {
+            tasks = await request(`/api/projects/${encodeURIComponent(project.id)}/tasks`);
+            const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
+            tasksList.innerHTML = shown.map(task => `<div class="row" data-testid="task-row"><span>${esc(task.title)}</span><input type="checkbox" aria-label="Complete ${esc(task.title)}" data-task-id="${esc(task.id)}" ${task.completed ? 'checked' : ''}></div>`).join('');
+            tasksList.querySelectorAll('input').forEach(box => box.addEventListener('change', async () => {
+              try {
+                await request(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(box.dataset.taskId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
+                await refreshTasks();
+              } catch (error) { app.querySelector('#message').textContent = error.message; box.checked = !box.checked; }
+            }));
+          };
+          filter.addEventListener('change', refreshTasks);
+          app.querySelector('form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const title = app.querySelector('#task-title').value.trim();
+            if (!title) { app.querySelector('#message').textContent = 'Task title is required'; return; }
+            try {
+              await request(`/api/projects/${encodeURIComponent(project.id)}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+              app.querySelector('#task-title').value = '';
+              app.querySelector('#message').textContent = '';
+              await refreshTasks();
+            } catch (error) { app.querySelector('#message').textContent = error.message; }
+          });
+          await refreshTasks();
         } catch {
           app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>';
           app.querySelector('.back').addEventListener('click', () => { location.href = '/'; });

@@ -16,6 +16,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
 const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+)`);
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
@@ -43,6 +53,40 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return json(res, 400, { error: 'Invalid request' });
     }
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+  if (tasksMatch && req.method === 'GET') {
+    if (!getProject.get(tasksMatch[1])) return json(res, 404, { error: 'Project not found' });
+    return json(res, 200, listTasks.all(tasksMatch[1]).map(task => ({ ...task, completed: Boolean(task.completed) })));
+  }
+  if (tasksMatch && req.method === 'POST') {
+    let raw = '';
+    try {
+      for await (const chunk of req) {
+        raw += chunk;
+        if (raw.length > 100_000) return json(res, 413, { error: 'Request too large' });
+      }
+      const payload = JSON.parse(raw);
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return json(res, 400, { error: 'Task title is required' });
+      if (!getProject.get(tasksMatch[1])) return json(res, 404, { error: 'Project not found' });
+      const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: false };
+      insertTask.run(task.id, task.projectId, task.title, Date.now());
+      return json(res, 201, task);
+    } catch {
+      return json(res, 400, { error: 'Invalid request' });
+    }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  if (taskMatch && req.method === 'PATCH') {
+    try {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const payload = JSON.parse(raw);
+      if (typeof payload.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
+      const result = updateTask.run(payload.completed ? 1 : 0, taskMatch[2], taskMatch[1]);
+      return result.changes ? json(res, 200, { completed: payload.completed }) : json(res, 404, { error: 'Task not found' });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
   if (req.method === 'GET' && projectMatch) {
