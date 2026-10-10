@@ -50,6 +50,7 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, id = (SELECT COALESCE(MAX(id), 0) + 1 FROM tasks) WHERE id = ? AND project_id = ?');
 const page = await readFile(path.join(here, 'index.html'));
 
 function isValidDate(value) {
@@ -160,7 +161,14 @@ const server = http.createServer(async (req, res) => {
       if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
       const task = findTask.get(taskId, projectId);
       if (!task) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
-      if (Object.hasOwn(payload, 'title')) {
+      if (Object.hasOwn(payload, 'destinationProjectId')) {
+        const destinationId = Number(payload.destinationProjectId);
+        const destination = findProject.get(destinationId);
+        if (!destination || destination.archived) return send(res, 400, JSON.stringify({ error: 'Invalid destination project' }));
+        if (destinationId === projectId) return send(res, 400, JSON.stringify({ error: 'Invalid destination project' }));
+        moveTask.run(destinationId, taskId, projectId);
+        return send(res, 200, JSON.stringify(findTask.get(taskId, destinationId) || listTasks.all(destinationId).at(-1)));
+      } else if (Object.hasOwn(payload, 'title')) {
         const title = String(payload.title ?? '').trim();
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
         renameTask.run(title, taskId, projectId);

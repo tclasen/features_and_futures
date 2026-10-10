@@ -88,6 +88,8 @@
         return;
       }
       const project = await response.json();
+      const allProjectsResponse = await fetch('/api/projects');
+      const activeProjects = (await allProjectsResponse.json()).filter(item => !item.archived && String(item.id) !== String(id));
       app.innerHTML = `<button id="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1>
         ${project.archived ? '<p>Archived project</p>' : ''}
         <form id="rename-form"><label for="new-project-name">New project name</label><input id="new-project-name" type="text" aria-label="New project name"><button type="submit">Rename project</button></form>
@@ -202,6 +204,24 @@
             dueDate.value = saved.dueDate || '';
             await renderTasks();
           });
+          const destination = document.createElement('select');
+          destination.setAttribute('aria-label', 'Destination project');
+          for (const target of activeProjects) {
+            const option = document.createElement('option');
+            option.value = target.id;
+            option.textContent = target.name;
+            destination.append(option);
+          }
+          destination.disabled = Boolean(project.archived) || activeProjects.length === 0;
+          const moveButton = document.createElement('button');
+          moveButton.type = 'button';
+          moveButton.textContent = 'Move task';
+          moveButton.disabled = destination.disabled;
+          moveButton.addEventListener('click', async () => {
+            const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(destination.value) }) });
+            if (!result.ok) { const body = await result.json(); alert.textContent = body.error || 'Unable to move task'; alert.hidden = false; return; }
+            await renderTasks();
+          });
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = Boolean(task.completed);
@@ -209,7 +229,7 @@
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           const label = document.createElement('label');
           label.textContent = task.title;
-          row.append(checkbox, label, renameInput, renameButton, priority, dueDate, saveDueDate);
+          row.append(checkbox, label, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton);
           checkbox.addEventListener('change', async () => {
             await fetch(`/api/projects/${id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
             await renderTasks();
