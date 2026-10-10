@@ -121,11 +121,23 @@ async function renderProject(id) {
     const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
     const filter = element('select', undefined, { id: 'task-filter', 'aria-label': 'Task filter' });
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+    const priorityFilterLabel = element('label', 'Priority filter', { for: 'priority-filter' });
+    const priorityFilter = element('select', undefined, {
+      id: 'priority-filter', 'aria-label': 'Priority filter',
+    });
+    for (const value of ['All', 'Low', 'Normal', 'High']) {
+      priorityFilter.append(element('option', value, { value }));
+    }
     const list = element('ul');
     let tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     const renderTasks = () => {
-      const matching = tasks.filter((task) => filter.value === 'All'
-        || (filter.value === 'Completed' ? Boolean(task.completed) : !task.completed));
+      const matching = tasks.filter((task) => {
+        const matchesCompletion = filter.value === 'All'
+          || (filter.value === 'Completed' ? Boolean(task.completed) : !task.completed);
+        const matchesPriority = priorityFilter.value === 'All'
+          || (task.priority || 'Normal') === priorityFilter.value;
+        return matchesCompletion && matchesPriority;
+      });
       list.replaceChildren();
       for (const task of matching) {
         const row = element('li', undefined, { 'data-testid': 'task-row' });
@@ -169,6 +181,7 @@ async function renderProject(id) {
               body: JSON.stringify({ priority: priority.value }),
             });
             task.priority = updated.priority;
+            renderTasks();
           } catch (error) {
             priority.value = previous;
             alert.textContent = error.message;
@@ -205,6 +218,7 @@ async function renderProject(id) {
       }
     };
     filter.addEventListener('change', renderTasks);
+    priorityFilter.addEventListener('change', renderTasks);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       alert.hidden = true;
@@ -223,7 +237,7 @@ async function renderProject(id) {
       }
     });
     renderTasks();
-    app.append(renameForm, alert, form, filterLabel, filter, list);
+    app.append(renameForm, alert, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
   } catch {
     app.append(element('h1', 'Project not found'));
     const back = element('button', 'Projects', { type: 'button' });
