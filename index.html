@@ -61,7 +61,19 @@
           const filter = document.querySelector('#task-filter');
           async function refreshTasks() {
             const tasks = await fetch(`/api/projects/${project.id}/tasks`).then(response => response.json());
-            taskList.innerHTML = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed).map(task => `<div class="row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-task-id="${task.id}"></div>`).join('');
+            taskList.innerHTML = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === task.completed).map(task => `<div class="row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} data-task-id="${task.id}">${project.archived ? '' : `<form class="task-rename-form" data-task-id="${task.id}"><input aria-label="New task title" placeholder="New task title"><button type="submit">Rename task</button><span class="error" role="alert" hidden></span></form>`}</div>`).join('');
+            taskList.querySelectorAll('.task-rename-form').forEach(renameForm => {
+              const renameInput = renameForm.querySelector('input');
+              const renameError = renameForm.querySelector('[role=alert]');
+              renameForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                renameError.hidden = true;
+                const response = await fetch(`/api/tasks/${renameForm.dataset.taskId}/rename`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: renameInput.value }) });
+                const result = await response.json();
+                if (!response.ok) { renameError.textContent = result.error; renameError.hidden = false; return; }
+                await refreshTasks();
+              });
+            });
             taskList.querySelectorAll('input[type=checkbox]').forEach(box => box.addEventListener('change', async () => {
               await fetch(`/api/tasks/${box.dataset.taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
               await refreshTasks();
