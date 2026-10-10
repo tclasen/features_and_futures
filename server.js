@@ -26,7 +26,7 @@ async function showList(){
  document.querySelector('#projects').addEventListener('click',event=>{const button=event.target.closest('button[data-id]');if(button)location.href='/projects/'+button.dataset.id;});
 }
 async function showProject(id){const response=await fetch('/api/projects/'+encodeURIComponent(id));if(!response.ok){location.replace('/');return;}const project=await response.json();app.innerHTML='<button type="button" id="back">Projects</button><h1>'+escapeHtml(project.name)+'</h1>';document.querySelector('#back').addEventListener('click',()=>location.href='/');}
-const match=location.pathname.match(/^\/projects\/(\d+)\/?$/);if(match)showProject(match[1]);else if(location.pathname==='/'||location.pathname==='')showList();else location.replace('/');
+const match=location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);if(match)showProject(match[1]);else if(location.pathname==='/'||location.pathname==='')showList();else location.replace('/');
 </script></body></html>`;
 
 function sendJson(res, status, value) {
