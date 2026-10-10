@@ -1,3 +1,21 @@
+export function normalizeDueRange(from, through) {
+  let range;
+  try {
+    range = { from: normalizeDueDate(from), through: normalizeDueDate(through) };
+  } catch {
+    throw new Error('Due range must use valid YYYY-MM-DD dates');
+  }
+  if (range.from && range.through && range.from > range.through) {
+    throw new Error('Due from must not be after Due through');
+  }
+  return range;
+}
+
+export function matchesDueRange(date, { from, through }) {
+  if (!from && !through) return true;
+  return Boolean(date) && (!from || date >= from) && (!through || date <= through);
+}
+
 // Calendar days are validated numerically, without timezone or Date normalization.
 export function normalizeDueDate(value) {
   const date = value.trim();
