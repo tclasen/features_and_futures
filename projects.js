@@ -27,19 +27,27 @@ export function openProjectStore(path) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
     database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
   }
+  // Project defaults affect future tasks only; existing task priorities are untouched.
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))");
+  }
   const list = database.prepare(`
     SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
       COALESCE(SUM(t.completed), 0) AS completed
     FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
     WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
   `);
-  const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const find = database.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
+  const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
   const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insertTask = database.prepare(`
+    INSERT INTO tasks (project_id, title, priority)
+    SELECT id, ?, default_priority FROM projects WHERE id = ? AND archived = 0
+  `);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTaskTitle = database.prepare(`
     UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?
@@ -65,12 +73,20 @@ export function openProjectStore(path) {
       if (!trimmedName) throw new Error('Project name is required');
       return updateName.run(trimmedName, id).changes > 0;
     },
+    setDefaultTaskPriority(id, priority) {
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        throw new Error('Invalid task priority');
+      }
+      return updateDefaultPriority.run(priority, id).changes > 0;
+    },
     listTasks: (projectId) => listTasks.all(projectId),
     createTask(projectId, title) {
-      if (find.get(projectId)?.archived) throw new Error('Archived project is read-only');
+      const project = find.get(projectId);
+      if (!project) throw new Error('Project not found');
+      if (project.archived) throw new Error('Archived project is read-only');
       const trimmedTitle = title.trim();
       if (!trimmedTitle) throw new Error('Task title is required');
-      return Number(insertTask.run(projectId, trimmedTitle).lastInsertRowid);
+      return Number(insertTask.run(trimmedTitle, projectId).lastInsertRowid);
     },
     renameTask(projectId, taskId, title) {
       const trimmedTitle = title.trim();

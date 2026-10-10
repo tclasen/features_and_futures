@@ -107,6 +107,14 @@ function projectPage(project, filter = 'All', priority = 'All', error = '') {
         <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
       </div>
     </form>
+    <form method="post" action="/projects/${project.id}/default-priority">
+      ${filterFields}
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+        ${['Low', 'Normal', 'High'].map((option) => `<option${project.default_priority === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save default priority</button></noscript>
+    </form>
     <form method="post" action="/projects/${project.id}/tasks">
       ${filterFields}
       <label for="task-title">Task title</label>
@@ -206,6 +214,28 @@ const server = createServer(async (request, response) => {
       response.writeHead(303, { Location: '/' });
       response.end();
       return;
+    }
+    const defaultPriorityMatch = /^\/projects\/([1-9]\d*)\/default-priority$/.exec(path);
+    if (request.method === 'POST' && defaultPriorityMatch) {
+      const id = Number(defaultPriorityMatch[1]);
+      const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
+      if (project) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        const priority = priorityFilter(form.get('priorityFilter'));
+        if (project.archived) {
+          sendHtml(response, 409, projectPage(project, filter, priority, 'Archived project is read-only'));
+          return;
+        }
+        const defaultPriority = form.get('priority');
+        if (!['Low', 'Normal', 'High'].includes(defaultPriority)) {
+          sendHtml(response, 400, projectPage(project, filter, priority, 'Invalid task priority'));
+          return;
+        }
+        store.setDefaultTaskPriority(id, defaultPriority);
+        redirectToProject(response, id, filter, priority);
+        return;
+      }
     }
     const renameMatch = /^\/projects\/([1-9]\d*)\/rename$/.exec(path);
     if (request.method === 'POST' && renameMatch) {
