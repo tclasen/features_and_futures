@@ -138,6 +138,30 @@ async function showProject(id) {
         renameInput.value = '';
       } catch (error) { showError(error.message); }
     });
+    const defaultPriorityLabel = element('label', { text: 'Default task priority' });
+    defaultPriorityLabel.htmlFor = 'default-task-priority';
+    const defaultPriority = element('select');
+    defaultPriority.id = 'default-task-priority';
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = element('option', { text: value });
+      option.value = value;
+      defaultPriority.append(option);
+    }
+    defaultPriority.value = project.defaultTaskPriority || 'Normal';
+    defaultPriority.disabled = archived;
+    defaultPriority.addEventListener('change', async () => {
+      const previous = project.defaultTaskPriority || 'Normal';
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ defaultTaskPriority: defaultPriority.value })
+        });
+        project.defaultTaskPriority = updated.defaultTaskPriority;
+      } catch (error) {
+        defaultPriority.value = previous;
+        showError(error.message);
+      }
+    });
     const form = element('form', { className: 'create-form' });
     const label = element('label', { text: 'Task title' });
     label.htmlFor = 'task-title';
@@ -282,7 +306,7 @@ async function showProject(id) {
       status.className = 'archived-status';
       app.append(status);
     }
-    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
+    app.append(form, defaultPriorityLabel, defaultPriority, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
   } catch {
     app.replaceChildren(element('h1', { text: 'Project not found' }));
     const back = element('button', { type: 'button', text: 'Projects' });
