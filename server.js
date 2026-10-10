@@ -21,6 +21,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
 
 function canonicalDueDate(value) {
   const date = value.trim();
@@ -109,7 +111,23 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) { json(response, 404, { error: 'Project not found' }); return; }
-    json(response, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    json(response, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return;
+  }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveMatch && request.method === 'POST') {
+    const sourceId = Number(moveMatch[1]), taskId = Number(moveMatch[2]);
+    const body = await readBody(request);
+    const destinationId = Number(body?.destination_project_id);
+    const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+    const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    if (!source || !destination) { json(response, 404, { error: 'Project not found' }); return; }
+    if (source.archived || destination.archived) { json(response, 403, { error: 'Archived projects cannot move tasks' }); return; }
+    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!task) { json(response, 404, { error: 'Task not found' }); return; }
+    const nextOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+    json(response, 200, { id: taskId, project_id: destinationId });
     return;
   }
   if (tasksMatch && request.method === 'POST') {
@@ -120,7 +138,8 @@ const server = createServer(async (request, response) => {
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) { json(response, 400, { error: 'Task title is required' }); return; }
     const defaultPriority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
-    const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
+    const nextOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+    const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, defaultPriority, nextOrder);
     json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: defaultPriority });
     return;
   }

@@ -130,6 +130,8 @@
       async function loadTasks() {
         const taskResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
         const tasks = await taskResponse.json();
+        const destinationResponse = await fetch('/api/projects?archived=false');
+        const destinations = (await destinationResponse.json()).filter(item => String(item.id) !== String(id));
         const visible = tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed)) &&
           (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
@@ -232,7 +234,32 @@
             }
             await loadTasks();
           });
-          row.append(checkbox, title, renameInput, renameButton, priority, dueDateForm);
+          const destination = document.createElement('select');
+          destination.setAttribute('aria-label', 'Destination project');
+          for (const item of destinations) {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            destination.append(option);
+          }
+          const moveButton = document.createElement('button');
+          moveButton.type = 'button';
+          moveButton.textContent = 'Move task';
+          destination.disabled = project.archived || destinations.length === 0;
+          moveButton.disabled = destination.disabled;
+          moveButton.addEventListener('click', async () => {
+            const moveResponse = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/move`, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ destination_project_id: Number(destination.value) })
+            });
+            if (!moveResponse.ok) {
+              const error = await moveResponse.json();
+              document.querySelector('#alert').textContent = error.error || 'Unable to move task';
+              return;
+            }
+            await loadTasks();
+          });
+          row.append(checkbox, title, renameInput, renameButton, priority, dueDateForm, destination, moveButton);
           return row;
         }));
       }
