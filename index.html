@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #182230; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 720px; margin: 64px auto; padding: 0 24px; }
+    h1 { margin: 0 0 28px; font-size: 2rem; }
+    form, .project-row { display: flex; align-items: center; gap: 12px; }
+    form { margin-bottom: 24px; }
+    label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    input { flex: 1; min-width: 0; padding: 11px 12px; border: 1px solid #b8c2ce; border-radius: 6px; font: inherit; }
+    button { padding: 10px 14px; border: 0; border-radius: 6px; background: #2257a5; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #174585; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #8bb8ff; outline-offset: 2px; }
+    [role="alert"] { color: #a12622; margin: 0 0 16px; }
+    .project-row { justify-content: space-between; padding: 16px; margin: 10px 0; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .project-name { font-weight: 600; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+
+    async function getProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      return response.ok ? response.json() : null;
+    }
+
+    async function renderList() {
+      app.innerHTML = `
+        <h1>Workboard</h1>
+        <form id="create-project">
+          <label for="project-name">Project name</label>
+          <input id="project-name" name="name" type="text" aria-label="Project name">
+          <button type="submit">Create project</button>
+        </form>
+        <p id="message" role="alert" hidden></p>
+        <section id="projects" aria-label="Projects"></section>`;
+      const form = app.querySelector('#create-project');
+      const input = app.querySelector('#project-name');
+      const message = app.querySelector('#message');
+      const list = app.querySelector('#projects');
+
+      async function refresh() {
+        const response = await fetch('/api/projects');
+        const projects = await response.json();
+        list.innerHTML = projects.map((project) => `
+          <div class="project-row" data-testid="project-row">
+            <span class="project-name">${escapeHtml(project.name)}</span>
+            <button type="button" data-project-id="${project.id}">Open project</button>
+          </div>`).join('');
+        list.querySelectorAll('button[data-project-id]').forEach((button) => {
+          button.addEventListener('click', () => { window.location.href = `/projects/${button.dataset.projectId}`; });
+        });
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        message.hidden = true;
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: input.value.trim() }),
+        });
+        if (!response.ok) {
+          message.textContent = 'Project name is required';
+          message.hidden = false;
+          return;
+        }
+        input.value = '';
+        await refresh();
+      });
+      await refresh();
+    }
+
+    async function renderProject(id) {
+      const project = await getProject(id);
+      if (!project) {
+        app.innerHTML = '<h1>Project not found</h1><button type="button" id="back">Projects</button>';
+      } else {
+        app.innerHTML = `<h1>${escapeHtml(project.name)}</h1><button type="button" id="back">Projects</button>`;
+      }
+      app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
+    }
+
+    const match = window.location.pathname.match(/^\/projects\/(\d+)$/);
+    if (match) await renderProject(match[1]);
+    else await renderList();
+  </script>
+</body>
+</html>
