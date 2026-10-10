@@ -78,6 +78,12 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await list(), [first, second]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    for (const path of ['/app.js', '/task-filters.js', '/due-dates.js']) {
+      const asset = await fetch(`${base}${path}`);
+      assert.equal(asset.status, 200);
+      assert.match(asset.headers.get('content-type'), /text\/javascript/);
+      assert.ok((await asset.text()).length > 0);
+    }
     for (const path of ['/', `/projects/${first.id}`]) {
       const page = await fetch(`${base}${path}`);
       assert.equal(page.status, 200);

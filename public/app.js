@@ -1,4 +1,4 @@
-import { matchesTaskFilters } from './task-filters.js';
+import { matchesTaskFilters, normalizeDueRange } from './task-filters.js';
 
 const app = document.querySelector('#app');
 
@@ -181,6 +181,13 @@ async function showProject(id) {
       <option>Normal</option>
       <option>High</option>
     </select>
+    <form id="due-range-form">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <ul class="tasks"></ul>
   `;
   if (project.archived) {
@@ -222,9 +229,26 @@ async function showProject(id) {
   const endpoint = `/api/projects/${id}/tasks`;
   let tasks = [];
   const pendingUpdates = new Set();
+  let dueRange = normalizeDueRange('', '');
+  const dueRangeForm = section.querySelector('#due-range-form');
+  const dueFrom = section.querySelector('#due-from');
+  const dueThrough = section.querySelector('#due-through');
+  dueRangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    try {
+      // Validate before replacing the applied range; draft input never changes membership.
+      dueRange = normalizeDueRange(dueFrom.value, dueThrough.value);
+      dueFrom.value = dueRange.from;
+      dueThrough.value = dueRange.through;
+      app.querySelector('[role="alert"]').hidden = true;
+      renderTasks();
+    } catch (error) {
+      showError(error.message);
+    }
+  });
 
   function renderTasks() {
-    const visible = tasks.filter((task) => matchesTaskFilters(task, filter.value, priorityFilter.value));
+    const visible = tasks.filter((task) => matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange));
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
