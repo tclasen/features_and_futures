@@ -12,6 +12,12 @@ const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
 const defaultPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#project-search-form');
+const projectSearchInput = document.querySelector('#project-search');
+const taskSearchForm = document.querySelector('#task-search-form');
+const taskSearchInput = document.querySelector('#task-search');
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
 const dueFrom = document.querySelector('#due-from');
 const dueThrough = document.querySelector('#due-through');
 let appliedDueRange = { from: '', through: '' };
@@ -44,10 +50,12 @@ async function renderList() {
   listView.hidden = false;
   detailView.hidden = true;
   const projects = await request('/api/projects');
+  projectSearchInput.value = appliedProjectQuery;
   list.replaceChildren();
   const showingArchived = projectFilter.value === 'Archived';
   for (const project of projects) {
     if (Boolean(project.archived) !== showingArchived) continue;
+    if (!project.name.toLowerCase().includes(appliedProjectQuery.toLowerCase())) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'project-row';
     row.className = 'project-row';
@@ -88,7 +96,9 @@ async function renderTasks() {
   const destinations = projects.filter(project => !project.archived && project.id !== currentProjectId);
   const filter = taskFilter.value;
   const selectedPriority = priorityFilter.value;
+  taskSearchInput.value = appliedTaskQuery;
   for (const task of tasks) {
+    if (!task.title.toLowerCase().includes(appliedTaskQuery.toLowerCase())) continue;
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     if (appliedDueRange.from || appliedDueRange.through) {
@@ -212,6 +222,8 @@ async function renderRoute() {
     const project = await request(`/api/projects/${match[1]}`);
     currentProjectId = project.id;
     appliedDueRange = { from: '', through: '' };
+    appliedTaskQuery = '';
+    taskSearchInput.value = '';
     dueFrom.value = '';
     dueThrough.value = '';
     listView.hidden = true;
@@ -272,6 +284,16 @@ taskForm.addEventListener('submit', async event => {
     taskAlert.hidden = true;
     await renderTasks();
   } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
+});
+projectSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedProjectQuery = projectSearchInput.value.trim();
+  renderList().catch(error => { alert.textContent = error.message; alert.hidden = false; });
+});
+taskSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedTaskQuery = taskSearchInput.value.trim();
+  renderTasks().catch(error => { taskAlert.textContent = error.message; taskAlert.hidden = false; });
 });
 projectFilter.addEventListener('change', () => renderList().catch(error => {
   alert.textContent = error.message;
@@ -337,7 +359,7 @@ defaultPriority.addEventListener('change', async () => {
     taskAlert.hidden = false;
   }
 });
-document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
+document.querySelector('#back-button').addEventListener('click', () => { appliedProjectQuery = ''; location.href = '/'; });
 window.addEventListener('popstate', renderRoute);
 renderRoute().catch(() => {
   alert.textContent = 'Unable to load projects';
