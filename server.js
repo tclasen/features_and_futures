@@ -13,8 +13,13 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Upgrade databases created by earlier checkpoints without losing project data.
+if (!db.prepare("PRAGMA table_info(projects)").all().some((column) => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -50,7 +55,9 @@ async function handle(req, res) {
   }
   if (taskRoute && req.method === 'POST') {
     const projectId = Number(taskRoute[1]);
-    if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
     let body;
     try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
     const title = String(body.title ?? '').trim();
@@ -64,13 +71,30 @@ async function handle(req, res) {
     let body;
     try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
     if (typeof body.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
     const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(body.completed ? 1 : 0, taskId, projectId);
     if (!result.changes) return json(res, 404, { error: 'Task not found' });
     return json(res, 200, { id: taskId, projectId, completed: body.completed });
   }
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok' });
+  const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)\/?$/);
+  if (projectStateRoute && req.method === 'POST') {
+    const id = Number(projectStateRoute[1]);
+    const archived = projectStateRoute[2] === 'archive' ? 1 : 0;
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived, id);
+    if (!result.changes) return json(res, 404, { error: 'Project not found' });
+    return json(res, 200, { id, archived: Boolean(archived) });
+  }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return json(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY id ASC').all());
+    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p ORDER BY p.id ASC`).all().map((p) => ({
+        ...p, id: Number(p.id), archived: Boolean(p.archived),
+        completedCount: Number(p.completedCount), totalCount: Number(p.totalCount),
+      })));
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let name;
