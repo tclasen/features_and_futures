@@ -68,7 +68,7 @@ test('launch contract, project and task validation, ownership, completion, and r
     const home = await fetch(base);
     assert.equal(home.status, 200);
     assert.match(await home.text(), /<title>Workboard<\/title>/);
-    for (const asset of ['/app.js', '/style.css']) {
+    for (const asset of ['/app.js', '/dates.js', '/style.css']) {
       assert.equal((await fetch(`${base}${asset}`)).status, 200);
     }
     const list = async () => (await fetch(`${base}/api/projects`)).json();
