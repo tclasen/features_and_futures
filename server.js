@@ -1,11 +1,15 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const database = new DatabaseSync(process.env.DB_PATH || path.join(root, 'data', 'workboard.sqlite'));
+const databasePath = process.env.DB_PATH || path.join(root, 'data', 'workboard.sqlite');
+const databaseDirectory = path.dirname(databasePath);
+if (databasePath !== ':memory:') mkdirSync(databaseDirectory, { recursive: true });
+const database = new DatabaseSync(databasePath);
 database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
