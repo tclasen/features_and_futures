@@ -409,6 +409,83 @@ test('projects validate, navigate, and persist across restarts', async () => {
     assert.ok((await detailPage()).includes(defaultSelect('Normal')));
     assert.deepEqual(rows(await detailPage('Open', 'Low')), ['Inherited low', 'After restoration']);
     assert.deepEqual(rows(await detailPage('Open', 'High')), ['Inherited high']);
+
+    // Due dates use calendar-day validation, preserve filters and unrelated data.
+    const dueRoute = completion.replace('/completion', '/due-date');
+    const dueInput = value => `name="dueDate" value="${value}"`;
+    let duePage = await detailPage();
+    assert.equal(duePage.split(dueInput('')).length - 1, 6);
+    assert.equal((duePage.match(/>Task due date<\/label>/g) || []).length, 6);
+    assert.equal((duePage.match(/>Save due date<\/button>/g) || []).length, 6);
+    const dueSummary = await (await fetch(base)).text();
+    const dueFilters = { filter: 'Completed', priorityFilter: 'Normal' };
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28']) {
+      const saved = await post(dueRoute, { ...dueFilters, dueDate: `  ${date}  ` });
+      assert.equal(saved.status, 303);
+      assert.equal(saved.headers.get('location'), `${path}?filter=Completed&priorityFilter=Normal`);
+      const filtered = await (await fetch(base + saved.headers.get('location'))).text();
+      assert.deepEqual(rows(filtered), ['Priority retained']);
+      assert.ok(filtered.includes(prioritySelect('Normal')));
+      assert.match(filtered, /<option selected>Completed<\/option>/);
+      assert.ok(filtered.includes(dueInput(date)));
+      assert.equal(await (await fetch(base)).text(), dueSummary);
+    }
+    duePage = await detailPage();
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01', '24-01-01', '2024-01-01T00:00:00Z', 'nonsense']) {
+      const invalid = await post(dueRoute, { ...dueFilters, dueDate: date });
+      assert.equal(invalid.status, 400, date);
+      const invalidPage = await invalid.text();
+      assert.match(invalidPage, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.ok(invalidPage.includes(dueInput('1900-02-28')));
+      assert.ok(invalidPage.includes(prioritySelect('Normal')));
+      assert.match(invalidPage, /<option selected>Completed<\/option>/);
+      assert.equal(await detailPage(), duePage);
+    }
+    assert.equal((await post(dueRoute.replace('/projects/1/', '/projects/2/'), { dueDate: '2025-01-01' })).status, 404);
+    assert.equal((await post(`${path}/tasks/999999/due-date`, { dueDate: '' })).status, 404);
+    await stop();
+    await start();
+    assert.equal(await detailPage(), duePage);
+    // Renaming and priority edits do not change the saved date.
+    await post(taskRename, { title: 'Dated task', ...dueFilters });
+    await post(priorityRoute, { priority: 'High', ...dueFilters });
+    assert.ok((await detailPage('Completed', 'High')).includes(dueInput('1900-02-28')));
+    await post(completion, {});
+    assert.ok((await detailPage('Open', 'High')).includes(dueInput('1900-02-28')));
+    await post(`${path}/archive`, {});
+    const dueArchived = await detailPage();
+    assert.equal((dueArchived.match(/name="dueDate" value="[^"]*" disabled/g) || []).length, 6);
+    assert.equal((dueArchived.match(/disabled>Save due date/g) || []).length, 6);
+    assert.equal((await post(dueRoute, { dueDate: '' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await detailPage(), dueArchived);
+    await post(`${path}/restore`, {});
+    assert.doesNotMatch(await detailPage(), / disabled/);
+    assert.ok((await detailPage()).includes(dueInput('1900-02-28')));
+    const secondDueRoute = `${path}/tasks/2/due-date`;
+    await post(secondDueRoute, { dueDate: '2026-10-10' });
+    for (const dueDate of ['', '   ']) {
+      await post(dueRoute, { dueDate: '2024-12-31' });
+      assert.equal((await post(dueRoute, { dueDate })).status, 303);
+      assert.ok((await detailPage()).includes(dueInput('2026-10-10')));
+      assert.ok(!(await detailPage()).includes(dueInput('2024-12-31')));
+    }
+    duePage = await detailPage();
+    await stop();
+    await start();
+    assert.equal(await detailPage(), duePage);
+    await post(`${path}/tasks`, { title: 'No initial due date' });
+    assert.equal((await detailPage()).split(dueInput('')).length - 1, 6);
+
+    // Upgrading old tasks supplies empty dates without affecting task data.
+    await stop();
+    const preDates = new DatabaseSync(join(directory, 'projects.sqlite'));
+    preDates.exec('ALTER TABLE tasks DROP COLUMN due_date');
+    preDates.close();
+    await start();
+    assert.equal((await detailPage()).split(dueInput('')).length - 1, 7);
+    assert.deepEqual(rows(await detailPage('Open', 'High')), ['Dated task', 'Inherited high']);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
