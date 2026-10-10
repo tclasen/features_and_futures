@@ -169,7 +169,47 @@ function renderTasks() {
         checkbox.disabled = false;
       }
     });
-    row.append(checkbox, title);
+    const renameTaskForm = document.createElement('form');
+    renameTaskForm.className = 'rename-task';
+    const label = document.createElement('label');
+    label.htmlFor = `new-task-title-${task.id}`;
+    label.textContent = 'New task title';
+    const input = document.createElement('input');
+    input.id = label.htmlFor;
+    input.type = 'text';
+    input.disabled = archived;
+    const button = document.createElement('button');
+    button.type = 'submit';
+    button.textContent = 'Rename task';
+    button.disabled = archived;
+    renameTaskForm.append(label, input, button);
+    renameTaskForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (archived) return;
+      alert.hidden = true;
+      const newTitle = input.value.trim();
+      if (!newTitle) {
+        showError('Task title is required');
+        return;
+      }
+      button.disabled = true;
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        task.title = saved.title;
+        title.textContent = saved.title;
+        checkbox.setAttribute('aria-label', `Complete ${saved.title}`);
+        input.value = '';
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        button.disabled = archived;
+      }
+    });
+    row.append(checkbox, title, renameTaskForm);
     tasksElement.append(row);
   }
 }
