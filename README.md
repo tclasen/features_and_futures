@@ -28,6 +28,11 @@ but both filters remain usable. Each task has a Task due date textbox and Save d
 button. Dates accept real Gregorian days in YYYY-MM-DD format (years 0001–9999);
 blank values clear the date. Invalid dates leave the saved value unchanged. Due dates
 persist independently, survive renaming, and are read-only while archived.
+Due from and Due through apply an inclusive due-date range that intersects both
+combobox filters. Blank boundaries are unbounded; undated tasks match only when
+both boundaries are blank. Invalid ranges leave the previous applied range intact.
+The applied range and both selections survive task/project edits, while reopening
+from the project list resets them. Range controls remain usable while archived.
 Project rows show completed/total task counts. Existing
 SQLite databases are migrated automatically to preserve projects and tasks.
 
@@ -44,5 +49,6 @@ archived pages, project and task rename validation and identity preservation,
 task priority defaults, migration, independence and validation, combined filters
 and selection preservation through edits, project default migration and inheritance,
 independence and archive/restore behavior, due-date calendar validation, clearing,
-migration, filter preservation and archived controls, and persistence
+migration, filter preservation and archived controls, inclusive due ranges,
+range validation, combined membership and preservation through edits, and persistence
 across restarts.

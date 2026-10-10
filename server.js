@@ -143,16 +143,32 @@ function validDueDate(value) {
   return day <= days[month - 1];
 }
 
-function projectLocation(id, filter, priority) {
-  return `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}`;
+function dueRange(params) {
+  const from = (params.get('dueFrom') || '').trim();
+  const through = (params.get('dueThrough') || '').trim();
+  return (!from || validDueDate(from)) && (!through || validDueDate(through))
+    && (!from || !through || from <= through) ? { from, through } : { from: '', through: '' };
 }
 
-function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All') {
+function rangeFields(range) {
+  return `<input type="hidden" name="dueFrom" value="${range.from}">
+    <input type="hidden" name="dueThrough" value="${range.through}">`;
+}
+
+function locationWithRange(id, filter, priority, range) {
+  return `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}`
+    + `${range.from ? `&dueFrom=${range.from}` : ''}${range.through ? `&dueThrough=${range.through}` : ''}`;
+}
+
+function renderProjectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All', range = { from: '', through: '' }) {
   const filterFields = `<input type="hidden" name="filter" value="${filter}">
-    <input type="hidden" name="priorityFilter" value="${priority}">`;
+    <input type="hidden" name="priorityFilter" value="${priority}">${rangeFields(range)}`;
   const rows = listTasks.all(project.id)
     .filter(task => (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
-      && (priority === 'All' || task.priority === priority))
+      && (priority === 'All' || task.priority === priority)
+      && ((!range.from && !range.through) || (task.due_date
+        && (!range.from || task.due_date >= range.from)
+        && (!range.through || task.due_date <= range.through))))
     .map(task => `
       <div class="task-row" data-testid="task-row">
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
@@ -209,6 +225,7 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <form class="filter" action="/projects/${project.id}" method="get">
+      ${rangeFields(range)}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
@@ -217,6 +234,14 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
         ${['All', 'Low', 'Normal', 'High'].map(option => `<option${option === priority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form class="filter" action="/projects/${project.id}/due-range" method="post">
+      ${filterFields}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="from" type="text" value="${range.from}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="through" type="text" value="${range.through}">
+      <button type="submit">Apply due range</button>
     </form>
     <section aria-label="Tasks">${rows}</section>`);
 }
@@ -245,6 +270,16 @@ async function readBody(request) {
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
+    let range = dueRange(url.searchParams);
+    // All project responses and redirects share the currently applied range.
+    const projectPage = (project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All') =>
+      renderProjectPage(project, filter, error, renameError, taskRenameError, priority, range);
+    const projectLocation = (id, filter, priority) => locationWithRange(id, filter, priority, range);
+    const readForm = async () => {
+      const form = new URLSearchParams(await readBody(request));
+      range = dueRange(form);
+      return form;
+    };
     if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -255,7 +290,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST' && url.pathname === '/projects') {
-      const form = new URLSearchParams(await readBody(request));
+      const form = await readForm();
       const name = (form.get('name') || '').trim();
       if (!name) {
         sendHtml(response, 400, projectList('Project name is required', '', projectFilter(form.get('filter'))));
@@ -274,11 +309,32 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
+    const rangeMatch = /^\/projects\/([1-9]\d*)\/due-range$/.exec(url.pathname);
+    if (request.method === 'POST' && rangeMatch) {
+      const project = getProject.get(rangeMatch[1]);
+      if (project) {
+        const form = await readForm();
+        const filter = taskFilter(form.get('filter'));
+        const priority = priorityFilter(form.get('priorityFilter'));
+        const from = (form.get('from') || '').trim();
+        const through = (form.get('through') || '').trim();
+        const error = (from && !validDueDate(from)) || (through && !validDueDate(through))
+          ? 'Due range must use valid YYYY-MM-DD dates'
+          : from && through && from > through ? 'Due from must not be after Due through' : '';
+        if (error) {
+          sendHtml(response, 400, projectPage(project, filter, error, '', null, priority));
+          return;
+        }
+        range = { from, through };
+        redirect(response, projectLocation(project.id, filter, priority));
+        return;
+      }
+    }
     const renameMatch = /^\/projects\/([1-9]\d*)\/rename$/.exec(url.pathname);
     if (request.method === 'POST' && renameMatch) {
       const project = getProject.get(renameMatch[1]);
       if (project) {
-        const form = new URLSearchParams(await readBody(request));
+        const form = await readForm();
         const filter = taskFilter(form.get('filter'));
         if (project.archived) {
           sendHtml(response, 403, projectPage(project, filter, '', 'Archived project is read-only', null, priorityFilter(form.get('priorityFilter'))));
@@ -298,7 +354,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && defaultPriorityMatch) {
       const project = getProject.get(defaultPriorityMatch[1]);
       if (project) {
-        const form = new URLSearchParams(await readBody(request));
+        const form = await readForm();
         const filter = taskFilter(form.get('filter'));
         const priority = form.get('priority');
         if (project.archived || !['Low', 'Normal', 'High'].includes(priority)) {
@@ -316,7 +372,7 @@ const server = http.createServer(async (request, response) => {
       const project = getProject.get(taskPriorityMatch[1]);
       const task = project && getTask.get(taskPriorityMatch[2], project.id);
       if (task) {
-        const form = new URLSearchParams(await readBody(request));
+        const form = await readForm();
         const filter = taskFilter(form.get('filter'));
         const priority = form.get('priority');
         if (project.archived || !['Low', 'Normal', 'High'].includes(priority)) {
@@ -334,7 +390,7 @@ const server = http.createServer(async (request, response) => {
       const project = getProject.get(dueDateMatch[1]);
       const task = project && getTask.get(dueDateMatch[2], project.id);
       if (task) {
-        const form = new URLSearchParams(await readBody(request));
+        const form = await readForm();
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
         const dueDate = (form.get('dueDate') || '').trim();
@@ -353,7 +409,7 @@ const server = http.createServer(async (request, response) => {
       const project = getProject.get(taskRenameMatch[1]);
       const task = project && getTask.get(taskRenameMatch[2], project.id);
       if (task) {
-        const form = new URLSearchParams(await readBody(request));
+        const form = await readForm();
         const filter = taskFilter(form.get('filter'));
         const title = (form.get('title') || '').trim();
         if (project.archived || !title) {
@@ -372,7 +428,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && taskMatch) {
       const project = getProject.get(taskMatch[1]);
       if (project) {
-        const form = new URLSearchParams(await readBody(request));
+        const form = await readForm();
         const filter = taskFilter(form.get('filter'));
         const priority = priorityFilter(form.get('priorityFilter'));
         if (project.archived) {
