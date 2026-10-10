@@ -45,6 +45,9 @@ export function createApplication(dbPath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+  }
   const projectQuery = `SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -54,11 +57,12 @@ export function createApplication(dbPath) {
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const projectData = (project) => ({ ...project, archived: Boolean(project.archived) });
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-  const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+  const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+  const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
   const taskData = (task) => ({ ...task, completed: Boolean(task.completed) });
 
   function json(response, status, value) {
@@ -102,13 +106,19 @@ export function createApplication(dbPath) {
           if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
           const input = await readJson(request);
           if (getProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
+          const fields = ['title', 'completed', 'priority'].filter((field) => Object.hasOwn(input ?? {}, field));
+          if (fields.length > 1) {
+            return json(response, 400, { error: 'Update title, completion, or priority separately' });
+          }
           if (Object.hasOwn(input ?? {}, 'title')) {
-            if (Object.hasOwn(input, 'completed')) {
-              return json(response, 400, { error: 'Update title or completion separately' });
-            }
             const title = typeof input.title === 'string' ? input.title.trim() : '';
             if (!title) return json(response, 400, { error: 'Task title is required' });
             renameTask.run(title, projectId, taskId);
+          } else if (Object.hasOwn(input ?? {}, 'priority')) {
+            if (!['Low', 'Normal', 'High'].includes(input.priority)) {
+              return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+            }
+            updateTaskPriority.run(input.priority, projectId, taskId);
           } else {
             if (typeof input?.completed !== 'boolean') {
               return json(response, 400, { error: 'Completion must be a boolean' });

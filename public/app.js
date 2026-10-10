@@ -195,7 +195,39 @@ async function renderProject(projectId) {
           renameButton.disabled = project.archived;
         }
       });
-      row.append(checkbox, title, renameForm);
+      const priorityLabel = document.createElement('label');
+      priorityLabel.textContent = 'Task priority';
+      const priority = document.createElement('select');
+      priority.id = `task-priority-${task.id}`;
+      priorityLabel.htmlFor = priority.id;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = project.archived;
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        showAlert('');
+        try {
+          const saved = await request(`${tasksPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          task.priority = saved.priority;
+        } catch (error) {
+          showAlert(error.message);
+        } finally {
+          priority.value = task.priority;
+          priority.disabled = project.archived;
+        }
+      });
+      const priorityControls = document.createElement('div');
+      priorityControls.append(priorityLabel, priority);
+      row.append(checkbox, title, priorityControls, renameForm);
       rows.append(row);
     }
   }
