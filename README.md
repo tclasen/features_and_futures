@@ -18,6 +18,8 @@ Use New project name and Rename project on an active project's page to change it
 
 Each task row has New task title and Rename task controls. Renaming trims the title and preserves the task's project, position, completion state, and filter membership. Blank titles display a validation alert. Archived projects disable task renaming until restored.
 
+Each task has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority is saved independently for each task and persists across restarts and renaming. Archived projects disable priority changes until restored.
+
 Health check:
 
 ```sh
