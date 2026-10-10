@@ -334,7 +334,7 @@ test('projects and tasks: validation, filtering, archive, project/task rename, p
     assert.equal(priorityResponse.status, 303);
     assert.equal(priorityResponse.headers.get('location'), `/projects/${ids[0]}?filter=Completed`);
     const highTasks = await projectHtml(ids[0]);
-    assert.equal(highTasks, finalTasks.replace('<option selected>Normal</option><option>High</option>', '<option>Normal</option><option selected>High</option>'));
+    assert.equal(highTasks, finalTasks.replace(rows(finalTasks)[0], rows(finalTasks)[0].replace('<option selected>Normal</option><option>High</option>', '<option>Normal</option><option selected>High</option>')));
     assert.equal((await post(secondPriorityPath, { priority: 'Low', filter: 'Open' })).status, 303);
     const prioritizedTasks = await projectHtml(ids[0]);
     assert.match(rows(prioritizedTasks)[0], /<option selected>High<\/option>/);
@@ -463,6 +463,72 @@ test('projects and tasks: validation, filtering, archive, project/task rename, p
     await post(`/projects/${ids[0]}/restore`, {});
     assert.equal(await combinedHtml('Completed', 'High'), savedView);
 
+    // Defaults affect only subsequent tasks in the owning project.
+    const defaultPath = `/projects/${ids[0]}/default-priority`;
+    function assertDefault(html, priority, disabled = false) {
+      assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+      const select = /<select id="default-task-priority"([^>]*)>([\s\S]*?)<\/select>/.exec(html);
+      assert.equal(select[1].includes('disabled'), disabled);
+      assert.equal(select[2].trim(), ['Low', 'Normal', 'High'].map(value =>
+        `<option${value === priority ? ' selected' : ''}>${value}</option>`).join(''));
+    }
+    assertDefault(await projectHtml(ids[0]), 'Normal');
+    assertDefault(await projectHtml(ids[1]), 'Normal');
+    const existingRows = rows(await projectHtml(ids[0]));
+    const filteredRowsBeforeDefault = rows(await combinedHtml('Open', 'High'));
+    const existingSummary = await (await fetch(base)).text();
+    const otherBeforeDefault = await projectHtml(ids[1]);
+    const changeDefault = await post(defaultPath, { priority: 'High', ...selection });
+    assert.equal(changeDefault.status, 303);
+    assert.equal(changeDefault.headers.get('location'), `/projects/${ids[0]}?filter=Open&priorityFilter=High`);
+    const defaultView = await (await fetch(`${base}${changeDefault.headers.get('location')}`)).text();
+    assertSelections(defaultView, 'Open', 'High');
+    assertDefault(defaultView, 'High');
+    assert.deepEqual(rows(defaultView), filteredRowsBeforeDefault);
+    assert.deepEqual(rows(await projectHtml(ids[0])), existingRows);
+    assert.equal(await (await fetch(base)).text(), existingSummary);
+    assert.equal(await projectHtml(ids[1]), otherBeforeDefault);
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(defaultPath, { priority, ...selection })).status, 422);
+      assertDefault(await projectHtml(ids[0]), 'High');
+    }
+    assert.equal((await post('/projects/999999/default-priority', { priority: 'Low' })).status, 404);
+    await stop();
+    await start();
+    assertDefault(await projectHtml(ids[0]), 'High');
+    await post(`/projects/${ids[0]}/tasks`, { title: 'Inherited high', ...selection });
+    const inheritedHigh = rows(await projectHtml(ids[0])).at(-1);
+    assert.match(inheritedHigh, /<option selected>High<\/option>/);
+    assert.doesNotMatch(inheritedHigh, / checked/);
+    const afterHighRows = rows(await projectHtml(ids[0]));
+    await post(defaultPath, { priority: 'Low', ...selection });
+    assert.deepEqual(rows(await projectHtml(ids[0])), afterHighRows);
+    await post(`/projects/${ids[0]}/tasks`, { title: 'Inherited low' });
+    assert.match(rows(await projectHtml(ids[0])).at(-1), /<option selected>Low<\/option>/);
+    await post(`/projects/${ids[1]}/tasks`, { title: 'Independent normal' });
+    assert.match(rows(await projectHtml(ids[1])).at(-1), normalOptions);
+    await post(`/projects/${ids[0]}/rename`, { name: 'Default retained' });
+    assertDefault(await projectHtml(ids[0]), 'Low');
+    const beforeDefaultArchive = await projectHtml(ids[0]);
+    await post(`/projects/${ids[0]}/archive`, {});
+    const defaultArchived = await combinedHtml('Open', 'High');
+    assertDefault(defaultArchived, 'Low', true);
+    assertSelections(defaultArchived, 'Open', 'High');
+    assert.equal((await post(defaultPath, { priority: 'Normal' })).status, 403);
+    assert.equal(await combinedHtml('Open', 'High'), defaultArchived);
+    await stop();
+    await start();
+    assert.equal(await combinedHtml('Open', 'High'), defaultArchived);
+    await post(`/projects/${ids[0]}/restore`, {});
+    assert.equal(await projectHtml(ids[0]), beforeDefaultArchive);
+    assertDefault(await projectHtml(ids[0]), 'Low');
+    await post(`/projects/${ids[0]}/tasks`, { title: 'Restored low' });
+    assert.match(rows(await projectHtml(ids[0])).at(-1), /<option selected>Low<\/option>/);
+    const finalDefaultView = await projectHtml(ids[0]);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), finalDefaultView);
+
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
@@ -503,6 +569,7 @@ test('migrates existing tasks to Normal without changing their saved data', asyn
     assert.deepEqual(database.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
       before.map(task => ({ ...task, priority: 'Normal' })));
     assert.equal(database.prepare('SELECT archived FROM projects WHERE id = 2').get().archived, 1);
+    assert.deepEqual(database.prepare('SELECT default_priority FROM projects ORDER BY id').all().map(project => project.default_priority), ['Normal', 'Normal']);
   } finally {
     if (child.exitCode === null) {
       const exited = once(child, 'exit');
