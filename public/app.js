@@ -88,12 +88,15 @@ async function renderProject(id) {
   const filterLabel = element('label', { text: 'Task filter' }); filterLabel.htmlFor = 'task-filter';
   const filter = element('select'); filter.id = 'task-filter';
   for (const value of ['All', 'Open', 'Completed']) { const option = element('option', { text: value }); option.value = value; filter.append(option); }
+  const priorityFilterLabel = element('label', { text: 'Priority filter' }); priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select'); priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) { const option = element('option', { text: value }); option.value = value; priorityFilter.append(option); }
   const list = element('section', { className: 'task-list' });
   async function refreshTasks() {
     list.replaceChildren();
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     for (const task of tasks) {
-      if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+      if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed || priorityFilter.value !== 'All' && priorityFilter.value !== task.priority) continue;
       const row = element('article', { testId: 'task-row', className: 'task-row' });
       const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`); checkbox.disabled = Boolean(project.archived);
@@ -111,6 +114,7 @@ async function renderProject(id) {
       priority.addEventListener('change', async () => {
         try {
           await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+          await refreshTasks();
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
       const renameForm = element('form', { className: 'create-form' });
@@ -138,7 +142,8 @@ async function renderProject(id) {
     } catch (error) { alert.textContent = error.message; alert.hidden = false; }
   });
   filter.addEventListener('change', refreshTasks);
-  app.append(renameForm, form, filterLabel, filter, list);
+  priorityFilter.addEventListener('change', refreshTasks);
+  app.append(renameForm, form, filterLabel, filter, priorityFilterLabel, priorityFilter, list);
   await refreshTasks();
 }
 
