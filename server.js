@@ -126,29 +126,60 @@ function page() {
       await loadRows(rows, filter.value);
     }
 
+    const projectRowElements = new WeakMap();
+    const projectRowRequests = new WeakMap();
+
     async function loadRows(rows, filter = 'Active') {
+      const requestId = (projectRowRequests.get(rows) || 0) + 1;
+      projectRowRequests.set(rows, requestId);
       const response = await fetch('/api/projects?filter=' + filter.toLowerCase());
       const projects = await response.json();
-      rows.replaceChildren();
+      if (projectRowRequests.get(rows) !== requestId) return;
+      let rowElements = projectRowElements.get(rows);
+      if (!rowElements) {
+        rowElements = new Map();
+        projectRowElements.set(rows, rowElements);
+      }
+      const visibleIds = new Set(projects.map(project => String(project.id)));
+      for (const [id, row] of rowElements) {
+        if (!visibleIds.has(id)) {
+          row.remove();
+          rowElements.delete(id);
+        }
+      }
       for (const project of projects) {
-        const row = element('div', undefined, 'project-row');
-        row.dataset.testid = 'project-row';
-        const info = element('div', undefined, 'project-info');
-        info.append(element('span', project.name, 'project-name'));
-        const summary = element('span', project.completed_count + '/' + project.total_count + ' completed'); summary.dataset.testid = 'project-summary';
-        info.append(summary); row.append(info);
-        const actions = element('div', undefined, 'project-actions');
-        const open = element('button', 'Open project');
-        open.type = 'button';
-        open.addEventListener('click', () => { location.href = escapePath(project.id); });
-        actions.append(open);
-        const change = element('button', filter === 'Archived' ? 'Restore project' : 'Archive project');
-        change.type = 'button'; change.addEventListener('click', async () => {
-          await fetch('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: filter !== 'Archived' }) });
+        const id = String(project.id);
+        let row = rowElements.get(id);
+        const isNew = !row;
+        if (!row) {
+          row = element('div', undefined, 'project-row');
+          row.dataset.testid = 'project-row';
+          const info = element('div', undefined, 'project-info');
+          const name = element('span', undefined, 'project-name');
+          const summary = element('span'); summary.dataset.testid = 'project-summary';
+          info.append(name, summary);
+          const actions = element('div', undefined, 'project-actions');
+          const open = element('button', 'Open project');
+          open.type = 'button';
+          open.addEventListener('click', () => { location.href = escapePath(id); });
+          const change = element('button');
+          change.type = 'button';
+          actions.append(open, change);
+          row.append(info, actions);
+          rowElements.set(id, row);
+        }
+        row.querySelector('.project-name').textContent = project.name;
+        row.querySelector('[data-testid="project-summary"]').textContent = project.completed_count + '/' + project.total_count + ' completed';
+        const change = row.querySelector('.project-actions button:last-child');
+        change.textContent = filter === 'Archived' ? 'Restore project' : 'Archive project';
+        change.onclick = async () => {
+          await fetch('/api/projects/' + encodeURIComponent(project.id) + '/archive', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived: filter !== 'Archived' })
+          });
           await loadRows(rows, filter);
-        });
-        actions.append(change); row.append(actions);
-        rows.append(row);
+        };
+        if (isNew) rows.append(row);
       }
     }
 
