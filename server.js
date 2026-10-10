@@ -37,6 +37,7 @@ const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -149,6 +150,15 @@ const server = createServer(async (request, response) => {
         const input = await readJson(request);
         if (findProject.get(projectId).archived) {
           return sendJson(response, 409, { error: 'Archived project is read-only' });
+        }
+        if (input && Object.hasOwn(input, 'title')) {
+          if (Object.hasOwn(input, 'completed')) {
+            return sendJson(response, 400, { error: 'Rename and completion changes must be separate requests' });
+          }
+          const title = typeof input.title === 'string' ? input.title.trim() : '';
+          if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+          renameTask.run(title, projectId, taskId);
+          return sendJson(response, 200, taskValue(findTask.get(projectId, taskId)));
         }
         if (typeof input?.completed !== 'boolean') {
           return sendJson(response, 400, { error: 'Completion must be a boolean' });

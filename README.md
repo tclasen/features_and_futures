@@ -38,6 +38,13 @@ Archived projects cannot be renamed; restoring enables renaming again.
 The project API accepts `PATCH /api/projects/:id` with `{ "name": "New name" }`;
 send archive changes separately from renames.
 
+Each task row has New task title and Rename task controls. Renaming trims the
+title and rejects empty titles, preserving the task's identity, project, order,
+completion state, and summary counts. Archived projects disable task renaming;
+restoring enables it again. The task API accepts
+`PATCH /api/projects/:projectId/tasks/:taskId` with `{ "title": "New title" }`;
+send completion changes separately from renames.
+
 Run integration tests:
 
 ```sh
