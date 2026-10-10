@@ -22,7 +22,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   priority TEXT NOT NULL DEFAULT 'Normal',
   due_date TEXT
+);
+CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL,
+  project_id INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
 )`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY id) FROM tasks`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
@@ -102,7 +110,7 @@ const server = http.createServer(async (req, res) => {
     if (tasksPath && req.method === 'GET') {
       const projectId = Number(tasksPath[1]);
       if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(404, { error: 'Project not found' });
-      return sendJson(200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return sendJson(200, db.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id WHERE t.project_id = ? ORDER BY p.position, t.id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (tasksPath && req.method === 'POST') {
       let body = '';
@@ -117,7 +125,10 @@ const server = http.createServer(async (req, res) => {
       if (project.archived) return sendJson(404, { error: 'Project is archived' });
       const priority = project.default_priority;
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
-      return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority });
+      const id = Number(result.lastInsertRowid);
+      const position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(projectId).next;
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(id, projectId, position);
+      return sendJson(201, { id, projectId, title, completed: false, priority });
     }
     const movePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
     if (movePath && req.method === 'PATCH') {
@@ -133,10 +144,14 @@ const server = http.createServer(async (req, res) => {
       if (!task || !destination || !source || task.project_id === destinationId) return sendJson(400, { error: 'Invalid task destination' });
       db.exec('BEGIN');
       try {
-        const inserted = db.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES (?, ?, ?, ?, ?)').run(destinationId, task.title, task.completed, task.priority, task.due_date);
-        db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+        let remembered = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+        if (!remembered) {
+          const position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(destinationId).next;
+          db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, position);
+        }
+        db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?').run(destinationId, taskId);
         db.exec('COMMIT');
-        return sendJson(200, { ok: true, id: Number(inserted.lastInsertRowid) });
+        return sendJson(200, { ok: true, id: taskId });
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     }
     const dueDatePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
