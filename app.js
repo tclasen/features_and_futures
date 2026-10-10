@@ -300,11 +300,13 @@ async function renderTasks(projectId, archived) {
       const dueDateError = element('span');
       dueDateError.setAttribute('role', 'alert');
       saveDueDate.addEventListener('click', async () => {
+        // Read the value before disabling the controls. Keeping the submitted
+        // value in a local also avoids a refresh replacing this row mid-save.
+        const submittedDate = dueDate.value.trim();
         saveDueDate.disabled = true;
-        dueDate.disabled = true;
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dueDate: dueDate.value }),
+          body: JSON.stringify({ dueDate: submittedDate }),
         });
         if (response.ok) {
           dueDateError.textContent = '';
@@ -313,7 +315,6 @@ async function renderTasks(projectId, archived) {
           const result = await response.json().catch(() => ({}));
           dueDateError.textContent = result.error || 'Could not save due date';
           saveDueDate.disabled = archived;
-          dueDate.disabled = archived;
         }
       });
       row.append(dueDate, saveDueDate, dueDateError);
