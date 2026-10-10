@@ -31,6 +31,7 @@
     const app = document.querySelector('#app');
     let renderVersion = 0;
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    const foldAscii = value => String(value).replace(/[A-Z]/g, char => char.toLowerCase());
     async function showList(error = '', selected = 'Active', query = '') {
       const version = ++renderVersion;
       const response = await fetch(`/api/projects?filter=${selected}`);
@@ -44,7 +45,7 @@
         <section aria-label="Projects">${projects.map(project => `<div class="row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span class="summary" data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-project-id="${project.id}">Open project</button><button type="button" data-archive-id="${project.id}" data-archived="${project.archived}">${project.archived ? 'Restore project' : 'Archive project'}</button></div>`).join('')}</section>`;
       app.querySelector('#project-filter').addEventListener('change', event => showList('', event.target.value, query));
       app.querySelector('#project-search-form').addEventListener('submit', event => { event.preventDefault(); showList('', app.querySelector('#project-filter').value, app.querySelector('#project-search').value.trim()); });
-      const projectQuery = query.trim().toLowerCase();
+      const projectQuery = foldAscii(query.trim());
       app.querySelectorAll('[data-testid="project-row"]').forEach(row => { if (!row.querySelector('span').textContent.toLowerCase().includes(projectQuery)) row.remove(); });
       app.querySelectorAll('[data-archive-id]').forEach(button => button.addEventListener('click', async () => {
         if (button.disabled) return;
@@ -116,7 +117,8 @@
           const completionMatches = filter.value === 'All' || (filter.value === 'Open' ? row.dataset.completed !== 'true' : row.dataset.completed === 'true');
           const date = row.dataset.dueDate;
           const dateMatches = !appliedRange[0] && !appliedRange[1] ? true : Boolean(date) && (!appliedRange[0] || date >= appliedRange[0]) && (!appliedRange[1] || date <= appliedRange[1]);
-          row.hidden = !completionMatches || (priorityFilter.value !== 'All' && priorityFilter.value !== row.dataset.priority) || !dateMatches || !row.querySelector('span').textContent.toLowerCase().includes(taskQuery.trim().toLowerCase());
+          const title = row.querySelector('span').textContent;
+          row.hidden = !(completionMatches && (priorityFilter.value === 'All' || priorityFilter.value === row.dataset.priority) && dateMatches && foldAscii(title).includes(foldAscii(taskQuery.trim())));
         });
         applyFilters();
         filter.addEventListener('change', applyFilters);
