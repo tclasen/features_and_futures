@@ -29,6 +29,24 @@ async function render() {
       notice.dataset.testid = 'archived-notice';
       root.append(notice);
     }
+    const renameForm = document.createElement('form');
+    renameForm.className = 'create-form';
+    const renameLabel = document.createElement('label');
+    renameLabel.className = 'field';
+    renameLabel.textContent = 'New project name';
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.name = 'name';
+    renameInput.autocomplete = 'off';
+    renameInput.setAttribute('aria-label', 'New project name');
+    renameInput.disabled = project.archived;
+    renameLabel.append(renameInput);
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename project';
+    renameButton.disabled = project.archived;
+    renameForm.append(renameLabel, renameButton);
+    root.append(renameForm);
     const form = document.createElement('form');
     form.className = 'create-form';
     const label = document.createElement('label');
@@ -51,6 +69,21 @@ async function render() {
     alertBox.setAttribute('role', 'alert');
     alertBox.hidden = true;
     root.append(alertBox);
+
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      alertBox.hidden = true;
+      const name = renameInput.value.trim();
+      if (!name) {
+        alertBox.textContent = 'Project name is required';
+        alertBox.hidden = false;
+        return;
+      }
+      const renamed = await fetch(`/api/projects/${match[1]}/rename`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+      });
+      if (renamed.ok) await render();
+    });
 
     const filterLabel = document.createElement('label');
     filterLabel.className = 'filter-field';
@@ -176,11 +209,7 @@ async function render() {
     const projects = await response.json();
     // Ignore stale responses when multiple renders are requested in quick succession.
     if (loadId !== projectLoad) return;
-    // Repeated test fixtures can leave prior runs in the shared database. Present
-    // the newest project for a name so the current fixture remains actionable.
-    const newestByName = new Map();
-    for (const project of projects) newestByName.set(project.name, project);
-    const matching = [...newestByName.values()].filter(project => project.archived === (filter.value === 'Archived'));
+    const matching = projects.filter(project => project.archived === (filter.value === 'Archived'));
     if (!matching.length) {
       const empty = document.createElement('p');
       empty.className = 'empty';

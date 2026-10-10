@@ -58,6 +58,14 @@ const server = http.createServer(async (req, res) => {
     if (project) project.archived = Boolean(project.archived);
     return project ? send(res, 200, JSON.stringify(project)) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
   }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (req.method === 'PATCH' && renameMatch) {
+    const data = await readJson(req);
+    const name = typeof data?.name === 'string' ? data.name.trim() : '';
+    if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+    const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(renameMatch[1]));
+    return result.changes ? send(res, 200, JSON.stringify({ id: Number(renameMatch[1]), name })) : send(res, 404, JSON.stringify({ error: 'Project not found or archived' }));
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (req.method === 'PATCH' && archiveMatch) {
     const data = await readJson(req);
