@@ -23,7 +23,7 @@ function page(title, content) {
   input { border: 1px solid #8794a8; max-width: 100%; box-sizing: border-box; }
   button { background: #244db2; color: white; border: 0; cursor: pointer; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #e59e16; outline-offset: 3px; }
-  button:disabled, input:disabled { cursor: not-allowed; opacity: 0.6; }
+  button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: 0.6; }
   .project-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid #dbe1eb; }
   .project-name { overflow-wrap: anywhere; min-width: 0; }
   .project-row form { flex-shrink: 0; }
@@ -69,10 +69,16 @@ export function createApplication(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
   }
-  const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+  // SQLite supplies Normal for existing rows as well as future inserts.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+  }
+  const priorities = ['Low', 'Normal', 'High'];
+  const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+  const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -133,6 +139,14 @@ export function createApplication(databasePath) {
           <label for="new-task-title-${task.id}">New task title</label>
           <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
+        <form action="${path}/tasks/${task.id}/priority" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}
+            onchange="this.form.requestSubmit()">
+            ${priorities.map(priority => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+          </select>
         </form>
       </div>`).join('');
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -223,7 +237,7 @@ export function createApplication(databasePath) {
           return;
         }
         html(response, 200, projectPage(project, taskFilter(searchParams.get('filter'))));
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/rename)?)?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority))?)?$/.test(pathname)) {
         const [, , projectId, , taskId, action] = pathname.split('/');
         const id = Number(projectId);
         const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
@@ -251,11 +265,21 @@ export function createApplication(databasePath) {
             html(response, 422, projectPage(project, filter, 'Task title is required'));
             return;
           }
-          const result = Number.isSafeInteger(taskNumber)
-            ? action === 'rename'
-              ? renameTask.run(title, taskNumber, id)
-              : updateTask.run(form.get('completed') === '1' ? 1 : 0, taskNumber, id)
-            : undefined;
+          const priority = form.get('priority');
+          if (action === 'priority' && !priorities.includes(priority)) {
+            html(response, 422, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
+          let result;
+          if (Number.isSafeInteger(taskNumber)) {
+            if (action === 'rename') {
+              result = renameTask.run(title, taskNumber, id);
+            } else if (action === 'priority') {
+              result = setTaskPriority.run(priority, taskNumber, id);
+            } else {
+              result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskNumber, id);
+            }
+          }
           if (!result?.changes) {
             html(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;
