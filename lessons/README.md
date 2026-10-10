@@ -37,3 +37,4 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L031 | Do not cancel pending form mutations while checking persistence | adopted |
 | L032 | Successful HTTP status does not prove complete inference accounting | observed |
 | L033 | Stop and remove archived sandboxes, including PM fixtures | verified |
+| L034 | Require executed-test counts for negative fixture verification | verified |

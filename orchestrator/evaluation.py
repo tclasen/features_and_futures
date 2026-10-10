@@ -22,8 +22,8 @@ def validate_research_manifest(run):
         raise InfrastructureError('Unsupported research evidence method')
     if manifest['execution'].get('task_stream_revision')!='append-only-rounds-v1':
         raise InfrastructureError('Research requires a frozen append-only task stream')
-    if manifest['purpose']=='research-confirmation':
-        source=ROOT/manifest['research']['replay_source']
+    if manifest['purpose']=='research-confirmation' or 'recovery_source' in manifest['research']:
+        source=ROOT/manifest['research']['replay_source' if manifest['purpose']=='research-confirmation' else 'recovery_source']
         if source.resolve()==run.resolve():raise InfrastructureError('Confirmation must use a fresh independent run')
         verify_replay(source,run)
         original=json.loads((source/'manifest.json').read_text())
