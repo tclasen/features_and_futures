@@ -10,7 +10,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 );`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const html = await readFile(path.join(here, 'index.html'));
 
@@ -40,7 +42,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, JSON.stringify({ status: 'ok' }));
   }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return send(res, 200, JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived,
+    return send(res, 200, JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
       FROM projects p ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) }))));
@@ -56,6 +58,14 @@ const server = http.createServer(async (req, res) => {
   if (projectAction && req.method === 'PATCH') {
     const body = await requestBody(req);
     const projectId = Number(projectAction[1]);
+    if (typeof body?.default_priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(body.default_priority)) return send(res, 400, JSON.stringify({ error: 'Invalid priority' }));
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+      db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(body.default_priority, projectId);
+      return send(res, 200, JSON.stringify({ ok: true }));
+    }
     if (typeof body?.name === 'string') {
       const name = body.name.trim();
       if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
@@ -81,8 +91,9 @@ const server = http.createServer(async (req, res) => {
       const body = await requestBody(req);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' }));
+      const project = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId);
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority }));
     }
     if (taskRoute[2] && req.method === 'PATCH') {
       if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
