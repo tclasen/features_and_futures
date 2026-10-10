@@ -24,6 +24,15 @@ const server = http.createServer(async (req, res) => {
     try { const name = String((await readBody()).name ?? '').trim(); if (!name) return send(400, { error: 'Project name is required' }); const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name); return send(201, { id: Number(result.lastInsertRowid), name }); }
     catch { return send(400, { error: 'Invalid request' }); }
   }
+  const projectRename = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectRename && req.method === 'PATCH') {
+    try {
+      const name = String((await readBody()).name ?? '').trim();
+      if (!name) return send(400, { error: 'Project name is required' });
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(projectRename[1]));
+      return result.changes ? send(200, { ok: true, name }) : send(404, { error: 'Project not found or archived' });
+    } catch { return send(400, { error: 'Invalid request' }); }
+  }
   const projectArchive = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (projectArchive && req.method === 'PATCH') {
     try { const { archived } = await readBody(); const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, Number(projectArchive[1])); return result.changes ? send(200, {ok:true}) : send(404, {error:'Project not found'}); }
