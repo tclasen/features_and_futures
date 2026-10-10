@@ -20,11 +20,23 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  priority TEXT NOT NULL DEFAULT 'Normal'
+  priority TEXT NOT NULL DEFAULT 'Normal',
+  due_date TEXT
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+function validDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const sendJson = (status, data) => {
@@ -90,7 +102,7 @@ const server = http.createServer(async (req, res) => {
     if (tasksPath && req.method === 'GET') {
       const projectId = Number(tasksPath[1]);
       if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(404, { error: 'Project not found' });
-      return sendJson(200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return sendJson(200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (tasksPath && req.method === 'POST') {
       let body = '';
@@ -106,6 +118,19 @@ const server = http.createServer(async (req, res) => {
       const priority = project.default_priority;
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
       return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority });
+    }
+    const dueDatePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
+    if (dueDatePath && req.method === 'PATCH') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      let payload;
+      try { payload = JSON.parse(body); } catch { return sendJson(400, { error: 'Invalid request' }); }
+      if (typeof payload.dueDate !== 'string') return sendJson(400, { error: 'Invalid due date' });
+      const dueDate = payload.dueDate.trim();
+      if (dueDate && !validDate(dueDate)) return sendJson(400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const result = db.prepare(`UPDATE tasks SET due_date = ? WHERE id = ? AND EXISTS
+        (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND archived = 0)`).run(dueDate || null, Number(dueDatePath[1]));
+      return result.changes ? sendJson(200, { ok: true, dueDate: dueDate || null }) : sendJson(404, { error: 'Task not found or project archived' });
     }
     const taskRenamePath = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
     if (taskRenamePath && req.method === 'PATCH') {

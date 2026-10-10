@@ -66,7 +66,7 @@
         const priorityFilter = app.querySelector('#priority-filter');
         const drawTasks = () => {
           const shown = tasks.filter(task => (filter.value === 'All' || (filter.value === 'Completed') === task.completed) && (priorityFilter.value === 'All' || priorityFilter.value === task.priority));
-          list.innerHTML = shown.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-id="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><select aria-label="Task priority" data-priority-id="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><form class="task-rename" data-id="${task.id}"><label for="new-task-title-${task.id}">New task title</label><input id="new-task-title-${task.id}" type="text" aria-label="New task title" value="${escapeHtml(task.title)}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form></div>`).join('');
+          list.innerHTML = shown.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-id="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><select aria-label="Task priority" data-priority-id="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" aria-label="Task due date" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><form class="task-rename" data-id="${task.id}"><label for="new-task-title-${task.id}">New task title</label><input id="new-task-title-${task.id}" type="text" aria-label="New task title" value="${escapeHtml(task.title)}" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form></div>`).join('');
           list.querySelectorAll('.task-rename').forEach(form => form.addEventListener('submit', async event => {
             event.preventDefault();
             const input = form.querySelector('input');
@@ -83,6 +83,14 @@
             task.completed = box.checked;
             await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: task.completed }) });
             drawTasks();
+          }));
+          list.querySelectorAll('[data-save-due]').forEach(button => button.addEventListener('click', async () => {
+            const task = tasks.find(item => item.id === Number(button.dataset.saveDue));
+            const input = list.querySelector(`[data-due-date="${task.id}"]`);
+            const error = app.querySelector('.error');
+            const response = await fetch(`/api/tasks/${task.id}/due-date`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: input.value }) });
+            if (response.ok) { task.dueDate = (await response.json()).dueDate; input.value = task.dueDate || ''; error.textContent = ''; }
+            else error.textContent = (await response.json()).error || 'Unable to save due date';
           }));
           list.querySelectorAll('[data-priority-id]').forEach(select => select.addEventListener('change', async () => {
             const task = tasks.find(item => item.id === Number(select.dataset.priorityId));
