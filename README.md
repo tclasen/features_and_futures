@@ -12,6 +12,8 @@ Open `http://localhost:8080`. Create a project and open it to create tasks, togg
 
 On an active project page, use New project name and Rename project to update its name. Names are trimmed and cannot be blank. Renaming preserves the URL, creation order, tasks, and completion summary. Archived projects disable renaming until restored. Renamed names persist in the same SQLite database.
 
+Each task row has New task title and Rename task controls. Task renames trim whitespace and reject blank titles, preserving ownership, creation order, completion, filters, and project summaries. The completion checkbox label follows the saved title. Archived projects disable task renaming until restored; titles persist across reloads and restarts.
+
 Run the integration checks:
 
 ```sh
@@ -19,5 +21,5 @@ npm test
 ```
 
 Tests use a temporary SQLite database and verify schema migration, validation, creation order, project isolation, completion updates, archive/restore, summaries, the page and asset routes, and persistence across server restarts.
-Tests also cover renaming, unchanged identity and task state, rejection of archived renames, and renaming after restoration.
+Tests also cover project and task renaming, unchanged identity and completion state, rejection of archived renames, and renaming after restoration.
 UI event-handler checks use a minimal DOM adapter to verify validation, checkbox names, completion changes, filters, summaries, renaming, and archived controls without external dependencies.

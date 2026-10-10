@@ -126,6 +126,19 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     assert.equal((await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: 'true' })).status, 400);
     const completedTask = await (await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: true })).json();
     assert.deepEqual(completedTask, { ...firstTask, completed: true });
+    for (const title of ['', ' \t\n ', null]) {
+      const response = await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { title });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+      assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
+    }
+    assert.equal((await write(`${otherTasksPath}/${firstTask.id}`, 'PATCH', { title: 'Wrong project' })).status, 404);
+    assert.equal((await write(`${tasksPath}/99999`, 'PATCH', { title: 'Missing task' })).status, 404);
+    const taskRename = await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { title: '  Renamed <task>  ' });
+    assert.equal(taskRename.status, 200);
+    completedTask.title = 'Renamed <task>';
+    firstTask.title = completedTask.title;
+    assert.deepEqual(await taskRename.json(), completedTask);
     assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
     first.total = 2;
     first.completed = 1;
@@ -154,6 +167,9 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     assert.deepEqual(await (await get(projectPath)).json(), first);
     assert.equal((await write(tasksPath, 'POST', { title: 'Blocked task' })).status, 409);
     assert.equal((await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: false })).status, 409);
+    const blockedTaskRename = await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { title: 'Blocked rename' });
+    assert.equal(blockedTaskRename.status, 409);
+    assert.deepEqual(await blockedTaskRename.json(), { error: 'Archived project' });
     assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
 
     await stop();
@@ -168,6 +184,10 @@ test('projects and tasks validate input, stay isolated, and survive a server res
     first.name = 'Restored and renamed';
     assert.deepEqual(await (await write(projectPath, 'PATCH', { name: first.name })).json(), first);
     assert.deepEqual(await (await get(tasksPath)).json(), [completedTask, secondTask]);
+    const restoredTaskRename = await write(`${tasksPath}/${secondTask.id}`, 'PATCH', { title: '  Restored task  ' });
+    assert.equal(restoredTaskRename.status, 200);
+    secondTask.title = 'Restored task';
+    assert.deepEqual(await restoredTaskRename.json(), secondTask);
     const reopenedTask = await (await write(`${tasksPath}/${firstTask.id}`, 'PATCH', { completed: false })).json();
     assert.deepEqual(reopenedTask, firstTask);
     first.completed = 0;

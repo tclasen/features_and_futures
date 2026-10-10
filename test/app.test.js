@@ -182,6 +182,12 @@ test('archived project disables task writes while preserving task filters', asyn
   await element('rename-project').fire('submit');
   assert.equal(rows().length, 2);
   assert.ok(rows().every((row) => row.children[0].disabled));
+  for (const row of rows()) {
+    const renameForm = row.children[2];
+    assert.equal(renameForm.children[1].children[0].disabled, true);
+    assert.equal(renameForm.children[1].children[1].disabled, true);
+    await renameForm.fire('submit');
+  }
   element('task-title').value = 'Blocked';
   await element('create-task').fire('submit');
   await rows()[0].children[0].fire('change');
@@ -243,4 +249,72 @@ test('active project renames trim input, preserve displayed tasks, and handle er
   assert.equal(element('project-heading').textContent, 'Renamed <project>');
   assert.equal(element('error').textContent, 'Archived project');
   assert.equal(element('rename-project').querySelector('button').disabled, false);
+});
+
+test('task renames validate titles, update checkbox names, and preserve order and filters', async () => {
+  const elements = pageElements();
+  const element = (id) => elements.get(`#${id}`);
+  let savedTasks = [
+    { id: 1, title: 'First', completed: true },
+    { id: 2, title: 'Second', completed: false },
+  ];
+  const writes = [];
+  let rejectWrite = false;
+  const fetch = async (path, options) => {
+    if (!options) {
+      const data = path.endsWith('/tasks') ? savedTasks : { id: 7, name: 'Project', archived: 0 };
+      return { ok: true, json: async () => JSON.parse(JSON.stringify(data)) };
+    }
+    const body = JSON.parse(options.body);
+    writes.push({ path, method: options.method, body });
+    if (rejectWrite) return { ok: false, json: async () => ({ error: 'Archived project' }) };
+    const id = Number(path.split('/').at(-1));
+    const saved = { ...savedTasks.find((task) => task.id === id), title: body.title };
+    savedTasks = savedTasks.map((task) => task.id === id ? saved : task);
+    return { ok: true, json: async () => saved };
+  };
+  await loadPage(elements, '/projects/7', fetch);
+  const rows = () => element('tasks').children;
+  const renameForm = () => rows()[0].children[2];
+  const renameInput = () => renameForm().children[1].children[0];
+  assert.equal(renameForm().children[0].textContent, 'New task title');
+  assert.equal(renameForm().children[0].htmlFor, renameInput().id);
+  assert.equal(renameInput().disabled, false);
+  assert.equal(renameForm().children[1].children[1].textContent, 'Rename task');
+  assert.equal(renameForm().children[1].children[1].disabled, false);
+  for (const value of ['', ' \t\n ']) {
+    renameInput().value = value;
+    await renameForm().fire('submit');
+    assert.equal(element('error').textContent, 'Task title is required');
+    assert.equal(element('error').hidden, false);
+    assert.equal(rows()[0].children[1].textContent, 'First');
+    assert.equal(rows()[0].children[0].checked, true);
+  }
+  assert.equal(writes.length, 0);
+  element('task-filter').value = 'Completed';
+  await element('task-filter').fire('change');
+  renameInput().value = '  Renamed <task>  ';
+  await renameForm().fire('submit');
+  assert.deepEqual(writes, [{ path: '/api/projects/7/tasks/1', method: 'PATCH', body: { title: 'Renamed <task>' } }]);
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[1].textContent, 'Renamed <task>');
+  assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete Renamed <task>');
+  assert.equal(rows()[0].children[0].checked, true);
+  assert.equal(element('error').hidden, true);
+  rejectWrite = true;
+  renameInput().value = 'Rejected';
+  await renameForm().fire('submit');
+  assert.equal(element('error').textContent, 'Archived project');
+  assert.equal(rows()[0].children[1].textContent, 'Renamed <task>');
+  assert.equal(renameForm().children[1].children[1].disabled, false);
+  element('task-filter').value = 'Open';
+  await element('task-filter').fire('change');
+  assert.deepEqual(rows().map((row) => row.children[1].textContent), ['Second']);
+  element('task-filter').value = 'All';
+  await element('task-filter').fire('change');
+  assert.deepEqual(rows().map((row) => row.children[1].textContent), ['Renamed <task>', 'Second']);
+  const reloaded = pageElements();
+  await loadPage(reloaded, '/projects/7', fetch);
+  assert.equal(reloaded.get('#tasks').children[0].children[1].textContent, 'Renamed <task>');
+  assert.equal(reloaded.get('#tasks').children[0].children[0].checked, true);
 });
