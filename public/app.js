@@ -1,4 +1,5 @@
 const app = document.querySelector('#app');
+let listRenderId = 0;
 
 async function getProjects() {
   const response = await fetch('/api/projects');
@@ -22,6 +23,7 @@ function makeButton(label, onClick, className = '') {
 }
 
 async function renderList(errorMessage = '', selectedFilter = 'active') {
+  const renderId = ++listRenderId;
   app.replaceChildren();
   const heading = document.createElement('h1');
   heading.textContent = 'Workboard';
@@ -91,6 +93,9 @@ async function renderList(errorMessage = '', selectedFilter = 'active') {
 
   try {
     const projects = await getProjects();
+    // Several list renders can overlap (for example after a filter change and
+    // a mutation). Only the newest render owns the rows in the shared app node.
+    if (renderId !== listRenderId) return;
     for (const project of projects) {
       if (filter.value === 'active' && project.archived) continue;
       if (filter.value === 'archived' && !project.archived) continue;
@@ -118,6 +123,7 @@ async function renderList(errorMessage = '', selectedFilter = 'active') {
     }
     filter.addEventListener('change', () => renderList('', filter.value));
   } catch {
+    if (renderId !== listRenderId) return;
     const error = document.createElement('p');
     error.className = 'alert';
     error.setAttribute('role', 'alert');
