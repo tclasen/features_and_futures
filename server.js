@@ -9,17 +9,19 @@ const base = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(base, 'data', 'workboard.sqlite');
 await mkdir(path.dirname(path.resolve(dbPath)), { recursive: true });
 const db = new DatabaseSync(dbPath);
-db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
   CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT NOT NULL DEFAULT 'Normal')`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid`);
-const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -69,8 +71,8 @@ const server = http.createServer(async (req, res) => {
         const title = String(JSON.parse(raw).title ?? '').trim();
         if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
         if (title.length > 500) return send(400, JSON.stringify({ error: 'Task title is too long' }));
-        const id = randomUUID(); insertTask.run(id, projectId, title, Date.now());
-        return send(201, JSON.stringify({ id, title, completed: 0 }));
+        const id = randomUUID(); const priority = findProject.get(projectId).default_priority; insertTask.run(id, projectId, title, Date.now(), priority);
+        return send(201, JSON.stringify({ id, title, completed: 0, priority }));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
     if (req.method === 'PATCH' && taskMatch[2]) {
@@ -104,7 +106,13 @@ const server = http.createServer(async (req, res) => {
     if (project.archived) return send(409, JSON.stringify({ error: 'Archived project' }));
     try {
       let raw = ''; for await (const chunk of req) raw += chunk;
-      const name = String(JSON.parse(raw).name ?? '').trim();
+      const body = JSON.parse(raw);
+      if (Object.hasOwn(body, 'default_priority')) {
+        if (!['Low', 'Normal', 'High'].includes(body.default_priority)) return send(400, JSON.stringify({ error: 'Invalid task priority' }));
+        updateDefaultPriority.run(body.default_priority, project.id);
+        return send(200, JSON.stringify({ ok: true }));
+      }
+      const name = String(body.name ?? '').trim();
       if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
       if (name.length > 500) return send(400, JSON.stringify({ error: 'Project name is too long' }));
       renameProject.run(name, project.id);
