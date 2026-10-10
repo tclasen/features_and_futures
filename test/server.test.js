@@ -79,6 +79,10 @@ test('projects and tasks: validation, ordering, ownership, completion, routes, a
     const html = await (await request('/')).text();
     assert.match(html, /<title>Workboard<\/title>/);
     assert.equal((await request('/app.js')).status, 200);
+    const dateModule = await request('/due-date.js');
+    assert.equal(dateModule.status, 200);
+    assert.match(dateModule.headers.get('content-type'), /text\/javascript/);
+    assert.match(await dateModule.text(), /export function normalizeDueDate/);
     assert.equal((await request('/style.css')).status, 200);
     const malformed = await request('/api/projects', { method: 'POST', body: '{' });
     assert.equal(malformed.status, 400);

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
+import { normalizeDueDate } from '../due-date.js';
 
 // Minimal DOM adapter runs the actual browser entry point without dependencies.
 class Node {
@@ -47,7 +48,8 @@ async function page(archived = false, beforeSave = async () => {}) {
   const writes = [];
   const project = { id: 1, name: 'Example', archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  await runInNewContext(`(async () => { ${source} })()`, {
+  await runInNewContext(`(async () => { ${source.replace("import { normalizeDueDate } from '/due-date.js';", '')} })()`, {
+    normalizeDueDate,
     document: { querySelector: () => app, createElement: tag => new Node(tag) },
     window: { location: { pathname: '/projects/1' } },
     fetch: async (path, options) => {
@@ -247,6 +249,128 @@ test('due date saves and clears preserve selected filters and other task fields'
     assert.equal(p.byId('priority-filter').value, 'High');
     assert.deepEqual(p.titles(), ['First']);
   }
+});
+
+async function applyDueRange(p, from, through) {
+  p.byId('due-from').value = from;
+  p.byId('due-through').value = through;
+  await p.byId('due-from').parent.fire('submit');
+}
+
+async function saveDate(p, id, date) {
+  const input = p.byId(`task-due-date-${id}`);
+  input.value = date;
+  await input.parent.fire('submit');
+  await new Promise(resolve => setImmediate(resolve));
+}
+
+test('inclusive due ranges intersect all filters, with unbounded and undated rules', async () => {
+  const p = await page();
+  assert.equal(p.byId('due-from').value, '');
+  assert.equal(p.byId('due-through').value, '');
+  for (const [id, date] of [[1, '0001-01-01'], [2, '2024-02-29'], [4, '9999-12-31']]) {
+    await saveDate(p, id, date);
+  }
+  const saved = structuredClone(p.tasks);
+  for (const [from, through] of [['', ''], ['', '2024-02-29'], ['2024-02-29', ''],
+    ['2024-02-29', '2024-02-29'], ['0001-01-01', '9999-12-31']]) {
+    await applyDueRange(p, ` ${from} `, ` ${through} `);
+    for (const completion of ['All', 'Open', 'Completed']) {
+      await p.choose('task-filter', completion);
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        await p.choose('priority-filter', priority);
+        assert.deepEqual(p.titles(), p.tasks.filter(task =>
+          (completion === 'All' || task.completed === (completion === 'Completed')) &&
+          (priority === 'All' || task.priority === priority) &&
+          (!(from || through) || task.due_date) &&
+          (!from || task.due_date >= from) && (!through || task.due_date <= through)
+        ).map(task => task.title));
+      }
+    }
+  }
+  assert.deepEqual(p.tasks, saved);
+});
+
+test('invalid ranges preserve applied membership even when other filters change', async () => {
+  const p = await page();
+  await saveDate(p, 1, '2024-02-29');
+  await applyDueRange(p, '2024-02-29', '2024-02-29');
+  for (const [from, through, message] of [
+    ['2023-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+    ['', '0000-01-01', 'Due range must use valid YYYY-MM-DD dates'],
+    ['2024-2-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+    ['2024-03-01', '2024-02-29', 'Due from must not be after Due through'],
+  ]) {
+    await applyDueRange(p, from, through);
+    assert.equal(p.app.querySelector('[role="alert"]').textContent, message);
+    assert.deepEqual(p.titles(), ['First']);
+    await p.choose('task-filter', 'Open');
+    await p.choose('priority-filter', 'High');
+    assert.deepEqual(p.titles(), ['First']);
+  }
+  await applyDueRange(p, '', '');
+  assert.deepEqual(p.titles(), ['First']);
+  await p.choose('priority-filter', 'All');
+  assert.deepEqual(p.titles(), ['First', 'Third']);
+});
+
+test('task and project edits retain applied ranges and re-evaluate membership', async () => {
+  const p = await page();
+  await saveDate(p, 1, '2024-02-29');
+  await p.choose('task-filter', 'Open');
+  await p.choose('priority-filter', 'High');
+  await applyDueRange(p, '2024-02-29', '2024-02-29');
+  // Unapplied draft values must not affect editing or filter changes.
+  p.byId('due-from').value = 'invalid draft';
+  p.byId('new-task-title-1').value = 'Renamed';
+  await p.byId('new-task-title-1').parent.fire('submit');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(p.titles(), ['Renamed']);
+  p.byId('new-project-name').value = 'New project';
+  await p.byId('new-project-name').parent.fire('submit');
+  await p.choose('default-task-priority', 'High');
+  p.byId('task-title').value = 'Undated new task';
+  await p.byId('task-title').parent.fire('submit');
+  assert.deepEqual(p.titles(), ['Renamed']);
+  await p.choose('task-priority-1', 'Low');
+  assert.deepEqual(p.titles(), []);
+  await p.choose('priority-filter', 'Low');
+  const checkbox = p.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(p.titles(), []);
+  await p.choose('task-filter', 'Completed');
+  assert.deepEqual(p.titles(), ['Renamed']);
+  await saveDate(p, 1, '2024-03-01');
+  assert.deepEqual(p.titles(), []);
+  await applyDueRange(p, '2024-03-01', '');
+  assert.deepEqual(p.titles(), ['Renamed']);
+  await saveDate(p, 1, '');
+  assert.deepEqual(p.titles(), []);
+  assert.equal(p.byId('task-filter').value, 'Completed');
+  assert.equal(p.byId('priority-filter').value, 'Low');
+});
+
+test('archived due range controls stay usable; reopening initializes empty boundaries', async () => {
+  const p = await page(true);
+  for (const id of ['due-from', 'due-through']) {
+    const input = p.byId(id);
+    assert.equal(input.type, 'text');
+    assert.ok(!input.disabled);
+    assert.ok(p.app.all().some(node => node.tag === 'label' && node.htmlFor === id));
+  }
+  assert.ok(!p.byId('due-from').parent.children.at(-1).disabled);
+  await applyDueRange(p, '0001-01-01', '9999-12-31');
+  assert.deepEqual(p.titles(), []);
+  await applyDueRange(p, '', '');
+  assert.equal(p.rows().length, 4);
+  assert.ok(p.rows().every(row => row.querySelectorAll('input, button, select').every(control => control.disabled)));
+  assert.deepEqual(p.writes, []);
+  const reopened = await page();
+  assert.equal(reopened.byId('due-from').value, '');
+  assert.equal(reopened.byId('due-through').value, '');
+  assert.equal(reopened.rows().length, 4);
 });
 
 test('failed due date saves show an alert and restore the saved date', async () => {

@@ -1,3 +1,5 @@
+import { normalizeDueDate } from '/due-date.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -248,7 +250,41 @@ async function renderProject(id) {
   const list = element('ul');
   list.className = 'tasks';
   list.setAttribute('aria-label', 'Tasks');
-  app.append(form, filters, list);
+  const dueRangeForm = element('form');
+  const fromLabel = element('label', 'Due from');
+  fromLabel.htmlFor = 'due-from';
+  const dueFrom = element('input');
+  dueFrom.type = 'text';
+  dueFrom.id = fromLabel.htmlFor;
+  const throughLabel = element('label', 'Due through');
+  throughLabel.htmlFor = 'due-through';
+  const dueThrough = element('input');
+  dueThrough.type = 'text';
+  dueThrough.id = throughLabel.htmlFor;
+  const applyRange = element('button', 'Apply due range');
+  applyRange.type = 'submit';
+  dueRangeForm.append(fromLabel, dueFrom, throughLabel, dueThrough, applyRange);
+  // Draft inputs are separate from the last successfully applied range.
+  let appliedFrom = '';
+  let appliedThrough = '';
+  dueRangeForm.addEventListener('submit', event => {
+    event.preventDefault();
+    app.querySelector('[role="alert"]')?.remove();
+    const from = normalizeDueDate(dueFrom.value);
+    const through = normalizeDueDate(dueThrough.value);
+    if (from === null || through === null) {
+      showAlert('Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (from && through && from > through) {
+      showAlert('Due from must not be after Due through');
+      return;
+    }
+    appliedFrom = dueFrom.value = from;
+    appliedThrough = dueThrough.value = through;
+    renderTasks();
+  });
+  app.append(form, filters, dueRangeForm, list);
 
   const tasks = await api(`/api/projects/${id}/tasks`);
   const pendingTasks = new Set();
@@ -281,6 +317,9 @@ async function renderProject(id) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if ((appliedFrom || appliedThrough) && !task.due_date) continue;
+      if (appliedFrom && task.due_date < appliedFrom) continue;
+      if (appliedThrough && task.due_date > appliedThrough) continue;
       const row = element('li');
       row.dataset.testid = 'task-row';
       const checkbox = element('input');
