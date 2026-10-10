@@ -10,7 +10,7 @@ Open `http://localhost:8080`. The server binds to `0.0.0.0`; the defaults are po
 
 Health check: `curl http://localhost:8080/health`
 
-Open a project to create tasks, toggle completion, and filter All, Open, or Completed tasks. The project list shows completion summaries and an Active/Archived filter. Archive or restore projects from their rows; archived project pages allow viewing and filtering tasks but not changing them.
+Open a project to create tasks, toggle completion, and filter All, Open, or Completed tasks. The project list shows completion summaries and an Active/Archived filter. Archive or restore projects from their rows; archived project pages allow viewing and filtering tasks but not changing them. Active project pages also allow renaming with `New project name` and `Rename project`, preserving the project URL, order, tasks, and summary. Archived projects cannot be renamed until restored.
 
 Run automated HTTP, browser-script, and SQLite restart-persistence checks:
 

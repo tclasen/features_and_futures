@@ -31,6 +31,7 @@ const listProjects = db.prepare(`SELECT projects.id, projects.name, projects.arc
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -102,6 +103,11 @@ function projectPage(project, error = '') {
     <form action="/" method="get"><button type="submit">Projects</button></form>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <div role="alert" id="task-error">${escapeHtml(error)}</div>
+    <form action="/projects/${project.id}/rename" method="post">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form action="/projects/${project.id}/tasks" method="post">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text">
@@ -200,6 +206,24 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       html(res, 200, projectPage(project));
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/rename$/.test(url.pathname)) {
+      const project = findProject.get(Number(url.pathname.split('/')[2]));
+      if (!project) {
+        html(res, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      if (project.archived) {
+        html(res, 403, projectPage(project, 'Archived projects cannot be changed'));
+        return;
+      }
+      const name = ((await readForm(req)).get('name') || '').trim();
+      if (!name) {
+        html(res, 422, projectPage(project, 'Project name is required'));
+        return;
+      }
+      renameProject.run(name, project.id);
+      res.writeHead(303, { Location: `/projects/${project.id}` });
+      res.end();
     } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/completion)?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const project = findProject.get(Number(parts[2]));
