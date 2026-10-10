@@ -13,3 +13,7 @@ L029/L039/L040: notes observer selects required Archived state, waits on a posit
 Latest stable harnesses and content-addressed image blobs rechecked; native network/isolation/version preflight passed, original history independently restored, exact preflight sandbox removed. Twelve repositories contain only the identical clean pilot015 starter with no master remote. Required operational cleanup remains archive-before-remove.
 
 Future task016 is an unfrozen draft. Its separate zero-inference PM fixture may overlap native evaluation on this host; retain that observation without subtracting elapsed time or claiming contention-free execution. It cannot dispatch until its full gates pass. No comparative candidate has been inspected.
+
+Task016 now freezes after30variants:two56-check full modes, two reload sentinels and26negative variants. Registered test counts, anchored live exclusion and separate Deleted priority/date/title intersections verify. Native upgrade/restart remain mandatory at dispatch. See task016-validation.json.
+
+Task017 now freezes after25variants:two58-check full modes, two reload sentinels and21deliberate defects. Portable notes use explicitly specified LF line endings; source notes remain unchanged. Independent native phase checks remain required. See task017-validation.json.

@@ -1,0 +1,7 @@
+## Requirement017: portable project JSON export
+
+Dependencies: requirements001–016 remain cumulative. Every project detail page provides an enabled `Download project` control, including archived projects and projects with only deleted tasks. It downloads UTF8 JSON named `workboard-project.json`; export leaves the project, tasks, filters, searches and due range unchanged.
+
+The portable document has `format: "workboard-project"`, numeric `version: 1`, and a `project` object containing `name`, Boolean `archived`, `defaultPriority`, and a `tasks` array. Each task contains its original `title`, Boolean `completed`, explicit `priority`, string `dueDate` (empty when unset), exact string `notes` (empty when unset), and Boolean `deleted`. Names, notes and titles retain their stored text, including Unicode, internal whitespace, line breaks and literal markup. Include all of the project's live and deleted tasks in their stored relative order, independent of the currently selected completion/deletion, priority, due range or title search filters. Do not include other projects' tasks.
+
+Empty projects export an empty tasks array. Older records use the existing public defaults for every added field. The export records portable current project/task state; it does not revise the existing in-app remembered return positions or remove the original data. Earlier data and every existing behavior survive upgrade and restart.

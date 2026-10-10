@@ -49,3 +49,5 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L040 | Declare and verify Unicode encoding in PM HTML/form fixtures | verified |
 
 | L041 | Scope cumulative PM search queries and exercise matching earlier-round data | verified |
+
+| L042 | Specify portable multiline export line endings independently of textarea rendering | verified |

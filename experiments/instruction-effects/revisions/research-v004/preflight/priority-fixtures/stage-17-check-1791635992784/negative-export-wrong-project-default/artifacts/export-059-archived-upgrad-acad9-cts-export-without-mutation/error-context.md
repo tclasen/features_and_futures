@@ -1,0 +1,103 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: export.spec.mjs >> 059 archived upgraded and empty projects export without mutation
+- Location: experiments/instruction-effects/revisions/research-v004/decisions/task-017-draft/suite/export.spec.mjs:11:2
+
+# Error details
+
+```
+Error: expect(received).toMatchObject(expected)
+
+- Expected  - 1
++ Received  + 1
+
+  Object {
+    "archived": true,
+-   "defaultPriority": "Low",
++   "defaultPriority": "High",
+    "name": "task-016 Persistence renamed",
+  }
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=f2e1]:
+  - heading "task-016 Persistence renamed" [level=1] [ref=f2e2]
+  - group [ref=f2e4]:
+    - button "Download project" [active] [ref=f2e5]
+  - group [ref=f2e7]:
+    - button "Projects" [ref=f2e8]
+  - paragraph [ref=f2e9]: Archived project
+  - group [ref=f2e11]:
+    - generic [ref=f2e12]:
+      - text: Task search
+      - textbox "Task search" [ref=f2e13]
+    - button "Search tasks" [ref=f2e14]
+  - group [ref=f2e16]:
+    - generic [ref=f2e17]:
+      - text: Due from
+      - textbox "Due from" [ref=f2e18]
+    - generic [ref=f2e19]:
+      - text: Due through
+      - textbox "Due through" [ref=f2e20]
+    - button "Apply due range" [ref=f2e21]
+  - group [ref=f2e23]:
+    - generic [ref=f2e24]:
+      - text: New project name
+      - textbox "New project name" [disabled] [ref=f2e25]
+    - button "Rename project" [disabled] [ref=f2e26]
+  - generic [ref=f2e28]:
+    - text: Default task priority
+    - combobox "Default task priority" [disabled] [ref=f2e29]:
+      - option "Low" [selected]
+      - option "Normal"
+      - option "High"
+  - group [ref=f2e31]:
+    - generic [ref=f2e32]:
+      - text: Task title
+      - textbox "Task title" [disabled] [ref=f2e33]
+    - button "Create task" [disabled] [ref=f2e34]
+  - generic [ref=f2e36]:
+    - text: Task filter
+    - combobox "Task filter" [ref=f2e37]:
+      - option "All" [selected]
+      - option "Open"
+      - option "Completed"
+      - option "Deleted"
+  - generic [ref=f2e39]:
+    - text: Priority filter
+    - combobox "Priority filter" [ref=f2e40]:
+      - option "All" [selected]
+      - option "Low"
+      - option "Normal"
+      - option "High"
+```
+
+# Test source
+
+```ts
+  1  | import {test,expect} from '@playwright/test';
+  2  | import {stage,projectName,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedPriority} from './helpers.mjs';
+  3  | async function exported(page){const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Download project',exact:true}).click()]);expect(download.suggestedFilename()).toBe('workboard-project.json');const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));expect(value.format).toBe('workboard-project');expect(value.version).toBe(1);return value.project;}
+  4  | async function saved(page,owner,title,label,value){await taskRow(page,title).getByRole('textbox',{name:label,exact:true}).fill(value);await taskRow(page,title).getByRole('button',{name:label==='Task notes'?'Save notes':'Save due date',exact:true}).click();const observer=await page.context().newPage();try{await expect.poll(async()=>{await observer.goto('/');await openProject(observer,owner);return taskRow(observer,title).getByRole('textbox',{name:label,exact:true}).inputValue();},{timeout:5000}).toBe(value);}finally{await observer.close();}}
+  5  | test.beforeEach(async({context})=>{await isolateBrowser(context);});
+  6  | if(stage>=17){
+  7  |  test('058 export includes every stored task in order with literal values despite current filters',async({page})=>{
+  8  |   const owner='Export full Ω',title='Export  deleted';await createProject(page,'Export foreign');await openProject(page,'Export foreign');await createTask(page,'Must not export');await createProject(page,owner);await openProject(page,owner);for(const t of ['Export before',title,'Export after'])await createTask(page,t);await page.getByRole('checkbox',{name:'Complete '+title,exact:true}).check();await taskRow(page,title).getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,owner,title,'High');await saved(page,owner,title,'Task due date','2038-01-01');const note='  Export Ω\n<script>literal</script>  ';await saved(page,owner,title,'Task notes',note);await taskRow(page,title).getByRole('button',{name:'Delete task',exact:true}).click();const observer=await page.context().newPage();try{await expect.poll(async()=>{await observer.goto('/');return projectRow(observer,owner).getByTestId('project-summary').textContent();},{timeout:5000}).toBe('0/2 completed');}finally{await observer.close();}
+  9  |   await filterDeleted(page);await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'High'});await page.getByRole('textbox',{name:'Due from',exact:true}).fill('2038-01-01');await page.getByRole('textbox',{name:'Due through',exact:true}).fill('2038-01-01');await page.getByRole('button',{name:'Apply due range',exact:true}).click();await page.getByRole('textbox',{name:'Task search',exact:true}).fill('does not match');await page.getByRole('button',{name:'Search tasks',exact:true}).click();const data=await exported(page);expect(data).toMatchObject({name:projectName(owner),archived:false,defaultPriority:'Normal'});expect(data.tasks).toHaveLength(3);expect(data.tasks.map(t=>t.title)).toEqual(['Export before',title,'Export after']);expect(data.tasks[1]).toMatchObject({title,completed:true,priority:'High',dueDate:'2038-01-01',notes:note,deleted:true});for(const i of [0,2])expect(data.tasks[i]).toMatchObject({completed:false,priority:'Normal',dueDate:'',notes:'',deleted:false});await expect(page.getByRole('combobox',{name:'Task filter',exact:true}).locator('option:checked')).toHaveText('Deleted');await expect(page.getByRole('combobox',{name:'Priority filter',exact:true}).locator('option:checked')).toHaveText('High');await expect(page.getByRole('textbox',{name:'Due from',exact:true})).toHaveValue('2038-01-01');await expect(page.getByRole('textbox',{name:'Due through',exact:true})).toHaveValue('2038-01-01');await expect(page.getByRole('textbox',{name:'Task search',exact:true})).toHaveValue('does not match');await page.reload();const again=await exported(page);expect(again).toEqual(data);
+  10 |  });
+  11 |  test('059 archived upgraded and empty projects export without mutation',async({page})=>{
+> 12 |   await page.goto('/');await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});await page.getByTestId('project-row').filter({hasText:'task-016 Persistence renamed'}).filter({visible:true}).getByRole('button',{name:'Open project',exact:true}).click();await expect(page.getByRole('button',{name:'Download project',exact:true})).toBeEnabled();const data=await exported(page);expect(data).toMatchObject({name:'task-016 Persistence renamed',archived:true,defaultPriority:'Low'});expect(data.tasks).toHaveLength(1);expect(data.tasks[0]).toMatchObject({title:'Memory kept',completed:true,priority:'High',dueDate:'2028-02-29',notes:'',deleted:false});await expect(taskRow(page,'Memory kept').getByRole('textbox',{name:'Task notes',exact:true})).toBeDisabled();await createProject(page,'Export empty');await openProject(page,'Export empty');const empty=await exported(page);expect(empty).toMatchObject({name:projectName('Export empty'),archived:false,defaultPriority:'Normal',tasks:[]});await page.reload();expect(await exported(page)).toEqual(empty);
+     |                                                                                                                                                                                                                                                                                                                                                                                                                                               ^ Error: expect(received).toMatchObject(expected)
+  13 |  });
+  14 | }
+  15 | async function filterDeleted(page){await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Deleted'});}
+  16 | 
+```
