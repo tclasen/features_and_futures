@@ -9,7 +9,9 @@
     body { margin: 0; }
     main { max-width: 760px; margin: 5rem auto; padding: 0 1.5rem; }
     h1 { font-size: 2rem; margin-bottom: 1.5rem; }
-    form, .project-row { display: flex; align-items: center; gap: .75rem; }
+    form, .project-row, .task-row { display: flex; align-items: center; gap: .75rem; }
+    .task-row { justify-content: flex-start; margin: .6rem 0; padding: .9rem 1rem; background: white; border: 1px solid #dce2ea; border-radius: 6px; }
+    .task-row input { flex: 0; }
     form { margin-bottom: 1.5rem; }
     input { flex: 1; min-width: 0; padding: .7rem; border: 1px solid #aab5c3; border-radius: 5px; font: inherit; }
     button { padding: .7rem 1rem; border: 0; border-radius: 5px; background: #245bd5; color: white; font: inherit; cursor: pointer; }
@@ -30,8 +32,30 @@ async function render() {
     const projects = await (await fetch('/api/projects')).json();
     const project = projects.find(item => item.id === Number(match[1]));
     if (project) {
-      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      const tasks = await (await fetch(`/api/projects/${project.id}/tasks`)).json();
+      const filter = new URLSearchParams(location.search).get('filter') || 'All';
+      const visibleTasks = tasks.filter(task => filter === 'All' || (filter === 'Open' ? !task.completed : task.completed));
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>
+        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"><button type="submit">Create task</button></form>
+        <div class="alert" role="alert" aria-live="polite"></div>
+        <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+        <section aria-label="Tasks">${visibleTasks.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('')}</section>`;
       app.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+      const selector = app.querySelector('#task-filter'); selector.value = filter;
+      selector.addEventListener('change', () => { const query = selector.value === 'All' ? '' : `?filter=${selector.value}`; history.replaceState({}, '', `/projects/${project.id}${query}`); render(); });
+      app.querySelector('#task-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = app.querySelector('#task-title');
+        const title = input.value.trim();
+        if (!title) { app.querySelector('.alert').textContent = 'Task title is required'; return; }
+        const response = await fetch(`/api/projects/${project.id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (response.ok) render(); else app.querySelector('.alert').textContent = 'Unable to create task';
+      });
+      app.querySelectorAll('[data-task-id]').forEach(checkbox => checkbox.addEventListener('change', async () => {
+        const response = await fetch(`/api/projects/${project.id}/tasks/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+        if (!response.ok) { checkbox.checked = !checkbox.checked; app.querySelector('.alert').textContent = 'Unable to update task'; }
+        else render();
+      }));
       return;
     }
   }
