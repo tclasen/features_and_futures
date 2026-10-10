@@ -11,7 +11,12 @@
     h1 { margin-top: 0; overflow-wrap: anywhere; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
     .fields { display: flex; gap: 12px; }
-    input { min-width: 0; flex: 1; border: 1px solid #8795ab; border-radius: 6px; padding: 12px; font: inherit; }
+    input[type="text"], select { min-width: 0; flex: 1; border: 1px solid #8795ab; border-radius: 6px; padding: 12px; font: inherit; }
+    .task-controls { margin-top: 28px; }
+    .task-filter { margin: 24px 0; }
+    .task-row { padding: 16px 0; border-top: 1px solid #dee4ec; }
+    .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 400; overflow-wrap: anywhere; }
+    .task-row input { width: 20px; height: 20px; flex-shrink: 0; }
     button { border: 0; border-radius: 6px; padding: 12px 16px; background: #244fc4; color: white; font: inherit; cursor: pointer; }
     button:hover { background: #193d9c; }
     :focus-visible { outline: 3px solid #e3931e; outline-offset: 3px; }
@@ -27,11 +32,12 @@
   <main id="app"></main>
   <script type="module">
     const app = document.querySelector('#app');
+    let renderVersion = 0;
 
     async function api(path, options) {
       const response = await fetch(path, options);
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Unable to load projects');
+      if (!response.ok) throw new Error(body.error || 'Unable to load data');
       return body;
     }
 
@@ -47,17 +53,102 @@
     }
 
     async function render() {
+      const version = ++renderVersion;
       const match = location.pathname.match(/^\/projects\/(\d+)$/);
       if (match) {
         app.innerHTML = '<h1>Loading project…</h1><button type="button">Projects</button><div role="alert" hidden></div>';
         app.querySelector('button').onclick = () => navigate('/');
         try {
           const project = await api('/api/projects/' + match[1]);
-          if (location.pathname !== '/projects/' + match[1]) return;
+          if (version !== renderVersion) return;
           app.querySelector('h1').textContent = project.name;
           document.title = project.name + ' · Workboard';
+          const controls = document.createElement('div');
+          controls.className = 'task-controls';
+          controls.innerHTML = `
+            <form>
+              <label for="task-title">Task title</label>
+              <div class="fields"><input id="task-title" name="title" type="text"><button type="submit">Create task</button></div>
+            </form>
+            <div class="task-filter">
+              <label for="task-filter">Task filter</label>
+              <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+            </div>
+            <div id="tasks"></div>`;
+          app.append(controls);
+          const form = controls.querySelector('form');
+          const input = controls.querySelector('#task-title');
+          const filter = controls.querySelector('select');
+          const taskList = controls.querySelector('#tasks');
+          const tasksPath = '/api/projects/' + project.id + '/tasks';
+          let tasks = [];
+          function drawTasks() {
+            taskList.replaceChildren();
+            for (const task of tasks) {
+              if (filter.value === 'Open' && task.completed) continue;
+              if (filter.value === 'Completed' && !task.completed) continue;
+              const row = document.createElement('div');
+              row.className = 'task-row';
+              row.dataset.testid = 'task-row';
+              const label = document.createElement('label');
+              const checkbox = document.createElement('input');
+              checkbox.type = 'checkbox';
+              checkbox.checked = task.completed;
+              checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+              const title = document.createElement('span');
+              title.textContent = task.title;
+              label.append(checkbox, title);
+              row.append(label);
+              taskList.append(row);
+              checkbox.onchange = async () => {
+                checkbox.disabled = true;
+                showAlert('');
+                try {
+                  const saved = await api(tasksPath + '/' + task.id, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ completed: checkbox.checked })
+                  });
+                  task.completed = saved.completed;
+                  drawTasks();
+                } catch (error) {
+                  checkbox.checked = task.completed;
+                  if (version === renderVersion) showAlert(error.message);
+                } finally {
+                  checkbox.disabled = false;
+                }
+              };
+            }
+          }
+          filter.onchange = drawTasks;
+          const loaded = api(tasksPath).then(items => {
+            tasks = items;
+            drawTasks();
+          });
+          loaded.catch(error => { if (version === renderVersion) showAlert(error.message); });
+          form.onsubmit = async event => {
+            event.preventDefault();
+            const title = input.value.trim();
+            if (!title) return showAlert('Task title is required');
+            const button = form.querySelector('button');
+            button.disabled = true;
+            showAlert('');
+            try {
+              await loaded;
+              const task = await api(tasksPath, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+              });
+              tasks.push(task);
+              drawTasks();
+              input.value = '';
+              input.focus();
+            } catch (error) {
+              if (version === renderVersion) showAlert(error.message);
+            } finally {
+              button.disabled = false;
+            }
+          };
         } catch (error) {
-          showAlert(error.message);
+          if (version === renderVersion) showAlert(error.message);
         }
         return;
       }
