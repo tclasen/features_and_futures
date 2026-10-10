@@ -71,6 +71,7 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     const first = await response.json();
     assert.equal(first.name, 'First project');
     assert.equal(first.archived, 0);
+    assert.equal(first.default_task_priority, 'Normal');
     assert.equal(first.total, 0);
     assert.equal(first.completed, 0);
     const second = await (await create('Second project')).json();
@@ -136,6 +137,7 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     await stop();
     const prePriority = new DatabaseSync(join(directory, 'nested', 'projects.sqlite'));
     prePriority.exec('ALTER TABLE tasks DROP COLUMN priority');
+    prePriority.exec('ALTER TABLE projects DROP COLUMN default_task_priority');
     prePriority.close();
     await start();
     assert.deepEqual(await tasks(), [task, nextTask]);
@@ -261,6 +263,56 @@ test('projects migrate, validate, rename, archive and restore with persistent ta
     first.completed = 0;
     assert.deepEqual(await list(), [first, second]);
     assert.equal((await createTask('Restored task')).status, 201);
+
+    const setDefault = (project, priority) => fetch(`${base}/api/projects/${project.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_task_priority: priority }),
+    });
+    const beforeDefaultChange = await tasks();
+    const beforeProjects = await list();
+    for (const invalid of ['', 'normal', 'Urgent', null, 1]) {
+      assert.equal((await setDefault(first, invalid)).status, 400);
+    }
+    for (const extra of [{ name: 'Mixed' }, { archived: true }]) {
+      assert.equal((await fetch(`${base}/api/projects/${first.id}`, {
+        method: 'PATCH', body: JSON.stringify({ default_task_priority: 'High', ...extra }),
+      })).status, 400);
+    }
+    assert.deepEqual(await list(), beforeProjects);
+    assert.equal((await setDefault({ id: 999999 }, 'High')).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const saved = await setDefault(first, priority);
+      assert.equal(saved.status, 200);
+      assert.deepEqual(await saved.json(), { ...beforeProjects[0], default_task_priority: priority });
+      assert.deepEqual(await tasks(), beforeDefaultChange);
+    }
+    assert.equal((await setDefault(second, 'Low')).status, 200);
+    const inheritedHigh = await (await createTask('Inherits High')).json();
+    assert.equal(inheritedHigh.priority, 'High');
+    const inheritedLow = await (await createTask('Inherits Low', otherTasksUrl)).json();
+    assert.equal(inheritedLow.priority, 'Low');
+    assert.equal((await setDefault(first, 'Normal')).status, 200);
+    assert.equal((await rename('Project with default')).status, 200);
+    assert.equal((await renameTask(inheritedHigh, 'Renamed inherited task')).status, 200);
+    const savedTasks = await tasks();
+    assert.deepEqual(savedTasks.slice(0, beforeDefaultChange.length), beforeDefaultChange);
+    assert.equal(savedTasks.at(-1).priority, 'High');
+    assert.equal((await archive(true)).status, 200);
+    assert.equal((await setDefault(first, 'Low')).status, 409);
+    const savedProjects = await list();
+    assert.equal(savedProjects[0].default_task_priority, 'Normal');
+    assert.equal(savedProjects[1].default_task_priority, 'Low');
+    await stop();
+    await start();
+    assert.deepEqual(await list(), savedProjects);
+    assert.deepEqual(await tasks(), savedTasks);
+    assert.equal((await archive(false)).status, 200);
+    assert.equal((await setDefault(first, 'High')).status, 200);
+    assert.equal((await (await createTask('After restoration')).json()).priority, 'High');
+    const freshProject = await (await create('Fresh project')).json();
+    assert.equal(freshProject.default_task_priority, 'Normal');
+    const freshTask = await (await createTask('Fresh task', `${base}/api/projects/${freshProject.id}/tasks`)).json();
+    assert.equal(freshTask.priority, 'Normal');
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

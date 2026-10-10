@@ -155,6 +155,12 @@ async function showProject(id) {
   app.append(renameForm);
   const section = document.createElement('section');
   section.innerHTML = `
+    <label for="default-task-priority">Default task priority</label>
+    <select id="default-task-priority">
+      <option>Low</option>
+      <option>Normal</option>
+      <option>High</option>
+    </select>
     <form>
       <label for="task-title">Task title</label>
       <div class="create-controls">
@@ -188,6 +194,30 @@ async function showProject(id) {
   const submit = form.querySelector('button');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
+  const defaultPriority = section.querySelector('#default-task-priority');
+  defaultPriority.value = project.default_task_priority;
+  defaultPriority.disabled = true;
+  defaultPriority.addEventListener('change', async () => {
+    if (project.archived) return;
+    defaultPriority.disabled = true;
+    // Keep task creation behind the pending default write so it inherits the displayed value.
+    submit.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_task_priority: defaultPriority.value }),
+      });
+      Object.assign(project, saved);
+      app.querySelector('[role="alert"]').hidden = true;
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      defaultPriority.value = project.default_task_priority;
+      defaultPriority.disabled = Boolean(project.archived);
+      submit.disabled = Boolean(project.archived);
+    }
+  });
   const list = section.querySelector('ul');
   const endpoint = `/api/projects/${id}/tasks`;
   let tasks = [];
@@ -273,6 +303,7 @@ async function showProject(id) {
     const title = input.value.trim();
     if (!title) return showError('Task title is required');
     submit.disabled = true;
+    defaultPriority.disabled = true;
     try {
       const task = await api(endpoint, {
         method: 'POST',
@@ -288,11 +319,13 @@ async function showProject(id) {
       showError(error.message);
     } finally {
       submit.disabled = Boolean(project.archived);
+      defaultPriority.disabled = Boolean(project.archived);
     }
   });
   tasks = await api(endpoint);
   renderTasks();
   submit.disabled = Boolean(project.archived);
+  defaultPriority.disabled = Boolean(project.archived);
 }
 
 try {
