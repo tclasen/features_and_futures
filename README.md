@@ -37,3 +37,9 @@ Each task has a Task priority dropdown with Low, Normal, and High options.
 New and existing tasks default to Normal. Priority is saved independently for
 each task and survives renaming, completion changes, and restarts. Archived
 projects disable priority edits; restoration preserves the saved priorities.
+
+Project pages start with All selected in both Task filter and Priority filter.
+Tasks must match both filters and retain their creation order. Changing either
+filter preserves the other selection. Completion and priority edits immediately
+update which rows match; renaming preserves both selections. Both filters remain
+available on archived projects. Filters do not change saved data or summaries.

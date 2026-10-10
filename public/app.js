@@ -1,3 +1,5 @@
+import { matchesTaskFilters } from './task-filters.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -225,13 +227,23 @@ async function renderTasks(projectId, archived) {
         <option value="completed">Completed</option>
       </select>
     </div>
+    <div class="task-filter">
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter">
+        <option value="all">All</option>
+        <option value="Low">Low</option>
+        <option value="Normal">Normal</option>
+        <option value="High">High</option>
+      </select>
+    </div>
     <ul aria-label="Tasks"></ul>`;
   app.append(section);
   const form = section.querySelector('form');
   const input = section.querySelector('input');
   const button = form.querySelector('button');
   const alert = section.querySelector('[role="alert"]');
-  const filter = section.querySelector('select');
+  const filter = section.querySelector('#task-filter');
+  const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('ul');
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -255,8 +267,7 @@ async function renderTasks(projectId, archived) {
   }
 
   function renderList() {
-    const matching = tasks.filter((task) => filter.value === 'all'
-      || (filter.value === 'completed' ? task.completed : !task.completed));
+    const matching = tasks.filter((task) => matchesTaskFilters(task, filter.value, priorityFilter.value));
     list.replaceChildren(...matching.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -309,7 +320,7 @@ async function renderTasks(projectId, archived) {
         await updateTask(task, { priority: priority.value });
         priority.value = task.priority;
         setDisabled(false);
-        if (!row.isConnected) renderList();
+        if (!row.isConnected || !matchesTaskFilters(task, filter.value, priorityFilter.value)) renderList();
       });
       checkbox.addEventListener('change', async () => {
         if (archived || pendingUpdates.has(task.id)) return;
@@ -317,8 +328,8 @@ async function renderTasks(projectId, archived) {
         await updateTask(task, { completed: checkbox.checked });
         checkbox.checked = task.completed;
         setDisabled(false);
-        // Refresh filtered or replaced rows; otherwise preserve the focused checkbox.
-        if (filter.value !== 'all' || !checkbox.isConnected) renderList();
+        // Remove rows that no longer match; otherwise preserve the focused checkbox.
+        if (!row.isConnected || !matchesTaskFilters(task, filter.value, priorityFilter.value)) renderList();
       });
       renameForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -344,6 +355,7 @@ async function renderTasks(projectId, archived) {
   }
 
   filter.addEventListener('change', renderList);
+  priorityFilter.addEventListener('change', renderList);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (button.disabled) return;

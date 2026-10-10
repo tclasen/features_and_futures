@@ -160,6 +160,10 @@ test('projects validate, retain creation order, and persist across server restar
     assert.match(page, /<title>Workboard<\/title>/);
     assert.match(page, /src="\/app.js"/);
     assert.equal((await request('/app.js')).status, 200);
+    const filtersModule = await request('/task-filters.js');
+    assert.equal(filtersModule.status, 200);
+    assert.match(filtersModule.headers.get('content-type'), /^text\/javascript/);
+    assert.match(await filtersModule.text(), /export function matchesTaskFilters/);
     assert.equal((await request('/styles.css')).status, 200);
     const malformed = await request('/api/projects', { method: 'POST', body: '{' });
     assert.equal(malformed.status, 400);
