@@ -7,7 +7,7 @@ from .audit_request_coverage import reconcile
 from .evidence import digest_bytes
 from .bounded_confirmation import METHOD
 
-BOUNDED_REVISIONS = ('research-v002', 'research-v003')
+BOUNDED_REVISIONS = ('research-v002', 'research-v003', 'research-v004')
 POLICY = 'retained-terminal-incidents-v1'
 ASSESSMENT = 'first-observed-pm-assessment-v1'
 

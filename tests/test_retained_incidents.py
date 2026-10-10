@@ -120,6 +120,18 @@ class RetainedIncidentTests(unittest.TestCase):
             changed = copy.deepcopy(plan); changed[field] = value
             with self.assertRaises(ValueError): validate_policy(manifest, changed)
 
+    def test_positive_anchor_revision_requires_its_own_frozen_plan_without_changing_policy(self):
+        manifest = {'experiment_revision': 'research-v004', 'execution': {'provider_incident_policy': POLICY},
+                    'research': {'analysis_method': METHOD}}
+        plan = {'revision_id': 'research-v004', 'status': 'frozen-before-main-dispatch',
+                'execution': {'provider_incident_policy': POLICY}, 'analysis_method': METHOD,
+                'submission_outcome_definition': ASSESSMENT}
+        self.assertTrue(validate_policy(manifest, plan))
+        for field, value in [('revision_id', 'research-v002'), ('status', 'draft'),
+                             ('analysis_method', 'complete-native-point-v1')]:
+            changed = copy.deepcopy(plan); changed[field] = value
+            with self.assertRaises(ValueError): validate_policy(manifest, changed)
+
     def partial_fixture(self, root):
         from orchestrator.partial_report import augment
         run, records, events, identity, prices = self.fixture(root)

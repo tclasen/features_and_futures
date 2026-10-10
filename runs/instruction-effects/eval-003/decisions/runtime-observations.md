@@ -1,0 +1,7 @@
+# Runtime observations
+
+All task012–014 preparation fixtures ended before the first native dispatch. During task001, eleven builders accepted while b006 had one silent pending provider request. Read-only network snapshots showed unchanged byte counters; macOS process-memory inspection was unavailable and did not execute. The provider request closed itself after900.125983833seconds with HTTP500 and missing native counters. No gateway/process mutation or timing subtraction occurred. The original call, source/history/working tree and full native attempt are retained; fresh-context recovery accepted the same task.
+
+PM task015 prospective browser fixture preparation overlapped that pending request, its recovery, and later native rounds. Its first two runs expose prototype charset and archive-filter omissions and are preserved. Subsequent reruns continue while the cohort progresses. Shared host contention is possible and unquantified; all native timing remains included. These synthetic fixture outputs are preparation evidence, never native builder results or model calls.
+
+Original restore audit verified its three completed incident archives at the recorded snapshot. Later incidents remain subject to the same final independent source/history/working-tree audit. Missing native counters stay unknown with bounds and no point estimate. No first observed submission rejection is assigned to a pre-assessment infrastructure incident.

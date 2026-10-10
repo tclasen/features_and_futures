@@ -45,3 +45,7 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L038 | Keep cumulative test project names distinct under shared selectors | verified |
 
 | L039 | Preserve fault effects through shared fixture response paths | verified |
+
+| L040 | Declare and verify Unicode encoding in PM HTML/form fixtures | verified |
+
+| L041 | Scope cumulative PM search queries and exercise matching earlier-round data | observed |
