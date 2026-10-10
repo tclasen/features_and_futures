@@ -98,6 +98,9 @@
         <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
         <label for="priority-filter">Priority filter</label>
         <select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
+        <label for="due-from">Due from</label><input id="due-from" type="text">
+        <label for="due-through">Due through</label><input id="due-through" type="text">
+        <button id="apply-due-range" type="button">Apply due range</button>
         <section id="tasks" aria-label="Tasks"></section>`;
       app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
       const defaultPriority = app.querySelector('#default-priority');
@@ -111,6 +114,21 @@
       const alert = app.querySelector('#alert');
       const filter = app.querySelector('#task-filter');
       const priorityFilter = app.querySelector('#priority-filter');
+      const dueFromInput = app.querySelector('#due-from');
+      const dueThroughInput = app.querySelector('#due-through');
+      let appliedRange = { from: '', through: '' };
+      const validDate = value => {
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return false;
+        const [, year, month, day] = match.map(Number);
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+      };
+      app.querySelector('#apply-due-range').addEventListener('click', async () => {
+        const from = dueFromInput.value.trim(), through = dueThroughInput.value.trim();
+        if ((from && !validDate(from)) || (through && !validDate(through))) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return; }
+        if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return; }
+        appliedRange = { from, through }; alert.hidden = true; await renderTasks();
+      });
       app.querySelector('#rename-form').addEventListener('submit', async event => {
         event.preventDefault();
         const name = app.querySelector('#new-project-name').value.trim();
@@ -124,7 +142,8 @@
         const tasks = await tasksResponse.json();
         const visible = tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
-          (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+          (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+          (!appliedRange.from && !appliedRange.through || Boolean(task.dueDate) && (!appliedRange.from || task.dueDate >= appliedRange.from) && (!appliedRange.through || task.dueDate <= appliedRange.through))
         );
         const list = app.querySelector('#tasks');
         list.replaceChildren();
@@ -175,8 +194,10 @@
           saveDueDate.addEventListener('click', async () => {
             const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: dueDate.value }) });
             if (!result.ok) { const body = await result.json(); alert.textContent = body.error || 'Unable to save due date'; alert.hidden = false; return; }
+            const saved = await result.json();
             alert.hidden = true;
-            dueDate.value = result.dueDate || '';
+            dueDate.value = saved.dueDate || '';
+            await renderTasks();
           });
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
