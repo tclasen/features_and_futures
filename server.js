@@ -10,6 +10,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
 
 const indexHtml = await readFile(new URL('./public/index.html', import.meta.url));
 const styles = await readFile(new URL('./public/styles.css', import.meta.url));
@@ -45,6 +52,30 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && detailMatch) {
     const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(detailMatch[1]));
     return project ? send(res, 200, JSON.stringify(project)) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch) {
+    const projectId = Number(tasksMatch[1]);
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (req.method === 'GET') {
+      const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      return send(res, 200, JSON.stringify(tasks.map(task => ({ ...task, completed: Boolean(task.completed) }))));
+    }
+    if (req.method === 'POST') {
+      const data = await readJson(req);
+      const title = typeof data?.title === 'string' ? data.title.trim() : '';
+      if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
+    }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (req.method === 'PATCH' && taskMatch) {
+    const data = await readJson(req);
+    if (typeof data?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Completion state is required' }));
+    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, Number(taskMatch[1]));
+    return result.changes ? send(res, 200, JSON.stringify({ id: Number(taskMatch[1]), completed: data.completed })) : send(res, 404, JSON.stringify({ error: 'Task not found' }));
   }
   if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

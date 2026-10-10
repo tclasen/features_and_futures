@@ -23,6 +23,101 @@ async function render() {
     }
     const project = await response.json();
     root.append(heading(project.name));
+    const form = document.createElement('form');
+    form.className = 'create-form';
+    const label = document.createElement('label');
+    label.className = 'field';
+    label.textContent = 'Task title';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'title';
+    input.autocomplete = 'off';
+    input.setAttribute('aria-label', 'Task title');
+    label.append(input);
+    const submit = document.createElement('button');
+    submit.type = 'submit';
+    submit.textContent = 'Create task';
+    form.append(label, submit);
+    root.append(form);
+    const alertBox = document.createElement('div');
+    alertBox.className = 'alert';
+    alertBox.setAttribute('role', 'alert');
+    alertBox.hidden = true;
+    root.append(alertBox);
+
+    const filterLabel = document.createElement('label');
+    filterLabel.className = 'filter-field';
+    filterLabel.textContent = 'Task filter';
+    const filter = document.createElement('select');
+    filter.setAttribute('aria-label', 'Task filter');
+    for (const value of ['All', 'Open', 'Completed']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      filter.append(option);
+    }
+    filterLabel.append(filter);
+    root.append(filterLabel);
+    const list = document.createElement('div');
+    list.className = 'task-list';
+    root.append(list);
+
+    async function loadTasks() {
+      const tasksResponse = await fetch(`/api/projects/${match[1]}/tasks`);
+      const tasks = await tasksResponse.json();
+      list.replaceChildren();
+      const matching = tasks.filter(task => filter.value === 'All' || (filter.value === 'Open' ? !task.completed : task.completed));
+      if (!matching.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = tasks.length ? 'No tasks match this filter.' : 'No tasks yet.';
+        list.append(empty);
+        return;
+      }
+      for (const task of matching) {
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        row.dataset.testid = 'task-row';
+        const title = document.createElement('span');
+        title.className = 'task-title';
+        title.textContent = task.title;
+        const checkboxLabel = document.createElement('label');
+        checkboxLabel.className = 'task-check';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = task.completed;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        checkbox.addEventListener('change', async () => {
+          const saved = await fetch(`/api/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
+          });
+          if (saved.ok) await loadTasks();
+        });
+        checkboxLabel.append(checkbox);
+        row.append(title, checkboxLabel);
+        list.append(row);
+      }
+    }
+    filter.addEventListener('change', loadTasks);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      alertBox.hidden = true;
+      const title = input.value.trim();
+      if (!title) {
+        alertBox.textContent = 'Task title is required';
+        alertBox.hidden = false;
+        return;
+      }
+      const created = await fetch(`/api/projects/${match[1]}/tasks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+      });
+      if (created.ok) {
+        input.value = '';
+        filter.value = 'All';
+        await loadTasks();
+      }
+    });
+    await loadTasks();
     return;
   }
 
