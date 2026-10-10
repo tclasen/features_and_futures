@@ -11,6 +11,10 @@ const taskList = document.querySelector('#task-list');
 const taskFilter = document.querySelector('#task-filter');
 const projectFilter = document.querySelector('#project-filter');
 const taskCreateButton = taskForm.querySelector('button');
+const renameForm = document.querySelector('#rename-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameButton = renameForm.querySelector('button');
+const renameAlert = document.querySelector('#rename-alert');
 let currentProjectId = null;
 
 async function request(url, options) {
@@ -100,7 +104,10 @@ async function renderRoute() {
     listView.hidden = true;
     detailView.hidden = false;
     document.querySelector('#project-title').textContent = project.name;
+    renameInput.value = project.name;
     window.currentProjectArchived = Boolean(project.archived);
+    renameInput.disabled = window.currentProjectArchived;
+    renameButton.disabled = window.currentProjectArchived;
     document.querySelector('#archived-notice').hidden = !window.currentProjectArchived;
     taskCreateButton.disabled = window.currentProjectArchived;
     await renderTasks();
@@ -159,6 +166,27 @@ taskFilter.addEventListener('change', () => renderTasks().catch(error => {
   taskAlert.textContent = error.message;
   taskAlert.hidden = false;
 }));
+renameForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const name = renameInput.value.trim();
+  if (!name) {
+    renameAlert.textContent = 'Project name is required';
+    renameAlert.hidden = false;
+    return;
+  }
+  try {
+    const project = await request(`/api/projects/${currentProjectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    document.querySelector('#project-title').textContent = project.name;
+    renameInput.value = project.name;
+    renameAlert.hidden = true;
+  } catch (error) {
+    renameAlert.textContent = error.message;
+    renameAlert.hidden = false;
+  }
+});
 document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
 window.addEventListener('popstate', renderRoute);
 renderRoute().catch(() => {

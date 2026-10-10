@@ -31,6 +31,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   GROUP BY p.id ORDER BY p.id`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
@@ -115,6 +116,22 @@ async function handle(request, response) {
   if (projectMatch && request.method === 'GET') {
     const project = getProject.get(Number(projectMatch[1]));
     return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
+  }
+  if (projectMatch && request.method === 'PATCH') {
+    let body;
+    try {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
+    const projectId = Number(projectMatch[1]);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+    renameProject.run(name, projectId);
+    return sendJson(response, 200, { id: projectId, name });
   }
   if (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname)) {
     try {
