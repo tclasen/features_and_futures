@@ -86,11 +86,96 @@ async function renderList() {
 
 async function renderProject(id) {
   const project = await request(`/api/projects/${id}`);
+  const tasks = await request(`/api/projects/${id}/tasks`);
   content.replaceChildren();
   const back = element('button', 'back-button', 'Projects');
   back.type = 'button';
   back.addEventListener('click', () => navigate('/'));
   content.append(back, element('h1', '', project.name));
+
+  const form = element('form', 'create-form');
+  const field = element('div', 'field');
+  const label = element('label', '', 'Task title');
+  label.htmlFor = 'task-title';
+  const input = element('input');
+  input.id = 'task-title';
+  input.name = 'title';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  field.append(label, input);
+  const submit = element('button', '', 'Create task');
+  submit.type = 'submit';
+  form.append(field, submit);
+  const alert = element('p', 'alert');
+  alert.hidden = true;
+  alert.setAttribute('role', 'alert');
+
+  const filterField = element('div', 'filter-field');
+  const filterLabel = element('label', '', 'Task filter');
+  filterLabel.htmlFor = 'task-filter';
+  const filter = element('select');
+  filter.id = 'task-filter';
+  for (const value of ['All', 'Open', 'Completed']) {
+    const option = element('option', '', value);
+    option.value = value.toLowerCase();
+    filter.append(option);
+  }
+  filterField.append(filterLabel, filter);
+  const list = element('div', 'task-list');
+  function drawTasks() {
+    list.replaceChildren();
+    const shown = tasks.filter(task => filter.value === 'all' || (filter.value === 'completed') === task.completed);
+    if (!shown.length) list.append(element('p', 'empty', tasks.length ? 'No tasks match this filter.' : 'No tasks yet.'));
+    for (const task of shown) {
+      const row = element('div', 'task-row');
+      row.dataset.testid = 'task-row';
+      const checkbox = element('input', 'task-checkbox');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        try {
+          await request(`/api/projects/${id}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          task.completed = checkbox.checked;
+          drawTasks();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      row.append(checkbox, element('span', 'task-title', task.title));
+      list.append(row);
+    }
+  }
+  filter.addEventListener('change', drawTasks);
+  drawTasks();
+  content.append(form, alert, filterField, list);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    alert.hidden = true;
+    const title = input.value.trim();
+    if (!title) {
+      alert.textContent = 'Task title is required';
+      alert.hidden = false;
+      input.focus();
+      return;
+    }
+    try {
+      tasks.push(await request(`/api/projects/${id}/tasks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      }));
+      input.value = '';
+      drawTasks();
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+    }
+  });
 }
 
 function navigate(path) {
