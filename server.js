@@ -16,9 +16,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 const html = await readFile(path.join(root, 'public', 'index.html'));
@@ -37,7 +41,7 @@ const server = http.createServer((request, response) => {
   if (taskRoute && request.method === 'GET') {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (taskRoute && request.method === 'POST') {
     let body = '';
@@ -67,6 +71,21 @@ const server = http.createServer((request, response) => {
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
         const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(title, Number(taskRenameRoute[1]));
+        return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active task not found' });
+      } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
+  const priorityRoute = url.pathname.match(/^\/api\/tasks\/(\d+)\/priority$/);
+  if (priorityRoute && request.method === 'PATCH') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      try {
+        const priority = JSON.parse(body).priority;
+        if (!['Low', 'Normal', 'High'].includes(priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+        const result = db.prepare("UPDATE tasks SET priority = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)").run(priority, Number(priorityRoute[1]));
         return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active task not found' });
       } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
     });
