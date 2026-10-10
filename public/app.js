@@ -81,7 +81,91 @@ async function showProject(id) {
   back.type = 'button';
   back.textContent = 'Projects';
   back.addEventListener('click', () => { window.location.href = '/'; });
-  view.append(back);
+  const form = document.createElement('form');
+  form.className = 'task-form';
+  const label = document.createElement('label');
+  label.htmlFor = 'task-title';
+  label.textContent = 'Task title';
+  const input = document.createElement('input');
+  input.id = 'task-title';
+  input.name = 'title';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.textContent = 'Create task';
+  const alert = document.createElement('p');
+  alert.className = 'alert';
+  alert.setAttribute('role', 'alert');
+  alert.hidden = true;
+  form.append(label, input, submit, alert);
+
+  const filterLabel = document.createElement('label');
+  filterLabel.htmlFor = 'task-filter';
+  filterLabel.textContent = 'Task filter';
+  const filter = document.createElement('select');
+  filter.id = 'task-filter';
+  for (const value of ['All', 'Open', 'Completed']) {
+    const option = document.createElement('option');
+    option.value = value.toLowerCase();
+    option.textContent = value;
+    filter.append(option);
+  }
+  const list = document.createElement('section');
+  list.className = 'task-list';
+  list.setAttribute('aria-label', 'Tasks');
+  view.append(back, form, filterLabel, filter, list);
+
+  async function refresh() {
+    const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const visible = tasks.filter((task) => filter.value === 'all' || (filter.value === 'completed') === task.completed);
+    list.replaceChildren(...visible.map((task) => {
+      const row = document.createElement('article');
+      row.className = 'task-row';
+      row.dataset.testid = 'task-row';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          await refresh();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      row.append(checkbox, title);
+      return row;
+    }));
+  }
+
+  filter.addEventListener('change', () => refresh().catch(showTaskError));
+  function showTaskError(error) {
+    alert.textContent = error.message;
+    alert.hidden = false;
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    try {
+      await request(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      });
+      input.value = '';
+      await refresh();
+    } catch (error) { showTaskError(error); }
+  });
+  await refresh();
 }
 
 const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
