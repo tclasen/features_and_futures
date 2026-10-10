@@ -158,6 +158,8 @@ async function render() {
     async function loadTasks() {
       const response = await fetch(`/api/projects/${match[1]}/tasks`);
       const tasks = await response.json();
+      const destinationsResponse = await fetch('/api/active-projects');
+      const destinations = (await destinationsResponse.json()).filter(p => String(p.id) !== String(match[1]));
       list.replaceChildren();
       for (const task of tasks.filter(t =>
         (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
@@ -214,6 +216,18 @@ async function render() {
           await loadTasks();
         });
         row.append(dueForm, dueAlert);
+        const destination = element('select');
+        destination.setAttribute('aria-label', 'Destination project');
+        for (const candidate of destinations) destination.append(new Option(candidate.name, candidate.id));
+        const moveButton = element('button', 'Move task');
+        moveButton.type = 'button';
+        destination.disabled = project.archived || destinations.length === 0;
+        moveButton.disabled = project.archived || destinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          const moved = await fetch(`/api/tasks/${task.id}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_id: destination.value }) });
+          if (moved.ok) await loadTasks();
+        });
+        row.append(destination, moveButton);
         const renameForm = element('form', undefined, 'create-form');
         const renameInput = element('input');
         renameInput.type = 'text';

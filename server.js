@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
   due_date TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  sort_order INTEGER NOT NULL DEFAULT 0
 )`);
 // Upgrade databases created before project archiving was introduced.
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
@@ -31,6 +32,10 @@ if (!projectColumns.some(column => column.name === 'default_priority')) db.exec(
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!taskColumns.some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+if (!taskColumns.some(column => column.name === 'sort_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE tasks SET sort_order = id');
+}
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -78,7 +83,10 @@ const server = http.createServer(async (req, res) => {
   }
   const taskListMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskListMatch && req.method === 'GET') {
-    return send(res, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id ASC').all(Number(taskListMatch[1])).map(t => ({ ...t, completed: !!t.completed })));
+    const projectId = Number(taskListMatch[1]);
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, { error: 'Project not found' });
+    return send(res, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, id ASC').all(projectId).map(t => ({ ...t, completed: !!t.completed })));
   }
   if (taskListMatch && req.method === 'POST') {
     try {
@@ -90,8 +98,22 @@ const server = http.createServer(async (req, res) => {
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) return send(res, 400, { error: 'Task title is required' });
       const priority = ['Low', 'Normal', 'High'].includes(body.priority) ? body.priority : owner.default_priority;
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
+      const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next;
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, priority, order);
       return send(res, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
+  const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (moveMatch && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const taskId = Number(moveMatch[1]), destinationId = Number(body.destination_id);
+      const task = db.prepare('SELECT t.project_id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.archived = 0').get(taskId);
+      const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+      if (!task || !destination || task.project_id === destinationId) return send(res, 400, { error: 'Invalid move' });
+      const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next;
+      db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, order, taskId);
+      return send(res, 200, { ok: true });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   const dueDateMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
@@ -150,6 +172,9 @@ const server = http.createServer(async (req, res) => {
       const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(body.priority, Number(defaultMatch[1]));
       return result.changes ? send(res, 200, { ok: true }) : send(res, 404, { error: 'Project not found or archived' });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
+  if (url.pathname === '/api/active-projects' && req.method === 'GET') {
+    return send(res, 200, db.prepare('SELECT id, name FROM projects WHERE archived = 0 ORDER BY id ASC').all());
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && req.method === 'GET') {
