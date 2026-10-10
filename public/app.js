@@ -86,6 +86,7 @@ async function loadTasks(projectId, archived = false) {
     priority.addEventListener('change', async () => {
       try {
         await request(`/api/tasks/${encodeURIComponent(task.id)}/priority`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+        await loadTasks(projectId, archived);
       } catch (error) {
         alert.textContent = error.message;
         alert.hidden = false;
