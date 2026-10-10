@@ -5,10 +5,15 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 test('projects validate, navigate, escape HTML, and persist across restarts', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp('data/test-');
+  // Simulate a database from before archive support to verify migration.
+  const legacy = new DatabaseSync(resolve(directory, 'projects.sqlite'));
+  legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  legacy.close();
   const socket = createServer();
   socket.listen(0, '127.0.0.1');
   await once(socket, 'listening');
@@ -55,6 +60,8 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.match(html, /<h1>Workboard<\/h1>/);
     assert.match(html, /<label for="project-name">Project name<\/label>/);
     assert.match(html, /Create project/);
+    assert.match(html, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(html, /<option selected>Active<\/option><option>Archived<\/option>/);
     assert.doesNotMatch(html, /data-testid="project-row"/);
     for (const name of ['', '  \t\n ']) {
       const response = await create(name);
@@ -72,6 +79,8 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.ok(html.indexOf('First project') < html.indexOf('&lt;Second &amp; project&gt;'));
     const paths = [...html.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]);
     assert.equal(paths.length, 2);
+    assert.equal((html.match(/data-testid="project-summary">0\/0 completed/g) || []).length, 2);
+    assert.equal((html.match(/>Archive project<\/button>/g) || []).length, 2);
     const detail = await (await fetch(base + paths[0])).text();
     assert.match(detail, /<h1>First project<\/h1>/);
     assert.match(detail, /action="\/".*button type="submit">Projects/);
@@ -103,6 +112,7 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.equal((await postTask(completionPath, { completed: '1' })).status, 303);
     tasksHtml = await (await fetch(base + paths[0])).text();
     assert.match(tasksHtml, /aria-label="Complete First task" checked/);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">1\/2 completed/);
     const openHtml = await (await fetch(base + paths[0] + '?filter=Open')).text();
     assert.doesNotMatch(openHtml, /Complete First task/);
     assert.match(openHtml, /Complete &lt;Second &amp; task&gt;/);
@@ -121,8 +131,55 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     await start();
     assert.doesNotMatch(await (await fetch(base + paths[0])).text(), / checked/);
     const reloaded = await (await fetch(base)).text();
-    assert.equal(reloaded, html);
+    assert.equal(reloaded, html.replace('0/0 completed', '0/2 completed'));
     assert.match(await (await fetch(base + paths[0])).text(), /<h1>First project<\/h1>/);
+
+    await postTask(completionPath, { completed: '1' });
+    assert.equal((await postTask(paths[0] + '/archive', {})).status, 303);
+    const activeHtml = await (await fetch(base)).text();
+    assert.doesNotMatch(activeHtml, /First project/);
+    assert.match(activeHtml, /&lt;Second &amp; project&gt;/);
+    const archivedHtml = await (await fetch(base + '/?filter=Archived')).text();
+    assert.match(archivedHtml, /<option selected>Archived<\/option>/);
+    assert.match(archivedHtml, /First project/);
+    assert.match(archivedHtml, /data-testid="project-summary">1\/2 completed/);
+    assert.match(archivedHtml, />Open project<\/button>/);
+    assert.match(archivedHtml, />Restore project<\/button>/);
+    assert.doesNotMatch(archivedHtml, />Archive project<\/button>/);
+    const archivedDetail = await (await fetch(base + paths[0])).text();
+    assert.match(archivedDetail, /Archived project/);
+    assert.match(archivedDetail, /<button type="submit" disabled>Create task/);
+    assert.equal((archivedDetail.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+    assert.match(archivedDetail, /aria-label="Complete First task" checked disabled/);
+    const archivedOpen = await (await fetch(base + paths[0] + '?filter=Open')).text();
+    assert.doesNotMatch(archivedOpen, /Complete First task/);
+    assert.match(archivedOpen, /Complete &lt;Second &amp; task&gt;/);
+    const archivedCompleted = await (await fetch(base + paths[0] + '?filter=Completed')).text();
+    assert.match(archivedCompleted, /Complete First task/);
+    assert.doesNotMatch(archivedCompleted, /Complete &lt;Second &amp; task&gt;/);
+    assert.equal((await postTask(taskPath, { title: 'Blocked task' })).status, 403);
+    assert.equal((await postTask(completionPath, {})).status, 403);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + '/?filter=Archived')).text(), archivedHtml);
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedDetail);
+    assert.equal((await postTask(paths[0] + '/restore', {})).status, 303);
+    assert.doesNotMatch(await (await fetch(base + '/?filter=Archived')).text(), /data-testid="project-row"/);
+    const restoredList = await (await fetch(base)).text();
+    assert.ok(restoredList.indexOf('First project') < restoredList.indexOf('&lt;Second &amp; project&gt;'));
+    assert.match(restoredList, /data-testid="project-summary">1\/2 completed/);
+    const restoredDetail = await (await fetch(base + paths[0])).text();
+    assert.doesNotMatch(restoredDetail, /Archived project| disabled/);
+    assert.match(restoredDetail, /aria-label="Complete First task" checked/);
+    assert.equal((restoredDetail.match(/data-testid="task-row"/g) || []).length, 2);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base)).text(), restoredList);
+    assert.equal(await (await fetch(base + paths[0])).text(), restoredDetail);
+    await postTask(completionPath, {});
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
+    assert.equal((await postTask(taskPath, { title: 'After restore' })).status, 303);
+    assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/3 completed/);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
