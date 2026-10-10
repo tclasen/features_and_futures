@@ -41,7 +41,7 @@ async function handleRequest(req, res) {
     try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
     const projectId = decodeURIComponent(archiveMatch[1]);
     if (!getProject.get(projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
-    setArchived(input.archived ? 1 : 0, projectId);
+    setArchived.run(input.archived ? 1 : 0, projectId);
     return send(200, JSON.stringify({ ok: true }));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
