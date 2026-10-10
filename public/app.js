@@ -20,9 +20,11 @@ async function loadTasks() {
 function renderTasks() {
   const container = document.querySelector('#tasks');
   const filter = document.querySelector('#task-filter').value;
+  const priorityFilter = document.querySelector('#priority-filter').value;
   container.replaceChildren();
   for (const task of projectTasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'task-row';
@@ -139,6 +141,7 @@ async function renderRoute() {
   detailView.hidden = false;
   taskMessage.hidden = true;
   document.querySelector('#task-filter').value = 'All';
+  document.querySelector('#priority-filter').value = 'All';
   await loadTasks();
 }
 
@@ -200,6 +203,7 @@ document.querySelector('#task-form').addEventListener('submit', async (event) =>
   } catch { showTaskError('Unable to create task'); }
 });
 document.querySelector('#task-filter').addEventListener('change', renderTasks);
+document.querySelector('#priority-filter').addEventListener('change', renderTasks);
 document.querySelector('#project-filter').addEventListener('change', () => loadProjects().catch(showLoadError));
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 window.addEventListener('popstate', () => renderRoute().catch(showLoadError));
