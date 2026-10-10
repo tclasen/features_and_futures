@@ -32,6 +32,7 @@ const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const setTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -107,7 +108,11 @@ const server = createServer(async (req, res) => {
     const existing = getTask.get(id);
     if (!existing) return sendJson(res, 404, { error: 'Task not found' });
     if (getProject.get(existing.projectId).archived) return sendJson(res, 403, { error: 'Archived project' });
-    if (Object.hasOwn(update, 'dueDate')) {
+    if (Object.hasOwn(update, 'projectId')) {
+      const destination = getProject.get(Number(update.projectId));
+      if (!destination || destination.archived || destination.id === existing.projectId) return sendJson(res, 400, { error: 'Invalid destination project' });
+      moveTask.run(destination.id, id);
+    } else if (Object.hasOwn(update, 'dueDate')) {
       if (typeof update.dueDate !== 'string') return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
       const date = update.dueDate.trim();
       if (date && !validDate(date)) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
