@@ -7,6 +7,94 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('renaming preserves project identity and tasks, validates names, and respects archive state', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const taskRows = page => page.match(/<div class="task-row"[\s\S]*?<\/div>/g) || [];
+    const summaries = page => [...page.matchAll(/data-testid="project-summary">([^<]+)/g)].map(match => match[1]);
+
+    await post('/projects', { name: 'Original' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Completed task' });
+    await post('/projects/1/tasks', { title: 'Open task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const original = await html('/projects/1');
+    assert.match(original, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(original, /<input id="new-project-name"[^>]*type="text"[^>]*>/);
+    assert.match(original, /<button type="submit">Rename project<\/button>/);
+    assert.doesNotMatch(original, / disabled/);
+
+    for (const name of ['', ' \t\n ']) {
+      const invalid = await post('/projects/1/rename', { name, filter: 'Open' });
+      assert.equal(invalid.status, 400);
+      const page = await invalid.text();
+      assert.match(page, /role="alert">Project name is required/);
+      assert.match(page, /<h1>Original<\/h1>/);
+      assert.match(page, /<option selected>Open<\/option>/);
+      assert.equal(taskRows(page).length, 1);
+      assert.equal(await html('/projects/1'), original);
+    }
+    const renamed = await post('/projects/1/rename', { name: '  Renamed <plan> & "review"  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Completed');
+    const saved = await html('/projects/1');
+    assert.match(saved, /<h1>Renamed &lt;plan&gt; &amp; &quot;review&quot;<\/h1>/);
+    assert.deepEqual(taskRows(saved), taskRows(original));
+    const list = await html('/');
+    assert.match(list, /class="project-name">Renamed &lt;plan&gt; &amp; &quot;review&quot;<\/span>/);
+    assert.ok(list.indexOf('Renamed &lt;plan&gt;') < list.indexOf('Second'));
+    assert.deepEqual([...list.matchAll(/action="(\/projects\/\d+)"/g)].map(match => match[1]), ['/projects/1', '/projects/2']);
+    assert.deepEqual(summaries(list), ['1/2 completed', '0/0 completed']);
+    assert.match(await html('/projects/2'), /<h1>Second<\/h1>/);
+    assert.equal((await post('/projects/999/rename', { name: 'Missing' })).status, 404);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html('/projects/1'), saved);
+    assert.equal(await html('/'), list);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assert.match(archived, /<input id="new-project-name"[^>]* disabled>/);
+    assert.match(archived, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await post('/projects/1/rename', { name: 'Blocked rename' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    assert.deepEqual(summaries(await html('/?filter=Archived')), ['1/2 completed']);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), saved);
+    const restoredRename = await post('/projects/1/rename', { name: '  After restoration  ' });
+    assert.equal(restoredRename.status, 303);
+    assert.equal(restoredRename.headers.get('location'), '/projects/1');
+    const restored = await html('/projects/1');
+    assert.match(restored, /<h1>After restoration<\/h1>/);
+    assert.deepEqual(taskRows(restored), taskRows(original));
+    assert.deepEqual(summaries(await html('/')), ['1/2 completed', '0/0 completed']);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html('/projects/1'), restored);
+    const database = new DatabaseSync(databasePath);
+    try {
+      assert.deepEqual({ ...database.prepare('SELECT id, name, archived FROM projects WHERE id = 1').get() }, {
+        id: 1, name: 'After restoration', archived: 0,
+      });
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: databasePath },

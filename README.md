@@ -11,7 +11,9 @@ toggle completion, and filter by All, Open, or Completed. The database persists
 projects, tasks, completion state, and archive state between restarts. The project
 list filters Active or Archived projects and shows completion totals. Archived
 projects remain viewable with task filters, but tasks cannot be changed until
-the project is restored.
+the project is restored. Active projects can be renamed from their project page;
+renaming preserves the project URL, creation order, and all saved tasks. Archived
+projects can be renamed after restoration.
 `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
