@@ -46,7 +46,8 @@ restoring enables it again. The task API accepts
 send completion changes separately from renames.
 
 Each task has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Priorities persist independently without
+Existing tasks default to Normal when migrated from databases without priorities.
+Priorities persist independently without
 changing task titles, completion, ownership, order, or project summaries. Archived
 projects disable priority changes; restoring preserves priorities and enables edits.
 Send `{ "priority": "High" }` to the task PATCH endpoint, separately from title
@@ -59,6 +60,15 @@ completion and priority edits immediately update which rows match. Both filters
 remain usable in archived projects. Filtering never changes saved tasks or the
 project completion summary.
 
+Each project has a Default task priority selector with Low, Normal, and High
+options. Existing and new projects start at Normal. Changing it saves the default
+for subsequent task creation; existing tasks and both selected filters stay unchanged.
+Defaults are independent per project and survive renaming, archival, restoration,
+and restarts. Archived projects display their saved default with editing disabled.
+Send `{ "defaultPriority": "High" }` to `PATCH /api/projects/:id`, separately
+from rename or archive changes. The server assigns the saved default when creating
+a task. Existing project databases migrate automatically without changing tasks.
+
 Run tests:
 
 ```sh
@@ -69,6 +79,7 @@ Tests use a temporary database outside the repository and check validation,
 creation order, the health endpoint, detail routes, project isolation, completion
 validation, archive/restore protections, completion summaries, migration from
 existing databases, renaming, priorities and their read-only protections, and restart
-persistence for projects and tasks.
+persistence for projects and tasks, project default inheritance, independent defaults,
+and migration of existing saved priorities.
 Filter tests cover every completion/priority combination, creation order,
 unchanged source data, and membership after task edits.
