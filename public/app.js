@@ -168,11 +168,16 @@ async function render() {
       loadTasks();
     });
 
+    let taskLoadSequence = 0;
     async function loadTasks() {
+      const sequence = ++taskLoadSequence;
       const response = await fetch(`/api/projects/${match[1]}/tasks`);
       const tasks = await response.json();
       const destinationsResponse = await fetch('/api/active-projects');
       const destinations = (await destinationsResponse.json()).filter(p => String(p.id) !== String(match[1]));
+      // Ignore responses from earlier filter/edit requests so they cannot
+      // overwrite newer results (notably after a title changes search match).
+      if (sequence !== taskLoadSequence) return;
       list.replaceChildren();
       for (const task of tasks.filter(t =>
         (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
@@ -275,8 +280,8 @@ async function render() {
           renameInput.value = title;
           row.querySelector('span').textContent = title;
           checkbox.setAttribute('aria-label', `Complete ${title}`);
-          // Rebuild from the saved task list so an updated title immediately
-          // enters or leaves the currently applied search result set.
+          // Re-evaluate membership immediately against the applied query. A
+          // fresh fetch also keeps the rendered row in sync with persisted data.
           await loadTasks();
         });
         row.append(renameForm, renameAlert);
