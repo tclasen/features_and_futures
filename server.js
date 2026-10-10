@@ -150,7 +150,7 @@ async function handleRequest(req, res) {
     const source = getProject.get(sourceId), destination = getProject.get(destinationId);
     if (!source || !destination || !getTask.get(taskId, sourceId)) return send(404, JSON.stringify({ error: 'Not found' }));
     if (source.archived || destination.archived || sourceId === destinationId) return send(403, JSON.stringify({ error: 'Invalid destination project' }));
-    moveTask.run(destinationId, Math.max(Date.now(), nextTaskOrder.get(destinationId).value), taskId, sourceId);
+    moveTask.run(destinationId, nextTaskOrder.get(destinationId).value, taskId, sourceId);
     return send(200, JSON.stringify({ ok: true }));
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks(?:\/([^/]+))?$/);
