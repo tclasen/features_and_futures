@@ -115,7 +115,25 @@ async function renderTasks() {
         await renderTasks();
       } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
     });
-    row.append(title, checkbox, renameInput, renameButton);
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    priority.disabled = Boolean(window.currentProjectArchived);
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.addEventListener('change', async () => {
+      try {
+        await request(`/api/projects/${currentProjectId}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority: priority.value })
+        });
+      } catch (error) { taskAlert.textContent = error.message; taskAlert.hidden = false; }
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority);
     taskList.append(row);
   }
 }

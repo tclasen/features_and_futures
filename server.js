@@ -32,11 +32,16 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, data) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -97,6 +102,15 @@ async function handle(request, response) {
     } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
+    if (typeof body?.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+      const task = getTask.get(taskId);
+      if (!task || task.project_id !== projectId) return sendJson(response, 404, { error: 'Task not found' });
+      const project = getProject.get(projectId);
+      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+      updatePriority.run(body.priority, taskId, projectId);
+      return sendJson(response, 200, { id: taskId, priority: body.priority });
+    }
     if (typeof body?.title === 'string') {
       const title = body.title.trim();
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
