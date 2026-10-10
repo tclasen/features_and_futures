@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 async function availablePort() {
   const socket = createServer();
@@ -66,6 +67,9 @@ test('projects and owned tasks validate, preserve order and state, and persist t
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.totalCount, 0);
+    assert.equal(first.completedCount, 0);
     const second = await (await post({ name: '<script>not HTML</script>' })).json();
     assert.notEqual(first.id, second.id);
     const expected = [first, second];
@@ -118,16 +122,63 @@ test('projects and owned tasks validate, preserve order and state, and persist t
     }
     const isolatedTask = await (await sendTask(`${base}/api/projects/${second.id}/tasks`, 'POST', { title: 'Other project task' })).json();
     assert.deepEqual(await getTasks(second.id), [isolatedTask]);
+    const projectUrl = `${base}/api/projects/${first.id}`;
+    const setArchived = (archived) => sendTask(projectUrl, 'PATCH', { archived });
+    for (const archived of [1, 'true', null]) {
+      assert.equal((await setArchived(archived)).status, 400);
+    }
+    const archivedFirst = { ...first, archived: true, totalCount: 2, completedCount: 1 };
+    assert.deepEqual(await (await setArchived(true)).json(), archivedFirst);
+    assert.equal((await sendTask(tasksUrl, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await sendTask(taskUrl, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await getTasks(), [{ ...task, completed: true }, otherTask]);
+    assert.match(home, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(home, /<option value="active" selected>Active<\/option>/);
+    assert.match(home, /<option value="archived">Archived<\/option>/);
     await stop(child);
     child = undefined;
     child = await start(port, databasePath);
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
-    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [
+      archivedFirst, { ...second, totalCount: 1 },
+    ]);
+    assert.deepEqual(await (await fetch(projectUrl)).json(), archivedFirst);
+    assert.deepEqual(await (await setArchived(false)).json(), { ...archivedFirst, archived: false });
     assert.deepEqual(await getTasks(), [{ ...task, completed: true }, otherTask]);
     assert.deepEqual(await getTasks(second.id), [isolatedTask]);
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.equal((await sendTask(taskUrl, 'PATCH', { completed: false })).status, 200);
     assert.deepEqual(await getTasks(), [task, otherTask]);
+    assert.deepEqual(await (await fetch(projectUrl)).json(), { ...first, totalCount: 2 });
+    await stop(child);
+    child = undefined;
+    child = await start(port, databasePath);
+    assert.deepEqual(await (await fetch(projectUrl)).json(), { ...first, totalCount: 2 });
+  } finally {
+    if (child) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('existing project databases migrate without losing IDs or names', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (id, name) VALUES (7, 'Legacy project');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO tasks (project_id, title, completed) VALUES (7, 'Saved task', 1);
+  `);
+  database.close();
+  const port = await availablePort();
+  let child;
+  try {
+    child = await start(port, databasePath);
+    assert.deepEqual(await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json(), [
+      { id: 7, name: 'Legacy project', archived: false, totalCount: 1, completedCount: 1 },
+    ]);
   } finally {
     if (child) await stop(child);
     await rm(directory, { recursive: true, force: true });
