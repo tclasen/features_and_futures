@@ -52,6 +52,13 @@ completion, priority, and due date. The source page keeps its filters and applie
 range. Archived projects cannot send or receive tasks, and move controls are
 disabled when no eligible destination exists. Moves and task ordering persist
 across restarts; completion summaries reflect each project's current tasks.
+Project search intersects Active/Archived selection. Task search intersects
+completion, priority, and the applied due range. Both match substrings ignoring
+ASCII letter case and trimming surrounding query whitespace; internal whitespace
+remains significant. Task search stays applied through edits and moves. Searches
+remain usable while archived and never affect saved data or summary counts.
+Opening the list through Projects clears project search; opening a project from
+the list clears task search and its other filters.
 `GET /health` returns
 `{"status":"ok"}`.
 
