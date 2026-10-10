@@ -11,6 +11,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -58,7 +59,7 @@ const server = createServer(async (request, response) => {
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (!project) { json(response, 404, { error: 'Project not found' }); return; }
     json(response, 200, {...project, archived: Boolean(project.archived)});
     return;
@@ -69,6 +70,13 @@ const server = createServer(async (request, response) => {
     if (!project) { json(response, 404, { error: 'Project not found' }); return; }
     if (project.archived) { json(response, 403, { error: 'Archived project' }); return; }
     const body = await readBody(request);
+    if (Object.hasOwn(body || {}, 'default_priority')) {
+      const priority = body.default_priority;
+      if (!['Low', 'Normal', 'High'].includes(priority)) { json(response, 400, { error: 'Invalid default task priority' }); return; }
+      db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(priority, projectId);
+      json(response, 200, { id: projectId, default_priority: priority });
+      return;
+    }
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) { json(response, 400, { error: 'Project name is required' }); return; }
     db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
@@ -97,8 +105,9 @@ const server = createServer(async (request, response) => {
     const body = await readBody(request);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) { json(response, 400, { error: 'Task title is required' }); return; }
-    const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+    const defaultPriority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
+    const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
+    json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: defaultPriority });
     return;
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
