@@ -54,6 +54,10 @@ async function render() {
     const filter = element('select', { id: 'task-filter' });
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', { value: value.toLowerCase() }, value));
     app.append(filterLabel, filter);
+    const priorityFilterLabel = element('label', { for: 'priority-filter' }, 'Priority filter');
+    const priorityFilter = element('select', { id: 'priority-filter' });
+    for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', { value: value.toLowerCase() }, value));
+    app.append(priorityFilterLabel, priorityFilter);
     const list = element('section', { 'aria-label': 'Tasks' });
     app.append(list);
     async function loadTasks() {
@@ -61,6 +65,7 @@ async function render() {
       list.replaceChildren();
       for (const task of tasks) {
         if (filter.value === 'open' && task.completed || filter.value === 'completed' && !task.completed) continue;
+        if (priorityFilter.value !== 'all' && task.priority.toLowerCase() !== priorityFilter.value) continue;
         const row = element('div', { 'data-testid': 'task-row', class: 'task-row' });
         row.append(element('span', {}, task.title));
         const checkbox = element('input', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
@@ -77,7 +82,8 @@ async function render() {
         priority.value = task.priority || 'Normal';
         priority.disabled = Boolean(project.archived);
         priority.addEventListener('change', async () => {
-          await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+          const response = await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+          if (response.ok) await loadTasks();
         });
         row.append(priorityLabel, priority);
         const renameForm = element('form');
@@ -97,6 +103,7 @@ async function render() {
       }
     }
     filter.addEventListener('change', loadTasks);
+    priorityFilter.addEventListener('change', loadTasks);
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const title = input.value.trim();
