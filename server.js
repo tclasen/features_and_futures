@@ -12,7 +12,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 // Upgrade databases created before project archiving was introduced.
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!projectColumns.some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 
@@ -79,14 +81,15 @@ const server = http.createServer(async (req, res) => {
   if (taskListMatch && req.method === 'POST') {
     try {
       const projectId = Number(taskListMatch[1]);
-      const owner = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      const owner = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!owner) return send(res, 404, { error: 'Project not found' });
       if (owner.archived) return send(res, 403, { error: 'Archived projects cannot have tasks' });
       const body = await readBody(req);
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) return send(res, 400, { error: 'Task title is required' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return send(res, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+      const priority = ['Low', 'Normal', 'High'].includes(body.priority) ? body.priority : owner.default_priority;
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
+      return send(res, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
@@ -115,9 +118,18 @@ const server = http.createServer(async (req, res) => {
       return result.changes ? send(res, 200, { ok: true }) : send(res, 404, { error: 'Task not found' });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
+  const defaultMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultMatch && req.method === 'PATCH') {
+    try {
+      const body = await readBody(req);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return send(res, 400, { error: 'Invalid priority' });
+      const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(body.priority, Number(defaultMatch[1]));
+      return result.changes ? send(res, 200, { ok: true }) : send(res, 404, { error: 'Project not found or archived' });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && req.method === 'GET') {
-    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     return project ? send(res, 200, { ...project, archived: !!project.archived }) : send(res, 404, { error: 'Project not found' });
   }
   if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'Not found' });

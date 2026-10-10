@@ -46,6 +46,22 @@ async function render() {
     renameAlert.setAttribute('role', 'alert');
     renameAlert.hidden = true;
     app.append(renameForm, renameAlert);
+    const defaultLabel = element('label', 'Default task priority');
+    defaultLabel.htmlFor = 'default-task-priority';
+    const defaultPriority = element('select');
+    defaultPriority.id = 'default-task-priority';
+    defaultPriority.setAttribute('aria-label', 'Default task priority');
+    for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(new Option(value, value));
+    defaultPriority.value = project.default_priority;
+    defaultPriority.disabled = project.archived;
+    defaultPriority.addEventListener('change', async () => {
+      const response = await fetch(`/api/projects/${match[1]}/default-priority`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value })
+      });
+      if (!response.ok) defaultPriority.value = project.default_priority;
+      else project.default_priority = defaultPriority.value;
+    });
+    app.append(defaultLabel, defaultPriority);
     renameForm.addEventListener('submit', async event => {
       event.preventDefault();
       const name = renameInput.value.trim();
@@ -168,7 +184,7 @@ async function render() {
       event.preventDefault();
       const title = input.value.trim();
       if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; input.focus(); return; }
-      const response = await fetch(`/api/projects/${match[1]}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      const response = await fetch(`/api/projects/${match[1]}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, priority: project.default_priority }) });
       if (!response.ok) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
       alert.hidden = true;
       input.value = '';
