@@ -34,7 +34,10 @@ both boundaries are blank. Invalid ranges leave the previous applied range intac
 The applied range and both selections survive task/project edits, while reopening
 from the project list resets them. Range controls remain usable while archived.
 Each task has a Destination project selector listing other active projects in project
-creation order, and Move task appends it to the selected project's tasks. Moves preserve
+creation order. Move task appends on a first visit; returning to a previous project
+restores the task's remembered position. Positions remain reserved while tasks are away,
+so new tasks follow all established positions. Remembered order persists across restarts.
+Moves preserve
 the task's identity, completion, priority and due date, as well as the source page's
 filters. Move controls are disabled while archived or when no destination is available.
 Project rows show completed/total task counts. Existing
@@ -56,4 +59,5 @@ independence and archive/restore behavior, due-date calendar validation, clearin
 migration, filter preservation and archived controls, inclusive due ranges,
 range validation, combined membership and preservation through edits, and persistence
 across restarts. Move tests also check migrated ordering, destination options, append
-order, repeated moves, source filter preservation and archive restrictions.
+order, reverse-order returns, reserved positions, current field preservation, repeated
+moves, source filter preservation and archive restrictions.
