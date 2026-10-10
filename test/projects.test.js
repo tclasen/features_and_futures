@@ -253,4 +253,67 @@ test('projects and tasks support validation, filtering, isolation, archiving, re
   assert.equal(await taskPage(), restoredPage);
   assert.equal(await (await fetch(base)).text(), restoredList);
   assert.equal((await postTask('/projects/99999/rename', { name: 'Missing' })).status, 404);
+
+  // Renaming a completed task changes only its title, including its checkbox label.
+  assert.match(restoredPage, /<label for="new-task-title-\d+">New task title<\/label>/);
+  assert.equal((restoredPage.match(/>Rename task<\/button>/g) || []).length, 2);
+  for (const title of ['', ' \t\n ']) {
+    const response = await postTask(`${taskPaths[0]}/rename`, { title, filter: 'Completed' });
+    assert.equal(response.status, 400);
+    const html = await response.text();
+    assert.match(html, /role="alert">Task title is required/);
+    assert.equal(taskCount(html), 1);
+    assert.match(html, /aria-label="Complete First task" checked/);
+    assert.equal(await taskPage(), restoredPage);
+    assert.equal(await (await fetch(base)).text(), restoredList);
+  }
+  const taskRename = await postTask(`${taskPaths[0]}/rename`, {
+    title: '  Renamed <task> & "review"  ', filter: 'Completed',
+  });
+  assert.equal(taskRename.status, 303);
+  assert.equal(taskRename.headers.get('location'), `${paths[0]}?filter=Completed`);
+  const escapedTitle = 'Renamed &lt;task&gt; &amp; &quot;review&quot;';
+  const renamedTaskPage = await taskPage();
+  assert.equal(renamedTaskPage, restoredPage.replaceAll('First task', escapedTitle));
+  const renamedCompleted = await taskPage(paths[0], 'Completed');
+  assert.equal(taskCount(renamedCompleted), 1);
+  assert.match(renamedCompleted, /aria-label="Complete Renamed &lt;task&gt; &amp; &quot;review&quot;" checked/);
+  assert.equal(taskCount(await taskPage(paths[0], 'Open')), 1);
+  assert.equal(await (await fetch(base)).text(), restoredList);
+  assert.equal((await postTask(`${wrongProjectPath}/rename`, { title: 'Wrong owner' })).status, 404);
+  assert.equal((await postTask(`${paths[0]}/tasks/99999/rename`, { title: 'Missing task' })).status, 404);
+  assert.equal(await taskPage(), renamedTaskPage);
+  assert.doesNotMatch(await taskPage(paths[1]), /Renamed &lt;task&gt;/);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), renamedTaskPage);
+  assert.equal(await taskPage(paths[0], 'Completed'), renamedCompleted);
+  assert.equal(await (await fetch(base)).text(), restoredList);
+
+  // Open tasks retain their filter membership and order too.
+  assert.equal((await postTask(`${taskPaths[1]}/rename`, { title: '  Renamed open task  ', filter: 'Open' })).status, 303);
+  const bothRenamed = await taskPage();
+  assert.equal(bothRenamed, renamedTaskPage.replaceAll('Second &lt;task&gt; &amp; &quot;review&quot;', 'Renamed open task'));
+  assert.equal(taskCount(await taskPage(paths[0], 'Open')), 1);
+  assert.equal(await taskPage(paths[0], 'Completed'), renamedCompleted);
+  assert.equal(await (await fetch(base)).text(), restoredList);
+  assert.equal((await postTask(`${paths[0]}/archive`, {})).status, 303);
+  const archivedTaskPage = await taskPage();
+  assert.equal((archivedTaskPage.match(/<input id="new-task-title-\d+"[^>]* disabled>/g) || []).length, 2);
+  assert.equal((archivedTaskPage.match(/<button type="submit" disabled>Rename task<\/button>/g) || []).length, 2);
+  assert.equal((await postTask(`${taskPaths[0]}/rename`, { title: 'Blocked task rename' })).status, 403);
+  assert.equal(await taskPage(), archivedTaskPage);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), archivedTaskPage);
+  assert.equal((await postTask(`${paths[0]}/restore`, {})).status, 303);
+  assert.equal(await taskPage(), bothRenamed);
+  assert.equal((await postTask(`${taskPaths[0]}/rename`, { title: '  Restored task  ' })).status, 303);
+  const restoredTaskPage = await taskPage();
+  assert.equal(restoredTaskPage, bothRenamed.replaceAll(escapedTitle, 'Restored task'));
+  assert.equal(await (await fetch(base)).text(), restoredList);
+  await stop();
+  base = await start();
+  assert.equal(await taskPage(), restoredTaskPage);
+  assert.equal(await (await fetch(base)).text(), restoredList);
 });
