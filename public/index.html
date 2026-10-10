@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #192536; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 5rem auto; padding: 0 1.5rem; }
+    h1 { font-size: 2rem; margin-bottom: 1.5rem; }
+    form, .project-row { display: flex; align-items: center; gap: .75rem; }
+    form { margin-bottom: 1.5rem; }
+    input { flex: 1; min-width: 0; padding: .7rem; border: 1px solid #aab5c3; border-radius: 5px; font: inherit; }
+    button { padding: .7rem 1rem; border: 0; border-radius: 5px; background: #245bd5; color: white; font: inherit; cursor: pointer; }
+    button:hover { background: #1748b5; }
+    .project-row { justify-content: space-between; margin: .6rem 0; padding: .9rem 1rem; background: white; border: 1px solid #dce2ea; border-radius: 6px; }
+    .alert { color: #a21d2d; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+<main id="app"></main>
+<script type="module">
+const app = document.querySelector('#app');
+const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+
+async function render() {
+  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+  if (match) {
+    const projects = await (await fetch('/api/projects')).json();
+    const project = projects.find(item => item.id === Number(match[1]));
+    if (project) {
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      app.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+      return;
+    }
+  }
+  const projects = await (await fetch('/api/projects')).json();
+  app.innerHTML = `<h1>Workboard</h1>
+    <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form>
+    <div class="alert" role="alert" aria-live="polite"></div>
+    <section aria-label="Projects">${projects.map(project => `<div class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-project-id="${project.id}">Open project</button></div>`).join('')}</section>`;
+  app.querySelector('#create-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const input = app.querySelector('#project-name');
+    const name = input.value.trim();
+    const alert = app.querySelector('.alert');
+    if (!name) { alert.textContent = 'Project name is required'; return; }
+    const response = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+    if (!response.ok) { alert.textContent = 'Unable to create project'; return; }
+    render();
+  });
+  app.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
+    history.pushState({}, '', `/projects/${button.dataset.projectId}`); render();
+  }));
+}
+window.addEventListener('popstate', render);
+render();
+</script>
+</body>
+</html>
