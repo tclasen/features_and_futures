@@ -12,11 +12,22 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   )
+  ;
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
 const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -58,6 +69,53 @@ const server = createServer(async (request, response) => {
     const result = createProject.run(name);
     sendJson(response, 201, getProject.get(Number(result.lastInsertRowid)));
     return;
+  }
+
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+  if (taskRoute) {
+    const projectId = Number(taskRoute[1]);
+    if (!Number.isSafeInteger(projectId) || !getProject.get(projectId)) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    if (request.method === 'GET' && !taskRoute[2]) {
+      sendJson(response, 200, listTasks.all(projectId));
+      return;
+    }
+    if (request.method === 'POST' && !taskRoute[2]) {
+      let body;
+      try { body = await readRequestBody(request); } catch {
+        sendJson(response, 400, { error: 'Invalid request body' });
+        return;
+      }
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) {
+        sendJson(response, 400, { error: 'Task title is required' });
+        return;
+      }
+      const result = createTask.run(projectId, title);
+      sendJson(response, 201, getTask.get(Number(result.lastInsertRowid), projectId));
+      return;
+    }
+    if (request.method === 'PATCH' && taskRoute[2]) {
+      let body;
+      try { body = await readRequestBody(request); } catch {
+        sendJson(response, 400, { error: 'Invalid request body' });
+        return;
+      }
+      const taskId = Number(taskRoute[2]);
+      if (typeof body?.completed !== 'boolean') {
+        sendJson(response, 400, { error: 'Completion state is required' });
+        return;
+      }
+      if (!getTask.get(taskId, projectId)) {
+        sendJson(response, 404, { error: 'Task not found' });
+        return;
+      }
+      updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+      sendJson(response, 200, getTask.get(taskId, projectId));
+      return;
+    }
   }
 
   if (request.method === 'GET' && url.pathname.startsWith('/projects/')) {
