@@ -13,6 +13,18 @@ async function getTasks(projectId) {
   return response.json();
 }
 
+function isValidDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 function makeButton(label, onClick, className = '') {
   const button = document.createElement('button');
   button.type = 'button';
@@ -132,7 +144,7 @@ async function renderList(errorMessage = '', selectedFilter = 'active') {
   }
 }
 
-async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all') {
+async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all', dueRange = { from: '', through: '' }) {
   const projects = await getProjects();
   const project = projects.find((item) => String(item.id) === id);
   if (!project) return renderList('Project not found');
@@ -172,13 +184,13 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
   renameForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = renameInput.value.trim();
-    if (!name) return renderProjectWithAlert(id, 'Project name is required');
+    if (!name) return renderProjectWithAlert(id, 'Project name is required', filter.value, priorityFilter.value, dueRange);
     const response = await fetch(`/api/projects/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename project');
-    renderProject(id);
+    if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename project', filter.value, priorityFilter.value, dueRange);
+    renderProject(id, filter.value, priorityFilter.value, dueRange);
   });
   app.append(renameForm);
 
@@ -237,12 +249,12 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
     const title = input.value.trim();
     const currentFilter = document.querySelector('#task-filter')?.value || 'all';
     const currentPriority = document.querySelector('#priority-filter')?.value || 'all';
-    if (!title) return renderProjectWithAlert(id, 'Task title is required', currentFilter, currentPriority);
+    if (!title) return renderProjectWithAlert(id, 'Task title is required', currentFilter, currentPriority, dueRange);
     const response = await fetch(`/api/projects/${id}/tasks`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
-    if (!response.ok) return renderProjectWithAlert(id, 'Unable to create task', currentFilter, currentPriority);
-    renderProject(id, currentFilter, currentPriority);
+    if (!response.ok) return renderProjectWithAlert(id, 'Unable to create task', currentFilter, currentPriority, dueRange);
+    renderProject(id, currentFilter, currentPriority, dueRange);
   });
   app.append(form);
 
@@ -280,6 +292,46 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
   priorityFilterField.append(priorityFilterLabel, priorityFilter);
   app.append(priorityFilterField);
 
+  const dueRangeForm = document.createElement('form');
+  dueRangeForm.className = 'due-range-form';
+  const fromField = document.createElement('div');
+  fromField.className = 'field';
+  const fromLabel = document.createElement('label');
+  fromLabel.htmlFor = 'due-from';
+  fromLabel.textContent = 'Due from';
+  const fromInput = document.createElement('input');
+  fromInput.id = 'due-from';
+  fromInput.type = 'text';
+  fromInput.value = dueRange.from;
+  fromField.append(fromLabel, fromInput);
+  const throughField = document.createElement('div');
+  throughField.className = 'field';
+  const throughLabel = document.createElement('label');
+  throughLabel.htmlFor = 'due-through';
+  throughLabel.textContent = 'Due through';
+  const throughInput = document.createElement('input');
+  throughInput.id = 'due-through';
+  throughInput.type = 'text';
+  throughInput.value = dueRange.through;
+  throughField.append(throughLabel, throughInput);
+  const applyRange = document.createElement('button');
+  applyRange.type = 'submit';
+  applyRange.textContent = 'Apply due range';
+  dueRangeForm.append(fromField, throughField, applyRange);
+  dueRangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const from = fromInput.value.trim();
+    const through = throughInput.value.trim();
+    if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+      return renderProjectWithAlert(id, 'Due range must use valid YYYY-MM-DD dates', filter.value, priorityFilter.value, dueRange);
+    }
+    if (from && through && from > through) {
+      return renderProjectWithAlert(id, 'Due from must not be after Due through', filter.value, priorityFilter.value, dueRange);
+    }
+    renderProject(id, filter.value, priorityFilter.value, { from, through });
+  });
+  app.append(dueRangeForm);
+
   const taskList = document.createElement('div');
   taskList.className = 'task-list';
   app.append(taskList);
@@ -297,6 +349,9 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
       if (filter.value === 'open' && task.completed) continue;
       if (filter.value === 'completed' && !task.completed) continue;
       if (priorityFilter.value !== 'all' && task.priority.toLowerCase() !== priorityFilter.value) continue;
+      if ((dueRange.from || dueRange.through) && !task.due_date) continue;
+      if (dueRange.from && task.due_date < dueRange.from) continue;
+      if (dueRange.through && task.due_date > dueRange.through) continue;
       const row = document.createElement('section');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -342,12 +397,12 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
         const newTitle = renameInput.value.trim();
         const selected = filter.value;
         const selectedPriority = priorityFilter.value;
-        if (!newTitle) return renderProjectWithAlert(id, 'Task title is required', selected, selectedPriority);
+        if (!newTitle) return renderProjectWithAlert(id, 'Task title is required', selected, selectedPriority, dueRange);
         const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: newTitle }),
         });
-        if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename task', selected, selectedPriority);
+        if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename task', selected, selectedPriority, dueRange);
         task.title = newTitle;
         renderTasks();
       });
@@ -406,13 +461,14 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
           const updated = await response.json();
           task.due_date = updated.due_date;
           dueDateInput.value = task.due_date || '';
+          renderTasks();
         } else {
           let message = 'Unable to save due date';
           try {
             const result = await response.json();
             if (result.error === 'Due date must be a valid YYYY-MM-DD date') message = result.error;
           } catch { /* Keep the generic message for non-JSON failures. */ }
-          renderProjectWithAlert(id, message, filter.value, priorityFilter.value);
+          renderProjectWithAlert(id, message, filter.value, priorityFilter.value, dueRange);
         }
       });
       row.append(title, checkboxLabel, renameForm, priorityField, dueDateForm);
@@ -424,8 +480,8 @@ async function renderProject(id, selectedFilter = 'all', selectedPriority = 'all
   renderTasks();
 }
 
-async function renderProjectWithAlert(id, message, filter = 'all', priority = 'all') {
-  await renderProject(id, filter, priority);
+async function renderProjectWithAlert(id, message, filter = 'all', priority = 'all', dueRange = { from: '', through: '' }) {
+  await renderProject(id, filter, priority, dueRange);
   const alert = document.createElement('p');
   alert.className = 'alert';
   alert.setAttribute('role', 'alert');
