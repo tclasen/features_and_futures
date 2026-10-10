@@ -173,10 +173,23 @@ async function renderProject(id) {
     filter.append(option);
   }
   filterField.append(filterLabel, filter);
+  const priorityFilterField = element('div', 'filter-field');
+  const priorityFilterLabel = element('label', '', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', '', value);
+    option.value = value.toLowerCase();
+    priorityFilter.append(option);
+  }
+  priorityFilterField.append(priorityFilterLabel, priorityFilter);
   const list = element('div', 'task-list');
   function drawTasks() {
     list.replaceChildren();
-    const shown = tasks.filter(task => filter.value === 'all' || (filter.value === 'completed') === task.completed);
+    const shown = tasks.filter(task =>
+      (filter.value === 'all' || (filter.value === 'completed') === task.completed) &&
+      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value));
     if (!shown.length) list.append(element('p', 'empty', tasks.length ? 'No tasks match this filter.' : 'No tasks yet.'));
     for (const task of shown) {
       const row = element('div', 'task-row');
@@ -252,6 +265,7 @@ async function renderProject(id) {
             body: JSON.stringify({ priority: priority.value }),
           });
           task.priority = updated.priority;
+          drawTasks();
         } catch (error) {
           priority.value = previous;
           alert.textContent = error.message;
@@ -263,8 +277,9 @@ async function renderProject(id) {
     }
   }
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   drawTasks();
-  content.append(renameForm, form, alert, filterField, list);
+  content.append(renameForm, form, alert, filterField, priorityFilterField, list);
   renameForm.addEventListener('submit', async event => {
     event.preventDefault();
     alert.hidden = true;
