@@ -20,12 +20,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-  due_date TEXT
+  due_date TEXT,
+  position INTEGER NOT NULL DEFAULT 0
 );`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+db.exec('UPDATE tasks SET position = id WHERE position = 0');
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -90,19 +93,36 @@ const server = http.createServer(async (req, res) => {
     if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
     return send(res, 200, JSON.stringify({ ok: true }));
   }
+  const moveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveRoute && req.method === 'POST') {
+    const sourceId = Number(moveRoute[1]);
+    const taskId = Number(moveRoute[2]);
+    const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+    if (!source) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (source.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+    const body = await requestBody(req);
+    const destinationId = Number(body?.destination_id);
+    const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    if (!destination || destination.archived || destinationId === sourceId) return send(res, 400, JSON.stringify({ error: 'Invalid destination' }));
+    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!task) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+    const position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next;
+    db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ?').run(destinationId, position, taskId);
+    return send(res, 200, JSON.stringify({ ok: true }));
+  }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
     if (!taskRoute[2] && req.method === 'GET') {
-      return send(res, 200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(t => ({ ...t, completed: Boolean(t.completed) }))));
+      return send(res, 200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId).map(t => ({ ...t, completed: Boolean(t.completed) }))));
     }
     if (!taskRoute[2] && req.method === 'POST') {
       const body = await requestBody(req);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
       const project = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId);
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))').run(projectId, title, project.default_priority, projectId);
       return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority }));
     }
     if (taskRoute[2] && req.method === 'PATCH') {
