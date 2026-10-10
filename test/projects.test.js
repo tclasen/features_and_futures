@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks validate, migrate, archive, restore, and persist across restarts', async () => {
+test('projects and tasks validate, migrate, rename, archive, restore, and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const probe = net.createServer();
   probe.listen(0, '127.0.0.1');
@@ -64,6 +64,11 @@ test('projects and tasks validate, migrate, archive, restore, and persist across
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
     });
   }
+  async function rename(projectId, name) {
+    return fetch(`${base}/api/projects/${projectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    });
+  }
   async function tasks(projectId) {
     return (await fetch(`${base}/api/projects/${projectId}/tasks`)).json();
   }
@@ -111,6 +116,19 @@ test('projects and tasks validate, migrate, archive, restore, and persist across
     first.total_count = 2;
     first.completed_count = 1;
     second.total_count = 1;
+    for (const name of ['', '  \n\t ', null, 123]) {
+      const response = await rename(first.id, name);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      assert.deepEqual(await (await fetch(base + '/api/projects/' + first.id)).json(), first);
+    }
+    assert.equal((await rename(99999, 'Missing project')).status, 404);
+    const renamedResponse = await rename(first.id, '  Renamed <project> \n ');
+    assert.equal(renamedResponse.status, 200);
+    first.name = 'Renamed <project>';
+    assert.deepEqual(await renamedResponse.json(), first);
+    assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     // Simulate a Task 002 database containing existing projects and completed tasks.
     const legacy = new DatabaseSync(join(directory, 'nested', 'projects.sqlite'));
@@ -137,6 +155,10 @@ test('projects and tasks validate, migrate, archive, restore, and persist across
     assert.equal(archivedResponse.status, 200);
     first.archived = 1;
     assert.deepEqual(await archivedResponse.json(), first);
+    const blockedRename = await rename(first.id, 'Blocked rename');
+    assert.equal(blockedRename.status, 409);
+    assert.deepEqual(await blockedRename.json(), { error: 'Archived project' });
+    assert.deepEqual(await (await fetch(base + '/api/projects/' + first.id)).json(), first);
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await complete(first.id, firstTask.id, true)).status, 409);
     assert.equal((await complete(first.id, secondTask.id, false)).status, 409);
@@ -151,6 +173,10 @@ test('projects and tasks validate, migrate, archive, restore, and persist across
     assert.equal(restoredResponse.status, 200);
     first.archived = 0;
     assert.deepEqual(await restoredResponse.json(), first);
+    const restoredRename = await rename(first.id, '  Renamed after restoration  ');
+    assert.equal(restoredRename.status, 200);
+    first.name = 'Renamed after restoration';
+    assert.deepEqual(await restoredRename.json(), first);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);
@@ -163,6 +189,10 @@ test('projects and tasks validate, migrate, archive, restore, and persist across
     first.total_count = 3;
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask, restoredTask]);
     assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(base + '/api/projects')).json(), expected);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask, restoredTask]);
     for (const path of ['/', '/projects/' + first.id]) {
       const response = await fetch(base + path);
       assert.equal(response.status, 200);
