@@ -96,3 +96,13 @@ positions remain reserved; newly created tasks and first-time arrivals follow
 all established positions, including those of absent tasks. Position history
 survives project renaming, archival, restoration and server restarts. Ownership
 changes and position records are saved together in SQLite transactions.
+
+Project search and Search projects filter project names within the selected
+Active or Archived list. Task search and Search tasks intersect completion,
+priority and due-range filters. Both searches match literal substrings, ignore
+ASCII letter case, trim surrounding query whitespace and preserve internal
+whitespace. Applied queries live in the URL (`projectSearch` or `taskSearch`);
+filter changes and edits retain them and immediately update matching rows.
+Search does not alter saved data or all-task summaries. Task search remains
+available in archived projects. Opening a project from the list resets task
+search and its other filters; returning with Projects resets project search.
