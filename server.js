@@ -20,7 +20,17 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
   due_date TEXT
+);
+CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
 )`);
+// Preserve the established task ordering when introducing per-project positions.
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY id) - 1 FROM tasks`);
 for (const migration of [
   'ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))',
   "ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"
@@ -61,7 +71,7 @@ const server = http.createServer((request, response) => {
   if (taskRoute && request.method === 'GET') {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return sendJson(response, 200, db.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (taskRoute && request.method === 'POST') {
     let body = '';
@@ -76,7 +86,10 @@ const server = http.createServer((request, response) => {
         if (!project) return sendJson(response, 404, { error: 'Project not found' });
         if (project.archived) return sendJson(response, 409, { error: 'Project is archived' });
         const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
-        return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
+        const taskId = Number(result.lastInsertRowid);
+        const position = Number(db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS position FROM task_project_positions WHERE project_id = ?').get(projectId).position);
+        db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, projectId, position);
+        return sendJson(response, 201, { id: taskId, projectId, title, completed: false, priority: project.default_priority });
       } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
     });
     return;
@@ -96,8 +109,24 @@ const server = http.createServer((request, response) => {
         if (!task || !destination || task.project_id === destinationId) return sendJson(response, 404, { error: 'Active task or destination not found' });
         db.exec('BEGIN');
         try {
-          const newId = Number(db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS id FROM tasks').get().id);
-          db.prepare('UPDATE tasks SET project_id = ?, id = ? WHERE id = ?').run(destinationId, newId, taskId);
+          const priorPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+          let position;
+          if (priorPosition) {
+            position = priorPosition.position;
+          } else {
+            position = Number(db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS position FROM task_project_positions WHERE project_id = ?').get(destinationId).position);
+            db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, position);
+          }
+          if (priorPosition) {
+            const occupyingTask = db.prepare('SELECT task_id FROM task_project_positions WHERE project_id = ? AND position = ?').get(destinationId, position);
+            if (occupyingTask) {
+              // Reopenings can meet newly established slots; shift the suffix while preserving its order.
+              const offset = 1_000_000_000;
+              db.prepare('UPDATE task_project_positions SET position = position + ? WHERE project_id = ? AND position >= ?').run(offset, destinationId, position);
+              db.prepare('UPDATE task_project_positions SET position = position - ? + 1 WHERE project_id = ? AND position >= ?').run(offset, destinationId, position + offset);
+            }
+          }
+          db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?').run(destinationId, taskId);
           db.exec('COMMIT');
         } catch (error) { db.exec('ROLLBACK'); throw error; }
         return sendJson(response, 200, { ok: true });
