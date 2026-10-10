@@ -194,12 +194,15 @@ const server = createServer(async (request, response) => {
           db.exec('ROLLBACK');
           return sendJson(response, 404, { error: 'Task not found' });
         }
-        const result = db.prepare(`
-          UPDATE tasks
-          SET project_id = ?,
-              position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0)
-          WHERE id = ? AND project_id = ?
-        `).run(destinationId, destinationId, taskId, projectId);
+        // Read the destination's next position before changing ownership. This
+        // makes the append order explicit and avoids depending on whether a
+        // correlated subquery observes the row midway through the UPDATE.
+        const nextPosition = db.prepare(
+          'SELECT COALESCE(MAX(position) + 1, 0) AS position FROM tasks WHERE project_id = ?',
+        ).get(destinationId).position;
+        const result = db.prepare(
+          'UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?',
+        ).run(destinationId, nextPosition, taskId, projectId);
         if (!result.changes) {
           db.exec('ROLLBACK');
           return sendJson(response, 404, { error: 'Task not found' });
