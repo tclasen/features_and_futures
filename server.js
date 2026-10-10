@@ -12,10 +12,12 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -25,6 +27,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM projects WHERE id = ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount
+  FROM projects p ORDER BY p.id`);
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const server = http.createServer(async (req, res) => {
@@ -46,6 +52,7 @@ const server = http.createServer(async (req, res) => {
       const title = String(JSON.parse(body).title ?? '').trim();
       if (!title) { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'Task title is required' })); return; }
       const projectId = Number(taskRoute[1]);
+      if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId)?.archived) { res.writeHead(403); res.end(); return; }
       const result = createTask.run(projectId, title, projectId);
       if (!Number(result.changes)) { res.writeHead(404); res.end(); return; }
       res.writeHead(201, { 'content-type': 'application/json' });
@@ -58,7 +65,17 @@ const server = http.createServer(async (req, res) => {
     try {
       let body = ''; for await (const chunk of req) body += chunk;
       const completed = JSON.parse(body).completed ? 1 : 0;
-      const result = updateTask.run(completed, Number(completionRoute[2]), Number(completionRoute[1]));
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)').run(completed, Number(completionRoute[2]), Number(completionRoute[1]), Number(completionRoute[1]));
+      res.writeHead(result.changes ? 204 : 404); res.end();
+    } catch { res.writeHead(400); res.end(); }
+    return;
+  }
+  const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveRoute && req.method === 'PATCH') {
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const archived = JSON.parse(body).archived ? 1 : 0;
+      const result = setArchived.run(archived, Number(archiveRoute[1]));
       res.writeHead(result.changes ? 204 : 404); res.end();
     } catch { res.writeHead(400); res.end(); }
     return;
