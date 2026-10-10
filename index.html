@@ -20,6 +20,12 @@
     .project-list { display: grid; gap: 10px; margin-top: 20px; }
     .project-row { justify-content: space-between; padding: 14px 16px; border: 1px solid #dce2ec; border-radius: 8px; background: white; }
     .project-name { overflow-wrap: anywhere; }
+    .task-list { display: grid; gap: 10px; margin-top: 20px; }
+    .task-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #dce2ec; border-radius: 8px; background: white; }
+    .task-row input { flex: none; width: 18px; height: 18px; }
+    #project-view form { margin-top: 22px; }
+    .task-controls { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+    .task-controls select { padding: 9px 12px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
     .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     #project-view button { margin-bottom: 24px; }
     @media (max-width: 480px) { main { margin-top: 36px; } form { align-items: stretch; flex-direction: column; } form button { width: 100%; } }
@@ -85,7 +91,47 @@
         app.innerHTML = '<h1>Project not found</h1><button id="back" type="button">Projects</button>';
       } else {
         const project = await response.json();
-        app.innerHTML = `<section id="project-view"><button id="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1></section>`;
+        app.innerHTML = `<section id="project-view"><button id="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1>
+          <form id="create-task"><label for="task-title" class="visually-hidden">Task title</label><input id="task-title" type="text" aria-label="Task title" autocomplete="off"><button type="submit">Create task</button></form>
+          <div id="task-message" role="alert" aria-live="polite"></div>
+          <div class="task-controls"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
+          <section id="task-list" class="task-list" aria-label="Tasks"></section></section>`;
+        const list = app.querySelector('#task-list');
+        const filter = app.querySelector('#task-filter');
+        let tasks = [];
+        const renderTasks = () => {
+          const mode = filter.value;
+          const visible = tasks.filter((task) => mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed));
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
+        };
+        const loadTasks = async () => {
+          const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+          tasks = result.ok ? await result.json() : [];
+          renderTasks();
+        };
+        await loadTasks();
+        filter.addEventListener('change', renderTasks);
+        list.addEventListener('change', async (event) => {
+          const checkbox = event.target.closest('input[data-task-id]');
+          if (!checkbox) return;
+          await fetch(`/api/tasks/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+          const task = tasks.find((item) => item.id === Number(checkbox.dataset.taskId));
+          if (task) task.completed = checkbox.checked;
+          renderTasks();
+        });
+        app.querySelector('#create-task').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const input = app.querySelector('#task-title');
+          const title = input.value.trim();
+          const message = app.querySelector('#task-message');
+          if (!title) { message.textContent = 'Task title is required'; return; }
+          const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+          if (!result.ok) { message.textContent = (await result.json()).error || 'Could not create task'; return; }
+          message.textContent = '';
+          input.value = '';
+          filter.value = 'All';
+          await loadTasks();
+        });
       }
       app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
     }
