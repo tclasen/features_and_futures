@@ -9,10 +9,14 @@ const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Add the archive flag when opening databases created by earlier checkpoints.
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,6 +24,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0
 )`);
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS total_count,
+  COALESCE(SUM(t.completed), 0) AS completed_count
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  GROUP BY p.id ORDER BY p.id`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ?');
@@ -85,6 +96,20 @@ async function handle(request, response) {
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
     if (!getTask.get(taskId) || !updateTask.run(body.completed ? 1 : 0, taskId, projectId).changes) return sendJson(response, 404, { error: 'Task not found' });
     return sendJson(response, 200, { id: taskId, completed: body.completed });
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && request.method === 'PATCH') {
+    let body;
+    try {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
+    const projectId = Number(archiveMatch[1]);
+    if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Invalid archive state' });
+    if (!getProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+    setArchived.run(body.archived ? 1 : 0, projectId);
+    return sendJson(response, 200, { id: projectId, archived: body.archived });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && request.method === 'GET') {
