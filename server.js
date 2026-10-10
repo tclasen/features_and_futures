@@ -8,6 +8,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
 const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const app = await readFile(new URL('./index.html', import.meta.url));
 
 const server = http.createServer(async (req, res) => {
@@ -28,6 +33,30 @@ const server = http.createServer(async (req, res) => {
     const project = { id: randomUUID(), name };
     insertProject.run(project.id, project.name, Date.now());
     return send(201, JSON.stringify(project));
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks(?:\/([^/]+))?$/);
+  if (tasksMatch) {
+    const projectId = decodeURIComponent(tasksMatch[1]);
+    if (!getProject.get(projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (req.method === 'GET' && !tasksMatch[2]) return send(200, JSON.stringify(listTasks.all(projectId)));
+    let data = '';
+    for await (const chunk of req) data += chunk;
+    let input;
+    try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+    if (req.method === 'POST' && !tasksMatch[2]) {
+      const title = typeof input.title === 'string' ? input.title.trim() : '';
+      if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+      const task = { id: randomUUID(), projectId, title, completed: 0 };
+      insertTask.run(task.id, projectId, title, Date.now());
+      return send(201, JSON.stringify(task));
+    }
+    if (req.method === 'PATCH' && tasksMatch[2]) {
+      const taskId = decodeURIComponent(tasksMatch[2]);
+      if (!getTask.get(taskId, projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
+      updateTask.run(input.completed ? 1 : 0, taskId, projectId);
+      return send(200, JSON.stringify({ ok: true }));
+    }
+    return send(404, JSON.stringify({ error: 'Not found' }));
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
   if (req.method === 'GET' && projectMatch) {
