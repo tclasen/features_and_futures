@@ -108,8 +108,11 @@ const server = http.createServer(async (req, res) => {
     const destinationId = typeof data?.project_id === 'string' ? data.project_id : '';
     const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
     if (source.archived || !destination || destination.archived || destinationId === task.project_id) return send(res, 400, { error: 'Invalid destination project' });
-    const order = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
-    db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ?').run(destinationId, order, taskId);
+    // Keep moved tasks strictly after the destination's current ordering, even when
+    // several tasks were created during the same millisecond.
+    const order = db.prepare('SELECT MAX(created_at) AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+    const nextOrder = Math.max(Date.now(), (order ?? 0) + 1);
+    db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
     return send(res, 200, { status: 'ok' });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
