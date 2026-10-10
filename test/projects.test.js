@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, filtering, archive, rename, summaries, migration, and restart persistence', async () => {
+test('projects and tasks: validation, filtering, archive, project/task rename, summaries, migration, and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Start with the previous schema to exercise migration of existing databases.
   const previousDb = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -252,6 +252,71 @@ test('projects and tasks: validation, filtering, archive, rename, summaries, mig
     await stop();
     await start();
     assert.equal(await projectHtml(ids[0]), restoredRenamed);
+
+    // Task renames retain identity, ordering, completion, and project ownership.
+    const beforeTaskRenameList = await (await fetch(base)).text();
+    const otherProjectBefore = await projectHtml(ids[1]);
+    const renameTaskPath = `/projects/${ids[0]}/tasks/${taskId}/rename`;
+    assert.match(rows(restoredRenamed)[0], new RegExp(`<label for="new-task-title-${taskId}">New task title</label>`));
+    assert.match(rows(restoredRenamed)[0], /<button type="submit">Rename task<\/button>/);
+    for (const title of ['', '  \t\n ']) {
+      const response = await post(renameTaskPath, { title, filter: 'Completed' });
+      assert.equal(response.status, 422);
+      const invalidHtml = await response.text();
+      assert.match(invalidHtml, /role="alert">Task title is required/);
+      assert.equal(rows(invalidHtml).length, 1);
+      assert.match(rows(invalidHtml)[0], /aria-label="Complete First task"[^>]* checked/);
+      assert.equal(await projectHtml(ids[0]), restoredRenamed);
+    }
+    assert.equal((await post(`/projects/${ids[1]}/tasks/${taskId}/rename`, { title: 'Wrong owner' })).status, 404);
+    assert.equal((await post(`/projects/${ids[0]}/tasks/999999/rename`, { title: 'Missing' })).status, 404);
+    const taskRenameResponse = await post(renameTaskPath, { title: '  Renamed <task> "quoted" 🎉  ', filter: 'Completed' });
+    assert.equal(taskRenameResponse.status, 303);
+    assert.equal(taskRenameResponse.headers.get('location'), `/projects/${ids[0]}?filter=Completed`);
+    const renamedTasks = await projectHtml(ids[0]);
+    assert.equal(rows(renamedTasks).length, 2);
+    assert.match(rows(renamedTasks)[0], /<span>Renamed &lt;task&gt; &quot;quoted&quot; 🎉<\/span>/);
+    assert.match(rows(renamedTasks)[0], /aria-label="Complete Renamed &lt;task&gt; &quot;quoted&quot; 🎉"[^>]* checked/);
+    assert.match(rows(renamedTasks)[0], new RegExp(`action="/projects/${ids[0]}/tasks/${taskId}"`));
+    assert.equal(rows(renamedTasks)[1], rows(restoredRenamed)[1]);
+    assert.equal(rows(await projectHtml(ids[0], 'Completed')).length, 1);
+    assert.match(rows(await projectHtml(ids[0], 'Open'))[0], /Second &lt;task&gt;/);
+    assert.equal(await projectHtml(ids[1]), otherProjectBefore);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), renamedTasks);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+
+    await post(`/projects/${ids[0]}/archive`, {});
+    const archivedTasks = await projectHtml(ids[0]);
+    assert.ok(rows(archivedTasks).every(row => /name="title"[^>]* disabled/.test(row)));
+    assert.ok(rows(archivedTasks).every(row => /<button type="submit" disabled>Rename task<\/button>/.test(row)));
+    assert.equal((await post(renameTaskPath, { title: 'Blocked task rename' })).status, 403);
+    assert.equal(await projectHtml(ids[0]), archivedTasks);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), archivedTasks);
+    await post(`/projects/${ids[0]}/restore`, {});
+    assert.equal(await projectHtml(ids[0]), renamedTasks);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    assert.equal((await post(renameTaskPath, { title: '  Restored task  ' })).status, 303);
+    assert.match(rows(await projectHtml(ids[0]))[0], /aria-label="Complete Restored task"[^>]* checked/);
+    // Open tasks can also be renamed without leaving the Open filter.
+    const secondTaskId = /action="\/projects\/\d+\/tasks\/(\d+)"/.exec(rows(renamedTasks)[1])[1];
+    const openRenameResponse = await post(`/projects/${ids[0]}/tasks/${secondTaskId}/rename`, { title: '  Renamed open task  ', filter: 'Open' });
+    assert.equal(openRenameResponse.status, 303);
+    assert.equal(openRenameResponse.headers.get('location'), `/projects/${ids[0]}?filter=Open`);
+    const renamedOpenRows = rows(await projectHtml(ids[0], 'Open'));
+    assert.equal(renamedOpenRows.length, 1);
+    assert.match(renamedOpenRows[0], /aria-label="Complete Renamed open task"/);
+    assert.doesNotMatch(renamedOpenRows[0], / checked/);
+    const finalTasks = await projectHtml(ids[0]);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), finalTasks);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
