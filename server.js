@@ -30,6 +30,7 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -194,6 +195,30 @@ function page() {
       back.addEventListener('click', () => { location.href = '/'; });
       app.append(back, element('h1', project.name));
       if (project.archived) app.append(element('p', 'Archived project'));
+      const renameForm = document.createElement('form');
+      const renameField = element('div', undefined, 'field');
+      const renameLabel = element('label', 'New project name');
+      renameLabel.htmlFor = 'new-project-name';
+      const renameInput = document.createElement('input');
+      renameInput.id = 'new-project-name'; renameInput.type = 'text'; renameInput.value = project.name;
+      renameInput.disabled = Boolean(project.archived);
+      renameField.append(renameLabel, renameInput);
+      const renameButton = element('button', 'Rename project');
+      renameButton.type = 'submit'; renameButton.disabled = Boolean(project.archived);
+      renameForm.append(renameField, renameButton);
+      const renameError = element('p', 'Project name is required', 'error');
+      renameError.setAttribute('role', 'alert'); renameError.hidden = true;
+      app.append(renameForm, renameError);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = renameInput.value.trim();
+        if (!name) { renameError.hidden = false; renameInput.focus(); return; }
+        renameError.hidden = true;
+        const result = await fetch('/api/projects/' + encodeURIComponent(id), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (result.ok) { renameInput.value = name; app.querySelector('h1').textContent = name; }
+      });
       const form = document.createElement('form');
       const field = element('div', undefined, 'field');
       const label = element('label', 'Task title');
@@ -316,6 +341,16 @@ const server = createServer(async (request, response) => {
     return result.changes ? send(response, 200, JSON.stringify({ status: 'ok' })) : send(response, 404, JSON.stringify({ error: 'Task not found' }));
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (request.method === 'PATCH' && projectMatch) {
+    const projectId = Number(projectMatch[1]);
+    const body = await readJson(request);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) return send(response, 400, JSON.stringify({ error: 'Project name is required' }));
+    const result = renameProject.run(name, projectId);
+    return result.changes
+      ? send(response, 200, JSON.stringify({ status: 'ok', name }))
+      : send(response, 404, JSON.stringify({ error: 'Project not found or archived' }));
+  }
   if (request.method === 'GET' && projectMatch) {
     const project = getProject.get(projectMatch[1]);
     return project
