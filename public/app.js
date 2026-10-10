@@ -149,7 +149,8 @@ async function renderTasks(project) {
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
   app.append(form, defaultControls, filterControls, priorityFilterControls, dueRangeForm, list);
-  const tasks = await request(endpoint);
+  const [tasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
+  const destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== project.id);
 
   function matchesFilter(task) {
     const matchesCompletion = filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed);
@@ -285,7 +286,41 @@ async function renderTasks(project) {
         dueDateButton.disabled = Boolean(project.archived);
       }
     });
-    row.append(element('span', task.title), checkbox, renameForm, priorityControls, dueDateForm);
+    const moveForm = element('form');
+    const destinationLabel = element('label', 'Destination project');
+    destinationLabel.htmlFor = `destination-project-${task.id}`;
+    const destination = element('select');
+    destination.id = destinationLabel.htmlFor;
+    for (const candidate of destinations) {
+      const option = element('option', candidate.name);
+      option.value = String(candidate.id);
+      destination.append(option);
+    }
+    if (destinations.length) destination.value = String(destinations[0].id);
+    const moveButton = element('button', 'Move task');
+    moveButton.type = 'submit';
+    destination.disabled = moveButton.disabled = Boolean(project.archived) || !destinations.length;
+    moveForm.append(destinationLabel, destination, moveButton);
+    moveForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (project.archived || !destinations.length) return;
+      destination.disabled = moveButton.disabled = true;
+      try {
+        await request(`${endpoint}/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+        });
+        tasks.splice(tasks.indexOf(task), 1);
+        drawTasks();
+        app.querySelector('[role="alert"]')?.remove();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        destination.disabled = moveButton.disabled = Boolean(project.archived) || !destinations.length;
+      }
+    });
+    row.append(element('span', task.title), checkbox, renameForm, priorityControls, dueDateForm, moveForm);
     return row;
   }
 

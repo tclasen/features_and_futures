@@ -1,6 +1,6 @@
 # Workboard
 
-Tasks 001–010 provide project creation, renaming, archive/restore, completion summaries,
+Tasks 001–011 provide project creation, renaming, archive/restore, completion summaries,
 and project pages with task creation, completion checkboxes, and
 All/Open/Completed filters. Archived projects retain their tasks and allow
 filtering, while task creation and completion changes are disabled.
@@ -22,6 +22,12 @@ Either boundary can be blank; both blank includes undated tasks, while a bounded
 range excludes them. Invalid dates or reversed ranges show an alert and retain
 the last applied range. Filters remain usable in archived projects and reset
 when reopening a project; editing tasks re-evaluates the applied filters.
+Each task can be moved to another active project using Destination project and
+Move task. Destinations use current names in project creation order. Moving keeps
+the task identity, title, completion, priority, and due date and appends it after
+the destination's existing tasks. Source filters stay selected and both project
+summaries update. Archived projects cannot send or receive tasks; move controls
+are disabled when archived or when no eligible destination exists.
 Uses Node.js 22.22.1,
 JavaScript ES modules, built-in HTTP and SQLite, and browser HTML/CSS/JavaScript.
 No installation or external dependencies are needed.
@@ -65,3 +71,6 @@ restart persistence.
 Due-range checks cover inclusive and open boundaries, undated tasks, all three
 filters together, invalid applications, edit-driven membership changes, retained
 filters during creation and renaming, archived controls, and reopening resets.
+Move checks cover destination choices, disabled controls, error recovery, retained
+filters, append order, unchanged task data, summaries, archived rejection,
+repeated moves, subsequent creation, and restart persistence.

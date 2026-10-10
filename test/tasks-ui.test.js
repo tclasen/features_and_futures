@@ -65,7 +65,7 @@ test('project default UI preserves filters and existing tasks, inherits on creat
       tasks.push(task);
       return jsonResponse(task);
     }
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app } = await renderUI('/projects/7', fetch);
   const control = app.find((node) => node.id === 'default-task-priority');
@@ -136,7 +136,8 @@ test('task UI validation, labels, filtering, creation order, and completion chan
     fetch: async (path, options = {}) => {
       requests.push({ path, options });
       let body;
-      if (path === '/api/projects/7') body = { id: 7, name: 'Project seven' };
+      if (path === '/api/projects') body = [{ id: 7, name: 'Project seven' }];
+      else if (path === '/api/projects/7') body = { id: 7, name: 'Project seven' };
       else if (options.method === 'POST') {
         const input = JSON.parse(options.body);
         body = { id: tasks.length + 1, project_id: 7, title: input.title, completed: false, priority: 'Normal' };
@@ -173,7 +174,7 @@ test('task UI validation, labels, filtering, creation order, and completion chan
     await form.fire('submit');
     assert.equal(app.querySelector('[role="alert"]').textContent, 'Task title is required');
     assert.equal(tasks.length, 2);
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
   }
   filter.value = 'Open';
   await filter.fire('change');
@@ -243,7 +244,7 @@ test('due date UI saves, clears, reports invalid dates, and preserves filters an
       Object.assign(task, input);
       return jsonResponse(task);
     }
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app } = await renderUI('/projects/7', fetch);
   const completion = app.find((node) => node.id === 'task-filter');
@@ -362,7 +363,7 @@ test('archived project UI keeps tasks filterable and disables all task mutations
   const requests = [];
   const { app, window } = await renderUI('/projects/7', async (path, options = {}) => {
     requests.push({ path, options });
-    return jsonResponse(path === '/api/projects/7'
+    return jsonResponse(path === '/api/projects' ? [] : path === '/api/projects/7'
       ? { id: 7, name: 'Archived seven', archived: 1 }
       : [
         { id: 1, title: 'Open task', completed: false, priority: 'Normal' },
@@ -399,7 +400,7 @@ test('archived project UI keeps tasks filterable and disables all task mutations
   assert.equal(list.children[1].children[1].checked, true);
   await list.children[0].children[1].fire('change');
   await form.fire('submit');
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 3);
   for (const [value, title] of [['Open', 'Open task'], ['Completed', 'Done task']]) {
     filter.value = value;
     await filter.fire('change');
@@ -425,7 +426,7 @@ test('priority UI saves each task independently and preserves filtering, renamin
       Object.assign(task, JSON.parse(options.body));
       return jsonResponse(task);
     }
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app } = await renderUI('/projects/7', fetch);
   const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
@@ -491,7 +492,7 @@ test('rename UI validates names, updates heading, and preserves navigation and t
   const fetch = async (path, options = {}) => {
     requests.push({ path, options });
     if (options.method === 'PATCH') project.name = JSON.parse(options.body).name;
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app, window } = await renderUI('/projects/7', fetch);
   const input = app.find((node) => node.id === 'new-project-name');
@@ -507,7 +508,7 @@ test('rename UI validates names, updates heading, and preserves navigation and t
     await form.fire('submit');
     assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
     assert.equal(heading.textContent, 'Original');
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
   }
   input.value = '  Renamed project  ';
   await form.fire('submit');
@@ -542,7 +543,7 @@ test('task rename updates title and checkbox label while preserving filters, ord
       task.title = JSON.parse(options.body).title;
       return jsonResponse(task);
     }
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app } = await renderUI('/projects/7', fetch);
   const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
@@ -564,7 +565,7 @@ test('task rename updates title and checkbox label while preserving filters, ord
     await form.fire('submit');
     assert.equal(app.querySelector('[role="alert"]').textContent, 'Task title is required');
     assert.equal(list.children[0].children[0].textContent, 'Done task');
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
   }
   form.children[1].value = '  Renamed <task>  ';
   await form.fire('submit');
@@ -607,7 +608,7 @@ test('combined filters cover every completion and priority pair in active and ar
   let mutations = 0;
   const fetch = async (path, options = {}) => {
     if (options.method) mutations++;
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   for (const archived of [0, 1, 0]) {
     project.archived = archived;
@@ -664,7 +665,7 @@ test('task edits re-evaluate combined filters and rename preserves selections an
       Object.assign(task, JSON.parse(options.body));
       return jsonResponse(task);
     }
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app } = await renderUI('/projects/7', fetch);
   const completion = app.find((node) => node.id === 'task-filter');
@@ -737,7 +738,7 @@ test('due ranges intersect completion and priority, include boundaries, and work
   let mutations = 0;
   const fetch = async (path, options = {}) => {
     if (options.method) mutations++;
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   for (const archived of [0, 1, 0]) {
     project.archived = archived;
@@ -807,7 +808,7 @@ test('invalid due ranges retain applied membership even after other filters chan
     { id: 3, title: 'Undated', completed: false, priority: 'Low', due_date: '' },
   ];
   const { app } = await renderUI('/projects/7', async (path) => jsonResponse(
-    path === '/api/projects/7' ? { id: 7, name: 'Project' } : tasks));
+    path === '/api/projects' ? [] : path === '/api/projects/7' ? { id: 7, name: 'Project' } : tasks));
   const from = app.find((node) => node.id === 'due-from');
   const through = app.find((node) => node.id === 'due-through');
   const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
@@ -857,7 +858,7 @@ test('task edits re-evaluate due ranges while creation, renames, and defaults re
   ];
   const fetch = async (path, options = {}) => {
     if (options.method === 'PATCH') {
-      const target = path === '/api/projects/7' ? project : tasks.find((task) => path.endsWith(`/tasks/${task.id}`));
+      const target = path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks.find((task) => path.endsWith(`/tasks/${task.id}`));
       Object.assign(target, JSON.parse(options.body));
       return jsonResponse(target);
     }
@@ -867,7 +868,7 @@ test('task edits re-evaluate due ranges while creation, renames, and defaults re
       tasks.push(task);
       return jsonResponse(task);
     }
-    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+    return jsonResponse(path === '/api/projects' ? [project] : path === '/api/projects/7' ? project : tasks);
   };
   const { app } = await renderUI('/projects/7', fetch);
   const from = app.find((node) => node.id === 'due-from');
@@ -936,4 +937,80 @@ test('task edits re-evaluate due ranges while creation, renames, and defaults re
   assert.equal(tasks[0].due_date, '2024-03-02');
   assert.equal(tasks[1].due_date, '');
   assert.equal(tasks[1].completed, true);
+});
+
+test('move controls list eligible projects, retain filters, recover from errors, and disable when unavailable', async () => {
+  const project = { id: 7, name: 'Source', archived: 0, default_task_priority: 'Normal' };
+  const projects = [project,
+    { id: 8, name: 'Renamed destination', archived: 0 },
+    { id: 9, name: 'Archived destination', archived: 1 },
+    { id: 10, name: 'Last destination', archived: 0 }];
+  let tasks = [
+    { id: 1, project_id: 7, title: 'Move me', completed: true, priority: 'High', due_date: '2024-02-29' },
+    { id: 2, project_id: 7, title: 'Keep me', completed: true, priority: 'High', due_date: '2024-02-29' },
+    { id: 3, project_id: 7, title: 'Filtered', completed: false, priority: 'Low', due_date: '' },
+  ];
+  let failMove = true;
+  let mutation;
+  const fetch = async (path, options = {}) => {
+    if (options.method === 'PATCH') {
+      mutation = JSON.parse(options.body);
+      if (failMove) return { ok: false, json: async () => ({ error: 'Move failed' }) };
+      const task = tasks.find((candidate) => path.endsWith(`/${candidate.id}`));
+      tasks = tasks.filter((candidate) => candidate !== task);
+      return jsonResponse({ ...task, project_id: mutation.destination_project_id });
+    }
+    return jsonResponse(path === '/api/projects' ? projects : path === '/api/projects/7' ? project : tasks);
+  };
+  const { app, window } = await renderUI('/projects/7', fetch);
+  const completion = app.find((node) => node.id === 'task-filter');
+  const priority = app.find((node) => node.id === 'priority-filter');
+  const from = app.find((node) => node.id === 'due-from');
+  const through = app.find((node) => node.id === 'due-through');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  completion.value = 'Completed';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  from.value = through.value = '2024-02-29';
+  await from.parent.fire('submit');
+  const destination = app.find((node) => node.id === 'destination-project-1');
+  assert.equal(app.find((node) => node.htmlFor === destination.id).textContent, 'Destination project');
+  assert.deepEqual(destination.children.map((node) => [node.value, node.textContent]),
+    [['8', 'Renamed destination'], ['10', 'Last destination']]);
+  assert.equal(destination.disabled, false);
+  assert.equal(destination.parent.children[2].textContent, 'Move task');
+  destination.value = '10';
+  await destination.parent.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Move failed');
+  assert.equal(destination.disabled, false);
+  assert.equal(destination.parent.children[2].disabled, false);
+  assert.equal(list.children.length, 2);
+  failMove = false;
+  await destination.parent.fire('submit');
+  assert.equal(mutation.destination_project_id, 10);
+  assert.equal(window.location.pathname, '/projects/7');
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'High');
+  assert.equal(from.value, '2024-02-29');
+  assert.equal(through.value, '2024-02-29');
+  assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Keep me']);
+  assert.equal(app.querySelector('[role="alert"]'), null);
+  // Changing other filters still uses the applied due range.
+  completion.value = priority.value = 'All';
+  await completion.fire('change');
+  assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Keep me']);
+  for (const archived of [1, 0]) {
+    project.archived = archived;
+    const reloaded = await renderUI('/projects/7', fetch);
+    const select = reloaded.app.find((node) => node.id === 'destination-project-2');
+    assert.equal(select.disabled, Boolean(archived));
+    assert.equal(select.parent.children[2].disabled, Boolean(archived));
+  }
+  projects[1].archived = projects[3].archived = 1;
+  const unavailable = await renderUI('/projects/7', fetch);
+  const select = unavailable.app.find((node) => node.id === 'destination-project-2');
+  assert.equal(select.children.length, 0);
+  assert.equal(select.disabled, true);
+  assert.equal(select.parent.children[2].disabled, true);
 });
