@@ -1,4 +1,5 @@
 """Recompute pilot accounting and readiness directly from immutable observations."""
+from .retained_incidents import BOUNDED_REVISIONS
 import argparse
 import json
 import tarfile
@@ -14,7 +15,7 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument("--run",default="pilot-004");args=parser.parse_args()
     run=ROOT/"runs/instruction-effects"/args.run
     m=json.loads((run/"manifest.json").read_text())
-    partial=m.get('experiment_revision')=='research-v002'
+    partial=m.get('experiment_revision') in BOUNDED_REVISIONS
     if partial:
         from .evaluation import validate_research_manifest
         validate_research_manifest(run)
@@ -209,7 +210,7 @@ def main():
             "PM conversation usage and invoice cost are unavailable; costs are frozen OpenRouter reference estimates.",
             f"The {m['evidence_policy']['post_deployment_window_seconds']}-second surrogate observation supplies bounded stability evidence; no recovery sample without incidents.",
             ("Native-return timing separates observer/gateway drain from builder execution." if m["execution"].get("timing_revision")=="harness-return-v2" else "Attempt wall time includes a small PM observer/gateway drain overhead after harness return."),
-            ("The separate research-v002 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect." if partial else "The separate research-v001 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect.")]}
+            ("The selected frozen bound-aware research plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect." if partial else "The separate research-v001 plan requires independent repeated trajectories and two confirmation batches; this report is not evidence of an instruction effect.")]}
     if partial:
         report['limitations'].append('Unknown native expenditure has no point estimate; verified known sums are lower bounds. Analysis readiness does not establish complete token accounting.')
         report['limitations'].append('The primary v002 rejection outcome is the first observed PM assessment; first scheduled attempt acceptance remains separately labelled.')

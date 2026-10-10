@@ -1,4 +1,5 @@
 """Resume synchronized measured engineering pilots; never start a main run."""
+from .retained_incidents import BOUNDED_REVISIONS
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
@@ -213,7 +214,7 @@ def _run_builder_task(run,manifest,instructions,state,ledger,builder,task,state_
                all(u.get(k)==attrs[k] for k in ("builder_id","task_id","attempt_id"))]
         incomplete=not usage or any(u['counts'] is None for u in usage)
         provider_failure=any(u['status']!=200 and u.get('outcome')!='builder-invalid-tool-call' for u in usage)
-        if manifest.get('experiment_revision')=='research-v002' and (incomplete or provider_failure):
+        if manifest.get('experiment_revision') in BOUNDED_REVISIONS and (incomplete or provider_failure):
             from .retained_incidents import retain_for_recovery
             feedback=retain_for_recovery(run,manifest,usage,attrs,output,index,head,ledger)
             print(f'{task_id} {bid} INFRASTRUCTURE RETAINED {attempt_id}; continuing original task in fresh context',flush=True)

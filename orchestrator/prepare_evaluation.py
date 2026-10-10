@@ -1,4 +1,5 @@
 """Prepare fresh discovery or exact-replay research roots without dispatching builders."""
+from .retained_incidents import BOUNDED_REVISIONS
 import argparse
 import copy
 import json
@@ -17,14 +18,14 @@ BUILDERS_ROOT=Path('/Users/Shared/projects/features-and-futures-builders')
 def research_inputs(original, revision=None, replay=False):
     selected=original['experiment_revision'] if replay else (revision or 'research-v001')
     if revision is not None and revision!=selected:raise InfrastructureError('Exact replay cannot change the research revision')
-    if selected not in ('research-v001','research-v002'):raise InfrastructureError('Unsupported research revision')
+    if selected not in ('research-v001',*BOUNDED_REVISIONS):raise InfrastructureError('Unsupported research revision')
     plan=Path('experiments/instruction-effects/revisions')/selected/'analysis-plan.json'
     definition=json.loads((ROOT/plan).read_text())
     if definition.get('revision_id')!=selected or definition.get('status')!='frozen-before-main-dispatch':
         raise InfrastructureError('Freeze the selected research plan before preparing a run')
     research={'analysis_plan':{'path':str(plan),'sha256':digest_bytes((ROOT/plan).read_bytes())}}
     execution=copy.deepcopy(original['execution'])
-    if selected=='research-v002':
+    if selected in BOUNDED_REVISIONS:
         from .retained_incidents import POLICY, validate_policy
         from .bounded_confirmation import METHOD
         research['analysis_method']=METHOD
@@ -83,7 +84,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
     if digest_json(original)!=(source/'manifest.sha256').read_text().strip():raise InfrastructureError('Source manifest changed')
     if file_hashes(source/'definitions')!=original['provenance']['definition_hashes']:raise InfrastructureError('Source definitions changed')
     selected,research,execution=research_inputs(original,revision,confirmation or recovery)
-    if selected=='research-v002' and confirmation:
+    if selected in BOUNDED_REVISIONS and confirmation:
         if not batch:raise InfrastructureError('Prospectively register a named confirmation batch')
         from .study import evidence
         evidence(source)
@@ -162,11 +163,11 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         'starter_commit':manifest['provenance']['starter_commit'],'starter_tree':git(seed,'rev-parse','HEAD^{tree}'),
         'latest_stable_npm':latest or None,'runtime_selection':'Exact frozen source runtime' if confirmation or recovery else 'Latest stable registry versions match the source immutable image',
         'replay':verify_replay(source,run),'fresh_builder_roots':str(sibling),'native_model_calls':0})
-    if selected=='research-v002' and confirmation:register_confirmation(source,run,batch)
+    if selected in BOUNDED_REVISIONS and confirmation:register_confirmation(source,run,batch)
     return run
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--run',required=True);parser.add_argument('--source-run',required=True);parser.add_argument('--confirmation',action='store_true');parser.add_argument('--recovery',action='store_true');parser.add_argument('--experiment-revision',choices=('research-v001','research-v002'));parser.add_argument('--batch');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--run',required=True);parser.add_argument('--source-run',required=True);parser.add_argument('--confirmation',action='store_true');parser.add_argument('--recovery',action='store_true');parser.add_argument('--experiment-revision',choices=('research-v001',*BOUNDED_REVISIONS));parser.add_argument('--batch');args=parser.parse_args()
     print(prepare(args.run,args.source_run,args.confirmation,args.recovery,args.experiment_revision,args.batch))
 
 if __name__=='__main__':main()

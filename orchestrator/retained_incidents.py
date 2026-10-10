@@ -7,6 +7,7 @@ from .audit_request_coverage import reconcile
 from .evidence import digest_bytes
 from .bounded_confirmation import METHOD
 
+BOUNDED_REVISIONS = ('research-v002', 'research-v003')
 POLICY = 'retained-terminal-incidents-v1'
 ASSESSMENT = 'first-observed-pm-assessment-v1'
 
@@ -19,7 +20,7 @@ def validate_policy(manifest, plan):
         if policy is not None or method not in (None, 'complete-native-point-v1'):
             raise ValueError('Frozen v001 cannot select prospective incident or bound rules')
         return False
-    if revision != 'research-v002':
+    if revision not in BOUNDED_REVISIONS:
         raise ValueError('Unsupported research revision')
     if (policy != POLICY or method != METHOD
             or plan.get('revision_id') != revision
@@ -105,7 +106,7 @@ def retain_for_recovery(run, manifest, records, identity, output, index, head, l
     Return factual feedback for a new native invocation. Legacy manifests cannot
     enter this path. No builder implementation advice or inferred usage is added.
     """
-    if (manifest.get('experiment_revision') != 'research-v002'
+    if (manifest.get('experiment_revision') not in BOUNDED_REVISIONS
             or manifest['execution'].get('provider_incident_policy') != POLICY
             or manifest['research'].get('analysis_method') != METHOD):
         raise ValueError('Prospective recovery requires its explicit frozen manifest policy')

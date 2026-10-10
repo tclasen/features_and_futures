@@ -1,4 +1,5 @@
 """Explicit research entry point; shares the pilot's verified measured execution core."""
+from .retained_incidents import BOUNDED_REVISIONS
 import argparse
 import json
 import sys
@@ -44,7 +45,7 @@ def validate_research_manifest(run):
             raise InfrastructureError('Confirmation changes reference pricing')
         if original['paths']['builders']==manifest['paths']['builders']:
             raise InfrastructureError('Confirmation reuses builder repositories')
-        if manifest.get('experiment_revision')=='research-v002' and manifest['purpose']=='research-confirmation':
+        if manifest.get('experiment_revision') in BOUNDED_REVISIONS and manifest['purpose']=='research-confirmation':
             from .bounded_confirmation import assigned_runs
             from .evidence import digest_json
             research=manifest['research']

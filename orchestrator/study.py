@@ -1,4 +1,5 @@
 """Bind discovery inspections and confirmation decisions to actual archived run reports."""
+from .retained_incidents import BOUNDED_REVISIONS
 import argparse
 import json
 from decimal import Decimal
@@ -11,7 +12,7 @@ from .task_stream import verify_replay, stream_input_hash
 
 def evidence(run):
     manifest=json.loads((run/'manifest.json').read_text())
-    partial=manifest.get('experiment_revision')=='research-v002'
+    partial=manifest.get('experiment_revision') in BOUNDED_REVISIONS
     if partial:
         from .evaluation import validate_research_manifest
         validate_research_manifest(run)
@@ -53,7 +54,7 @@ def inspect(run):
     end=len({r['task_id'] for r in report['tasks']})
     if end<20 or end%10:raise InfrastructureError('Candidate inspection is after20tasks and every10 thereafter')
     ids=[f'task-{i:03d}' for i in range(end-9,end+1)]
-    partial=manifest.get('experiment_revision')=='research-v002'
+    partial=manifest.get('experiment_revision') in BOUNDED_REVISIONS
     contrast_function=trajectory_contrasts; classify_function=descriptive
     if partial:
         from .bounded_confirmation import trajectory_contrasts as contrast_function, descriptive as classify_function
@@ -78,13 +79,13 @@ def inspect(run):
 def confirm(discovery, run_ids, batch):
     original,_,_=evidence(discovery)
     contrast_function=trajectory_contrasts
-    if original.get('experiment_revision')=='research-v002':
+    if original.get('experiment_revision') in BOUNDED_REVISIONS:
         from .bounded_confirmation import trajectory_contrasts as contrast_function
     candidate_path=discovery/'analysis/candidate.json';candidate=json.loads(candidate_path.read_text())
     if candidate['task_stream_input_sha256']!=stream_input_hash(discovery):raise InfrastructureError('Replay candidate frozen prefix before further discovery changes')
     def load_replicates():
         replicates=[];locations=set()
-        if original.get('experiment_revision')=='research-v002':
+        if original.get('experiment_revision') in BOUNDED_REVISIONS:
             from .bounded_confirmation import assigned_runs
             registry=discovery/'analysis/confirmation-cohorts.jsonl'
             planned=assigned_runs(read_jsonl(registry),batch,digest_bytes(candidate_path.read_bytes()),original['research']['analysis_plan']['sha256'])
