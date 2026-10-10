@@ -16,6 +16,8 @@ Each task has a `Task due date` textbox and `Save due date` button. Save a real 
 
 Use `Due from`, `Due through`, and `Apply due range` for inclusive date filtering alongside completion and priority. Either boundary may be blank; undated tasks match only when both are blank. Invalid ranges leave the applied range unchanged. Edits, task creation, and renames retain all applied filters. Reopening a project resets its filters, and archived projects still allow filtering.
 
+Each task row has `Destination project` and `Move task` controls. Destinations list other active projects in project creation order. Moving appends the task to its destination while preserving its identity, title, completion, priority, and due date. The source page stays open with all filters unchanged; summaries reflect current ownership. Archived projects cannot send or receive tasks, and move controls are disabled when no eligible destination exists. Moves and task order survive restarts.
+
 Run automated HTTP, browser-script, and SQLite restart-persistence checks:
 
 ```sh

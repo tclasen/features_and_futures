@@ -43,6 +43,11 @@ test('combined filters retain selections and reevaluate completion, priority and
     const row = { hidden: false, checkbox, select, span,
       querySelector: selector => selector === '[data-saved-date]' ? row.dueDateForm.elements.due_date : selector === '[data-priority-url]' ? select : selector === 'span' ? span : checkbox
     };
+    row.remove = () => { row.removed = true; };
+    row.moveForm = Object.assign(control(''), {
+      action: `/move/${index}`, elements: { destination_id: control('2') },
+      querySelector: () => button, closest: () => row
+    });
     row.dueDateForm = Object.assign(control(''), {
       action: `/due-date/${index}`, elements: { due_date: Object.assign(control(''), { dataset: { savedDate: '' } }) },
       querySelector: () => button
@@ -63,7 +68,8 @@ test('combined filters retain selections and reevaluate completion, priority and
       querySelector: selector => selector === 'h1' ? heading : section,
       getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : ({ 'due-from': dueFrom, 'due-through': dueThrough, 'due-range': range, 'task-create': create, 'project-rename': renameProject })[id] || alert,
       querySelectorAll: selector => ({
-        '[data-testid="task-row"]': rows,
+        '[data-testid="task-row"]': rows.filter(row => !row.removed),
+        '[data-task-move]': rows.map(row => row.moveForm),
         '[data-completion-url]': rows.map(row => row.checkbox),
         '[data-priority-url]': rows.map(row => row.select),
         '[data-task-rename]': rows.map(row => row.form),
@@ -72,7 +78,7 @@ test('combined filters retain selections and reevaluate completion, priority and
     }
   };
   runInNewContext(scripts.join('\n'), context);
-  const visible = () => rows.flatMap((row, index) => row.hidden ? [] : [index]);
+  const visible = () => rows.flatMap((row, index) => row.hidden || row.removed ? [] : [index]);
   for (const completion of ['All', 'Open', 'Completed']) {
     completionFilter.value = completion;
     completionFilter.change();
@@ -185,11 +191,26 @@ test('combined filters retain selections and reevaluate completion, priority and
   assert.deepEqual(visible(), [2, 3]);
   applyRange('', '');
   assert.deepEqual(visible(), [0, 2, 3]);
+  completionFilter.value = 'Completed';
+  applyRange('9999-12-31', '9999-12-31');
+  assert.deepEqual(visible(), [3]);
+  saveOk = false;
+  await rows[3].moveForm.submit({ preventDefault() {} });
+  assert.deepEqual(visible(), [3]);
+  assert.match(alert.textContent, /Could not move task/);
+  saveOk = true;
+  await rows[3].moveForm.submit({ preventDefault() {} });
+  assert.deepEqual(visible(), []);
+  assert.equal(completionFilter.value, 'Completed');
+  assert.equal(priorityFilter.value, 'High');
+  priorityFilter.change();
+  assert.deepEqual(visible(), []); // The applied range still excludes the remaining rows.
+  applyRange('', '');
   // Read-only archived rows can still be filtered without enabling their editors.
   rows.forEach(row => { row.checkbox.disabled = true; row.select.disabled = true; });
   completionFilter.value = 'Completed';
   completionFilter.change();
-  assert.deepEqual(visible(), [0, 3]);
+  assert.deepEqual(visible(), [0]);
   assert.ok(rows.every(row => row.checkbox.disabled && row.select.disabled));
   assert.match(source, /<label for="priority-filter">Priority filter<\/label>\s*<select id="priority-filter">\s*<option>All<\/option><option>Low<\/option><option>Normal<\/option><option>High<\/option>/);
 });
