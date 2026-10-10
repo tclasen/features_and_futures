@@ -194,6 +194,27 @@ async function renderTasks(projectId, filter, list) {
       }
     });
     row.append(checkbox, label);
+    const priorityId = `task-priority-${task.id}`;
+    const priorityLabel = element('label', { for: priorityId }, 'Task priority');
+    const priority = element('select', { id: priorityId });
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = element('option', { value }, value);
+      option.selected = task.priority === value;
+      priority.append(option);
+    }
+    priority.disabled = project.archived;
+    priority.addEventListener('change', async () => {
+      const selectedPriority = priority.value;
+      try {
+        await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: selectedPriority }),
+        });
+      } catch (error) {
+        console.error(error);
+        priority.value = task.priority;
+      }
+    });
+    row.append(priorityLabel, priority);
     const renameForm = element('form', { class: 'task-rename-form' });
     const renameInputId = `new-task-title-${task.id}`;
     const renameLabel = element('label', { for: renameInputId }, 'New task title');

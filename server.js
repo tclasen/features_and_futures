@@ -22,6 +22,10 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+const taskColumns = database.prepare("PRAGMA table_info(tasks)").all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const projectColumns = database.prepare("PRAGMA table_info(projects)").all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
@@ -35,10 +39,11 @@ const getProject = database.prepare('SELECT id, name, archived FROM projects WHE
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 async function readJson(request) {
   let body = '';
@@ -113,7 +118,7 @@ const server = createServer(async (request, response) => {
     const title = typeof data?.title === 'string' ? data.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
     const result = addTask.run(projectId, title);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
@@ -128,6 +133,11 @@ const server = createServer(async (request, response) => {
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
       const result = renameTask.run(title, taskId, projectId);
       return result.changes ? sendJson(response, 200, { id: taskId, projectId, title }) : sendJson(response, 404, { error: 'Task not found' });
+    }
+    if (typeof data?.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(data.priority)) return sendJson(response, 400, { error: 'Priority must be Low, Normal, or High' });
+      const result = updateTaskPriority.run(data.priority, taskId, projectId);
+      return result.changes ? sendJson(response, 200, { id: taskId, projectId, priority: data.priority }) : sendJson(response, 404, { error: 'Task not found' });
     }
     if (typeof data?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
     const result = updateTaskCompletion.run(data.completed ? 1 : 0, taskId, projectId);
