@@ -75,6 +75,29 @@ async function renderTasks(project) {
   const path = `/api/projects/${project.id}/tasks`;
   const archived = Boolean(project.archived);
   let tasks = [];
+  const defaultPriority = element('select', '', { id: 'default-task-priority' });
+  for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(element('option', value, { value }));
+  defaultPriority.value = project.default_priority;
+  defaultPriority.disabled = archived;
+  const defaults = element('div', '', { class: 'task-filters' });
+  defaults.append(element('label', 'Default task priority', { for: defaultPriority.id }), defaultPriority);
+  app.append(defaults);
+  defaultPriority.addEventListener('change', async () => {
+    if (archived) return;
+    defaultPriority.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: defaultPriority.value }),
+      });
+      project.default_priority = saved.default_priority;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) { alertMessage(error.message); }
+    finally {
+      defaultPriority.value = project.default_priority;
+      defaultPriority.disabled = archived;
+    }
+  });
   const form = element('form');
   const input = element('input', '', { id: 'task-title', type: 'text', autocomplete: 'off' });
   const create = element('button', 'Create task', { type: 'submit' });

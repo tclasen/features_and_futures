@@ -23,14 +23,18 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
+const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 function taskJSON(task) { return { ...task, completed: Boolean(task.completed) }; }
-const projectQuery = `SELECT p.id, p.name, p.archived,
+const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
   FROM projects p`;
@@ -68,6 +72,12 @@ const server = http.createServer(async (req, res) => {
       }
       let input;
       try { input = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
+      if (input && Object.hasOwn(input, 'default_priority')) {
+        if (project.archived) return json(res, 409, { error: 'Archived project is read-only' });
+        if (!['Low', 'Normal', 'High'].includes(input.default_priority)) return json(res, 400, { error: 'Invalid default task priority' });
+        setDefaultPriority.run(input.default_priority, project.id);
+        return json(res, 200, getProject.get(project.id));
+      }
       if (input && Object.hasOwn(input, 'name')) {
         if (project.archived) return json(res, 409, { error: 'Archived project is read-only' });
         const name = typeof input.name === 'string' ? input.name.trim() : '';
@@ -99,7 +109,7 @@ const server = http.createServer(async (req, res) => {
         if (!taskId) {
           const title = typeof input?.title === 'string' ? input.title.trim() : '';
           if (!title) return json(res, 400, { error: 'Task title is required' });
-          const result = createTask.run(projectId, title);
+          const result = createTask.run(projectId, title, project.default_priority);
           return json(res, 201, taskJSON(getTask.get(projectId, result.lastInsertRowid)));
         }
         if (!getTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });

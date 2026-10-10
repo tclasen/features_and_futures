@@ -37,7 +37,7 @@ class Node {
 
 async function page(archived = false) {
   const app = new Node('main');
-  const project = { id: 1, name: 'Project', archived };
+  const project = { id: 1, name: 'Project', archived, default_priority: 'Normal' };
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
     { id: 2, title: 'Second', completed: true, priority: 'Low' },
@@ -52,7 +52,7 @@ async function page(archived = false) {
     fetch: async (path, options) => {
       let data;
       if (options) {
-        const task = tasks.find(item => item.id === Number(path.split('/').at(-1)));
+        const task = path === '/api/projects/1' ? project : tasks.find(item => item.id === Number(path.split('/').at(-1)));
         const patch = JSON.parse(options.body);
         writes.push(patch);
         Object.assign(task, patch);
@@ -125,10 +125,35 @@ test('combined filters preserve selections, order, and re-evaluate task edits', 
   assert.deepEqual(ui.writes, [{ title: 'Renamed' }, { priority: 'Low' }, { completed: true }]);
 });
 
+test('changing project default preserves both filters and all existing rows', async () => {
+  const ui = await page();
+  const defaults = ui.control('default-task-priority');
+  assert.deepEqual(defaults.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(defaults.value, 'Normal');
+  const completion = ui.control('task-filter');
+  const priority = ui.control('priority-filter');
+  completion.value = 'Completed';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const original = structuredClone(ui.tasks);
+  defaults.value = 'Low';
+  await defaults.fire('change');
+  assert.equal(defaults.value, 'Low');
+  assert.equal(defaults.disabled, false);
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'High');
+  assert.deepEqual(ui.titles(), ['Fourth']);
+  assert.deepEqual(ui.tasks, original);
+  assert.deepEqual(ui.writes, [{ default_priority: 'Low' }]);
+});
+
 test('archived projects keep both filters usable and editing controls disabled', async () => {
   const ui = await page(true);
   const completion = ui.control('task-filter');
   const priority = ui.control('priority-filter');
+  assert.equal(ui.control('default-task-priority').value, 'Normal');
+  assert.equal(ui.control('default-task-priority').disabled, true);
   assert.equal(completion.disabled, false);
   assert.equal(priority.disabled, false);
   completion.value = 'Completed';

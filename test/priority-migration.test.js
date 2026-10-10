@@ -25,6 +25,7 @@ test('existing tasks migrate to Normal without losing identity or completion', a
     let migrated = false;
     for (let attempt = 0; attempt < 100; attempt++) {
       const db = new DatabaseSync(path);
+      db.exec('PRAGMA busy_timeout = 5000');
       try {
         migrated = db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority');
         if (migrated) {
