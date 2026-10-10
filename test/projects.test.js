@@ -1216,7 +1216,7 @@ test('return positions migrate from current order and survive reverse returns, e
   }
 });
 
-test('search intersects filters, keeps ASCII and whitespace semantics, and survives edits and moves', async () => {
+test('search intersects filters, normalizes spaces and tabs, and survives edits and moves', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
   let server;
@@ -1238,7 +1238,7 @@ test('search intersects filters, keeps ASCII and whitespace semantics, and survi
     await post('/projects/3/archive');
     assert.deepEqual(names(await html(url('/', { query: '  aLPHa  ' }))), ['Alpha  Team']);
     assert.deepEqual(names(await html(url('/', { query: 'alpha', filter: 'Archived' }))), ['ALPHA single']);
-    assert.deepEqual(names(await html(url('/', { query: 'alpha team' }))), []);
+    assert.deepEqual(names(await html(url('/', { query: 'alpha team' }))), ['Alpha  Team']);
     assert.deepEqual(names(await html(url('/', { query: 'ä' }))), []);
     assert.deepEqual(names(await html(url('/', { query: ' \t ' }))), ['Alpha  Team', 'Other', 'Älpha']);
     const projectSearch = await html(url('/', { query: 'aLPHa' }));
@@ -1268,7 +1268,7 @@ test('search intersects filters, keeps ASCII and whitespace semantics, and survi
         for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
           for (const dueFrom of ['', '2024-02-29']) {
             const state = { query: ` ${query} `, filter, priorityFilter, dueFrom };
-            const fold = value => value.replace(/[A-Z]/g, c => c.toLowerCase());
+            const fold = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, c => c.toLowerCase());
             assert.deepEqual(titles(await html(url('/projects/1', state))), data.filter(task =>
               fold(task.title).includes(fold(query)) &&
               (filter === 'All' || task.completed === (filter === 'Completed')) &&
@@ -1338,6 +1338,74 @@ test('search intersects filters, keeps ASCII and whitespace semantics, and survi
     assert.match(reopened, /id="task-search" name="query" type="text" value=""/);
     assert.match(reopened, /class="navigation" method="get" action="\/"/);
     assert.match(await html('/'), /id="project-search" name="query" type="text" value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('search collapses only ASCII spaces and tabs without rewriting persisted names or titles', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data/test-'));
+  let server;
+  try {
+    const dbPath = resolve(directory, 'search-whitespace.sqlite');
+    server = await start(dbPath);
+    const post = async (path, fields = {}) => {
+      const response = await fetch(`${server.base}${path}`, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+      await response.text();
+      assert.equal(response.status, 303);
+      return response;
+    };
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const names = body => [...body.matchAll(/class="project-name">([\s\S]*?)<\/span>/g)].map(match => match[1]);
+    const titles = body => [...body.matchAll(/<span>([\s\S]*?)<\/span>/g)].map(match => match[1]);
+    const url = (path, fields) => `${path}?${new URLSearchParams(fields)}`;
+    const original = 'MiXeD \t  Team';
+    const distinct = ['MiXeD\nTeam', 'MiXeD\u00a0Team', 'MiXeD\vTeam', 'MiXeDTeam'];
+    for (const name of [original, ...distinct]) await post('/projects', { name });
+    for (const title of [original, ...distinct]) await post('/projects/1/tasks', { title });
+    for (const query of ['mixed team', ' MIXED\tTEAM ', 'mixed  \t \tteam', 'XeD\t  Te']) {
+      assert.deepEqual(names(await html(url('/', { query }))), [original]);
+      assert.deepEqual(titles(await html(url('/projects/1', { query }))), [original]);
+    }
+    assert.deepEqual(names(await html('/')), [original, ...distinct]);
+    assert.deepEqual(titles(await html('/projects/1')), [original, ...distinct]);
+    await post('/projects/1/tasks/1/completion', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2026-10-10' });
+    const state = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-10', dueThrough: '2026-10-10', query: 'mixed\t team' };
+    const location = url('/projects/1', state);
+    assert.deepEqual(titles(await html(location)), [original]);
+    const renamed = 'MIXED\t \t  Team revised';
+    const rename = await post('/projects/1/tasks/1/rename', { ...state, title: renamed });
+    assert.equal(rename.headers.get('location'), location);
+    assert.deepEqual(titles(await html(location)), [renamed]);
+    await post('/projects/1/tasks/1/move', { ...state, destinationProject: '2' });
+    assert.deepEqual(titles(await html(location)), []);
+    assert.deepEqual(titles(await html(url('/projects/2', state))), [renamed]);
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(titles(await html('/projects/1')), [renamed, ...distinct]);
+    const savedProject = await html('/');
+    const savedTasks = await html('/projects/1');
+    const savedSearch = await html(location);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await html('/'), savedProject);
+    assert.equal(await html('/projects/1'), savedTasks);
+    assert.equal(await html(location), savedSearch);
+    await post('/projects/1/archive');
+    assert.deepEqual(names(await html(url('/', { filter: 'Archived', query: 'mixed team' }))), [original]);
+    assert.deepEqual(names(await html(url('/', { filter: 'Active', query: 'mixed team' }))), []);
+    const archived = await html(location);
+    assert.deepEqual(titles(archived), [renamed]);
+    assert.match(archived, /disabled>Rename task/);
+    assert.match(archived, /<button type="submit">Search tasks<\/button>/);
+    assert.deepEqual(titles(await html(url('/projects/1', { ...state, query: '' }))), [renamed]);
+    await post('/projects/1/restore');
+    assert.equal(await html(location), savedSearch);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

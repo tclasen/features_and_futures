@@ -163,10 +163,11 @@ function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
 
-// Fold only ASCII letters: non-ASCII case and internal whitespace stay significant.
+// Normalize only for matching; saved names/titles and displayed queries stay intact.
 const asciiLower = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+const normalizeSearch = value => asciiLower(value.replace(/[ \t]+/g, ' '));
 const searchQuery = params => (params.get('query') || '').trim();
-const matchesSearch = (value, query) => asciiLower(value).includes(asciiLower(query));
+const matchesSearch = (value, query) => normalizeSearch(value).includes(normalizeSearch(query));
 const searchField = query => `<input type="hidden" name="query" value="${escapeHtml(query)}">`;
 
 function projectsLocation(filter, query) {
