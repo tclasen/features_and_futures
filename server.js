@@ -21,7 +21,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sort_order INTEGER NOT NULL DEFAULT 0
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
@@ -31,6 +32,10 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 }
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'sort_order')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  database.exec('UPDATE tasks SET sort_order = id');
 }
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
@@ -157,7 +162,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId);
       sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
       return;
     }
@@ -174,13 +179,40 @@ const server = createServer(async (request, response) => {
           return;
         }
         const defaultTaskPriority = database.prepare('SELECT default_task_priority FROM projects WHERE id = ?').get(projectId).default_task_priority;
-        const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultTaskPriority);
+        const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+        const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, defaultTaskPriority, nextOrder);
         sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: defaultTaskPriority });
       } catch {
         sendJson(response, 400, { error: 'Invalid request' });
       }
       return;
     }
+  }
+
+  const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (request.method === 'POST' && moveMatch) {
+    try {
+      const body = await readBody(request);
+      const destinationId = Number(body.destinationProjectId);
+      const taskId = Number(moveMatch[1]);
+      const task = database.prepare(`SELECT tasks.project_id AS projectId, projects.archived
+        FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?`).get(taskId);
+      const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+      if (!task || !destination) {
+        sendJson(response, 404, { error: 'Task or destination project not found' });
+        return;
+      }
+      if (task.archived || destination.archived || task.projectId === destinationId) {
+        sendJson(response, 400, { error: 'Task can only move between different active projects' });
+        return;
+      }
+      const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+      database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
+      sendJson(response, 200, { projectId: destinationId });
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
   }
 
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);

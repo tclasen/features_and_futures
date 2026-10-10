@@ -90,6 +90,7 @@ async function renderRows(list, filter) {
 
 async function showProject(id) {
   const project = await request(`/api/projects/${encodeURIComponent(id)}`);
+  const availableProjects = (await request('/api/projects')).filter((item) => !item.archived && String(item.id) !== String(id));
   content.replaceChildren();
   const back = element('button', 'Projects', 'back-button');
   back.type = 'button';
@@ -345,7 +346,37 @@ async function showProject(id) {
           saveDueDate.disabled = project.archived;
         }
       });
-      row.append(checkboxLabel, renameForm, priorityLabel, dueDateForm);
+      const destinationLabel = element('label', 'Destination project');
+      const destination = element('select');
+      destination.setAttribute('aria-label', 'Destination project');
+      for (const candidate of availableProjects) {
+        const option = element('option', candidate.name);
+        option.value = candidate.id;
+        destination.append(option);
+      }
+      destination.disabled = project.archived || availableProjects.length === 0;
+      const moveButton = element('button', 'Move task');
+      moveButton.type = 'button';
+      moveButton.disabled = destination.disabled;
+      moveButton.addEventListener('click', async () => {
+        alert.hidden = true;
+        moveButton.disabled = true;
+        try {
+          await request(`/api/tasks/${task.id}/move`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+          });
+          await renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        } finally {
+          moveButton.disabled = project.archived || availableProjects.length === 0;
+        }
+      });
+      destinationLabel.append(destination);
+      row.append(checkboxLabel, renameForm, priorityLabel, dueDateForm, destinationLabel, moveButton);
       taskList.append(row);
     }
   };
