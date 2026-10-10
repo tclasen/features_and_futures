@@ -31,6 +31,12 @@ try { database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT 
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try {
+  database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+  database.exec('UPDATE tasks SET position = id');
+} catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
@@ -40,13 +46,16 @@ const getProject = database.prepare('SELECT id, name, archived, default_task_pri
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
-const addTaskWithPriority = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const addTaskWithPriority = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, position =
+  COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1)
+  WHERE id = ? AND project_id = ?`);
 
 function send(response, status, body, contentType = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
@@ -325,6 +334,8 @@ function page() {
       const tasks = await response.json();
       const projectResponse = await fetch('/api/projects/' + encodeURIComponent(projectId));
       const project = await projectResponse.json();
+      const destinationsResponse = await fetch('/api/projects?filter=active');
+      const destinations = (await destinationsResponse.json()).filter(item => String(item.id) !== String(projectId));
       rows.replaceChildren();
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
@@ -397,7 +408,23 @@ function page() {
             if (!error) { error = element('span', 'Due date must be a valid YYYY-MM-DD date', 'error'); error.setAttribute('role', 'alert'); row.append(error); }
           }
         });
-        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate); rows.append(row);
+        const destination = document.createElement('select');
+        destination.setAttribute('aria-label', 'Destination project');
+        for (const item of destinations) {
+          const option = element('option', item.name); option.value = String(item.id); destination.append(option);
+        }
+        const moveButton = element('button', 'Move task');
+        moveButton.type = 'button';
+        destination.disabled = Boolean(project.archived) || destinations.length === 0;
+        moveButton.disabled = Boolean(project.archived) || destinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          if (!destination.value) return;
+          const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id) + '/move', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_project_id: destination.value })
+          });
+          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter, dueFrom, dueThrough);
+        });
+        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton); rows.append(row);
       }
     }
 
@@ -446,9 +473,24 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return send(response, 400, JSON.stringify({ error: 'Task title is required' }));
-      const result = addTaskWithPriority.run(projectId, title, project.default_task_priority || 'Normal');
+      const result = addTaskWithPriority.run(projectId, title, project.default_task_priority || 'Normal', projectId);
       return send(response, 201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: false }));
     }
+  }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (request.method === 'POST' && moveMatch) {
+    const sourceId = Number(moveMatch[1]);
+    const source = getProject.get(sourceId);
+    if (!source) return send(response, 404, JSON.stringify({ error: 'Project not found' }));
+    if (source.archived) return send(response, 409, JSON.stringify({ error: 'Archived project' }));
+    const body = await readJson(request);
+    const destinationId = Number(body?.destination_project_id);
+    const destination = getProject.get(destinationId);
+    if (!destination || destination.archived || destinationId === sourceId) {
+      return send(response, 400, JSON.stringify({ error: 'Active destination project is required' }));
+    }
+    const result = moveTask.run(destinationId, destinationId, moveMatch[2], sourceId);
+    return result.changes ? send(response, 200, JSON.stringify({ status: 'ok' })) : send(response, 404, JSON.stringify({ error: 'Task not found' }));
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (request.method === 'PATCH' && archiveMatch) {
