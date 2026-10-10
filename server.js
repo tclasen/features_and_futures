@@ -10,7 +10,8 @@ await mkdir(path.dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,8 +19,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  FROM projects p ORDER BY p.id`);
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -39,6 +47,19 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, JSON.stringify(listProjects.all()));
+  }
+  const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveRoute && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const archived = JSON.parse(body).archived;
+      if (typeof archived !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid archive state' }));
+      const id = Number(archiveRoute[1]);
+      if (!findProject.get(id)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+      setArchived.run(archived ? 1 : 0, id);
+      return send(res, 200, JSON.stringify(findProject.get(id)));
+    } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
@@ -63,7 +84,9 @@ const server = http.createServer(async (req, res) => {
   }
   if (taskRoute && req.method === 'POST' && !taskRoute[2]) {
     const projectId = Number(taskRoute[1]);
-    if (!findProject.get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    const project = findProject.get(projectId);
+    if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
     try {
       let body = '';
       for await (const chunk of req) {
@@ -83,6 +106,7 @@ const server = http.createServer(async (req, res) => {
       const completed = JSON.parse(body).completed;
       if (typeof completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const projectId = Number(taskRoute[1]), taskId = Number(taskRoute[2]);
+      if (findProject.get(projectId)?.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
       updateTask.run(completed ? 1 : 0, taskId, projectId);
       const task = findTask.get(taskId, projectId);
       return task ? send(res, 200, JSON.stringify(task)) : send(res, 404, JSON.stringify({ error: 'Task not found' }));
