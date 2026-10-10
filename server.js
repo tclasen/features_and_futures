@@ -17,9 +17,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 );`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const html = await readFile(path.join(here, 'index.html'));
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -73,7 +75,7 @@ const server = http.createServer(async (req, res) => {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
     if (!taskRoute[2] && req.method === 'GET') {
-      return send(res, 200, JSON.stringify(db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(t => ({ ...t, completed: Boolean(t.completed) }))));
+      return send(res, 200, JSON.stringify(db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(t => ({ ...t, completed: Boolean(t.completed) }))));
     }
     if (!taskRoute[2] && req.method === 'POST') {
       const body = await requestBody(req);
@@ -91,6 +93,12 @@ const server = http.createServer(async (req, res) => {
         const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, Number(taskRoute[2]), projectId);
         if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
         return send(res, 200, JSON.stringify({ ok: true, title }));
+      }
+      if (typeof body?.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(body.priority)) return send(res, 400, JSON.stringify({ error: 'Invalid priority' }));
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(body.priority, Number(taskRoute[2]), projectId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ ok: true }));
       }
       if (typeof body?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), Number(taskRoute[2]), projectId);
