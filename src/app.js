@@ -62,7 +62,7 @@ export function createWorkboardServer(databasePath) {
         } else {
           redirect(response, '/');
         }
-      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|tasks(?:\/[1-9]\d*\/completion)?))?$/.test(pathname)) {
+      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|tasks(?:\/[1-9]\d*\/completion)?))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const id = Number(parts[2]);
         const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -75,6 +75,18 @@ export function createWorkboardServer(databasePath) {
           const archived = parts[3] === 'archive';
           store.setArchived(id, archived);
           redirect(response, archived ? '/' : '/?filter=Archived');
+        } else if (request.method === 'POST' && parts[3] === 'rename') {
+          const form = await readForm(request);
+          const filter = taskFilter(form.get('filter'));
+          const name = form.get('name') ?? '';
+          const result = store.rename(id, name);
+          if (result.error) {
+            send(response, result.status, projectPage(project, store.tasks.list(id, filter), filter, '', '', {
+              error: result.error, submittedName: name,
+            }));
+          } else {
+            redirect(response, `/projects/${id}?filter=${filter}`);
+          }
         } else if (request.method === 'POST' && parts[3] === 'tasks') {
           if (project.archived) {
             send(response, 409, 'Archived project cannot be changed', 'text/plain; charset=utf-8');

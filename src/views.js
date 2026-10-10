@@ -54,12 +54,21 @@ export function projectsPage(projects, error = '', submittedName = '', filter = 
     </section>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', error = '', submittedTitle = '') {
+export function projectPage(project, tasks = [], filter = 'All', error = '', submittedTitle = '', renameState = {}) {
   return page(project.name, `
     <form action="/" method="get"><button class="secondary" type="submit">Projects</button></form>
     <p class="eyebrow detail-label">PROJECT</p>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form class="create-form rename-form" action="/projects/${project.id}/rename" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="form-controls">
+        <input id="new-project-name" name="name" type="text" value="${escapeHtml(renameState.submittedName ?? project.name)}"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+      ${renameState.error ? `<p class="alert" role="alert">${escapeHtml(renameState.error)}</p>` : ''}
+    </form>
     <form class="create-form" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>

@@ -31,3 +31,9 @@ tasks and completion state. Archived project pages allow viewing and filtering
 tasks but disable creation and completion changes. The server also rejects task
 changes on archived projects. Each project row shows completed/total task counts
 across all its tasks.
+
+Active project pages offer New project name and Rename project. Renaming trims
+the name and preserves the project URL, creation order, tasks, and completion
+summary. Blank names show a validation alert without changing the saved name.
+Archived projects disable renaming, and the server rejects rename requests until
+the project is restored. Renamed project names persist between restarts.

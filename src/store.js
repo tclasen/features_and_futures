@@ -33,6 +33,7 @@ export function openWorkboardStore(databasePath) {
   const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const setArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const rename = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare(`
@@ -49,6 +50,15 @@ export function openWorkboardStore(databasePath) {
       if (!trimmedName) return { error: 'Project name is required' };
       const result = insert.run(trimmedName);
       return { id: Number(result.lastInsertRowid), name: trimmedName };
+    },
+    rename(id, name) {
+      const project = find.get(id);
+      if (!project) return { error: 'Project not found', status: 404 };
+      if (project.archived) return { error: 'Archived project cannot be changed', status: 409 };
+      const trimmedName = name.trim();
+      if (!trimmedName) return { error: 'Project name is required', status: 400 };
+      rename.run(trimmedName, id);
+      return { id, name: trimmedName };
     },
     tasks: {
       list(projectId, filter = 'All') {
