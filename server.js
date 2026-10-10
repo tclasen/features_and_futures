@@ -112,11 +112,18 @@ const server = http.createServer(async (request, response) => {
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
     const input = await readJson(request);
-    if (typeof input?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completed must be a boolean' });
     const existing = database.prepare('SELECT tasks.id, projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(Number(taskMatch[1]));
+    if (!existing) return sendJson(response, 404, { error: 'Task not found' });
     if (existing?.archived) return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
-    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(Number(input.completed), Number(taskMatch[1]));
-    if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+    if (typeof input?.completed === 'boolean') {
+      database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(Number(input.completed), Number(taskMatch[1]));
+    } else if (typeof input?.title === 'string') {
+      const title = input.title.trim();
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskMatch[1]));
+    } else {
+      return sendJson(response, 400, { error: 'A task title or completion value is required' });
+    }
     const task = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
     return sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
   }

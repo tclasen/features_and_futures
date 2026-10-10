@@ -161,6 +161,33 @@ async function renderProject(id) {
           }
         });
         row.append(checkbox);
+        const renameForm = element('form');
+        const renameLabel = element('label', 'New task title', { for: `new-task-title-${task.id}` });
+        const renameInput = element('input', undefined, { id: `new-task-title-${task.id}`, name: 'title', type: 'text', value: task.title });
+        const renameButton = element('button', 'Rename task', { type: 'submit' });
+        renameInput.disabled = project.archived;
+        renameButton.disabled = project.archived;
+        renameForm.append(renameLabel, renameInput, renameButton);
+        renameForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = renameInput.value.trim();
+          if (!title) {
+            showError('Task title is required');
+            return;
+          }
+          try {
+            const update = await fetch(`/api/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title })
+            });
+            if (!update.ok) throw new Error('Could not rename task');
+            const saved = await update.json();
+            tasks = tasks.map(item => item.id === saved.id ? saved : item);
+            renderTasks();
+          } catch {
+            showError('Could not rename task');
+          }
+        });
+        row.append(renameForm);
         list.append(row);
       }
     };
