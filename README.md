@@ -13,6 +13,10 @@ restarts. Existing databases are migrated automatically. Each project supports
 task creation, completion, and All/Open/Completed filters. The project list has
 Active/Archived filters and completion summaries. Archive projects to make their
 tasks read-only; restore them from the Archived list to resume editing.
+Active project pages also support renaming. Names are trimmed and required;
+renaming preserves the project's URL, position, tasks, and completion state.
+Archived projects cannot be renamed until restored. Renamed project names
+persist in the same SQLite database.
 `GET /health` returns
 `{"status":"ok"}`.
 
