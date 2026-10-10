@@ -23,6 +23,10 @@
     .project-name { overflow-wrap: anywhere; }
     #detail { margin-top: 22px; }
     #detail h1 { margin-top: 22px; }
+    #tasks { display: grid; gap: 10px; margin-top: 16px; }
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #d9dfeb; border-radius: 8px; background: white; }
+    .task-row input { flex: 0 0 auto; width: 18px; height: 18px; }
+    .task-title { overflow-wrap: anywhere; }
     @media (max-width: 480px) { form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -41,6 +45,17 @@
     <section id="detail" hidden>
       <button id="back" type="button">Projects</button>
       <h1 id="detail-name"></h1>
+      <form id="task-form" novalidate>
+        <label for="task-title-input">Task title</label>
+        <input id="task-title-input" name="title" type="text" aria-label="Task title">
+        <button type="submit">Create task</button>
+      </form>
+      <div id="task-alert" role="alert" aria-live="polite"></div>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" aria-label="Task filter">
+        <option>All</option><option>Open</option><option>Completed</option>
+      </select>
+      <div id="tasks"></div>
     </section>
   </main>
   <script>
@@ -48,6 +63,9 @@
     const detail = document.querySelector('#detail');
     const projects = document.querySelector('#projects');
     const alertBox = document.querySelector('#alert');
+    const tasks = document.querySelector('#tasks');
+    const taskAlert = document.querySelector('#task-alert');
+    let activeProjectId = null;
 
     async function loadProjects() {
       const response = await fetch('/api/projects');
@@ -84,7 +102,39 @@
         return;
       }
       const project = await response.json();
+      activeProjectId = id;
       document.querySelector('#detail-name').textContent = project.name;
+      await loadTasks();
+    }
+
+    async function loadTasks() {
+      if (!activeProjectId) return;
+      const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`);
+      if (!response.ok) return;
+      const allTasks = await response.json();
+      const filter = document.querySelector('#task-filter').value;
+      const visible = allTasks.filter(task => filter === 'All' || (filter === 'Open' ? !task.completed : !!task.completed));
+      tasks.replaceChildren(...visible.map(task => {
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        row.dataset.testid = 'task-row';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = !!task.completed;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        checkbox.addEventListener('change', async () => {
+          const result = await fetch(`/api/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked })
+          });
+          if (result.ok) await loadTasks();
+        });
+        const title = document.createElement('span');
+        title.className = 'task-title';
+        title.textContent = task.title;
+        row.append(checkbox, title);
+        return row;
+      }));
     }
 
     function navigate(path) {
@@ -117,6 +167,25 @@
       }
     });
     document.querySelector('#back').addEventListener('click', () => navigate('/'));
+    document.querySelector('#task-filter').addEventListener('change', loadTasks);
+    document.querySelector('#task-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const input = document.querySelector('#task-title-input');
+      const title = input.value.trim();
+      if (!title) {
+        taskAlert.textContent = 'Task title is required';
+        input.focus();
+        return;
+      }
+      const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title })
+      });
+      if (response.ok) {
+        input.value = '';
+        taskAlert.textContent = '';
+        await loadTasks();
+      }
+    });
     window.addEventListener('popstate', render);
     render();
   </script>
