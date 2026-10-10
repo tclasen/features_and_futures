@@ -12,6 +12,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
 )`);
 
 const html = `<!doctype html>
@@ -21,7 +28,7 @@ const style = `:root{font-family:system-ui,sans-serif;color:#172033;background:#
 const app = `const root=document.querySelector('#app');
 async function request(url,options){const response=await fetch(url,options);if(!response.ok)throw new Error('Request failed');return response.json()}
 function esc(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function render(){const match=location.pathname.match(/^\\/projects\\/([^/]+)\\/?$/);if(match){try{const project=await request('/api/projects/'+encodeURIComponent(match[1]));root.innerHTML='<div class="top"><button class="secondary" id="back">Projects</button><h1>'+esc(project.name)+'</h1></div>';document.querySelector('#back').onclick=()=>{history.pushState({},'', '/');render()};}catch{history.replaceState({},'', '/');render()}return}
+async function render(){const match=location.pathname.match(/^\\/projects\\/([^/]+)\\/?$/);if(match){try{const project=await request('/api/projects/'+encodeURIComponent(match[1]));root.innerHTML='<div class="top"><button class="secondary" id="back">Projects</button><h1>'+esc(project.name)+'</h1></div><section class="card"><form id="create-task"><label>Task title<input name="title" aria-label="Task title" autocomplete="off"></label><button type="submit">Create task</button></form><p class="alert" role="alert" hidden></p><label style="margin-top:1rem">Task filter<select id="filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label><div class="rows" id="tasks"></div></section>';document.querySelector('#back').onclick=()=>{history.pushState({},'', '/');render()};const alert=root.querySelector('.alert'),list=root.querySelector('#tasks'),filter=root.querySelector('#filter');async function load(){const tasks=await request('/api/projects/'+encodeURIComponent(match[1])+'/tasks');const shown=tasks.filter(t=>filter.value==='All'||(filter.value==='Completed'?t.completed:!t.completed));list.innerHTML=shown.map(t=>'<div data-testid="task-row" class="row"><span>'+esc(t.title)+'</span><input type="checkbox" aria-label="Complete '+esc(t.title)+'" data-id="'+esc(t.id)+'" '+(t.completed?'checked':'')+'></div>').join('');list.querySelectorAll('input').forEach(box=>box.onchange=async()=>{await request('/api/tasks/'+encodeURIComponent(box.dataset.id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({completed:box.checked})});await load()})}filter.onchange=load;root.querySelector('#create-task').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,title=new FormData(form).get('title').trim();if(!title){alert.textContent='Task title is required';alert.hidden=false;return}await request('/api/projects/'+encodeURIComponent(match[1])+'/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})});alert.hidden=true;form.reset();await load()};await load()}catch{history.replaceState({},'', '/');render()}return}
 root.innerHTML='<h1>Workboard</h1><section class="card"><form id="create"><label>Project name<input name="name" aria-label="Project name" autocomplete="off"></label><button type="submit">Create project</button></form><p class="alert" role="alert" hidden></p><div class="rows" id="projects"></div></section>';
 const alert=root.querySelector('.alert');const list=root.querySelector('#projects');async function load(){const projects=await request('/api/projects');list.innerHTML=projects.map(p=>'<div data-testid="project-row" class="row"><span>'+esc(p.name)+'</span><button data-id="'+esc(p.id)+'">Open project</button></div>').join('');list.querySelectorAll('button').forEach(button=>button.onclick=()=>{history.pushState({},'', '/projects/'+encodeURIComponent(button.dataset.id));render()})}await load();root.querySelector('#create').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;const name=new FormData(form).get('name').trim();if(!name){alert.textContent='Project name is required';alert.hidden=false;return}await request('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});alert.hidden=true;form.reset();await load()}}
 addEventListener('popstate',render);render();`;
@@ -37,6 +44,33 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/style.css') return send(res, 200, style, 'text/css; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid').all());
+  }
+  const taskRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+  if (taskRoute && req.method === 'GET') {
+    const projectId = decodeURIComponent(taskRoute[1]);
+    if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Not found' });
+    return send(res, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+  }
+  if (taskRoute && req.method === 'POST') {
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      if (body.length > 10000) return send(res, 413, { error: 'Request too large' });
+      const projectId = decodeURIComponent(taskRoute[1]);
+      if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Not found' });
+      const title = String(JSON.parse(body).title ?? '').trim();
+      if (!title) return send(res, 400, { error: 'Task title is required' });
+      const id = randomUUID(); db.prepare('INSERT INTO tasks (id, project_id, title, created_at) VALUES (?, ?, ?, ?)').run(id, projectId, title, Date.now());
+      return send(res, 201, { id, title, completed: false });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
+  if (req.method === 'PATCH' && url.pathname.startsWith('/api/tasks/')) {
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const completed = JSON.parse(body).completed;
+      if (typeof completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, decodeURIComponent(url.pathname.slice('/api/tasks/'.length)));
+      return result.changes ? send(res, 200, { status: 'ok' }) : send(res, 404, { error: 'Not found' });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'GET' && url.pathname.startsWith('/api/projects/')) {
     const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(decodeURIComponent(url.pathname.slice('/api/projects/'.length)));
