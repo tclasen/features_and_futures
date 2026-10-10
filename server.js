@@ -16,6 +16,7 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 }
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS tasks (
@@ -96,6 +97,11 @@ function projectPage(project, filter = 'All', error = '') {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
 ${project.archived ? '<p>Archived project</p>' : ''}
 <form method="get" action="/"><button type="submit">Projects</button></form>
+<form method="post" action="/projects/${project.id}/rename" class="filter">
+<input type="hidden" name="filter" value="${filter}">
+<label for="new-project-name">New project name</label>
+<div class="create"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+</form>
 <form method="post" action="/projects/${project.id}/tasks" class="filter">
 <input type="hidden" name="filter" value="${filter}">
 <label for="task-title">Task title</label>
@@ -144,6 +150,19 @@ const server = http.createServer(async (req, res) => {
       if (!name) return sendHtml(res, 400, projectList('Project name is required'));
       addProject.run(name);
       res.writeHead(303, { Location: '/' });
+      return res.end();
+    }
+    const renameMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/rename$/);
+    if (req.method === 'POST' && renameMatch) {
+      const project = getProject.get(renameMatch[1]);
+      if (!project) return sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+      const form = await readForm(req);
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) return sendHtml(res, 403, projectPage(project, filter, 'Archived project is read-only'));
+      const name = (form.get('name') || '').trim();
+      if (!name) return sendHtml(res, 400, projectPage(project, filter, 'Project name is required'));
+      renameProject.run(name, project.id);
+      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       return res.end();
     }
     const archiveMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
