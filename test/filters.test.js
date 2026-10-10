@@ -43,6 +43,7 @@ async function page(archived = false) {
     }
   }
   const writes = [];
+  const project = { id: 1, name: 'Project', archived, defaultTaskPriority: 'Normal' };
   runInNewContext(source, {
     document: { querySelector: (selector) => get(selector.slice(1)), createElement: (tag) => new Element(tag) },
     window: { location: { pathname: '/projects/1' } },
@@ -50,13 +51,13 @@ async function page(archived = false) {
       let result;
       if (options) {
         writes.push({ path, ...options });
-        const task = tasks.find((item) => item.id === Number(path.split('/').at(-1)));
-        Object.assign(task, JSON.parse(options.body));
-        result = task;
+        const item = path === '/api/projects/1' ? project : tasks.find((item) => item.id === Number(path.split('/').at(-1)));
+        Object.assign(item, JSON.parse(options.body));
+        result = item;
       } else if (path.endsWith('/tasks')) {
         result = tasks;
       } else {
-        result = { id: 1, name: 'Project', archived };
+        result = project;
       }
       return { ok: true, json: async () => JSON.parse(JSON.stringify(result)) };
     },
@@ -124,6 +125,8 @@ test('priority, completion and rename edits retain filters and re-evaluate match
 
 test('archived projects allow both filters while all row edits remain disabled', async () => {
   const view = await page(true);
+  assert.equal(view.get('default-task-priority').disabled, true);
+  assert.equal(view.get('default-task-priority').value, 'Normal');
   assert.equal(view.get('task-filter').disabled, false);
   assert.equal(view.get('priority-filter').disabled, false);
   await view.filter('task-filter', 'completed');
@@ -134,6 +137,39 @@ test('archived projects allow both filters while all row edits remain disabled',
     assert.equal(control.disabled, true);
   }
   assert.equal(view.writes.length, 0);
+});
+
+test('changing project defaults preserves selected filters and existing rows', async () => {
+  const view = await page();
+  const select = view.get('default-task-priority');
+  assert.equal(select.value, 'Normal');
+  assert.equal(select.disabled, false);
+  await view.filter('task-filter', 'completed');
+  await view.filter('priority-filter', 'Low');
+  const before = JSON.stringify(view.tasks);
+  const row = view.rows()[0];
+  for (const priority of ['High', 'Low', 'Normal']) {
+    select.value = priority;
+    await select.fire('change');
+    assert.equal(select.value, priority);
+    assert.equal(select.disabled, false);
+    assert.equal(view.get('task-filter').value, 'completed');
+    assert.equal(view.get('priority-filter').value, 'Low');
+    assert.deepEqual(view.titles(), ['Low true']);
+    assert.equal(view.rows()[0], row);
+    assert.equal(JSON.stringify(view.tasks), before);
+    assert.deepEqual(JSON.parse(view.writes.at(-1).body), { defaultTaskPriority: priority });
+  }
+});
+
+test('default priority has an accessible label and exact ordered options', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+  const select = html.match(/<select id="default-task-priority">([\s\S]*?)<\/select>/)[1];
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"( selected)?>([^<]+)<\/option>/g)]
+    .map((match) => [match[1], Boolean(match[2]), match[3]]), [
+    ['Low', false, 'Low'], ['Normal', true, 'Normal'], ['High', false, 'High'],
+  ]);
 });
 
 test('priority filter has an accessible label and exact ordered options', async () => {

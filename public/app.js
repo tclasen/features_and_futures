@@ -11,6 +11,8 @@ const taskForm = document.querySelector('#create-task');
 const titleInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultPrioritySelect = document.querySelector('#default-task-priority');
+let defaultTaskPriority = 'Normal';
 const tasksElement = document.querySelector('#tasks');
 const projectId = window.location.pathname.match(/^\/projects\/([1-9]\d*)$/)?.[1];
 let tasks = [];
@@ -134,6 +136,25 @@ renameForm.addEventListener('submit', async (event) => {
     showError(error.message);
   } finally {
     button.disabled = archived;
+  }
+});
+
+defaultPrioritySelect.addEventListener('change', async () => {
+  if (archived) return;
+  alert.hidden = true;
+  defaultPrioritySelect.disabled = true;
+  try {
+    const project = await request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultTaskPriority: defaultPrioritySelect.value }),
+    });
+    defaultTaskPriority = project.defaultTaskPriority;
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    defaultPrioritySelect.value = defaultTaskPriority;
+    defaultPrioritySelect.disabled = archived;
   }
 });
 
@@ -283,6 +304,9 @@ async function loadPage() {
   if (projectId) {
     const project = await request(`/api/projects/${projectId}`);
     archived = project.archived;
+    defaultTaskPriority = project.defaultTaskPriority;
+    defaultPrioritySelect.value = defaultTaskPriority;
+    defaultPrioritySelect.disabled = archived;
     document.querySelector('#archived-notice').hidden = !archived;
     taskForm.querySelector('button').disabled = archived;
     newNameInput.disabled = archived;

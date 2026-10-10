@@ -68,6 +68,7 @@ test('projects and owned tasks validate, preserve order and state, and persist t
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
     assert.equal(first.archived, false);
+    assert.equal(first.defaultTaskPriority, 'Normal');
     assert.equal(first.totalCount, 0);
     assert.equal(first.completedCount, 0);
     const second = await (await post({ name: '<script>not HTML</script>' })).json();
@@ -355,6 +356,92 @@ test('priorities default to Normal and preserve task data through edits, archive
   }
 });
 
+test('project defaults affect only future owned tasks and survive rename, archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  const base = `http://127.0.0.1:${port}`;
+  let child;
+  const send = (path, method, body) => fetch(`${base}${path}`, {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const get = async (path) => (await fetch(`${base}${path}`)).json();
+  try {
+    child = await start(port, databasePath);
+    const first = await (await send('/api/projects', 'POST', { name: 'First' })).json();
+    const other = await (await send('/api/projects', 'POST', { name: 'Other' })).json();
+    assert.equal(first.defaultTaskPriority, 'Normal');
+    assert.equal(other.defaultTaskPriority, 'Normal');
+    const path = `/api/projects/${first.id}`;
+    const otherPath = `/api/projects/${other.id}`;
+    const tasksPath = `${path}/tasks`;
+    const normal = await (await send(tasksPath, 'POST', { title: 'Normal task' })).json();
+    await send(`${tasksPath}/${normal.id}`, 'PATCH', { completed: true });
+    const savedTasks = [{ ...normal, completed: true }];
+    let expected = { ...first, totalCount: 1, completedCount: 1 };
+    for (const priority of ['High', 'Low', 'Normal', 'High']) {
+      expected.defaultTaskPriority = priority;
+      const response = await send(path, 'PATCH', { defaultTaskPriority: priority });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), expected);
+      assert.deepEqual(await get(tasksPath), savedTasks);
+      assert.deepEqual(await get(otherPath), other);
+    }
+    for (const priority of ['', 'high', ' High ', null, 1]) {
+      assert.equal((await send(path, 'PATCH', { defaultTaskPriority: priority })).status, 400);
+      assert.deepEqual(await get(path), expected);
+    }
+    for (const body of [
+      { defaultTaskPriority: 'Low', name: 'Mixed' },
+      { defaultTaskPriority: 'Low', archived: true },
+    ]) {
+      assert.equal((await send(path, 'PATCH', body)).status, 400);
+      assert.deepEqual(await get(path), expected);
+    }
+    const high = await (await send(tasksPath, 'POST', { title: 'High task' })).json();
+    assert.equal(high.priority, 'High');
+    savedTasks.push(high);
+    expected.totalCount = 2;
+    await send(path, 'PATCH', { defaultTaskPriority: 'Low' });
+    expected.defaultTaskPriority = 'Low';
+    assert.deepEqual(await get(tasksPath), savedTasks);
+    const isolated = await (await send(`${otherPath}/tasks`, 'POST', { title: 'Isolated' })).json();
+    assert.equal(isolated.priority, 'Normal');
+    await send(otherPath, 'PATCH', { defaultTaskPriority: 'High' });
+    assert.deepEqual(await get(path), expected);
+    await send(path, 'PATCH', { name: 'Renamed' });
+    expected.name = 'Renamed';
+    await send(path, 'PATCH', { archived: true });
+    expected.archived = true;
+    assert.equal((await send(path, 'PATCH', { defaultTaskPriority: 'High' })).status, 409);
+    await stop(child);
+    child = undefined;
+    child = await start(port, databasePath);
+    assert.deepEqual(await get(path), expected);
+    assert.deepEqual(await get(tasksPath), savedTasks);
+    assert.equal((await get(otherPath)).defaultTaskPriority, 'High');
+    await send(path, 'PATCH', { archived: false });
+    expected.archived = false;
+    const low = await (await send(tasksPath, 'POST', { title: 'Low task' })).json();
+    assert.equal(low.priority, 'Low');
+    savedTasks.push(low);
+    expected.totalCount = 3;
+    await send(path, 'PATCH', { defaultTaskPriority: 'Normal' });
+    expected.defaultTaskPriority = 'Normal';
+    await stop(child);
+    child = undefined;
+    child = await start(port, databasePath);
+    assert.deepEqual(await get(path), expected);
+    assert.deepEqual(await get(tasksPath), savedTasks);
+    const next = await (await send(tasksPath, 'POST', { title: 'Next' })).json();
+    assert.equal(next.priority, 'Normal');
+    assert.deepEqual(await get(`${otherPath}/tasks`), [isolated]);
+  } finally {
+    if (child) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('existing project databases migrate without losing IDs or names', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
@@ -373,7 +460,7 @@ test('existing project databases migrate without losing IDs or names', async () 
   try {
     child = await start(port, databasePath);
     assert.deepEqual(await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json(), [
-      { id: 7, name: 'Legacy project', archived: false, totalCount: 1, completedCount: 1 },
+      { id: 7, name: 'Legacy project', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 },
     ]);
     const tasksUrl = `http://127.0.0.1:${port}/api/projects/7/tasks`;
     const expected = [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];

@@ -25,21 +25,26 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
 }
-// Existing tasks receive the same priority default as newly created tasks.
+// Existing projects keep Normal as their default without changing saved tasks.
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'defaultTaskPriority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN defaultTaskPriority TEXT NOT NULL DEFAULT 'Normal' CHECK(defaultTaskPriority IN ('Low', 'Normal', 'High'))");
+}
+// Existing tasks receive Normal when upgrading from a database without priorities.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
 }
-const projectSelect = `SELECT projects.id, projects.name, projects.archived,
+const projectSelect = `SELECT projects.id, projects.name, projects.archived, projects.defaultTaskPriority,
   COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
 const listProjects = database.prepare(`${projectSelect} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectSelect} WHERE projects.id = ? GROUP BY projects.id`);
 const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateDefaultTaskPriority = database.prepare('UPDATE projects SET defaultTaskPriority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -109,7 +114,7 @@ const server = createServer(async (request, response) => {
         const input = await readJson(request);
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title);
+        const result = insertTask.run(projectId, title, project.defaultTaskPriority);
         return json(response, 201, taskJson(findTask.get(projectId, result.lastInsertRowid)));
       }
       if (taskId && request.method === 'PATCH') {
@@ -143,10 +148,20 @@ const server = createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const input = await readJson(request);
-        if (Object.hasOwn(input ?? {}, 'name')) {
-          if (Object.hasOwn(input, 'archived')) {
-            return json(response, 400, { error: 'Rename and archive must be separate requests' });
+        const fields = ['name', 'archived', 'defaultTaskPriority'].filter((field) => Object.hasOwn(input ?? {}, field));
+        if (fields.length > 1) {
+          return json(response, 400, { error: 'Project edits must be separate requests' });
+        }
+        if (Object.hasOwn(input ?? {}, 'defaultTaskPriority')) {
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project is read-only' });
           }
+          if (!['Low', 'Normal', 'High'].includes(input.defaultTaskPriority)) {
+            return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+          }
+          updateDefaultTaskPriority.run(input.defaultTaskPriority, project.id);
+          project.defaultTaskPriority = input.defaultTaskPriority;
+        } else if (Object.hasOwn(input ?? {}, 'name')) {
           if (project.archived) {
             return json(response, 409, { error: 'Archived project is read-only' });
           }
