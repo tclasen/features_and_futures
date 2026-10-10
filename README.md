@@ -23,4 +23,6 @@ Each task row also supports renaming with a trimmed, nonblank title. Renaming pr
 
 Each task has an independent Low, Normal (default), or High priority. Priority changes save automatically and preserve task order, ownership, title, completion, and summaries. Archived projects disable and reject priority changes until restored. Existing tasks migrate to Normal; saved priorities survive renaming and server restarts.
 
-The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, priorities, and migration from the previous schema.
+Project pages combine the Task filter with a Priority filter (All, Low, Normal, High). Both default to All when opening a project. Each change submits both selections, and task edits preserve them while immediately re-evaluating matching rows in creation order. Filters remain usable on archived projects and never change saved task data or completion summaries.
+
+The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, priorities, combined filters, and migration from the previous schema.
