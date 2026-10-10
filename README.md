@@ -44,7 +44,10 @@ through edits. Invalid dates or reversed ranges leave the applied range intact.
 All filters remain usable while archived. Reopening from the project list clears
 the range and selects All for both comboboxes.
 Each task can move to another active project using Destination project and Move
-task. Moves append after the destination's existing tasks while preserving title,
+task. First arrivals append after all positions established in the destination;
+returning tasks recover their previous position in that project, even when
+multiple tasks return in a different order. Each project's remembered positions
+survive renaming, archival, restoration, and restarts. Moves preserve title,
 completion, priority, and due date. The source page keeps its filters and applied
 range. Archived projects cannot send or receive tasks, and move controls are
 disabled when no eligible destination exists. Moves and task ordering persist

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-test('moves preserve task data, append order, filters, summaries, eligibility and restart persistence', async () => {
+test('moves preserve task data, remembered order, filters, summaries, eligibility and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
   const dbPath = join(directory, 'db.sqlite');
   // A pre-move database must retain its task order and data after migration.
@@ -115,7 +115,7 @@ test('moves preserve task data, append order, filters, summaries, eligibility an
     assert.equal(savedTask(2, 5).priority, 'Low');
     await move(2, 1, 3);
     await move(3, 1, 2);
-    assert.deepEqual(titles(await get('/projects/2')), ['Destination existing', 'Undated', 'New after moves', 'Old dated']);
+    assert.deepEqual(titles(await get('/projects/2')), ['Destination existing', 'Old dated', 'Undated', 'New after moves']);
     assert.deepEqual(savedTask(2, 1), { ...taskBefore, project_id: 2 });
     const savedPages = await Promise.all(['/projects/1', '/projects/2', '/projects/3', '/'].map(get));
     await stop();
@@ -148,14 +148,108 @@ test('moves preserve task data, append order, filters, summaries, eligibility an
       assert.doesNotMatch(destinationSelect(row), /disabled/);
     }
     await move(2, 1, 1);
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'Old dated']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Old dated', 'Remaining']);
     assert.deepEqual(summary(await get('/')), ['2/2 completed', '0/3 completed']);
     const finalPage = await get('/projects/1');
     await stop();
     await start();
     assert.equal(await get('/projects/1'), finalPage);
+
+    // Vacant remembered slots stay reserved for both creations and first arrivals.
+    await move(1, 1, 2);
+    await move(1, 3, 2);
+    assert.deepEqual(titles(await get('/projects/1')), []);
+    await post('/projects/1/tasks', { title: 'New source task' });
+    await move(1, 6, 2);
+    await move(2, 5, 1);
+    await post('/projects/1/tasks', { title: 'Newest source task' });
+    assert.deepEqual(titles(await get('/projects/1')), ['New after moves', 'Newest source task']);
+
+    // Return in a different order; each task must recover its own original slot.
+    await move(2, 3, 1);
+    await move(2, 2, 1);
+    assert.deepEqual(titles(await get('/projects/1')), ['Undated', 'Remaining', 'New after moves', 'Newest source task']);
+    await post('/projects/2/tasks/1/rename', { title: 'Current title' });
+    await post('/projects/2/tasks/1/completion');
+    await post('/projects/2/tasks/1/priority', { priority: 'Low' });
+    await post('/projects/2/tasks/1/due-date', { dueDate: '' });
+    const currentTask = savedTask(2, 1);
+    await post('/projects/1/rename', { name: 'Renamed source' });
+    await post('/projects/1/archive');
+    assert.equal((await move(2, 1, 1)).status, 422);
+    await stop();
+    await start();
+    await post('/projects/1/restore');
+    await move(2, 6, 1);
+    await move(2, 1, 1);
+    const restoredOrder = ['Current title', 'Undated', 'Remaining', 'New source task', 'New after moves', 'Newest source task'];
+    assert.deepEqual(titles(await get('/projects/1')), restoredOrder);
+    assert.deepEqual(savedTask(1, 1), { ...currentTask, project_id: 1 });
+    assert.deepEqual(summary(await get('/')), ['1/6 completed', '0/1 completed']);
+    await stop();
+    await start();
+    assert.deepEqual(titles(await get('/projects/1')), restoredOrder);
+    // Destination positions also remain remembered independently of source slots.
+    await move(1, 2, 2);
+    await move(1, 1, 2);
+    assert.deepEqual(titles(await get('/projects/2')), ['Destination existing', 'Current title', 'Undated']);
   } finally {
     await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Task 011 databases retain current non-ID order and seed remembered positions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-order-migration-'));
+  const dbPath = join(directory, 'db.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+      due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+    INSERT INTO tasks (project_id, title, position) VALUES
+      (1, 'Later position', 7), (1, 'Earlier position', 2), (2, 'Destination task', 3);
+  `);
+  legacy.close();
+  const child = spawn(process.execPath, ['server.js'], {
+    env: { ...process.env, PORT: '0', DB_PATH: dbPath },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  try {
+    const port = await new Promise((resolve, reject) => {
+      let output = '';
+      const timer = setTimeout(() => reject(new Error('Startup timed out')), 5000);
+      child.once('error', (error) => { clearTimeout(timer); reject(error); });
+      child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`Exited ${code}`)); });
+      child.stdout.on('data', (chunk) => {
+        output += chunk;
+        const match = output.match(/listening on port (\d+)/);
+        if (match) { clearTimeout(timer); resolve(match[1]); }
+      });
+    });
+    const base = `http://127.0.0.1:${port}`;
+    const titles = async () => {
+      const html = await (await fetch(`${base}/projects/1`)).text();
+      return [...html.matchAll(/<span>(.*?)<\/span>/g)].map((match) => match[1]);
+    };
+    const post = (path, values) => fetch(base + path, {
+      method: 'POST', redirect: 'manual', body: new URLSearchParams(values),
+    });
+    assert.deepEqual(await titles(), ['Earlier position', 'Later position']);
+    assert.equal((await post('/projects/1/tasks/1/move', { destinationProject: 2 })).status, 303);
+    assert.equal((await post('/projects/1/tasks', { title: 'New after reserved position' })).status, 303);
+    assert.equal((await post('/projects/2/tasks/1/move', { destinationProject: 1 })).status, 303);
+    assert.deepEqual(await titles(), ['Earlier position', 'Later position', 'New after reserved position']);
+  } finally {
+    if (child.exitCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });

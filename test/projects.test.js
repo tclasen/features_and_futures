@@ -54,7 +54,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.equal(migrated.prepare('SELECT due_date FROM tasks').get().due_date, '');
     const legacyPage = await (await fetch(`${base}/projects/1`)).text();
     assert.match(legacyPage, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
-    migrated.exec('DELETE FROM tasks; DELETE FROM projects;');
+    migrated.exec('DELETE FROM task_positions; DELETE FROM tasks; DELETE FROM projects;');
     migrated.close();
     const health = await fetch(`${base}/health`);
     assert.equal(health.status, 200);
