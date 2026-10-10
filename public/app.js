@@ -12,12 +12,25 @@ const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
 const defaultPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
+const dueFrom = document.querySelector('#due-from');
+const dueThrough = document.querySelector('#due-through');
+let appliedDueRange = { from: '', through: '' };
 const taskCreateButton = taskForm.querySelector('button');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
 const renameButton = renameForm.querySelector('button');
 const renameAlert = document.querySelector('#rename-alert');
 let currentProjectId = null;
+
+function isValidDate(value) {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 async function request(url, options) {
   const response = await fetch(url, options);
@@ -75,6 +88,11 @@ async function renderTasks() {
   for (const task of tasks) {
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
+    if (appliedDueRange.from || appliedDueRange.through) {
+      if (!task.due_date) continue;
+      if (appliedDueRange.from && task.due_date < appliedDueRange.from) continue;
+      if (appliedDueRange.through && task.due_date > appliedDueRange.through) continue;
+    }
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'project-row';
@@ -168,6 +186,9 @@ async function renderRoute() {
   try {
     const project = await request(`/api/projects/${match[1]}`);
     currentProjectId = project.id;
+    appliedDueRange = { from: '', through: '' };
+    dueFrom.value = '';
+    dueThrough.value = '';
     listView.hidden = true;
     detailView.hidden = false;
     document.querySelector('#project-title').textContent = project.name;
@@ -239,6 +260,26 @@ priorityFilter.addEventListener('change', () => renderTasks().catch(error => {
   taskAlert.textContent = error.message;
   taskAlert.hidden = false;
 }));
+document.querySelector('#apply-due-range').addEventListener('click', async () => {
+  const from = dueFrom.value.trim();
+  const through = dueThrough.value.trim();
+  if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+    taskAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+    taskAlert.hidden = false;
+    return;
+  }
+  if (from && through && from > through) {
+    taskAlert.textContent = 'Due from must not be after Due through';
+    taskAlert.hidden = false;
+    return;
+  }
+  appliedDueRange = { from, through };
+  taskAlert.hidden = true;
+  try { await renderTasks(); } catch (error) {
+    taskAlert.textContent = error.message;
+    taskAlert.hidden = false;
+  }
+});
 renameForm.addEventListener('submit', async event => {
   event.preventDefault();
   const name = renameInput.value.trim();
