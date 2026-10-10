@@ -272,6 +272,9 @@ async function render() {
             renameAlert.hidden = false;
             return;
           }
+          renameInput.value = title;
+          row.querySelector('span').textContent = title;
+          checkbox.setAttribute('aria-label', `Complete ${title}`);
           await loadTasks();
         });
         row.append(renameForm, renameAlert);
