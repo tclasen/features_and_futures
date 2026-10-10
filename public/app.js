@@ -1,3 +1,5 @@
+import { filterTasks } from './task-filters.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -186,20 +188,27 @@ async function showProject(id) {
       <option>Open</option>
       <option>Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option>All</option>
+      <option>Low</option>
+      <option>Normal</option>
+      <option>High</option>
+    </select>
     <ul aria-label="Tasks"></ul>
   `;
   app.append(controls);
   const form = controls.querySelector('form');
   const input = controls.querySelector('input');
   const button = form.querySelector('button');
-  const filter = controls.querySelector('select');
+  const filter = controls.querySelector('#task-filter');
+  const priorityFilter = controls.querySelector('#priority-filter');
   const list = controls.querySelector('ul');
   const tasksPath = `/api/projects/${id}/tasks`;
   let tasks = [];
 
   function renderTasks() {
-    const visible = tasks.filter((task) => filter.value === 'All'
-      || task.completed === (filter.value === 'Completed'));
+    const visible = filterTasks(tasks, filter.value, priorityFilter.value);
     list.replaceChildren(...visible.map((task) => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -292,6 +301,7 @@ async function showProject(id) {
             body: JSON.stringify({ priority: prioritySelect.value }),
           });
           Object.assign(task, saved);
+          renderTasks();
         } catch (error) {
           showAlert(error.message);
         } finally {
@@ -305,6 +315,7 @@ async function showProject(id) {
   }
 
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (button.disabled) return;
