@@ -240,6 +240,37 @@ async function renderTasks(projectId, archived) {
         }
       });
       row.append(renameForm);
+      const dueForm = element('form', undefined, { class: 'task-due-form' });
+      const dueInput = element('input', undefined, {
+        id: `task-due-date-${task.id}`, type: 'text', name: 'due_date', autocomplete: 'off',
+        placeholder: 'YYYY-MM-DD',
+      });
+      dueInput.value = task.due_date;
+      dueInput.disabled = archived;
+      const saveDate = element('button', 'Save due date', { type: 'submit' });
+      saveDate.disabled = archived;
+      const dueControls = element('div', undefined, { class: 'controls' });
+      dueControls.append(dueInput, saveDate);
+      dueForm.append(element('label', 'Task due date', { for: dueInput.id }), dueControls);
+      dueForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (archived) return;
+        alert.hidden = true;
+        saveDate.disabled = true;
+        try {
+          const saved = await api(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueInput.value.trim() }),
+          });
+          task.due_date = saved.due_date;
+          dueInput.value = task.due_date;
+        } catch (error) {
+          showError(error);
+        } finally {
+          saveDate.disabled = archived;
+        }
+      });
+      row.append(dueForm);
       return row;
     }));
     if (!visible.length) list.append(element('p', 'No tasks to show.', { class: 'empty' }));

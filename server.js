@@ -27,6 +27,9 @@ CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id)`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.default_task_priority,
   COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id`;
@@ -34,11 +37,20 @@ const listProjects = db.prepare(`${projectQuery} GROUP BY projects.id ORDER BY p
 const findProject = db.prepare(`${projectQuery} WHERE projects.id = ? GROUP BY projects.id`);
 const updateProject = db.prepare('UPDATE projects SET name = ?, archived = ?, default_task_priority = ? WHERE id = ?');
 const projectJson = (project) => ({ ...project, archived: Boolean(project.archived) });
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const updateTask = db.prepare('UPDATE tasks SET title = ?, completed = ?, priority = ? WHERE project_id = ? AND id = ?');
+const updateTask = db.prepare('UPDATE tasks SET title = ?, completed = ?, priority = ?, due_date = ? WHERE project_id = ? AND id = ?');
 const taskJson = (task) => ({ ...task, completed: Boolean(task.completed) });
+
+function validDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
 
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -133,11 +145,16 @@ const server = http.createServer(async (request, response) => {
         const renaming = Object.hasOwn(input ?? {}, 'title');
         const completing = Object.hasOwn(input ?? {}, 'completed');
         const prioritizing = Object.hasOwn(input ?? {}, 'priority');
+        const dating = Object.hasOwn(input ?? {}, 'due_date');
+        const dueDate = dating && typeof input.due_date === 'string' ? input.due_date.trim() : '';
+        if (dating && (typeof input.due_date !== 'string' || (dueDate && !validDueDate(dueDate)))) {
+          return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        }
         const title = renaming && typeof input.title === 'string' ? input.title.trim() : '';
         if (renaming && !title) {
           return json(response, 400, { error: 'Task title is required' });
         }
-        if ((!renaming && !completing && !prioritizing) || (completing && typeof input.completed !== 'boolean')) {
+        if ((!renaming && !completing && !prioritizing && !dating) || (completing && typeof input.completed !== 'boolean')) {
           return json(response, 400, { error: 'Completion must be a boolean' });
         }
         if (prioritizing && !['Low', 'Normal', 'High'].includes(input.priority)) {
@@ -145,7 +162,8 @@ const server = http.createServer(async (request, response) => {
         }
         updateTask.run(renaming ? title : task.title,
           completing ? Number(input.completed) : task.completed,
-          prioritizing ? input.priority : task.priority, projectId, taskId);
+          prioritizing ? input.priority : task.priority,
+          dating ? dueDate : task.due_date, projectId, taskId);
         return json(response, 200, taskJson(findTask.get(projectId, taskId)));
       }
     }

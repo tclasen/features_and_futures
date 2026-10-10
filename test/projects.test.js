@@ -476,3 +476,71 @@ test('project defaults affect only subsequent tasks and persist through rename, 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('due dates validate calendar days, preserve task data, and survive archive and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    // A Task 008 database must gain empty dates without losing existing data.
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+      INSERT INTO projects (name) VALUES ('Dates'), ('Other');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+      INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Existing', 1, 'High');`);
+    legacy.close();
+    server = await start(databasePath);
+    const request = (path, method = 'GET', body) => fetch(`${server.base}${path}`, {
+      method, ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }),
+    });
+    const projectPath = '/api/projects/1';
+    const path = `${projectPath}/tasks`;
+    const first = (await (await request(path)).json())[0];
+    assert.equal(first.due_date, '');
+    const second = await (await request(path, 'POST', { title: 'New' })).json();
+    assert.equal(second.due_date, '');
+    const separate = await (await request('/api/projects/2/tasks', 'POST', { title: 'Separate' })).json();
+    const summary = await (await request(projectPath)).json();
+    const taskPath = `${path}/${first.id}`;
+    let saved = first;
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '2026-04-30']) {
+      const response = await request(taskPath, 'PATCH', { due_date: ` \t${date}\n ` });
+      assert.equal(response.status, 200);
+      saved = { ...first, due_date: date };
+      assert.deepEqual(await response.json(), saved);
+    }
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29',
+      '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '2026-01-32', '2026-1-01',
+      '26-01-01', '2026-01-01T00:00:00Z', 'tomorrow', null, 20260101]) {
+      const response = await request(taskPath, 'PATCH', { due_date: date, title: 'Must not change' });
+      assert.equal(response.status, 400, String(date));
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await (await request(path)).json(), [saved, second]);
+    }
+    assert.equal((await request(`/api/projects/2/tasks/${first.id}`, 'PATCH', { due_date: '2026-01-01' })).status, 404);
+    saved.title = 'Renamed';
+    assert.deepEqual(await (await request(taskPath, 'PATCH', { title: ' Renamed ' })).json(), saved);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+    await request(projectPath, 'PATCH', { archived: true });
+    assert.equal((await request(taskPath, 'PATCH', { due_date: '' })).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [saved, second]);
+    assert.deepEqual(await (await request('/api/projects/2/tasks')).json(), [separate]);
+    await request(projectPath, 'PATCH', { archived: false });
+    for (const blank of ['', ' \t\n ']) {
+      assert.deepEqual(await (await request(taskPath, 'PATCH', { due_date: blank })).json(), { ...saved, due_date: '' });
+    }
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [{ ...saved, due_date: '' }, second]);
+    assert.deepEqual(await (await request(projectPath)).json(), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

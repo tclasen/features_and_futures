@@ -37,7 +37,7 @@ async function page(archived = false) {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [false, true].map((completed, offset) => ({
     id: index * 2 + offset + 1, project_id: 1, title: `${priority} ${completed ? 'completed' : 'open'}`,
-    priority, completed,
+    priority, completed, due_date: '',
   })));
   const writes = [];
   const project = { id: 1, name: 'Filters', archived, default_task_priority: 'Normal', total_count: 6, completed_count: 3 };
@@ -51,7 +51,7 @@ async function page(archived = false) {
         const input = JSON.parse(options.body);
         writes.push({ path, input });
         if (options.method === 'POST') {
-          result = { id: tasks.length + 1, project_id: 1, title: input.title.trim(), completed: false, priority: project.default_task_priority };
+          result = { id: tasks.length + 1, project_id: 1, title: input.title.trim(), completed: false, priority: project.default_task_priority, due_date: '' };
           tasks.push(result);
         } else if (path === '/api/projects/1') {
           Object.assign(project, input);
@@ -185,4 +185,30 @@ test('project default control saves independently of filters and existing task r
   const archived = await page(true);
   assert.equal(byId(archived.app, 'default-task-priority').value, 'Normal');
   assert.equal(byId(archived.app, 'default-task-priority').disabled, true);
+});
+
+test('due date controls save and clear independently while retaining both filters', async () => {
+  const { app, tasks } = await page();
+  const completion = byId(app, 'task-filter');
+  const priority = byId(app, 'priority-filter');
+  completion.value = 'Completed';
+  await completion.dispatch('change');
+  priority.value = 'High';
+  await priority.dispatch('change');
+  const before = structuredClone(tasks);
+  const date = byId(app, 'task-due-date-6');
+  const form = find(rows(app)[0], (node) => node.tag === 'form' && descendants(node).includes(date));
+  assert.equal(date.attributes.type, 'text');
+  assert.equal(date.value, '');
+  assert.equal(find(form, (node) => node.tag === 'label').textContent, 'Task due date');
+  assert.equal(find(form, (node) => node.tag === 'button').textContent, 'Save due date');
+  for (const [input, expected] of [[' 2024-02-29 ', '2024-02-29'], [' \t ', '']]) {
+    date.value = input;
+    await form.dispatch('submit');
+    assert.equal(date.value, expected);
+    assert.deepEqual(tasks, before.map((task) => task.id === 6 ? { ...task, due_date: expected } : task));
+    assert.equal(completion.value, 'Completed');
+    assert.equal(priority.value, 'High');
+    assert.deepEqual(titles(app), ['High completed']);
+  }
 });
