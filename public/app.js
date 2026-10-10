@@ -1,4 +1,5 @@
 import { matchesTaskFilters } from './task-filters.js';
+import { normalizeDueRange } from './due-date.js';
 
 const app = document.querySelector('#app');
 
@@ -83,6 +84,13 @@ async function renderProject(projectId) {
     <select id="priority-filter">
       <option>All</option><option>Low</option><option>Normal</option><option>High</option>
     </select>
+    <form id="due-range">
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <section id="tasks" aria-label="Tasks"></section>`;
   app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
   const project = await request(`/api/projects/${projectId}`);
@@ -147,11 +155,27 @@ async function renderProject(projectId) {
   const filter = app.querySelector('#task-filter');
   const priorityFilter = app.querySelector('#priority-filter');
   const rows = app.querySelector('#tasks');
+  // Draft boundary edits take effect only after a valid application.
+  let dueRange = { from: '', through: '' };
+  const dueFrom = app.querySelector('#due-from');
+  const dueThrough = app.querySelector('#due-through');
+  app.querySelector('#due-range').addEventListener('submit', (event) => {
+    event.preventDefault();
+    showAlert('');
+    try {
+      dueRange = normalizeDueRange(dueFrom.value, dueThrough.value);
+      dueFrom.value = dueRange.from;
+      dueThrough.value = dueRange.through;
+      renderTasks();
+    } catch (error) {
+      showAlert(error.message);
+    }
+  });
 
   function renderTasks() {
     rows.replaceChildren();
     for (const task of tasks) {
-      if (!matchesTaskFilters(task, filter.value, priorityFilter.value)) continue;
+      if (!matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange)) continue;
       const row = document.createElement('div');
       row.className = 'task-row';
       row.dataset.testid = 'task-row';
@@ -291,6 +315,7 @@ async function renderProject(projectId) {
           });
           task.dueDate = saved.dueDate;
           dueDateInput.value = task.dueDate;
+          renderTasks();
         } catch (error) {
           showAlert(error.message);
         } finally {

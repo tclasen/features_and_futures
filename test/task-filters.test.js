@@ -52,3 +52,56 @@ test('saved edits change matching membership while renaming preserves it', () =>
   assert.equal(matchesTaskFilters(task, 'Completed', 'All'), true);
   assert.equal(matchesTaskFilters(task, 'All', 'High'), false);
 });
+
+test('inclusive due ranges intersect every completion and priority combination without changing data', () => {
+  const datedTasks = tasks.map((task, index) => ({
+    ...task,
+    dueDate: ['', '0001-01-01', '2026-10-10', '2026-10-11', '2026-10-12', '9999-12-31'][index],
+  }));
+  const original = structuredClone(datedTasks);
+  const ranges = [
+    [{ from: '', through: '' }, [1, 2, 3, 4, 5, 6]],
+    [{ from: '0001-01-01', through: '9999-12-31' }, [2, 3, 4, 5, 6]],
+    [{ from: '2026-10-10', through: '2026-10-12' }, [3, 4, 5]],
+    [{ from: '2026-10-11', through: '2026-10-11' }, [4]],
+    [{ from: '', through: '2026-10-10' }, [2, 3]],
+    [{ from: '2026-10-12', through: '' }, [5, 6]],
+    [{ from: '2027-01-01', through: '2027-12-31' }, []],
+  ];
+  for (const [range, ids] of ranges) {
+    for (const completion of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const expected = datedTasks.filter((task) => ids.includes(task.id)
+          && (completion === 'All' || task.completed === (completion === 'Completed'))
+          && (priority === 'All' || task.priority === priority));
+        const visible = datedTasks.filter((task) => matchesTaskFilters(task, completion, priority, range));
+        assert.deepEqual(visible.map((task) => task.id), expected.map((task) => task.id));
+      }
+    }
+  }
+  assert.deepEqual(datedTasks, original);
+});
+
+test('due-date, completion, and priority edits re-evaluate the same combined filters', () => {
+  const range = { from: '2026-10-10', through: '2026-10-12' };
+  const task = { ...tasks[0], dueDate: '2026-10-11' };
+  const matches = () => matchesTaskFilters(task, 'Open', 'High', range);
+  assert.equal(matches(), true);
+  task.title = 'Renamed';
+  assert.equal(matches(), true);
+  for (const dueDate of ['', '2026-10-09', '2026-10-13']) {
+    task.dueDate = dueDate;
+    assert.equal(matches(), false);
+  }
+  task.dueDate = '2026-10-10';
+  assert.equal(matches(), true);
+  task.completed = true;
+  assert.equal(matches(), false);
+  task.completed = false;
+  assert.equal(matches(), true);
+  task.priority = 'Low';
+  assert.equal(matches(), false);
+  task.priority = 'High';
+  assert.equal(matches(), true);
+  assert.deepEqual(range, { from: '2026-10-10', through: '2026-10-12' });
+});

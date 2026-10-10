@@ -41,5 +41,11 @@ YYYY-MM-DD format (years 0001–9999), or save a blank value to clear it. Dates 
 calendar days without timezone conversion. Invalid dates leave saved data intact.
 Due dates persist independently through renaming and restarts; archived projects
 disable due-date editing until restored.
+Due from and Due through apply an inclusive date range that intersects the task
+completion and priority filters. Blank boundaries are unbounded; any nonblank
+boundary excludes undated tasks. Apply due range validates both dates and their
+order before replacing the applied range. Invalid applications keep the previous
+visible membership. Edits re-evaluate the applied range without resetting filters.
+Range controls remain usable in archived projects and reset to empty on reopening.
 Run `npm test` for date-validation and HTTP integration tests, including persistence across separate
 server processes. Tests use temporary databases and clean them up afterward.

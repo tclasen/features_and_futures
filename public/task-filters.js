@@ -1,6 +1,12 @@
-export function matchesTaskFilters(task, completionFilter, priorityFilter) {
+export function matchesTaskFilters(task, completionFilter, priorityFilter, dueRange = { from: '', through: '' }) {
   const matchesCompletion = completionFilter === 'All'
     || (completionFilter === 'Completed' && task.completed)
     || (completionFilter === 'Open' && !task.completed);
-  return matchesCompletion && (priorityFilter === 'All' || task.priority === priorityFilter);
+  // Canonical YYYY-MM-DD strings sort in calendar order without timezone conversion.
+  const matchesDueRange = (!dueRange.from && !dueRange.through)
+    || (Boolean(task.dueDate)
+      && (!dueRange.from || task.dueDate >= dueRange.from)
+      && (!dueRange.through || task.dueDate <= dueRange.through));
+  return matchesCompletion && (priorityFilter === 'All' || task.priority === priorityFilter)
+    && matchesDueRange;
 }
