@@ -130,16 +130,31 @@ const server = createServer(async (request, response) => {
       for await (const chunk of request) body += chunk;
       try {
         const payload = JSON.parse(body);
-        if (!Number.isInteger(taskId) || taskId < 1 || typeof payload.completed !== 'boolean') {
+        if (!Number.isInteger(taskId) || taskId < 1) {
           sendJson(response, 400, { error: 'Invalid task update' });
           return;
         }
-        const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(payload.completed ? 1 : 0, taskId, id);
-        if (!result.changes) {
+        const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?').get(taskId, id);
+        if (!task) {
           sendJson(response, 404, { error: 'Task not found' });
           return;
         }
-        sendJson(response, 200, { id: taskId, projectId: id, completed: payload.completed ? 1 : 0 });
+        if (typeof payload.completed === 'boolean') {
+          database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(payload.completed ? 1 : 0, taskId, id);
+          sendJson(response, 200, { id: taskId, projectId: id, title: task.title, completed: payload.completed ? 1 : 0 });
+          return;
+        }
+        if (typeof payload.title === 'string') {
+          const title = payload.title.trim();
+          if (!title) {
+            sendJson(response, 400, { error: 'Task title is required' });
+            return;
+          }
+          database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, id);
+          sendJson(response, 200, { id: taskId, projectId: id, title, completed: task.completed });
+          return;
+        }
+        sendJson(response, 400, { error: 'Invalid task update' });
       } catch (error) {
         if (error instanceof SyntaxError) {
           sendJson(response, 400, { error: 'Invalid JSON' });

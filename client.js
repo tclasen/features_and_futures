@@ -174,6 +174,30 @@ async function showProject(id) {
         const row = element('article', { className: 'task-row' });
         row.dataset.testid = 'task-row';
         row.append(element('span', { text: task.title }));
+        const renameForm = element('form', { className: 'task-rename-form' });
+        const renameInput = element('input', { type: 'text', label: 'New task title' });
+        renameInput.disabled = archived;
+        const renameButton = element('button', { type: 'submit', text: 'Rename task' });
+        renameButton.disabled = archived;
+        renameForm.append(renameInput, renameButton);
+        renameForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = renameInput.value.trim();
+          if (!title) {
+            showError('Task title is required');
+            renameInput.focus();
+            return;
+          }
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title })
+            });
+            task.title = updated.title;
+            drawTasks();
+          } catch (error) { showError(error.message); }
+        });
+        row.append(renameForm);
         const checkbox = element('input', { type: 'checkbox', label: `Complete ${task.title}` });
         checkbox.checked = completed;
         checkbox.disabled = archived;
