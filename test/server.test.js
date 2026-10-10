@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -66,6 +67,9 @@ test('projects and tasks: validation, ordering, ownership, completion, routes, a
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.completed, 0);
+    assert.equal(first.total, 0);
     const second = await (await create('<script>Example</script>')).json();
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await request('/api/projects')).json(), [first, second]);
@@ -129,13 +133,71 @@ test('projects and tasks: validation, ordering, ownership, completion, routes, a
     assert.deepEqual(await (await request(tasksPath)).json(), [firstTask, secondTask]);
     assert.deepEqual(await (await request(otherTasksPath)).json(), []);
     assert.equal((await request(`/projects/${first.id}`)).status, 200);
+    const archiveProject = archived => request(`/api/projects/${first.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived }),
+    });
+    for (const invalid of ['true', 1, null]) {
+      assert.equal((await archiveProject(invalid)).status, 400);
+    }
+    assert.equal((await request('/api/projects/99999', {
+      method: 'PATCH', body: JSON.stringify({ archived: true }),
+    })).status, 404);
+    const summary = { ...first, completed: 1, total: 2 };
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), summary);
+    const archived = { ...summary, archived: true };
+    const archivedResponse = await archiveProject(true);
+    assert.equal(archivedResponse.status, 200);
+    assert.deepEqual(await archivedResponse.json(), archived);
+    assert.equal((await createTask('Blocked task')).status, 409);
+    assert.equal((await completeTask(`${tasksPath}/${firstTask.id}`, false)).status, 409);
+    assert.deepEqual(await (await request(tasksPath)).json(), [firstTask, secondTask]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), archived);
+    assert.deepEqual(await (await request('/api/projects')).json(), [archived, second, third]);
+    assert.deepEqual(await (await request(tasksPath)).json(), [firstTask, secondTask]);
+    assert.deepEqual(await (await archiveProject(false)).json(), summary);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), summary);
     const reopened = await completeTask(`${tasksPath}/${firstTask.id}`, false);
     assert.equal(reopened.status, 200);
     firstTask.completed = false;
     assert.deepEqual(await reopened.json(), firstTask);
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), { ...first, total: 2 });
     await server.stop();
     server = await start(databasePath);
     assert.deepEqual(await (await request(tasksPath)).json(), [firstTask, secondTask]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive migration preserves existing project IDs, tasks, and completion', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (id, name) VALUES (17, 'Existing project');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES (23, 17, 'Existing task', 1);`);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = path => fetch(`${server.url}${path}`);
+    const expected = { id: 17, name: 'Existing project', archived: false, total: 1, completed: 1 };
+    assert.deepEqual(await (await request('/api/projects')).json(), [expected]);
+    assert.deepEqual(await (await request('/api/projects/17/tasks')).json(), [
+      { id: 23, title: 'Existing task', completed: true },
+    ]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request('/api/projects/17')).json(), expected);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

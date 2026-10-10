@@ -23,16 +23,36 @@ function showAlert(message) {
   alert.textContent = message;
 }
 
-function projectRow(project) {
+function projectRow(project, onArchiveChange) {
   const row = element('li');
   row.dataset.testid = 'project-row';
   row.append(element('span', project.name));
+  const summary = element('span', `${project.completed}/${project.total} completed`);
+  summary.dataset.testid = 'project-summary';
+  row.append(summary);
   const open = element('button', 'Open project');
   open.type = 'button';
   open.addEventListener('click', () => {
     window.location.href = `/projects/${project.id}`;
   });
-  row.append(open);
+  const archive = element('button', project.archived ? 'Restore project' : 'Archive project');
+  archive.type = 'button';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    app.querySelector('[role="alert"]')?.remove();
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      onArchiveChange(saved);
+    } catch (error) {
+      showAlert(error.message);
+      archive.disabled = false;
+    }
+  });
+  row.append(open, archive);
   return row;
 }
 
@@ -51,12 +71,33 @@ async function renderList() {
   const list = element('ul');
   list.className = 'projects';
   list.setAttribute('aria-label', 'Projects');
-  app.append(form, list);
+  const filterLabel = element('label', 'Project filter');
+  filterLabel.htmlFor = 'project-filter';
+  const filter = element('select');
+  filter.id = 'project-filter';
+  for (const value of ['Active', 'Archived']) {
+    const option = element('option', value);
+    option.value = value;
+    filter.append(option);
+  }
+  const filters = element('div');
+  filters.className = 'project-filters';
+  filters.append(filterLabel, filter);
+  app.append(form, filters, list);
 
   // Load before enabling creation so new rows cannot race the initial list.
   create.disabled = true;
   const projects = await api('/api/projects');
-  list.append(...projects.map(projectRow));
+  function renderProjects() {
+    list.replaceChildren(...projects
+      .filter(project => project.archived === (filter.value === 'Archived'))
+      .map(project => projectRow(project, saved => {
+        Object.assign(project, saved);
+        renderProjects();
+      })));
+  }
+  filter.addEventListener('change', renderProjects);
+  renderProjects();
   create.disabled = false;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -73,7 +114,8 @@ async function renderList() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      list.append(projectRow(project));
+      projects.push(project);
+      renderProjects();
       input.value = '';
       input.focus();
     } catch (error) {
@@ -92,6 +134,7 @@ async function renderProject(id) {
   const project = await api(`/api/projects/${id}`);
   app.prepend(element('h1', project.name));
   document.title = `${project.name} · Workboard`;
+  if (project.archived) app.append(element('p', 'Archived project'));
 
   const form = element('form');
   const titleLabel = element('label', 'Task title');
@@ -134,7 +177,7 @@ async function renderProject(id) {
       const checkbox = element('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
-      checkbox.disabled = pendingTasks.has(task.id);
+      checkbox.disabled = project.archived || pendingTasks.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       row.append(checkbox, element('span', task.title));
       checkbox.addEventListener('change', async () => {
@@ -160,9 +203,10 @@ async function renderProject(id) {
   }
   filter.addEventListener('change', renderTasks);
   renderTasks();
-  create.disabled = false;
+  create.disabled = project.archived;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (project.archived) return;
     app.querySelector('[role="alert"]')?.remove();
     const trimmedTitle = title.value.trim();
     if (!trimmedTitle) {
@@ -183,7 +227,7 @@ async function renderProject(id) {
     } catch (error) {
       showAlert(error.message);
     } finally {
-      create.disabled = false;
+      create.disabled = project.archived;
     }
   });
 }
