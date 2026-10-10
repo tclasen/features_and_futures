@@ -101,7 +101,7 @@ const server = http.createServer(async (req, res) => {
       const raw = typeof body.due_date === 'string' ? body.due_date.trim() : '';
       let dueDate = null;
       if (raw) {
-        const match = raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (!match) return send(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
         const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
         const candidate = new Date(0);
