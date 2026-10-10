@@ -26,7 +26,7 @@ class Element {
 }
 const descendants = node => [node, ...node.children.flatMap(descendants)];
 
-async function page(archived = false, dates = []) {
+async function page(archived = false, dates = [], otherProjects = []) {
   const app = new Element('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'Low' },
@@ -54,7 +54,7 @@ async function page(archived = false, dates = []) {
           Object.assign(task, input);
           data = task;
         }
-      } else data = path.endsWith('/tasks') ? tasks : project;
+      } else data = path === '/api/projects' ? [project, ...otherProjects] : path.endsWith('/tasks') ? tasks : project;
       return { ok: true, json: async () => structuredClone(data) };
     },
   });
@@ -331,4 +331,29 @@ test('archived projects keep both filters usable and all task edits disabled', a
   assert.equal(priority.value, 'High');
   const reopened = await page();
   assert.equal(reopened.byId('priority-filter').value, 'All');
+});
+
+test('move controls list only eligible projects and preserve source filters and range', async () => {
+  const others = [{ id: 2, name: 'Destination', archived: false }, { id: 3, name: 'Archived', archived: true }];
+  const { app, byId, titles } = await page(false, ['2024-01-01', '', '2024-02-01'], others);
+  byId('task-filter').value = 'Open';
+  await byId('task-filter').fire('change');
+  byId('priority-filter').value = 'High';
+  await byId('priority-filter').fire('change');
+  byId('due-from').value = '2024-01-01';
+  const range = descendants(app).find(node => node.tag === 'form' && node.children.includes(byId('due-from')));
+  await range.fire('submit');
+  assert.deepEqual(titles(), ['Third']);
+  const destination = byId('destination-project-3');
+  assert.deepEqual(destination.children.map(option => option.textContent), ['Destination']);
+  const form = descendants(app).find(node => node.tag === 'form' && node.children.includes(destination));
+  await form.fire('submit');
+  assert.deepEqual(titles(), []);
+  assert.equal(byId('task-filter').value, 'Open');
+  assert.equal(byId('priority-filter').value, 'High');
+  assert.equal(byId('due-from').value, '2024-01-01');
+  const empty = await page();
+  assert.equal(empty.byId('destination-project-1').disabled, true);
+  const archived = await page(true, [], others);
+  assert.equal(archived.byId('destination-project-1').disabled, true);
 });

@@ -130,6 +130,7 @@ async function showProject(id) {
   const alert = alertBox();
   try {
     const project = await request(`/api/projects/${id}`);
+    const destinations = (await request('/api/projects')).filter(other => !other.archived && other.id !== project.id);
     const heading = element('h1', project.name);
     app.prepend(heading);
     document.title = `${project.name} — Workboard`;
@@ -390,7 +391,39 @@ async function showProject(id) {
             showError(error);
           } finally { saveDue.disabled = Boolean(project.archived); }
         });
-        row.append(titleText, checkbox, taskRenameForm, priorityLabel, priority, dueForm);
+        const moveForm = element('form');
+        const destinationLabel = element('label', 'Destination project');
+        destinationLabel.htmlFor = `destination-project-${task.id}`;
+        const destination = element('select');
+        destination.id = destinationLabel.htmlFor;
+        for (const other of destinations) {
+          const option = element('option', other.name);
+          option.value = String(other.id);
+          destination.append(option);
+        }
+        const move = element('button', 'Move task');
+        move.type = 'submit';
+        const cannotMove = Boolean(project.archived) || destinations.length === 0;
+        destination.disabled = cannotMove;
+        move.disabled = cannotMove;
+        moveForm.append(destinationLabel, destination, move);
+        moveForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (cannotMove) return;
+          move.disabled = true;
+          alert.hidden = true;
+          try {
+            await request(`/api/projects/${id}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+            });
+            tasks = tasks.filter(other => other.id !== task.id);
+            render();
+          } catch (error) { showError(error); }
+          finally { move.disabled = cannotMove; }
+        });
+        row.append(titleText, checkbox, taskRenameForm, priorityLabel, priority, dueForm, moveForm);
         list.append(row);
       }
     }

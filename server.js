@@ -29,9 +29,13 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
+}
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks))');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks) WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -124,7 +128,16 @@ const server = http.createServer(async (req, res) => {
       if (taskMatch) {
         if (!findTask.get(taskMatch[1], taskMatch[2])) return send(res, 404, { error: 'Task not found' });
         if (findProject.get(taskMatch[1]).archived) return send(res, 409, { error: 'Archived project' });
-        if (input && Object.hasOwn(input, 'title')) {
+        if (input && Object.hasOwn(input, 'destination_project_id')) {
+          const destination = Number.isSafeInteger(input.destination_project_id)
+            ? findProject.get(input.destination_project_id) : null;
+          if (!destination || destination.id === Number(taskMatch[1])) {
+            return send(res, 400, { error: 'Choose another active project' });
+          }
+          if (destination.archived) return send(res, 409, { error: 'Archived project' });
+          moveTask.run(destination.id, taskMatch[1], taskMatch[2]);
+          return send(res, 200, taskJson(findTask.get(destination.id, taskMatch[2])));
+        } else if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return send(res, 400, { error: 'Task title is required' });
           renameTask.run(title, taskMatch[1], taskMatch[2]);
