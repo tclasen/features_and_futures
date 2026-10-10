@@ -183,6 +183,7 @@ async function renderProject(id) {
             await request(`/api/projects/${id}/tasks/${task.id}/priority`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
             task.priority = priority.value;
             alert.hidden = true;
+            showTasks();
           } catch (error) {
             priority.value = previous;
             alert.textContent = error.message;
