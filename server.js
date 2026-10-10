@@ -456,7 +456,8 @@ function page() {
           }
         });
         const notes = document.createElement('textarea');
-        notes.value = task.notes || '';
+        // Populate through the DOM API so notes remain literal text, even when they contain HTML markup.
+        notes.textContent = typeof task.notes === 'string' ? task.notes : '';
         notes.setAttribute('aria-label', 'Task notes');
         notes.disabled = Boolean(project.archived);
         const saveNotes = element('button', 'Save notes');
