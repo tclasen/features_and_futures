@@ -595,6 +595,92 @@ test('projects and tasks: validation, rename, archive, priorities, summaries, is
     await stop();
     base = await start();
     assert.equal(await (await fetch(filteredUrl('Open', 'Low'))).text(), clearedDates);
+    // Task 010: inclusive ranges intersect filters and survive every editing action.
+    const post = (path, fields = {}) => fetch(base + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Range project' });
+    const rangePath = [...(await (await fetch(base)).text()).matchAll(/action="(\/projects\/\d+)"/g)].at(-1)[1];
+    for (const title of ['Undated', 'Early', 'Start', 'End', 'Late']) {
+      await post(`${rangePath}/tasks`, { title });
+    }
+    const getPage = async path => (await fetch(base + path)).text();
+    const rangeTasks = [...(await getPage(rangePath)).matchAll(/class="task-completion" action="([^"]+)"/g)].map(match => match[1]);
+    for (const [index, date] of [[1, '0001-01-01'], [2, '2024-02-29'], [3, '2024-03-01'], [4, '9999-12-31']]) {
+      await post(`${rangeTasks[index]}/due-date`, { dueDate: date });
+    }
+    const apply = async (rangeFrom, rangeThrough, state = {}) => post(`${rangePath}/due-range`, { rangeFrom, rangeThrough, ...state });
+    const follow = async response => getPage(response.headers.get('location'));
+    assert.deepEqual(rowTitles(await follow(await apply('', ''))), ['Undated', 'Early', 'Start', 'End', 'Late']);
+    assert.deepEqual(rowTitles(await follow(await apply('', '2024-02-29'))), ['Early', 'Start']);
+    assert.deepEqual(rowTitles(await follow(await apply('2024-03-01', ''))), ['End', 'Late']);
+    let rangeResponse = await apply(' 2024-02-29 ', ' 2024-03-01 ');
+    let rangeUrl = rangeResponse.headers.get('location');
+    assert.deepEqual(rowTitles(await getPage(rangeUrl)), ['Start', 'End']);
+    const state = { filter: 'All', priorityFilter: 'All', dueFrom: '2024-02-29', dueThrough: '2024-03-01' };
+    for (const [from, through, message] of [
+      ['1900-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['', '0000-01-01', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-2-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['', '2024-04-31', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-03-02', '2024-03-01', 'Due from must not be after Due through'],
+    ]) {
+      const invalid = await apply(from, through, state);
+      assert.equal(invalid.status, 200);
+      const body = await invalid.text();
+      assert.ok(body.includes(`<p role="alert">${message}</p>`));
+      assert.deepEqual(rowTitles(body), ['Start', 'End']);
+      assert.match(body, /id="due-from" name="rangeFrom" type="text" value="2024-02-29"/);
+      assert.match(body, /id="due-through" name="rangeThrough" type="text" value="2024-03-01"/);
+    }
+    await post(`${rangeTasks[2]}/priority`, { priority: 'High', ...state });
+    await post(`${rangeTasks[3]}`, { completed: '1', ...state });
+    const combined = { ...state, filter: 'Open', priorityFilter: 'High' };
+    rangeUrl = `${rangePath}?${new URLSearchParams(combined)}`;
+    assert.deepEqual(rowTitles(await getPage(rangeUrl)), ['Start']);
+    assert.deepEqual(rowTitles(await getPage(`${rangePath}?${new URLSearchParams({ ...combined, filter: 'Completed' })}`)), []);
+    assert.deepEqual(rowTitles(await getPage(`${rangePath}?${new URLSearchParams({ ...combined, priorityFilter: 'Normal' })}`)), []);
+    for (const [path, fields] of [
+      [`${rangeTasks[2]}/rename`, { title: ' Renamed start ' }],
+      [`${rangePath}/rename`, { name: ' Renamed range project ' }],
+      [`${rangePath}/default-priority`, { priority: 'High' }],
+      [`${rangePath}/tasks`, { title: 'New undated high' }],
+    ]) {
+      const response = await post(path, { ...combined, ...fields });
+      assert.equal(response.status, 303);
+      const body = await follow(response);
+      assertFilters(body, 'Open', 'High');
+      assert.deepEqual(rowTitles(body), ['Renamed start']);
+      assert.match(response.headers.get('location'), /dueFrom=2024-02-29&dueThrough=2024-03-01/);
+    }
+    const summaryBeforeRangeEdits = await getPage('/');
+    assert.match(summaryBeforeRangeEdits, /data-testid="project-summary">1\/6 completed/);
+    assert.deepEqual(rowTitles(await follow(await post(`${rangeTasks[2]}/due-date`, { ...combined, dueDate: '2024-03-02' }))), []);
+    assert.deepEqual(rowTitles(await follow(await post(`${rangeTasks[2]}/due-date`, { ...combined, dueDate: '2024-02-29' }))), ['Renamed start']);
+    assert.deepEqual(rowTitles(await follow(await post(`${rangeTasks[2]}/priority`, { ...combined, priority: 'Low' }))), []);
+    await post(`${rangeTasks[2]}/priority`, { ...combined, priority: 'High' });
+    assert.equal(await getPage('/'), summaryBeforeRangeEdits);
+    assert.deepEqual(rowTitles(await follow(await post(rangeTasks[2], { ...combined, completed: '1' }))), []);
+    await post(rangeTasks[2], combined);
+    assert.equal(await getPage('/'), summaryBeforeRangeEdits);
+    const beforeRestart = await getPage(rangeUrl);
+    await stop();
+    base = await start();
+    assert.equal(await getPage(rangeUrl), beforeRestart);
+    await post(`${rangePath}/archive`);
+    const archivedRange = await follow(await apply('2024-02-29', '2024-03-01', combined));
+    assert.deepEqual(rowTitles(archivedRange), ['Renamed start']);
+    assert.match(archivedRange, /name="dueDate" type="text" value="2024-02-29" disabled/);
+    assert.doesNotMatch(archivedRange, /id="due-(?:from|through)"[^>]*disabled/);
+    assert.doesNotMatch(archivedRange, /disabled>Apply due range/);
+    assert.deepEqual(rowTitles(await follow(await apply('', '', { ...combined, dueFrom: '', dueThrough: '' }))), ['Renamed start', 'New undated high']);
+    await post(`${rangePath}/restore`);
+    assert.equal(await getPage(rangeUrl), beforeRestart);
+    const reopened = await getPage(rangePath);
+    assertFilters(reopened, 'All', 'All');
+    assert.match(reopened, /id="due-from" name="rangeFrom" type="text" value=""/);
+    assert.match(reopened, /id="due-through" name="rangeThrough" type="text" value=""/);
+    assert.deepEqual(rowTitles(reopened), ['Undated', 'Early', 'Renamed start', 'End', 'Late', 'New undated high']);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

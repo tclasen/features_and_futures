@@ -13,7 +13,7 @@ function browser({ ok = true, completed = true } = {}) {
   let alert;
   const frames = [];
   const checkbox = { checked: completed, defaultChecked: !completed, disabled: false };
-  const fields = { filter: completed ? 'Open' : 'Completed', priorityFilter: 'High' };
+  const fields = { filter: completed ? 'Open' : 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-01' };
   if (completed) fields.completed = '1';
   const form = {
     action: 'http://localhost/projects/1/tasks/2', isConnected: true,
@@ -52,7 +52,7 @@ function browser({ ok = true, completed = true } = {}) {
   };
 }
 
-test('completion saves asynchronously without navigation and retains both filter values', async () => {
+test('completion saves asynchronously without navigation and retains completion, priority, and due-range filters', async () => {
   for (const completed of [true, false]) {
     const page = browser({ completed });
     let prevented = false;
