@@ -3,7 +3,7 @@ const app = document.querySelector('#app');
 async function api(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(data.error || 'Unable to complete request');
   return data;
 }
 
@@ -79,6 +79,95 @@ async function showProject(id) {
   const project = await api(`/api/projects/${id}`);
   app.querySelector('h1').textContent = project.name;
   document.title = `${project.name} — Workboard`;
+  const section = document.createElement('section');
+  section.innerHTML = `
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="create-controls">
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <label for="task-filter">Task filter</label>
+    <select id="task-filter">
+      <option>All</option>
+      <option>Open</option>
+      <option>Completed</option>
+    </select>
+    <ul class="tasks"></ul>
+  `;
+  app.append(section);
+  const form = section.querySelector('form');
+  const input = section.querySelector('input');
+  const submit = form.querySelector('button');
+  const filter = section.querySelector('select');
+  const list = section.querySelector('ul');
+  const endpoint = `/api/projects/${id}/tasks`;
+  let tasks = [];
+  const pendingUpdates = new Set();
+
+  function renderTasks() {
+    const visible = tasks.filter((task) => filter.value === 'All'
+      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    list.replaceChildren(...visible.map((task) => {
+      const row = document.createElement('li');
+      row.dataset.testid = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.disabled = pendingUpdates.has(task.id);
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        pendingUpdates.add(task.id);
+        checkbox.disabled = true;
+        try {
+          const saved = await api(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          Object.assign(task, saved);
+          app.querySelector('[role="alert"]').hidden = true;
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          pendingUpdates.delete(task.id);
+          renderTasks();
+        }
+      });
+      row.append(title, checkbox);
+      return row;
+    }));
+  }
+
+  filter.addEventListener('change', renderTasks);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title) return showError('Task title is required');
+    submit.disabled = true;
+    try {
+      const task = await api(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      tasks.push(task);
+      renderTasks();
+      input.value = '';
+      app.querySelector('[role="alert"]').hidden = true;
+      input.focus();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  tasks = await api(endpoint);
+  renderTasks();
+  submit.disabled = false;
 }
 
 try {
