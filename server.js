@@ -23,6 +23,9 @@ const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
+}
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
@@ -50,7 +53,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = database.prepare(`SELECT p.id, p.name, p.archived,
+    const projects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
       COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id`).all().map((project) => ({
@@ -74,6 +77,15 @@ const server = createServer(async (request, response) => {
       if (typeof body?.archived === 'boolean') {
         database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), projectId);
         sendJson(response, 200, { id: projectId, archived: body.archived });
+        return;
+      }
+      if (['Low', 'Normal', 'High'].includes(body?.defaultTaskPriority)) {
+        if (project.archived) {
+          sendJson(response, 400, { error: 'Archived projects cannot be changed' });
+          return;
+        }
+        database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?').run(body.defaultTaskPriority, projectId);
+        sendJson(response, 200, { id: projectId, defaultTaskPriority: body.defaultTaskPriority });
         return;
       }
       const name = typeof body?.name === 'string' ? body.name.trim() : '';
@@ -102,7 +114,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
-      sendJson(response, 201, { id: Number(result.lastInsertRowid), name, archived: false, totalCount: 0, completedCount: 0 });
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), name, archived: false, defaultTaskPriority: 'Normal', totalCount: 0, completedCount: 0 });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
@@ -126,7 +138,7 @@ const server = createServer(async (request, response) => {
   if (tasksMatch && request.method === 'POST') {
     try {
       const projectId = Number(tasksMatch[1]);
-      const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      const project = database.prepare('SELECT id, archived, default_task_priority AS defaultTaskPriority FROM projects WHERE id = ?').get(projectId);
       if (!project) {
         sendJson(response, 404, { error: 'Project not found' });
         return;
@@ -141,8 +153,8 @@ const server = createServer(async (request, response) => {
         sendJson(response, 400, { error: 'Task title is required' });
         return;
       }
-      const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.defaultTaskPriority);
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultTaskPriority });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
