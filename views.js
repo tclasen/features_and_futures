@@ -32,7 +32,9 @@ function page(title, content) {
     .task-filter, .project-filter { margin-top: 28px; }
     .task-row { border-top: 1px solid #dde3eb; padding: 16px 0; }
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
-    .task-row input { width: 20px; height: 20px; flex-shrink: 0; }
+    .task-row input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+    .task-row .create { margin-top: 16px; }
+    .task-row .create label { margin-bottom: 8px; }
     [role="alert"] { color: #9c2020; }
     @media (max-width: 760px) { main { margin: 24px 12px; padding: 20px; } }
   </style>
@@ -111,6 +113,12 @@ export function projectPage(project, tasks = [], filter = 'all', error = '') {
               <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
               <span>${escapeHtml(task.title)}</span>
             </label>
+          </form>
+          <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
         </div>`).join('')}
     </section>`);

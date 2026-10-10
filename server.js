@@ -66,7 +66,7 @@ const server = createServer(async (request, response) => {
       }
       return redirect(response, `/?filter=${archiveRoute[2] === 'archive' ? 'active' : 'archived'}`);
     }
-    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(pathname);
+    const projectRoute = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/(completion|rename))?)?$/.exec(pathname);
     if (projectRoute) {
       const id = Number(projectRoute[1]);
       const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -90,7 +90,18 @@ const server = createServer(async (request, response) => {
           store.rename(id, name);
         } else if (projectRoute[2]) {
           const taskId = Number(projectRoute[2]);
-          if (!Number.isSafeInteger(taskId) || !store.setTaskCompleted(id, taskId, form.has('completed'))) {
+          if (!Number.isSafeInteger(taskId)) return send(response, 404, notFoundPage());
+          let updated;
+          if (projectRoute[3] === 'rename') {
+            const title = (form.get('title') ?? '').trim();
+            if (!title) {
+              return send(response, 422, projectPage(project, store.listTasks(id, filter), filter, 'Task title is required'));
+            }
+            updated = store.renameTask(id, taskId, title);
+          } else {
+            updated = store.setTaskCompleted(id, taskId, form.has('completed'));
+          }
+          if (!updated) {
             return send(response, 404, notFoundPage());
           }
         } else {

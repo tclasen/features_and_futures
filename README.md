@@ -40,6 +40,13 @@ the project URL, creation order, tasks, and completion counts. Archived projects
 disable renaming in the interface and reject rename requests on the server;
 restoring a project enables renaming again.
 
+Each task row supports renaming through `New task title` and `Rename task`.
+Titles are trimmed, and blank titles show a validation alert without changing
+the task. Renaming preserves task identity, project ownership, creation order,
+completion state, filter membership, and project summaries. The completion
+checkbox label reflects the saved title. Archived projects disable task rename
+controls and reject rename requests; restoration enables renaming again.
+
 `npm test` checks validation, HTML escaping, project isolation, filtering,
 completion updates, archive/restore, renaming, summaries, read-only archived projects,
 database upgrades, and persistence across server restarts.

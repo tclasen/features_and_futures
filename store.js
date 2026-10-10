@@ -36,6 +36,7 @@ export function openProjectStore(databasePath) {
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+  const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 
   function requireActiveProject(projectId) {
     if (find.get(projectId)?.archived) {
@@ -73,6 +74,12 @@ export function openProjectStore(databasePath) {
     setTaskCompleted(projectId, taskId, completed) {
       requireActiveProject(projectId);
       return updateTask.run(completed ? 1 : 0, projectId, taskId).changes > 0;
+    },
+    renameTask(projectId, taskId, title) {
+      requireActiveProject(projectId);
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle) throw new Error('Task title is required');
+      return updateTaskTitle.run(trimmedTitle, projectId, taskId).changes > 0;
     },
     close: () => database.close(),
   };
