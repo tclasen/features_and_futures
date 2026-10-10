@@ -94,6 +94,14 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-submit-on-change>
             <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
           </form>
+          <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="task-priority-${task.id}">Task priority</label>
+            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} data-submit-on-change>
+              ${['Low', 'Normal', 'High'].map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+            </select>
+            <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save priority</button></noscript>
+          </form>
           <form class="task-rename-form" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
             <input type="hidden" name="filter" value="${filter}">
             <label for="new-task-title-${task.id}">New task title</label>

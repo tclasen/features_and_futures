@@ -62,7 +62,7 @@ export function createWorkboardServer(databasePath) {
         } else {
           redirect(response, '/');
         }
-      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|tasks(?:\/[1-9]\d*\/(?:completion|rename))?))?$/.test(pathname)) {
+      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|tasks(?:\/[1-9]\d*\/(?:completion|rename|priority))?))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const id = Number(parts[2]);
         const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -115,6 +115,16 @@ export function createWorkboardServer(databasePath) {
                   projectPage(project, store.tasks.list(id, filter), filter, '', '', {}, {
                     taskId, error: result.error, submittedTitle: title,
                   }));
+                return;
+              }
+            } else if (parts[5] === 'priority') {
+              const result = store.tasks.setPriority(id, taskId, form.get('priority'));
+              if (result.error) {
+                if (result.status === 404) {
+                  send(response, 404, notFoundPage());
+                } else {
+                  send(response, result.status, result.error, 'text/plain; charset=utf-8');
+                }
                 return;
               }
             } else if (!store.tasks.setCompleted(id, taskId, form.get('completed') === 'on')) {

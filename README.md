@@ -9,7 +9,7 @@ npm start
 The server binds to `0.0.0.0` at `PORT` (default `8080`). Set `DB_PATH` to the
 SQLite file to use (default `data/workboard.sqlite`). Its parent directory is
 created automatically. Keep this file to preserve projects, tasks, and completion
-state and archive status between restarts. Existing project databases are migrated
+state, priorities, and archive status between restarts. Existing databases are migrated
 automatically without changing project IDs or tasks.
 
 ```sh
@@ -43,3 +43,9 @@ and updates the completion checkbox label while preserving ownership, creation
 order, completion, filter membership, and project counts. Blank titles show an
 alert without changing the saved task. Archived projects disable task renaming;
 the server rejects changes until restoration. Task titles persist between restarts.
+
+Each task row has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Changes save immediately and persist
+between restarts, independently of completion and renaming. Archived projects
+disable priority changes in the browser and on the server; restoration preserves
+the saved priorities.
