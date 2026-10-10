@@ -29,12 +29,27 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+// Empty strings represent tasks without a due date, including pre-migration tasks.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+
+function validDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 function taskData(task) { return { ...task, completed: Boolean(task.completed) }; }
 const projectSelect = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
@@ -133,6 +148,12 @@ const server = http.createServer(async (request, response) => {
             return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
           }
           setTaskPriority.run(input.priority, projectId, taskId);
+        } else if (input && Object.hasOwn(input, 'due_date')) {
+          const date = typeof input.due_date === 'string' ? input.due_date.trim() : null;
+          if (date === null || (date !== '' && !validDueDate(date))) {
+            return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+          setTaskDueDate.run(date, projectId, taskId);
         } else {
           if (typeof input?.completed !== 'boolean') return json(response, 400, { error: 'Completion must be a boolean' });
           updateTask.run(Number(input.completed), projectId, taskId);

@@ -198,3 +198,32 @@ test('changing the project default leaves filters and existing rows intact; new 
   assert.deepEqual(p.titles(), ['Low open', 'Inherits Low']);
   assert.equal(p.tasks.at(-1).priority, 'Low');
 });
+
+test('due date controls save and clear independently without resetting filters or rename data', async () => {
+  const p = await page();
+  await p.select(p.completion, 'Open');
+  await p.select(p.priority, 'High');
+  function dueForm() { return p.rows()[0].querySelectorAll('form')[1]; }
+  assert.equal(dueForm().querySelector('label').textContent, 'Task due date');
+  assert.equal(dueForm().querySelector('button').textContent, 'Save due date');
+  assert.equal(dueForm().querySelector('input').type, 'text');
+  assert.equal(dueForm().querySelector('input').value, '');
+  dueForm().querySelector('input').value = '2024-02-29';
+  await dueForm().fire('submit');
+  assert.equal(dueForm().querySelector('input').value, '2024-02-29');
+  assert.equal(p.completion.value, 'Open');
+  assert.equal(p.priority.value, 'High');
+  assert.deepEqual(p.titles(), ['High open']);
+  assert.equal(p.tasks[4].due_date, '2024-02-29');
+  assert.equal(p.tasks[0].due_date, undefined);
+  const rename = p.rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'New title';
+  await rename.fire('submit');
+  assert.equal(dueForm().querySelector('input').value, '2024-02-29');
+  dueForm().querySelector('input').value = '';
+  await dueForm().fire('submit');
+  assert.equal(dueForm().querySelector('input').value, '');
+  assert.deepEqual(p.titles(), ['New title']);
+  assert.equal(p.completion.value, 'Open');
+  assert.equal(p.priority.value, 'High');
+});

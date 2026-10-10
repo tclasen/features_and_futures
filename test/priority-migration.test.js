@@ -39,7 +39,7 @@ test('existing task rows migrate to Normal with identity and completion intact',
     }
     assert.ok(healthy);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
-      { id: 11, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal' },
+      { id: 11, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
     ]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7`)).json(),
       { id: 7, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 1, completed: 1 });
