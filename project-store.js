@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { normalizeDueDate } from './task-due-date.js';
+import { normalizeDueDate } from './public/task-due-date.js';
 
 export function openProjectStore(path) {
   mkdirSync(dirname(path), { recursive: true });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDueDate } from '../task-due-date.js';
+import { normalizeDueDate } from '../public/task-due-date.js';
 
 test('due dates trim, clear, and validate Gregorian calendar boundaries without timezones', () => {
   for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '0100-03-01', '2026-04-30']) {

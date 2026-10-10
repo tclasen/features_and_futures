@@ -56,3 +56,12 @@ clear the saved date. Surrounding whitespace is trimmed. Invalid dates show an
 alert and preserve the saved date. Dates are calendar days without timezone
 conversion and survive other edits and restarts. Archived projects disable date
 editing; restoration preserves dates and enables editing again.
+
+Due from and Due through apply an inclusive due-date range alongside the
+completion and priority filters. Either blank boundary is unbounded; with both
+blank, undated tasks also match. Enter valid YYYY-MM-DD dates and select Apply
+due range. Invalid dates or reversed boundaries show an alert and leave the
+previous applied range intact. Editing the textboxes alone does not apply a
+range. Task edits immediately update matching rows while preserving all filters.
+Range controls remain available in archived projects. Reopening a project starts
+with empty boundaries; filters never change saved task data or completion summaries.

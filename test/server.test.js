@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -43,6 +43,29 @@ async function startServer(databasePath) {
     },
   };
 }
+
+test('project URLs and shared browser filter modules are served with the correct content types', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-assets-test-'));
+  let server;
+  try {
+    server = await startServer(join(directory, 'workboard.sqlite'));
+    for (const [path, file, contentType] of [
+      ['/', 'index.html', 'text/html'],
+      ['/projects/1', 'index.html', 'text/html'],
+      ['/app.js', 'app.js', 'text/javascript'],
+      ['/task-filters.js', 'task-filters.js', 'text/javascript'],
+      ['/task-due-date.js', 'task-due-date.js', 'text/javascript'],
+    ]) {
+      const response = await fetch(server.baseUrl + path);
+      assert.equal(response.status, 200, path);
+      assert.equal(response.headers.get('content-type'), `${contentType}; charset=utf-8`, path);
+      assert.equal(await response.text(), await readFile(new URL(`../public/${file}`, import.meta.url), 'utf8'), path);
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('project defaults migrate, apply only to new tasks, and persist independently through restoration', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-default-priority-test-'));
