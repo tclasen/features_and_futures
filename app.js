@@ -158,6 +158,33 @@ async function renderProject(id) {
   submit.type = 'submit';
   submit.disabled = project.archived;
   form.append(field, submit);
+  const defaultPriorityField = element('div', 'filter-field');
+  const defaultPriorityLabel = element('label', '', 'Default task priority');
+  defaultPriorityLabel.htmlFor = 'default-task-priority';
+  const defaultPriority = element('select');
+  defaultPriority.id = 'default-task-priority';
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', '', value);
+    option.value = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.defaultPriority || 'Normal';
+  defaultPriority.disabled = project.archived;
+  defaultPriority.addEventListener('change', async () => {
+    const previous = project.defaultPriority || 'Normal';
+    try {
+      const updated = await request(`/api/projects/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultPriority: defaultPriority.value }),
+      });
+      project.defaultPriority = updated.defaultPriority;
+    } catch (error) {
+      defaultPriority.value = previous;
+      alert.textContent = error.message;
+      alert.hidden = false;
+    }
+  });
+  defaultPriorityField.append(defaultPriorityLabel, defaultPriority);
   const alert = element('p', 'alert');
   alert.hidden = true;
   alert.setAttribute('role', 'alert');
@@ -279,7 +306,7 @@ async function renderProject(id) {
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
   drawTasks();
-  content.append(renameForm, form, alert, filterField, priorityFilterField, list);
+  content.append(renameForm, defaultPriorityField, form, alert, filterField, priorityFilterField, list);
   renameForm.addEventListener('submit', async event => {
     event.preventDefault();
     alert.hidden = true;

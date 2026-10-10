@@ -15,6 +15,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0,
+    default_priority TEXT NOT NULL DEFAULT 'Normal',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
   ;
@@ -31,6 +32,9 @@ db.exec(`
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+if (!projectColumns.some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
@@ -58,7 +62,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
       COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id ASC`).all();
@@ -82,6 +86,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'PATCH' && projectMatch) {
     try {
       const input = await readJson(req);
+      if (typeof input.defaultPriority === 'string') {
+        const priority = input.defaultPriority;
+        if (!['Low', 'Normal', 'High'].includes(priority)) return send(res, 400, JSON.stringify({ error: 'Invalid default task priority' }));
+        const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+        if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+        if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived projects cannot be changed' }));
+        db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(priority, Number(projectMatch[1]));
+        return send(res, 200, JSON.stringify({ id: Number(projectMatch[1]), defaultPriority: priority }));
+      }
       if (typeof input.name === 'string') {
         const name = input.name.trim();
         if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
@@ -100,7 +113,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (project) project.archived = Boolean(project.archived);
     return project ? send(res, 200, JSON.stringify(project)) : send(res, 404, JSON.stringify({ error: 'Project not found' }));
   }
@@ -116,14 +129,14 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'POST') {
     try {
       const projectId = Number(tasksMatch[1]);
-      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
       if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived projects cannot be changed' }));
       const input = await readJson(req);
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority }));
     } catch {
       return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
     }
