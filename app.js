@@ -273,6 +273,34 @@ async function renderTasks(projectId, taskFilter, priorityFilter, list) {
       }
     });
     row.append(renameForm, renameAlert);
+
+    const dueDateForm = element('form', { class: 'task-due-date-form' });
+    const dueDateInputId = `task-due-date-${task.id}`;
+    const dueDateLabel = element('label', { for: dueDateInputId }, 'Task due date');
+    const dueDateInput = element('input', {
+      id: dueDateInputId, type: 'text', value: task.dueDate ?? '',
+      placeholder: 'YYYY-MM-DD',
+    });
+    const dueDateButton = element('button', { type: 'submit' }, 'Save due date');
+    const dueDateAlert = element('p', { class: 'alert', role: 'alert', hidden: '' });
+    dueDateInput.disabled = project.archived;
+    dueDateButton.disabled = project.archived;
+    dueDateForm.append(dueDateLabel, dueDateInput, dueDateButton);
+    dueDateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const enteredDate = dueDateInput.value.trim();
+      try {
+        await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ dueDate: enteredDate || null }),
+        });
+        await renderTasks(projectId, taskFilter, priorityFilter, list);
+      } catch (error) {
+        dueDateAlert.textContent = error.message;
+        dueDateAlert.hidden = false;
+      }
+    });
+    row.append(dueDateForm, dueDateAlert);
     list.append(row);
   }
 }
