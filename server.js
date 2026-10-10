@@ -20,11 +20,14 @@ db.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 
 // Older runs could create the same project repeatedly. Keep the first project
 // ID and move any tasks from duplicates onto it before removing duplicate rows.
@@ -91,7 +94,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -121,6 +124,11 @@ const server = http.createServer(async (req, res) => {
       if (!title) return json(res, 400, { error: 'Task title is required' });
       db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskMatch[1]));
       return json(res, 200, { ok: true, title });
+    }
+    if (typeof input.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(input.priority)) return json(res, 400, { error: 'Invalid task priority' });
+      db.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(input.priority, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, priority: input.priority });
     }
     if (typeof input.completed !== 'boolean') return json(res, 400, { error: 'Completion state is required' });
     db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(input.completed ? 1 : 0, Number(taskMatch[1]));
