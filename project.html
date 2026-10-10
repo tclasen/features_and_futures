@@ -21,6 +21,10 @@
     <h1 id="project-name"></h1>
     <p id="archived-banner" hidden>Archived project</p>
     <p id="missing" role="alert" hidden>Project not found</p>
+    <form id="rename-form" hidden>
+      <label>New project name<input id="new-project-name" name="name" type="text" autocomplete="off"></label>
+      <button type="submit">Rename project</button>
+    </form>
     <section id="task-section" hidden aria-label="Tasks">
       <form id="create-form">
         <label>Task title<input id="task-title" name="title" type="text" autocomplete="off"></label>
@@ -38,12 +42,37 @@
     if (response.ok) {
       const project = await response.json();
       document.querySelector('#project-name').textContent = project.name;
+      const renameForm = document.querySelector('#rename-form');
+      renameForm.hidden = false;
       if (project.archived) {
         document.querySelector('#archived-banner').hidden = false;
         document.querySelector('#create-form button').disabled = true;
+        renameForm.querySelector('input').disabled = true;
+        renameForm.querySelector('button').disabled = true;
       }
       document.title = `${project.name} · Workboard`;
       document.querySelector('#task-section').hidden = false;
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const alertBox = document.querySelector('#alert');
+        alertBox.textContent = '';
+        const name = document.querySelector('#new-project-name').value.trim();
+        if (!name) { alertBox.textContent = 'Project name is required'; return; }
+        const renameResponse = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        if (!renameResponse.ok) {
+          const error = await renameResponse.json();
+          alertBox.textContent = error.error || 'Unable to rename project';
+          return;
+        }
+        project.name = name;
+        document.querySelector('#project-name').textContent = name;
+        document.title = `${name} · Workboard`;
+        document.querySelector('#new-project-name').value = '';
+      });
       const taskList = document.querySelector('#tasks');
       const filter = document.querySelector('#task-filter');
       async function loadTasks() {

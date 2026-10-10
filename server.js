@@ -62,6 +62,18 @@ const server = createServer(async (request, response) => {
     json(response, 200, {...project, archived: Boolean(project.archived)});
     return;
   }
+  if (request.method === 'PATCH' && projectMatch) {
+    const projectId = Number(projectMatch[1]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) { json(response, 404, { error: 'Project not found' }); return; }
+    if (project.archived) { json(response, 403, { error: 'Archived project' }); return; }
+    const body = await readBody(request);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) { json(response, 400, { error: 'Project name is required' }); return; }
+    db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+    json(response, 200, { id: projectId, name });
+    return;
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (request.method === 'POST' && archiveMatch) {
     const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
