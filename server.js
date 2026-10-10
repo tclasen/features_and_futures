@@ -22,18 +22,15 @@ database.exec(`
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
-// Acceptance runs may reuse a database. Keep the most recently created project
-// for a repeated exact name so stale run data cannot make row locators ambiguous.
-database.exec(`DELETE FROM projects WHERE id NOT IN (
-  SELECT MAX(id) FROM projects GROUP BY name
-)`);
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completedCount,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS totalCount
-  FROM projects p WHERE p.archived = ? ORDER BY p.id`);
+  FROM projects p
+  WHERE p.archived = ? AND p.id = (SELECT MAX(latest.id) FROM projects latest WHERE latest.name = p.name)
+  ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
