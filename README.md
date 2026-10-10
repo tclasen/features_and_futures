@@ -23,6 +23,11 @@ Archived task rename controls are disabled until the project is restored.
 Each task has a saved Low, Normal, or High priority, defaulting to Normal for
 new and existing tasks. Priority changes preserve task order, ownership, title,
 and completion. Archived priority controls are disabled until restoration.
+Project pages also have an All/Low/Normal/High priority filter. Both task filters
+apply together and keep their selections through completion, priority, and rename
+edits. Filters remain usable on archived projects and never change saved tasks
+or completion summaries. Opening a project from the list starts with both
+filters set to All.
 `GET /health` returns
 `{"status":"ok"}`.
 
