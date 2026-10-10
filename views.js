@@ -92,6 +92,12 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', r
       </form>
     </section>
     <section class="panel" aria-label="Create a task">
+      <form method="post" action="/projects/${project.id}/default-priority?${query}">
+        <label for="default-task-priority">Default task priority</label>
+        <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+          ${['Low', 'Normal', 'High'].map(value => `<option${project.default_priority === value ? ' selected' : ''}>${value}</option>`).join('')}
+        </select>
+      </form>
       <form method="post" action="/projects/${project.id}/tasks?${query}">
         <label for="task-title">Task title</label>
         <div class="create">
