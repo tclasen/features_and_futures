@@ -110,8 +110,11 @@ async function renderProject(id) {
     const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
     const filter = element('select', undefined, { id: 'task-filter' });
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value: value.toLowerCase() }));
+    const priorityFilterLabel = element('label', 'Priority filter', { for: 'priority-filter' });
+    const priorityFilter = element('select', undefined, { id: 'priority-filter' });
+    for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value: value.toLowerCase() }));
     const rows = element('section', undefined, { 'aria-label': 'Tasks' });
-    app.append(renameForm, form, alert, filterLabel, filter, rows);
+    app.append(renameForm, form, alert, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
 
     renameForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -137,8 +140,10 @@ async function renderProject(id) {
     function showTasks() {
       rows.replaceChildren();
       const selected = filter.value;
+      const selectedPriority = priorityFilter.value;
       for (const task of tasks) {
         if (selected === 'open' && task.completed || selected === 'completed' && !task.completed) continue;
+        if (selectedPriority !== 'all' && task.priority.toLowerCase() !== selectedPriority) continue;
         const row = element('article', undefined, { 'data-testid': 'task-row' });
         row.append(element('span', task.title));
         const renameForm = element('form');
@@ -212,6 +217,7 @@ async function renderProject(id) {
       showTasks();
     }
     filter.addEventListener('change', showTasks);
+    priorityFilter.addEventListener('change', showTasks);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const title = input.value.trim();
