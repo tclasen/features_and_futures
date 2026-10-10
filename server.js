@@ -7,14 +7,30 @@ const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = new DatabaseSync(databasePath);
 database.exec(`
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  );
+  CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
 `);
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
 const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+
+function taskValue(task) {
+  return { ...task, completed: Boolean(task.completed) };
+}
 
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -68,6 +84,35 @@ const server = createServer(async (request, response) => {
       return project
         ? sendJson(response, 200, project)
         : sendJson(response, 404, { error: 'Project not found' });
+    }
+    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+    if (tasksMatch) {
+      const projectId = Number(tasksMatch[1]);
+      const taskId = tasksMatch[2] ? Number(tasksMatch[2]) : null;
+      if (!findProject.get(projectId)) {
+        return sendJson(response, 404, { error: 'Project not found' });
+      }
+      if (request.method === 'GET' && taskId === null) {
+        return sendJson(response, 200, listTasks.all(projectId).map(taskValue));
+      }
+      if (request.method === 'POST' && taskId === null) {
+        const input = await readJson(request);
+        const title = typeof input?.title === 'string' ? input.title.trim() : '';
+        if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+        const result = insertTask.run(projectId, title);
+        return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+      }
+      if (request.method === 'PATCH' && taskId !== null) {
+        if (!findTask.get(projectId, taskId)) {
+          return sendJson(response, 404, { error: 'Task not found' });
+        }
+        const input = await readJson(request);
+        if (typeof input?.completed !== 'boolean') {
+          return sendJson(response, 400, { error: 'Completion must be a boolean' });
+        }
+        updateTask.run(Number(input.completed), projectId, taskId);
+        return sendJson(response, 200, taskValue(findTask.get(projectId, taskId)));
+      }
     }
     const asset = assets.get(/^\/projects\/[1-9]\d*$/.test(path) ? '/' : path);
     if (request.method === 'GET' && asset) {

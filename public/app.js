@@ -89,6 +89,93 @@ async function showProject(id) {
   heading.textContent = project.name;
   document.title = `${project.name} · Workboard`;
   app.prepend(heading);
+  const controls = document.createElement('div');
+  controls.innerHTML = `
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="form-controls">
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <p role="alert"></p>
+    <label for="task-filter">Task filter</label>
+    <select id="task-filter">
+      <option>All</option>
+      <option>Open</option>
+      <option>Completed</option>
+    </select>
+    <section aria-label="Tasks" id="tasks"></section>
+  `;
+  app.append(controls);
+  const form = controls.querySelector('form');
+  const input = controls.querySelector('input');
+  const submit = form.querySelector('button');
+  const filter = controls.querySelector('select');
+  const list = controls.querySelector('#tasks');
+  const tasksPath = `/api/projects/${id}/tasks`;
+  let tasks = [];
+
+  function renderTasks() {
+    const visible = tasks.filter((task) => filter.value === 'All'
+      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    list.replaceChildren(...visible.map((task) => {
+      const row = document.createElement('div');
+      row.dataset.testid = 'task-row';
+      row.className = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        showAlert('');
+        try {
+          const saved = await api(`${tasksPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          tasks = tasks.map((current) => current.id === saved.id ? saved : current);
+        } catch (error) {
+          showAlert(error.message);
+        } finally {
+          renderTasks();
+        }
+      });
+      row.append(title, checkbox);
+      return row;
+    }));
+  }
+
+  filter.addEventListener('change', renderTasks);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title) return showAlert('Task title is required');
+    submit.disabled = true;
+    showAlert('');
+    try {
+      const task = await api(tasksPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      tasks.push(task);
+      renderTasks();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  tasks = await api(tasksPath);
+  renderTasks();
+  submit.disabled = false;
 }
 
 try {
