@@ -529,6 +529,74 @@ test('projects and tasks: validation, filtering, archive, project/task rename, p
     await start();
     assert.equal(await projectHtml(ids[0]), finalDefaultView);
 
+    // Due dates use calendar-day validation and preserve all unrelated state.
+    const datedTask = records.find(task => task.priority === 'High' && task.completed);
+    const datedPath = `/projects/${ids[0]}/tasks/${datedTask.id}`;
+    const datePath = `${datedPath}/due-date`;
+    const dateSelection = { filter: 'Completed', priorityFilter: 'High' };
+    const dateView = () => combinedHtml('Completed', 'High');
+    const dueInput = /name="dueDate" type="text" value="([^"]*)"/;
+    const savedDate = async () => dueInput.exec(rows(await projectHtml(ids[0])).find(row =>
+      row.includes(`action="${datePath}"`)))[1];
+    assert.ok(rows(finalDefaultView).every(row => dueInput.exec(row)[1] === ''));
+    assert.match(finalDefaultView, /<label for="task-due-date-\d+">Task due date<\/label>/);
+    const beforeDateSummary = await (await fetch(base)).text();
+    const beforeOtherDates = await projectHtml(ids[1]);
+    const beforeDateRows = rows(await projectHtml(ids[0]));
+    for (const dueDate of ['0001-01-01', '0096-02-29', '2000-02-29', '2024-02-29', '9999-12-31', '  2026-10-10 \t']) {
+      const response = await post(datePath, { ...dateSelection, dueDate });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), `/projects/${ids[0]}?filter=Completed&priorityFilter=High`);
+      assertSelections(await dateView(), 'Completed', 'High');
+      assert.equal(await savedDate(), dueDate.trim());
+    }
+    const withSavedDate = await projectHtml(ids[0]);
+    assert.deepEqual(rows(withSavedDate), beforeDateRows.map(row => row.includes(`action="${datePath}"`)
+      ? row.replace('name="dueDate" type="text" value=""', 'name="dueDate" type="text" value="2026-10-10"') : row));
+    for (const dueDate of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29',
+      '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '2026-01-32', '2026-1-01',
+      '2026-01-1', '26-01-01', '2026-10-10T00:00:00Z', '2026-10-10 extra', '<invalid>']) {
+      const response = await post(datePath, { ...dateSelection, dueDate });
+      assert.equal(response.status, 422, dueDate);
+      const errorHtml = await response.text();
+      assert.match(errorHtml, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assertSelections(errorHtml, 'Completed', 'High');
+      assert.equal(await projectHtml(ids[0]), withSavedDate);
+    }
+    assert.equal((await post(`/projects/${ids[1]}/tasks/${datedTask.id}/due-date`, { dueDate: '2024-01-01' })).status, 404);
+    assert.equal((await post(`/projects/${ids[0]}/tasks/999999/due-date`, { dueDate: '2024-01-01' })).status, 404);
+    assert.equal(await projectHtml(ids[1]), beforeOtherDates);
+    assert.equal(await (await fetch(base)).text(), beforeDateSummary);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), withSavedDate);
+    await post(`${datedPath}/rename`, { ...dateSelection, title: 'Dated renamed task' });
+    assert.equal(await savedDate(), '2026-10-10');
+    await post(`/projects/${ids[0]}/archive`, {});
+    const archivedDates = await dateView();
+    assertSelections(archivedDates, 'Completed', 'High');
+    assert.ok(rows(archivedDates).every(row => /name="dueDate"[^>]* disabled/.test(row) &&
+      /<button type="submit" disabled>Save due date<\/button>/.test(row)));
+    assert.equal((await post(datePath, { dueDate: '' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await dateView(), archivedDates);
+    await post(`/projects/${ids[0]}/restore`, {});
+    assert.equal(await savedDate(), '2026-10-10');
+    assert.ok(rows(await dateView()).every(row => !/name="dueDate"[^>]* disabled/.test(row)));
+    for (const dueDate of ['', ' \t\n ']) {
+      await post(datePath, { dueDate: '2024-12-31' });
+      const response = await post(datePath, { ...dateSelection, dueDate });
+      assert.equal(response.status, 303);
+      assertSelections(await dateView(), 'Completed', 'High');
+      assert.equal(await savedDate(), '');
+    }
+    const clearedDates = await projectHtml(ids[0]);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(ids[0]), clearedDates);
+    assert.equal(await (await fetch(base)).text(), beforeDateSummary);
+
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
@@ -558,7 +626,7 @@ test('migrates existing tasks to Normal without changing their saved data', asyn
   try {
     let migrated = false;
     for (let attempt = 0; attempt < 100; attempt++) {
-      if (database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+      if (database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
         migrated = true;
         break;
       }
@@ -567,7 +635,7 @@ test('migrates existing tasks to Normal without changing their saved data', asyn
     }
     assert.ok(migrated, `Migration did not complete: ${output}`);
     assert.deepEqual(database.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
-      before.map(task => ({ ...task, priority: 'Normal' })));
+      before.map(task => ({ ...task, priority: 'Normal', due_date: '' })));
     assert.equal(database.prepare('SELECT archived FROM projects WHERE id = 2').get().archived, 1);
     assert.deepEqual(database.prepare('SELECT default_priority FROM projects ORDER BY id').all().map(project => project.default_priority), ['Normal', 'Normal']);
   } finally {
