@@ -71,3 +71,69 @@ test('project validation, creation order, navigation, and restart persistence', 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task validation, ordering, filters, ownership, completion, and restart persistence', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data/test-'));
+  let server;
+  try {
+    const dbPath = resolve(directory, 'tasks.sqlite');
+    server = await start(dbPath);
+    const post = (path, fields) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const detail = async (id, filter = 'All') => (await fetch(`${server.base}/projects/${id}?filter=${filter}`)).text();
+    const rows = html => [...html.matchAll(/data-testid="task-row"/g)].length;
+    for (const name of ['Alpha', 'Beta']) assert.equal((await post('/projects', { name })).status, 303);
+    const empty = await detail(1);
+    assert.match(empty, /<label for="task-title">Task title<\/label>/);
+    assert.match(empty, />Create task<\/button>/);
+    assert.match(empty, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(empty, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(rows(html), 0);
+    }
+    for (const title of ['  First & <task> "quoted"  ', 'Second']) {
+      assert.equal((await post('/projects/1/tasks', { title })).status, 303);
+    }
+    const all = await detail(1);
+    assert.equal(rows(all), 2);
+    assert.ok(all.indexOf('Complete First') < all.indexOf('Complete Second'));
+    assert.match(all, /aria-label="Complete First &amp; &lt;task&gt; &quot;quoted&quot;"/);
+    assert.doesNotMatch(all, / checked/);
+    assert.equal(rows(await detail(1, 'Open')), 2);
+    assert.equal(rows(await detail(1, 'Completed')), 0);
+    assert.equal(rows(await detail(2)), 0);
+    assert.equal((await post('/projects/2/tasks/1/completion', { completed: '1' })).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Orphan' })).status, 404);
+    const completed = await post('/projects/1/tasks/1/completion', { completed: '1', filter: 'Open' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    const saved = await detail(1);
+    assert.match(saved, /aria-label="Complete First[^\n]* checked/);
+    assert.equal(rows(await detail(1, 'Open')), 1);
+    const completedList = await detail(1, 'Completed');
+    assert.equal(rows(completedList), 1);
+    assert.match(completedList, /Complete First/);
+    assert.doesNotMatch(completedList, /Complete Second/);
+    assert.equal(rows(await detail(1, 'invalid')), 2);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await detail(1), saved);
+    assert.equal(await detail(1, 'Completed'), completedList);
+    assert.equal(rows(await detail(2)), 0);
+    assert.equal((await post('/projects/1/tasks/1/completion', {})).status, 303);
+    assert.equal(rows(await detail(1, 'Completed')), 0);
+    assert.equal(rows(await detail(1, 'Open')), 2);
+    await server.stop();
+    server = await start(dbPath);
+    assert.doesNotMatch(await detail(1), / checked/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
