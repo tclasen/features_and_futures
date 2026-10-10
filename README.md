@@ -8,7 +8,9 @@ Start the application:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The database directory is created automatically. Keep the same database path to preserve projects across restarts.
+Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The database directory is created automatically. Keep the same database path to preserve projects, tasks, and completion state across restarts.
+
+Open a project to create tasks, check or uncheck completion, and filter the task list by All, Open, or Completed. Names and titles are trimmed; blank entries display a validation alert.
 
 Health check:
 
