@@ -180,6 +180,15 @@ async function renderTasks(projectId, archived) {
     option.value = value;
     filter.append(option);
   }
+  const priorityFilterLabel = element('label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    priorityFilter.append(option);
+  }
   const rows = element('section', undefined, 'tasks');
   rows.setAttribute('aria-label', 'Tasks');
   async function refresh() {
@@ -188,6 +197,7 @@ async function renderTasks(projectId, archived) {
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       const row = element('div', undefined, 'task-row');
       row.dataset.testid = 'task-row';
       row.append(element('span', task.title));
@@ -216,7 +226,8 @@ async function renderTasks(projectId, archived) {
         const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }),
         });
-        if (!response.ok) priority.value = task.priority || 'Normal';
+        if (response.ok) await refresh();
+        else priority.value = task.priority || 'Normal';
       });
       row.append(priority);
       const renameInput = element('input');
@@ -245,6 +256,7 @@ async function renderTasks(projectId, archived) {
     }
   }
   filter.addEventListener('change', refresh);
+  priorityFilter.addEventListener('change', refresh);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const title = input.value.trim();
@@ -263,7 +275,7 @@ async function renderTasks(projectId, archived) {
       await refresh();
     }
   });
-  root.append(form, error, filterLabel, filter, rows);
+  root.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
   try { await refresh(); }
   catch { const message = element('p', 'Could not load tasks'); message.setAttribute('role', 'alert'); root.append(message); }
 }
