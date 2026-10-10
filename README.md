@@ -51,7 +51,14 @@ priority. Archived projects disable priority controls and reject priority edits
 with HTTP 403. Restoration re-enables them with saved values. Existing databases
 are upgraded automatically without changing task IDs or other task data.
 
+Project pages also have an All/Low/Normal/High Priority filter. Tasks must match
+both completion and priority filters and retain creation order. Both selections
+are preserved through edits and validation errors; edits immediately re-evaluate
+visible rows. Filters remain usable when archived and never change saved data or
+completion summaries. Opening from the project list starts both filters at All.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
 completion toggles, archive/restore, project and task renaming, priorities,
+combined filter combinations and selection preservation,
 summaries, legacy schema migration, reloads, and persistence across process restarts.
