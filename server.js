@@ -23,6 +23,8 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
+const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS next FROM tasks WHERE project_id = ?');
 const app = await readFile(new URL('./index.html', import.meta.url));
 
 const server = http.createServer((req, res) => {
@@ -90,6 +92,22 @@ async function handleRequest(req, res) {
     if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
     if (!['Low', 'Normal', 'High'].includes(input.priority)) return send(400, JSON.stringify({ error: 'Invalid priority' }));
     updateDefaultPriority.run(input.priority, projectId);
+    return send(200, JSON.stringify({ ok: true }));
+  }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (req.method === 'PATCH' && moveMatch) {
+    let data = '';
+    for await (const chunk of req) data += chunk;
+    let input;
+    try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+    const sourceId = decodeURIComponent(moveMatch[1]);
+    const taskId = decodeURIComponent(moveMatch[2]);
+    const source = getProject.get(sourceId);
+    const destinationId = typeof input.destinationId === 'string' ? input.destinationId : '';
+    const destination = getProject.get(destinationId);
+    if (!source || !getTask.get(taskId, sourceId) || !destination) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (source.archived || destination.archived || sourceId === destinationId) return send(403, JSON.stringify({ error: 'Invalid move' }));
+    moveTask.run(destinationId, nextTaskOrder.get(destinationId).next, taskId, sourceId);
     return send(200, JSON.stringify({ ok: true }));
   }
   const dueDateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/due-date$/);
