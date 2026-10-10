@@ -127,6 +127,14 @@ const server = createServer(async (request, response) => {
     if (taskId && request.method === 'PATCH') {
       if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
       const body = await readJson(request);
+      if (Object.hasOwn(body || {}, 'title')) {
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?')
+          .run(title, taskId, projectId);
+        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+        return sendJson(response, 200, { id: taskId, title });
+      }
       if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
         .run(body.completed ? 1 : 0, taskId, projectId);

@@ -132,7 +132,7 @@ async function renderList(errorMessage = '', selectedFilter = 'active') {
   }
 }
 
-async function renderProject(id) {
+async function renderProject(id, selectedFilter = 'all') {
   const projects = await getProjects();
   const project = projects.find((item) => String(item.id) === id);
   if (!project) return renderList('Project not found');
@@ -203,12 +203,12 @@ async function renderProject(id) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const title = input.value.trim();
-    if (!title) return renderProjectWithAlert(id, 'Task title is required');
+    if (!title) return renderProjectWithAlert(id, 'Task title is required', document.querySelector('#task-filter')?.value || 'all');
     const response = await fetch(`/api/projects/${id}/tasks`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
-    if (!response.ok) return renderProjectWithAlert(id, 'Unable to create task');
-    renderProject(id);
+    if (!response.ok) return renderProjectWithAlert(id, 'Unable to create task', document.querySelector('#task-filter')?.value || 'all');
+    renderProject(id, document.querySelector('#task-filter')?.value || 'all');
   });
   app.append(form);
 
@@ -225,6 +225,7 @@ async function renderProject(id) {
     option.textContent = value;
     filter.append(option);
   }
+  filter.value = selectedFilter;
   filterField.append(filterLabel, filter);
   app.append(filterField);
 
@@ -272,7 +273,32 @@ async function renderProject(id) {
         }
       });
       checkboxLabel.append(checkbox);
-      row.append(title, checkboxLabel);
+      const renameForm = document.createElement('form');
+      renameForm.className = 'task-rename-form';
+      const renameInput = document.createElement('input');
+      renameInput.type = 'text';
+      renameInput.value = task.title;
+      renameInput.setAttribute('aria-label', 'New task title');
+      renameInput.disabled = project.archived;
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename task';
+      renameButton.disabled = project.archived;
+      renameForm.append(renameInput, renameButton);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const newTitle = renameInput.value.trim();
+        const selected = filter.value;
+        if (!newTitle) return renderProjectWithAlert(id, 'Task title is required', selected);
+        const response = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        if (!response.ok) return renderProjectWithAlert(id, 'Unable to rename task', selected);
+        task.title = newTitle;
+        renderTasks();
+      });
+      row.append(title, checkboxLabel, renameForm);
       taskList.append(row);
     }
   };
@@ -280,8 +306,8 @@ async function renderProject(id) {
   renderTasks();
 }
 
-async function renderProjectWithAlert(id, message) {
-  await renderProject(id);
+async function renderProjectWithAlert(id, message, filter = 'all') {
+  await renderProject(id, filter);
   const alert = document.createElement('p');
   alert.className = 'alert';
   alert.setAttribute('role', 'alert');
