@@ -85,6 +85,7 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
     assert.equal(task.priority, 'Normal');
+    assert.equal(task.due_date, '');
     const nextTask = await (await createTask('Second task')).json();
     assert.deepEqual(await getTasks(), [task, nextTask]);
     assert.deepEqual(await getTasks(second.id), []);
@@ -97,7 +98,7 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     await stop();
     // Simulate a Task 005 database with existing open and completed tasks.
     const beforePriority = new DatabaseSync(join(directory, 'projects.sqlite'));
-    beforePriority.exec('ALTER TABLE tasks DROP COLUMN priority; ALTER TABLE projects DROP COLUMN default_priority');
+    beforePriority.exec('ALTER TABLE tasks DROP COLUMN priority; ALTER TABLE tasks DROP COLUMN due_date; ALTER TABLE projects DROP COLUMN default_priority');
     beforePriority.close();
     await start();
     assert.deepEqual(await getTasks(), [completedTask, nextTask]);
@@ -266,6 +267,50 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     assert.deepEqual(await getTasks(), [...existingTasks, inherited, inheritedLow, restoredDefaultTask]);
     assert.equal((await getProject()).default_priority, 'Low');
     assert.equal((await getProject(second.id)).default_priority, 'High');
+    const saveDate = (due_date, projectId = first.id, taskId = task.id) => fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date }),
+    });
+    const beforeDates = await getTasks();
+    const beforeProject = await getProject();
+    assert.ok(beforeDates.every(task => task.due_date === ''));
+    assert.equal((await saveDate('2024-01-01', second.id)).status, 404);
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28']) {
+      const saved = await saveDate(`  ${date}  `);
+      assert.equal(saved.status, 200);
+      assert.deepEqual(await saved.json(), { ...beforeDates[0], due_date: date });
+    }
+    const dated = { ...beforeDates[0], due_date: '1900-02-28' };
+    for (const invalid of ['0000-01-01', '10000-01-01', '1900-02-29', '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01', '24-01-01', '2024-01-01T00:00:00Z', 'nonsense', null, 20240101]) {
+      const response = await saveDate(invalid);
+      assert.equal(response.status, 400, String(invalid));
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await getTasks(), [dated, ...beforeDates.slice(1)]);
+    }
+    assert.deepEqual(await getProject(), beforeProject);
+    await stop();
+    await start();
+    assert.deepEqual(await getTasks(), [dated, ...beforeDates.slice(1)]);
+    const datedRenamed = { ...dated, title: 'Date preserved' };
+    assert.deepEqual(await (await renameTask(' Date preserved ')).json(), datedRenamed);
+    await setArchive(true);
+    assert.equal((await saveDate('')).status, 409);
+    assert.equal((await saveDate('2025-01-01')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await getTasks(), [datedRenamed, ...beforeDates.slice(1)]);
+    await setArchive(false);
+    assert.deepEqual(await getProject(), beforeProject);
+    for (const blank of ['', '  \t\n']) {
+      assert.deepEqual(await (await saveDate(blank)).json(), { ...datedRenamed, due_date: '' });
+      assert.equal((await saveDate('2024-02-29')).status, 200);
+    }
+    await saveDate('');
+    assert.equal((await saveDate('0001-12-31', second.id, otherTask.id)).status, 200);
+    await stop();
+    await start();
+    assert.deepEqual(await getTasks(), [{ ...datedRenamed, due_date: '' }, ...beforeDates.slice(1)]);
+    assert.equal((await getTasks(second.id))[0].due_date, '0001-12-31');
+    assert.deepEqual(await getProject(), beforeProject);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

@@ -314,7 +314,37 @@ async function showProject(id) {
             priority.disabled = Boolean(project.archived);
           }
         });
-        row.append(titleText, checkbox, taskRenameForm, priorityLabel, priority);
+        const dueForm = element('form');
+        const dueLabel = element('label', 'Task due date');
+        dueLabel.htmlFor = `task-due-date-${task.id}`;
+        const dueInput = element('input');
+        dueInput.id = dueLabel.htmlFor;
+        dueInput.type = 'text';
+        dueInput.value = task.due_date;
+        dueInput.disabled = Boolean(project.archived);
+        const saveDue = element('button', 'Save due date');
+        saveDue.type = 'submit';
+        saveDue.disabled = Boolean(project.archived);
+        dueForm.append(dueLabel, dueInput, saveDue);
+        dueForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (project.archived) return;
+          saveDue.disabled = true;
+          alert.hidden = true;
+          try {
+            const saved = await request(`/api/projects/${id}/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ due_date: dueInput.value }),
+            });
+            task.due_date = saved.due_date;
+            dueInput.value = saved.due_date;
+          } catch (error) {
+            dueInput.value = task.due_date;
+            showError(error);
+          } finally { saveDue.disabled = Boolean(project.archived); }
+        });
+        row.append(titleText, checkbox, taskRenameForm, priorityLabel, priority, dueForm);
         list.append(row);
       }
     }

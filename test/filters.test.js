@@ -34,6 +34,7 @@ async function page(archived = false) {
     { id: 3, title: 'Third', completed: false, priority: 'High' },
     { id: 4, title: 'Fourth', completed: true, priority: 'Normal' },
   ];
+  for (const task of tasks) task.due_date = '';
   const project = { id: 1, name: 'Project', archived, default_priority: 'Normal' };
   const context = vm.createContext({
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
@@ -46,7 +47,7 @@ async function page(archived = false) {
           Object.assign(project, input);
           data = project;
         } else if (path.endsWith('/tasks')) {
-          data = { id: tasks.length + 1, ...input, completed: false, priority: project.default_priority };
+          data = { id: tasks.length + 1, ...input, completed: false, priority: project.default_priority, due_date: '' };
           tasks.push(data);
         } else {
           const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
@@ -143,6 +144,39 @@ test('project default changes preserve filters and existing tasks; creation inhe
   await defaults.fire('change');
   assert.equal(tasks.at(-1).priority, 'High');
   assert.deepEqual(titles(), ['Third', 'Inherited']);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+});
+
+test('due date saves and clears preserve both filters and other task data', async () => {
+  const { tasks, byId, rows, titles } = await page();
+  const completion = byId('task-filter');
+  const priority = byId('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  const before = structuredClone(tasks);
+  const input = byId('task-due-date-3');
+  assert.equal(input.type, 'text');
+  assert.equal(input.value, '');
+  const form = rows()[0].children.find(node => node.tag === 'form' && node.children.includes(input));
+  assert.equal(form.children[0].textContent, 'Task due date');
+  assert.equal(form.children[2].textContent, 'Save due date');
+  input.value = '2024-02-29';
+  await form.fire('submit');
+  assert.deepEqual(tasks, before.map(task => task.id === 3 ? { ...task, due_date: '2024-02-29' } : task));
+  assert.deepEqual(titles(), ['Third']);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'High');
+  const renameForm = rows()[0].children.find(node => node.tag === 'form');
+  renameForm.children[1].value = 'Renamed with date';
+  await renameForm.fire('submit');
+  assert.equal(tasks[2].due_date, '2024-02-29');
+  assert.equal(input.value, '2024-02-29');
+  input.value = '';
+  await form.fire('submit');
+  assert.equal(tasks[2].due_date, '');
   assert.equal(completion.value, 'Open');
   assert.equal(priority.value, 'High');
 });
