@@ -131,6 +131,7 @@ const server=http.createServer(async(req,res)=>{
    }
    if(p&&['tasks','due-range','default-priority','rename','create-task'].includes(parts[2])) {
     const selected=new URLSearchParams({filter:data.get('filter')??'All',priority_filter:data.get('priority_filter')??'All',due_from:data.get('due_from')??'',due_through:data.get('due_through')??''});
+    if(defect==='default-resets-filters'&&parts[2]==='default-priority'){selected.set('filter','All');selected.set('priority_filter','All');}
     if(defect==='edit-resets-range'&&parts[2]==='tasks'){selected.set('due_from','');selected.set('due_through','');}
     if(defect==='project-rename-resets-range'&&parts[2]==='rename'){selected.set('due_from','');selected.set('due_through','');}
     if(defect==='default-resets-range'&&parts[2]==='default-priority'){selected.set('due_from','');selected.set('due_through','');}

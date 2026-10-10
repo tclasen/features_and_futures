@@ -29,7 +29,7 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L023 | Hold a foreground native session for each surrogate deployment | verified |
 | L024 | Synchronize row counts with known persisted content | verified |
 | L025 | Remove archived obsolete sandboxes and reserve host disk before dispatch | verified |
-| L026 | Transport failure is distinct from builder rejection and missing cost remains missing | observed |
+| L026 | Transport failure is distinct from builder rejection and missing cost remains missing | verified for v002 retention; counters remain unknown |
 | L027 | Assert required announcement without prescribing alert layout | verified |
 | L028 | Freeze a uniform own-checkpoint restart rule for persistent repairs | adopted |
 | L029 | Observe archive completion before switching filters | verified |
@@ -39,3 +39,7 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L033 | Stop and remove archived sandboxes, including PM fixtures | verified |
 | L034 | Require executed-test counts for negative fixture verification | verified |
 | L035 | Preserve recovery prefix while allowing new discovery rounds | verified |
+
+| L036 | Define first observed assessment separately from scheduled attempt acceptance | verified |
+| L037 | Recheck hash-bound originals after a readiness report | verified |
+| L038 | Keep cumulative test project names distinct under shared selectors | verified |
