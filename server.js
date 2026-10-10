@@ -21,6 +21,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   FROM projects p ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
@@ -110,6 +111,20 @@ const server = http.createServer(async (req, res) => {
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (req.method === 'PATCH' && projectMatch) {
+    try {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const payload = JSON.parse(raw);
+      const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+      if (!name) return json(res, 400, { error: 'Project name is required' });
+      const project = getProject.get(projectMatch[1]);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (project.archived) return json(res, 403, { error: 'Archived project' });
+      updateProjectName.run(name, projectMatch[1]);
+      return json(res, 200, { id: project.id, name });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   if (req.method === 'GET' && projectMatch) {
     const project = getProject.get(projectMatch[1]);
     return project ? json(res, 200, project) : json(res, 404, { error: 'Project not found' });
