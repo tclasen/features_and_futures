@@ -19,7 +19,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id),
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT
   );
 `);
 if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
@@ -30,6 +31,9 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 }
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
@@ -42,12 +46,22 @@ const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_tas
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const setTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function isValidDueDate(value) {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -155,7 +169,7 @@ function projectLocation(id, filter, priority) {
   return `/projects/${id}${query.size ? `?${query}` : ''}`;
 }
 
-function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All') {
+function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All', dueDateError = null) {
   const tasks = listTasks.all(project.id).filter(task =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority));
@@ -227,6 +241,16 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
               ${['Low', 'Normal', 'High'].map(option => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
             </select>
           </form>
+          <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priority}">
+            <label for="task-due-date-${task.id}">Task due date</label>
+            <div class="create-controls">
+              <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date ?? '')}"${project.archived ? ' disabled' : ''}${dueDateError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-due-date-error-${task.id}"` : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+            </div>
+            ${dueDateError?.id === task.id ? `<p id="task-due-date-error-${task.id}" role="alert">Due date must be a valid YYYY-MM-DD date</p>` : ''}
+          </form>
         </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </div>`);
 }
@@ -281,7 +305,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const projectMatch = /^\/projects\/([1-9]\d*)(?:\/(?:(tasks)(?:\/([1-9]\d*)\/(?:completion|rename|priority))?|(rename|default-priority)))?$/.exec(url.pathname);
+    const projectMatch = /^\/projects\/([1-9]\d*)(?:\/(?:(tasks)(?:\/([1-9]\d*)\/(?:completion|rename|priority|due-date))?|(rename|default-priority)))?$/.exec(url.pathname);
     if (projectMatch) {
       const id = Number(projectMatch[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -329,6 +353,13 @@ const server = http.createServer(async (request, response) => {
               return;
             }
             renameTask.run(title, taskId, project.id);
+          } else if (url.pathname.endsWith('/due-date')) {
+            const dueDate = (form.get('dueDate') || '').trim();
+            if (dueDate && !isValidDueDate(dueDate)) {
+              sendHtml(response, 422, projectPage(currentProject, filter, '', '', null, selectedPriority, { id: taskId }));
+              return;
+            }
+            setTaskDueDate.run(dueDate || null, taskId, project.id);
           } else if (url.pathname.endsWith('/priority')) {
             const priority = form.get('priority');
             if (!['Low', 'Normal', 'High'].includes(priority)) {

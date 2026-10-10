@@ -24,6 +24,8 @@ Default task priority sets the priority for subsequent tasks in that project. Pr
 
 Each project page also has a Priority filter with All, Low, Normal, and High options, initially All. It combines with Task filter to show tasks matching both selections in creation order. Edits and validation keep both filter selections; priority and completion changes immediately update the matching rows. Filters remain usable in archived projects and never change the completion summary.
 
+Each task row has a Task due date textbox and Save due date button. Dates are optional; saving a blank value clears the date. Nonempty values are trimmed and must be real Gregorian dates in YYYY-MM-DD format, with years 0001–9999. Invalid values show an alert and preserve the saved date. Dates persist without timezone conversion and remain unchanged by renaming or other task edits. Saving retains both task filters; archived projects disable date editing until restored.
+
 Health check:
 
 ```sh
