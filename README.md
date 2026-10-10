@@ -20,14 +20,18 @@ persist in the same SQLite database.
 Each active task row supports renaming with a trimmed, required title. Task
 renaming preserves ownership, creation order, completion, and filter membership.
 Archived task rename controls are disabled until the project is restored.
-Each task has a saved Low, Normal, or High priority, defaulting to Normal for
-new and existing tasks. Priority changes preserve task order, ownership, title,
+Each task has a saved Low, Normal, or High priority. Existing tasks default to
+Normal. Priority changes preserve task order, ownership, title,
 and completion. Archived priority controls are disabled until restoration.
 Project pages also have an All/Low/Normal/High priority filter. Both task filters
 apply together and keep their selections through completion, priority, and rename
 edits. Filters remain usable on archived projects and never change saved tasks
 or completion summaries. Opening a project from the list starts with both
 filters set to All.
+Each project has a saved Default task priority, initially Normal. New tasks
+inherit that project's current default; changing it leaves existing tasks and
+both filters unchanged. Defaults survive renaming and restarts, and the default
+control is disabled while archived and enabled again after restoration.
 `GET /health` returns
 `{"status":"ok"}`.
 

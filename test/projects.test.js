@@ -50,6 +50,7 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     assert.deepEqual({ ...migrated.prepare('SELECT title, completed, priority FROM tasks').get() }, {
       title: 'Legacy task', completed: 1, priority: 'Normal',
     });
+    assert.equal(migrated.prepare('SELECT default_priority FROM projects').get().default_priority, 'Normal');
     const legacyPage = await (await fetch(`${base}/projects/1`)).text();
     assert.match(legacyPage, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     migrated.exec('DELETE FROM tasks; DELETE FROM projects;');
@@ -486,6 +487,81 @@ test('projects and tasks: validation, ownership, filters, archive, rename, prior
     await archive('restore');
     assert.equal(await taskPage(), savedCombinedPage);
     assert.equal(await projectList(), summaryBeforeFilters);
+
+    // Defaults affect only future tasks in their own project, preserving filters and all existing data.
+    const defaultSelect = (html) => html.match(/<select id="default-task-priority"[\s\S]*?<\/select>/)[0];
+    const setDefault = (value, projectId = ids[0], filter = 'Open', priorityFilter = 'Low') => fetch(
+      `${base}/projects/${projectId}/default-priority`, {
+        method: 'POST', redirect: 'manual',
+        body: new URLSearchParams({ priority: value, filter, priorityFilter }),
+      });
+    assert.match(await taskPage(), /<label for="default-task-priority">Default task priority<\/label>/);
+    assert.match(defaultSelect(await taskPage()), /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    assert.equal((await setDefault('High', '999999')).status, 404);
+    for (const value of ['', 'Urgent', 'high']) assert.equal((await setDefault(value)).status, 422);
+    assert.equal(await taskPage(), savedCombinedPage);
+    const beforeDefaultRows = rows(await combinedPage('Open', 'Low'));
+    const changedDefault = await setDefault('High');
+    assert.equal(changedDefault.status, 303);
+    assert.equal(changedDefault.headers.get('location'), `/projects/${ids[0]}?filter=Open&priorityFilter=Low`);
+    const defaultChangedPage = await (await fetch(new URL(changedDefault.headers.get('location'), base))).text();
+    assertFilters(defaultChangedPage, 'Open', 'Low');
+    assert.deepEqual(rows(defaultChangedPage), beforeDefaultRows);
+    assert.deepEqual(rows(await taskPage()), rows(savedCombinedPage));
+    assert.equal(await projectList(), summaryBeforeFilters);
+    assert.equal(await taskPage(ids[1]), savedOtherTasks);
+    assert.match(defaultSelect(defaultChangedPage), /<option selected>High/);
+    await stop();
+    base = await start();
+    assert.match(defaultSelect(await taskPage()), /<option selected>High/);
+    await createTask('Inherited high');
+    let inheritedRows = rows(await taskPage());
+    assert.match(selectedPriority(inheritedRows[3]), /<option selected>High/);
+    assert.match(inheritedRows[3], /<span>Inherited high<\/span>/);
+    assert.doesNotMatch(inheritedRows[3], / checked/);
+    const inheritedId = inheritedRows[3].match(/\/tasks\/(\d+)\/completion/)[1];
+    await setDefault('Low');
+    assert.deepEqual(rows(await taskPage()), inheritedRows);
+    await createTask('Inherited low');
+    inheritedRows = rows(await taskPage());
+    assert.match(selectedPriority(inheritedRows[3]), /<option selected>High/);
+    assert.match(selectedPriority(inheritedRows[4]), /<option selected>Low/);
+    await setDefault('High', ids[1]);
+    assert.match(defaultSelect(await taskPage()), /<option selected>Low/);
+    assert.match(defaultSelect(await taskPage(ids[1])), /<option selected>High/);
+    await createTask('Other inherited high', ids[1]);
+    assert.match(selectedPriority(rows(await taskPage(ids[1]))[1]), /<option selected>High/);
+    await rename('Default preserved');
+    await renameTask('Inherited renamed', inheritedId);
+    assert.match(defaultSelect(await taskPage()), /<option selected>Low/);
+    assert.match(selectedPriority(rows(await taskPage())[3]), /<option selected>High/);
+    const defaultsSavedPage = await taskPage();
+    const defaultsSavedList = await projectList();
+    assert.match(defaultsSavedList, /data-testid="project-summary">1\/5 completed/);
+    await archive('archive');
+    const archivedDefaultPage = await combinedPage('Open', 'Low');
+    assertFilters(archivedDefaultPage, 'Open', 'Low');
+    assert.match(defaultSelect(archivedDefaultPage), /disabled/);
+    assert.match(defaultSelect(archivedDefaultPage), /<option selected>Low/);
+    assert.equal((await setDefault('Normal')).status, 403);
+    assert.equal(await combinedPage('Open', 'Low'), archivedDefaultPage);
+    await stop();
+    base = await start();
+    assert.equal(await combinedPage('Open', 'Low'), archivedDefaultPage);
+    assert.match(defaultSelect(await taskPage(ids[1])), /<option selected>High/);
+    await archive('restore');
+    assert.equal(await taskPage(), defaultsSavedPage);
+    assert.equal(await projectList(), defaultsSavedList);
+    assert.doesNotMatch(defaultSelect(await taskPage()), /disabled/);
+    await createTask('Restored inherited low');
+    assert.match(selectedPriority(rows(await taskPage())[5]), /<option selected>Low/);
+    await setDefault('Normal');
+    await createTask('Inherited normal again');
+    assert.match(selectedPriority(rows(await taskPage())[6]), /<option selected>Normal/);
+    const finalDefaultsPage = await taskPage();
+    await stop();
+    base = await start();
+    assert.equal(await taskPage(), finalDefaultsPage);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
