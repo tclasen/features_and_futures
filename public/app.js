@@ -367,12 +367,14 @@ async function showProject(id) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
           });
+          // The task no longer belongs to this project. Remove its row before
+          // reloading so it cannot be counted as a source match while the
+          // refreshed list is in flight.
+          row.remove();
           await renderTasks();
         } catch (error) {
           alert.textContent = error.message;
           alert.hidden = false;
-        } finally {
-          moveButton.disabled = project.archived || availableProjects.length === 0;
         }
       });
       destinationLabel.append(destination);
