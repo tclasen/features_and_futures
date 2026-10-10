@@ -44,7 +44,7 @@ test('existing tasks migrate to Normal without changing identity or completion',
     const db = new DatabaseSync(path);
     try {
       assert.deepEqual({ ...db.prepare('SELECT * FROM tasks').get() }, {
-        id: 9, project_id: 7, title: 'Existing task', completed: 1, priority: 'Normal'
+        id: 9, project_id: 7, title: 'Existing task', completed: 1, priority: 'Normal', due_date: ''
       });
     } finally {
       db.close();
