@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { openWorkboardStore } from './store.js';
+import { normalizeDueRange } from './due-date.js';
 import { notFoundPage, projectPage, projectsPage } from './views.js';
 
 const styles = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
@@ -14,9 +15,20 @@ function taskPriorityFilter(value) {
   return ['All', 'Low', 'Normal', 'High'].includes(value) ? value : 'All';
 }
 
-function projectLocation(id, filter, priorityFilter) {
+function readTaskSelection(params) {
+  const range = normalizeDueRange(params.get('dueFrom') ?? '', params.get('dueThrough') ?? '');
+  return {
+    filter: taskFilter(params.get('filter')),
+    priorityFilter: taskPriorityFilter(params.get('priorityFilter')),
+    dueFrom: range.dueFrom ?? '', dueThrough: range.dueThrough ?? '',
+  };
+}
+
+function projectLocation(id, { filter, priorityFilter, dueFrom, dueThrough }) {
   const query = new URLSearchParams({ filter });
   if (priorityFilter !== 'All') query.set('priorityFilter', priorityFilter);
+  if (dueFrom) query.set('dueFrom', dueFrom);
+  if (dueThrough) query.set('dueThrough', dueThrough);
   return `/projects/${id}?${query}`;
 }
 
@@ -79,9 +91,21 @@ export function createWorkboardServer(databasePath) {
         if (!project) {
           send(response, 404, notFoundPage());
         } else if (request.method === 'GET' && parts.length === 3) {
-          const filter = taskFilter(searchParams.get('filter'));
-          const priorityFilter = taskPriorityFilter(searchParams.get('priorityFilter'));
-          send(response, 200, projectPage(project, store.tasks.list(id, filter, priorityFilter), { filter, priorityFilter }));
+          const selection = readTaskSelection(searchParams);
+          let dueRangeState = {};
+          if (searchParams.has('applyDueRange')) {
+            const from = searchParams.get('rangeFrom') ?? '';
+            const through = searchParams.get('rangeThrough') ?? '';
+            const range = normalizeDueRange(from, through);
+            if (!range.error) {
+              redirect(response, projectLocation(id, { ...selection, ...range }));
+              return;
+            }
+            dueRangeState = { error: range.error, from, through };
+          }
+          send(response, dueRangeState.error ? 400 : 200, projectPage(project,
+            store.tasks.list(id, selection.filter, selection.priorityFilter, selection),
+            { ...selection, dueRangeState }));
         } else if (request.method === 'POST' && ['archive', 'restore'].includes(parts[3])) {
           const archived = parts[3] === 'archive';
           store.setArchived(id, archived);
@@ -92,20 +116,20 @@ export function createWorkboardServer(databasePath) {
           if (result.error) {
             send(response, result.status, result.error, 'text/plain; charset=utf-8');
           } else {
-            redirect(response, projectLocation(id, taskFilter(form.get('filter')), taskPriorityFilter(form.get('priorityFilter'))));
+            redirect(response, projectLocation(id, readTaskSelection(form)));
           }
         } else if (request.method === 'POST' && parts[3] === 'rename') {
           const form = await readForm(request);
-          const filter = taskFilter(form.get('filter'));
-          const priorityFilter = taskPriorityFilter(form.get('priorityFilter'));
+          const selection = readTaskSelection(form);
+          const { filter, priorityFilter } = selection;
           const name = form.get('name') ?? '';
           const result = store.rename(id, name);
           if (result.error) {
-            send(response, result.status, projectPage(project, store.tasks.list(id, filter, priorityFilter), {
-              filter, priorityFilter, renameState: { error: result.error, submittedName: name },
+            send(response, result.status, projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+              ...selection, renameState: { error: result.error, submittedName: name },
             }));
           } else {
-            redirect(response, projectLocation(id, filter, priorityFilter));
+            redirect(response, projectLocation(id, selection));
           }
         } else if (request.method === 'POST' && parts[3] === 'tasks') {
           if (project.archived) {
@@ -113,14 +137,14 @@ export function createWorkboardServer(databasePath) {
             return;
           }
           const form = await readForm(request);
-          const filter = taskFilter(form.get('filter'));
-          const priorityFilter = taskPriorityFilter(form.get('priorityFilter'));
+          const selection = readTaskSelection(form);
+          const { filter, priorityFilter } = selection;
           if (parts.length === 4) {
             const title = form.get('title') ?? '';
             const task = store.tasks.create(id, title);
             if (task.error) {
-              send(response, 400, projectPage(project, store.tasks.list(id, filter, priorityFilter), {
-                filter, priorityFilter, error: task.error, submittedTitle: title,
+              send(response, 400, projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+                ...selection, error: task.error, submittedTitle: title,
               }));
               return;
             }
@@ -135,8 +159,8 @@ export function createWorkboardServer(databasePath) {
               const result = store.tasks.rename(id, taskId, title);
               if (result.error) {
                 send(response, result.status, result.status === 404 ? notFoundPage() :
-                  projectPage(project, store.tasks.list(id, filter, priorityFilter), {
-                    filter, priorityFilter,
+                  projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+                    ...selection,
                     taskRenameState: { taskId, error: result.error, submittedTitle: title },
                   }));
                 return;
@@ -145,8 +169,8 @@ export function createWorkboardServer(databasePath) {
               const result = store.tasks.setDueDate(id, taskId, form.get('dueDate') ?? '');
               if (result.error) {
                 send(response, result.status, result.status === 404 ? notFoundPage() :
-                  projectPage(project, store.tasks.list(id, filter, priorityFilter), {
-                    filter, priorityFilter, taskDueDateState: { taskId, error: result.error },
+                  projectPage(project, store.tasks.list(id, filter, priorityFilter, selection), {
+                    ...selection, taskDueDateState: { taskId, error: result.error },
                   }));
                 return;
               }
@@ -165,7 +189,7 @@ export function createWorkboardServer(databasePath) {
               return;
             }
           }
-          redirect(response, projectLocation(id, filter, priorityFilter));
+          redirect(response, projectLocation(id, selection));
         } else {
           send(response, 404, notFoundPage());
         }

@@ -98,10 +98,13 @@ export function openWorkboardStore(databasePath) {
       return { id, default_task_priority: priority };
     },
     tasks: {
-      list(projectId, filter = 'All', priorityFilter = 'All') {
+      list(projectId, filter = 'All', priorityFilter = 'All', { dueFrom = '', dueThrough = '' } = {}) {
         return listTasks.all(projectId).filter((task) =>
           (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
-          (priorityFilter === 'All' || task.priority === priorityFilter));
+          (priorityFilter === 'All' || task.priority === priorityFilter) &&
+          (!(dueFrom || dueThrough) || (task.due_date !== null &&
+            (!dueFrom || task.due_date >= dueFrom) &&
+            (!dueThrough || task.due_date <= dueThrough))));
       },
       create(projectId, title) {
         const project = find.get(projectId);

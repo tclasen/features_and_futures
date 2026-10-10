@@ -72,3 +72,13 @@ an alert and keep the saved date. Dates persist across restarts and renaming;
 saving them preserves both filters and all other task data. Existing tasks
 start without dates. Archived projects disable date editing in the browser and
 on the server; restoration preserves dates and enables editing.
+
+Project pages have Due from and Due through textboxes and Apply due range.
+Boundaries use the same Gregorian date validation as task dates, are trimmed,
+and match inclusively. Either boundary can be blank; with both blank, undated
+tasks also match. The applied range intersects completion and priority filters
+without changing saved tasks or all-task summaries. Invalid ranges show an alert
+and preserve the previously applied range. Edits retain all selected filters and
+immediately update matching rows. Range controls remain usable when archived.
+The applied range is carried in the page URL and forms, not stored in SQLite;
+opening a project from the list starts with empty boundaries.
