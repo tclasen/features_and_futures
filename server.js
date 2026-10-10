@@ -152,8 +152,35 @@ function page(title, content) {
   </style>
 </head>
 <body><main>${content}</main><script>
-document.querySelectorAll('[data-autosubmit]').forEach(control => {
-  control.addEventListener('change', () => control.form.requestSubmit());
+document.addEventListener('change', async event => {
+  const control = event.target;
+  if (!control.matches('[data-autosubmit]')) return;
+  if (control.type !== 'checkbox') {
+    control.form.requestSubmit();
+    return;
+  }
+
+  // Keep the clicked checkbox in place while its interaction completes. A full
+  // navigation can remove it before the browser observes its new checked state.
+  const checked = control.checked;
+  try {
+    const response = await fetch(control.form.action, {
+      method: 'POST', body: new URLSearchParams(new FormData(control.form)),
+    });
+    const updated = new DOMParser().parseFromString(await response.text(), 'text/html');
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!control.isConnected) return;
+    document.querySelector('main').innerHTML = updated.querySelector('main').innerHTML;
+    document.title = updated.title;
+    history.replaceState(null, '', response.url);
+  } catch (error) {
+    if (!control.isConnected) return;
+    control.checked = !checked;
+    const alert = document.createElement('p');
+    alert.setAttribute('role', 'alert');
+    alert.textContent = 'Could not save task completion. Please try again.';
+    control.form.prepend(alert);
+  }
 });
 </script></body>
 </html>`;

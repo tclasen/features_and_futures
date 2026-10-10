@@ -4,6 +4,102 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { once } from 'node:events';
+import { runInNewContext } from 'node:vm';
+
+test('completion interactions finish before filtered rows refresh without a navigation', async () => {
+  const directory = await mkdtemp(resolve('completion-test-'));
+  let server;
+  try {
+    server = await start(resolve(directory, 'workboard.sqlite'));
+    const post = (path, fields) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields),
+    });
+    await post('/projects', { name: 'Completion interactions' });
+    for (const title of ['Leaving completion', 'Completed high guard']) {
+      await post('/projects/1/tasks', { title });
+    }
+    for (const id of [1, 2]) {
+      await post(`/projects/1/tasks/${id}/priority`, { priority: 'High' });
+      await post(`/projects/1/tasks/${id}/due-date`, { dueDate: '2026-10-10' });
+      await post(`/projects/1/tasks/${id}/completion`, { completed: '1' });
+    }
+    const fields = {
+      filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-01',
+      dueThrough: '2026-10-31', query: 'completion',
+    };
+    const location = `/projects/1?${new URLSearchParams(fields)}`;
+    const initial = await (await fetch(`${server.base}${location}`)).text();
+    let change;
+    let currentUrl = `${server.base}${location}`;
+    let control;
+    const main = {
+      content: initial,
+      get innerHTML() { return this.content; },
+      set innerHTML(value) { this.content = value; control.isConnected = false; },
+    };
+    let frames = [];
+    let frameRequested;
+    runInNewContext(initial.match(/<script>([\s\S]*?)<\/script>/)[1], {
+      document: {
+        addEventListener(type, handler) { assert.equal(type, 'change'); change = handler; },
+        querySelector(selector) { assert.equal(selector, 'main'); return main; },
+      },
+      fetch, URLSearchParams,
+      FormData: class { constructor(form) { return new URLSearchParams(form.fields); } },
+      DOMParser: class {
+        parseFromString(html) {
+          return {
+            title: html.match(/<title>(.*?)<\/title>/)[1],
+            querySelector() { return { innerHTML: html.match(/<main>([\s\S]*?)<\/main>/)[1] }; },
+          };
+        }
+      },
+      requestAnimationFrame(callback) { frames.push(callback); frameRequested(); },
+      history: { replaceState(state, title, url) { currentUrl = url; } },
+    });
+
+    for (const [filter, checked] of [['Completed', false], ['Open', true]]) {
+      const before = main.content;
+      let reachedFrame;
+      const waiting = new Promise(resolve => { reachedFrame = resolve; });
+      frameRequested = reachedFrame;
+      frames = [];
+      control = {
+        type: 'checkbox', checked, isConnected: true, matches: () => true,
+        form: {
+          action: `${server.base}/projects/1/tasks/1/completion`,
+          fields: { ...fields, filter, ...(checked ? { completed: '1' } : {}) },
+          requestSubmit() { assert.fail('Completion must not navigate during the click'); },
+        },
+      };
+      const saving = change({ target: control });
+      await waiting;
+      assert.equal(control.checked, checked);
+      assert.equal(control.isConnected, true);
+      assert.equal(main.content, before);
+      frames.shift()();
+      assert.equal(main.content, before);
+      frames.shift()();
+      await saving;
+      assert.doesNotMatch(main.content, /aria-label="Complete Leaving completion"/);
+      assert.match(main.content, new RegExp(`<option selected>${filter}</option>`));
+      assert.match(main.content, /<option selected>High<\/option>/);
+      const retained = new URL(currentUrl).searchParams;
+      assert.equal(retained.get('filter'), filter);
+      for (const key of ['priorityFilter', 'dueFrom', 'dueThrough', 'query']) {
+        assert.equal(retained.get(key), fields[key]);
+      }
+    }
+    await server.stop();
+    server = await start(resolve(directory, 'workboard.sqlite'));
+    const saved = await (await fetch(`${server.base}${location}`)).text();
+    assert.match(saved, /aria-label="Complete Leaving completion" checked/);
+    assert.match(await (await fetch(`${server.base}/`)).text(), /2\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('priorities migrate, stay independent, preserve task data, and survive restart and archive/restore', async () => {
   const { DatabaseSync } = await import('node:sqlite');
@@ -279,7 +375,7 @@ test('task validation, ordering, filters, ownership, completion, and restart per
     assert.equal(rows(all), 2);
     assert.ok(all.indexOf('Complete First') < all.indexOf('Complete Second'));
     assert.match(all, /aria-label="Complete First &amp; &lt;task&gt; &quot;quoted&quot;"/);
-    assert.doesNotMatch(all, / checked/);
+    assert.doesNotMatch(all, /<input[^>]* checked/);
     assert.equal(rows(await detail(1, 'Open')), 2);
     assert.equal(rows(await detail(1, 'Completed')), 0);
     assert.equal(rows(await detail(2)), 0);
@@ -306,7 +402,7 @@ test('task validation, ordering, filters, ownership, completion, and restart per
     assert.equal(rows(await detail(1, 'Open')), 2);
     await server.stop();
     server = await start(dbPath);
-    assert.doesNotMatch(await detail(1), / checked/);
+    assert.doesNotMatch(await detail(1), /<input[^>]* checked/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

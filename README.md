@@ -19,6 +19,9 @@ only tasks matching both filters and the applied due range appear. Opening a pro
 at All. Filter selections stay in place when either filter changes or a task is
 edited; changing completion or priority immediately updates the matching rows.
 Both filters work while archived, and project summaries always count all tasks.
+Completion checkboxes save without navigating, then refresh the filtered rows
+after the checkbox interaction completes. The selected filters, range, and
+search stay applied.
 
 Use New project name and Rename project on an active project page to rename it.
 Names are trimmed and must not be blank. Renaming preserves the project's URL,
@@ -101,6 +104,9 @@ inclusive due-range intersections, validation, and preservation across edits,
 and task moves with migrated ordering, filter and data preservation, active
 destination validation, summaries, repeat moves, remembered return ordering,
 and restart persistence.
+The completion regression test executes the page's checkbox handler in a DOM
+harness against the real server, checking deferred row refresh, retained filters
+and search, and saved state across a restart.
 
 Use Project search and Search projects to match project names within the current
 Active or Archived filter. Use Task search and Search tasks to match titles
