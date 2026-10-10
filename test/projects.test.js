@@ -131,6 +131,24 @@ test('launch contract, project and task validation, ownership, completion, and r
     first.completed_count = 1;
     second.total_count = 1;
     assert.deepEqual(await list(), [first, second]);
+    const renameProject = (id, name) => fetch(`${base}/api/projects/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    assert.equal((await renameProject(999999, 'Missing')).status, 404);
+    for (const name of ['', ' \t\n ']) {
+      const response = await renameProject(first.id, name);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      assert.deepEqual(await list(), [first, second]);
+    }
+    const renamed = await renameProject(first.id, '  Renamed first  ');
+    assert.equal(renamed.status, 200);
+    first.name = 'Renamed first';
+    assert.deepEqual(await renamed.json(), first);
+    assert.deepEqual(await list(), [first, second]);
+    assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
     const archiveProject = (id, archived) => fetch(`${base}/api/projects/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -142,6 +160,8 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal(archived.status, 200);
     first.archived = 1;
     assert.deepEqual(await archived.json(), first);
+    assert.equal((await renameProject(first.id, 'Blocked rename')).status, 409);
+    assert.deepEqual(await list(), [first, second]);
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
     assert.deepEqual(await taskList(first.id), [{ ...firstTask, completed: true }, secondTask]);
@@ -156,6 +176,10 @@ test('launch contract, project and task validation, ownership, completion, and r
     assert.equal(restored.status, 200);
     first.archived = 0;
     assert.deepEqual(await restored.json(), first);
+    const renamedAfterRestore = await renameProject(first.id, '  Restored first  ');
+    assert.equal(renamedAfterRestore.status, 200);
+    first.name = 'Restored first';
+    assert.deepEqual(await renamedAfterRestore.json(), first);
     const unchecked = await completeTask(first.id, firstTask.id, false);
     assert.equal(unchecked.status, 200);
     assert.deepEqual(await unchecked.json(), firstTask);

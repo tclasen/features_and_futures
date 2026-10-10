@@ -216,6 +216,12 @@ test('archived project UI keeps tasks filterable and disables all task mutations
       ]);
   });
   assert.ok(app.find((node) => node.textContent === 'Archived project'));
+  const renameInput = app.find((node) => node.id === 'new-project-name');
+  const renameButton = app.find((node) => node.textContent === 'Rename project');
+  assert.equal(renameInput.disabled, true);
+  assert.equal(renameButton.disabled, true);
+  renameInput.value = 'Blocked rename';
+  await renameInput.parent.fire('submit');
   const form = app.find((node) => node.tag === 'form');
   assert.equal(form.children[2].textContent, 'Create task');
   assert.equal(form.children[2].disabled, true);
@@ -237,4 +243,51 @@ test('archived project UI keeps tasks filterable and disables all task mutations
   }
   await app.find((node) => node.textContent === 'Projects').fire('click');
   assert.equal(window.location.href, '/');
+});
+
+test('rename UI validates names, updates heading, and preserves navigation and tasks after reload', async () => {
+  const project = { id: 7, name: 'Original', archived: 0, completed_count: 1, total_count: 2 };
+  const tasks = [
+    { id: 1, title: 'Open task', completed: false },
+    { id: 2, title: 'Done task', completed: true },
+  ];
+  const requests = [];
+  const fetch = async (path, options = {}) => {
+    requests.push({ path, options });
+    if (options.method === 'PATCH') project.name = JSON.parse(options.body).name;
+    return jsonResponse(path === '/api/projects/7' ? project : tasks);
+  };
+  const { app, window } = await renderUI('/projects/7', fetch);
+  const input = app.find((node) => node.id === 'new-project-name');
+  const form = input.parent;
+  const heading = app.find((node) => node.tag === 'h1');
+  const list = app.find((node) => node.attributes['aria-label'] === 'Tasks');
+  assert.equal(app.find((node) => node.htmlFor === input.id).textContent, 'New project name');
+  assert.equal(input.disabled, false);
+  assert.equal(form.children[2].textContent, 'Rename project');
+  assert.equal(form.children[2].disabled, false);
+  for (const name of ['', ' \t\n ']) {
+    input.value = name;
+    await form.fire('submit');
+    assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+    assert.equal(heading.textContent, 'Original');
+    assert.equal(requests.length, 2);
+  }
+  input.value = '  Renamed project  ';
+  await form.fire('submit');
+  assert.equal(heading.textContent, 'Renamed project');
+  assert.equal(project.name, 'Renamed project');
+  assert.equal(window.location.pathname, '/projects/7');
+  assert.equal(app.querySelector('[role="alert"]'), null);
+  assert.equal(input.value, '');
+  assert.deepEqual(list.children.map((row) => row.children[0].textContent), ['Open task', 'Done task']);
+  assert.deepEqual(list.children.map((row) => row.children[1].checked), [false, true]);
+  const reloaded = await renderUI('/projects/7', fetch);
+  assert.equal(reloaded.app.find((node) => node.tag === 'h1').textContent, 'Renamed project');
+  const home = await renderUI('/', async () => jsonResponse([project]));
+  const row = home.app.find((node) => node.dataset.testid === 'project-row');
+  assert.equal(row.children[0].textContent, 'Renamed project');
+  assert.equal(row.children[1].textContent, '1/2 completed');
+  await row.find((node) => node.textContent === 'Open project').fire('click');
+  assert.equal(home.window.location.href, '/projects/7');
 });

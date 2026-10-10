@@ -153,6 +153,46 @@ async function renderTasks(project) {
   submit.disabled = Boolean(project.archived);
 }
 
+function renderRename(project, heading) {
+  const form = element('form');
+  const label = element('label', 'New project name');
+  label.htmlFor = 'new-project-name';
+  const input = element('input');
+  input.id = 'new-project-name';
+  input.name = 'name';
+  input.type = 'text';
+  input.disabled = Boolean(project.archived);
+  const submit = element('button', 'Rename project');
+  submit.type = 'submit';
+  submit.disabled = Boolean(project.archived);
+  form.append(label, input, submit);
+  app.append(form);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    const name = input.value.trim();
+    if (!name) return showError('Project name is required');
+    submit.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      Object.assign(project, saved);
+      heading.textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = '';
+      app.querySelector('[role="alert"]')?.remove();
+      input.focus();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = Boolean(project.archived);
+    }
+  });
+}
+
 async function render() {
   const match = window.location.pathname.match(/^\/projects\/(\d+)$/);
   if (match) {
@@ -160,10 +200,12 @@ async function render() {
     back.addEventListener('click', () => { window.location.href = '/'; });
     app.append(back);
     const project = await request(`/api/projects/${match[1]}`);
-    app.append(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.append(heading);
     document.title = `${project.name} · Workboard`;
     if (project.archived) app.append(element('p', 'Archived project'));
     await renderTasks(project);
+    renderRename(project, heading);
     return;
   }
 
