@@ -27,6 +27,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const json = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -38,6 +41,7 @@ async function handle(req, res) {
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/?$/);
   const completionRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/?$/);
   const taskRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename\/?$/);
+  const taskPriorityRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority\/?$/);
   async function readBody() {
     let body = '';
     for await (const chunk of req) {
@@ -50,9 +54,22 @@ async function handle(req, res) {
   if (taskRoute && req.method === 'GET') {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId)
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId)
       .map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), completed: Boolean(task.completed) }));
     return json(res, 200, tasks);
+  }
+  if (taskPriorityRoute && req.method === 'PATCH') {
+    const projectId = Number(taskPriorityRoute[1]);
+    const taskId = Number(taskPriorityRoute[2]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
+    let body;
+    try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
+    if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(res, 400, { error: 'Invalid task priority' });
+    const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(body.priority, taskId, projectId);
+    if (!result.changes) return json(res, 404, { error: 'Task not found' });
+    return json(res, 200, { id: taskId, projectId, priority: body.priority });
   }
   if (taskRoute && req.method === 'POST') {
     const projectId = Number(taskRoute[1]);
@@ -64,7 +81,7 @@ async function handle(req, res) {
     const title = String(body.title ?? '').trim();
     if (!title) return json(res, 400, { error: 'Task title is required' });
     const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
   }
   if (taskRenameRoute && req.method === 'PATCH') {
     const projectId = Number(taskRenameRoute[1]);

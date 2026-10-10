@@ -26,6 +26,7 @@
     .task-list { display: grid; gap: 10px; }
     .task-row { padding: 14px 16px; border: 1px solid #d8dee7; border-radius: 8px; background: white; }
     .task-row input[type="checkbox"] { flex: none; width: 18px; height: 18px; }
+    .task-row select { padding: 8px; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
     .task-rename input { flex: 1; }
     .task-row span { overflow-wrap: anywhere; }
     .task-row .task-rename { display: flex; flex: 1; gap: 8px; }
@@ -225,6 +226,26 @@
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           const title = document.createElement('span');
           title.textContent = task.title;
+          const priority = document.createElement('select');
+          priority.setAttribute('aria-label', 'Task priority');
+          priority.disabled = project.archived;
+          for (const value of ['Low', 'Normal', 'High']) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            priority.append(option);
+          }
+          priority.value = task.priority || 'Normal';
+          priority.addEventListener('change', async () => {
+            priority.disabled = true;
+            const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/priority`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ priority: priority.value }),
+            });
+            if (saved.ok) task.priority = (await saved.json()).priority;
+            else priority.value = task.priority || 'Normal';
+            priority.disabled = project.archived;
+          });
           const renameForm = document.createElement('form');
           renameForm.className = 'task-rename';
           const renameInput = document.createElement('input');
@@ -269,7 +290,7 @@
             checkbox.disabled = false;
             drawTasks();
           });
-          row.append(checkbox, title, renameForm);
+          row.append(checkbox, title, renameForm, priority);
           list.append(row);
         }
       }
