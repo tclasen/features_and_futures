@@ -86,6 +86,17 @@ const server = http.createServer(async (req, res) => {
       return send(res, 201, { id: Number(result.lastInsertRowid), title, completed: false });
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
+  const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (taskRenameMatch && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) return send(res, 400, { error: 'Task title is required' });
+      const result = db.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id IN
+        (SELECT id FROM projects WHERE archived = 0)`).run(title, Number(taskRenameMatch[1]));
+      return result.changes ? send(res, 200, { ok: true, title }) : send(res, 404, { error: 'Task not found or project archived' });
+    } catch { return send(res, 400, { error: 'Invalid request' }); }
+  }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && req.method === 'PATCH') {
     try {

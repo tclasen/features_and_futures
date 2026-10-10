@@ -108,6 +108,39 @@ async function render() {
           await loadTasks();
         });
         row.append(checkbox);
+        const renameForm = element('form', undefined, 'create-form');
+        const renameInput = element('input');
+        renameInput.type = 'text';
+        renameInput.value = task.title;
+        renameInput.setAttribute('aria-label', 'New task title');
+        renameInput.disabled = project.archived;
+        const renameButton = element('button', 'Rename task');
+        renameButton.type = 'submit';
+        renameButton.disabled = project.archived;
+        renameForm.append(renameInput, renameButton);
+        const renameAlert = element('p', '', 'alert');
+        renameAlert.setAttribute('role', 'alert');
+        renameAlert.hidden = true;
+        renameForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = renameInput.value.trim();
+          if (!title) {
+            renameAlert.textContent = 'Task title is required';
+            renameAlert.hidden = false;
+            renameInput.focus();
+            return;
+          }
+          const response = await fetch(`/api/tasks/${task.id}/rename`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+          });
+          if (!response.ok) {
+            renameAlert.textContent = 'Task title is required';
+            renameAlert.hidden = false;
+            return;
+          }
+          await loadTasks();
+        });
+        row.append(renameForm, renameAlert);
         list.append(row);
       }
     }
