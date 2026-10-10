@@ -30,6 +30,7 @@ const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`);
@@ -91,6 +92,7 @@ const server = http.createServer(async (req, res) => {
     if (!project) return send(res, 404, JSON.stringify({ error: 'Not found' }));
     if (req.method === 'GET') return send(res, 200, JSON.stringify(listTasks.all(projectId)));
     if (req.method === 'POST') {
+      if (project.archived) return send(res, 400, JSON.stringify({ error: 'Archived projects cannot be changed' }));
       let body = '';
       try {
         for await (const chunk of req) body += chunk;
@@ -109,9 +111,18 @@ const server = http.createServer(async (req, res) => {
       let body = '';
       for await (const chunk of req) body += chunk;
       const data = JSON.parse(body);
-      if (typeof data.completed !== 'boolean' || !getProject.get(projectId)) return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
-      const result = updateTask.run(data.completed ? 1 : 0, taskId, projectId);
-      if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Not found' }));
+      const project = getProject.get(projectId);
+      if (!project) return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
+      if (project.archived) return send(res, 400, JSON.stringify({ error: 'Archived projects cannot be changed' }));
+      if (typeof data.title === 'string') {
+        const title = data.title.trim();
+        if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+        const result = renameTask.run(title, taskId, projectId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Not found' }));
+      } else if (typeof data.completed === 'boolean') {
+        const result = updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Not found' }));
+      } else return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
       return send(res, 200, JSON.stringify(getTask.get(taskId, projectId)));
     } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
