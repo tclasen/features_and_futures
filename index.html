@@ -58,15 +58,10 @@
       app.append(filter);
       const list = document.createElement('ul'); list.id = 'projects'; app.append(list);
       async function load() {
-        list.replaceChildren();
         const projects = await request('/api/projects');
-        // Repeated pilot runs may replay the same fixture name into a persistent DB.
-        // Show the most recently created matching fixture once, avoiding ambiguous rows.
-        const latestByName = new Map();
+        const rows = document.createDocumentFragment();
         for (const project of projects) {
-          if (Boolean(project.archived) === (filter.value === 'Archived')) latestByName.set(project.name, project);
-        }
-        for (const project of latestByName.values()) {
+          if (Boolean(project.archived) !== (filter.value === 'Archived')) continue;
           const row = document.createElement('li'); row.dataset.testid = 'project-row';
           const name = document.createElement('span'); name.className = 'project-name'; name.textContent = project.name;
           const summary = document.createElement('span'); summary.dataset.testid = 'project-summary'; summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
@@ -75,8 +70,9 @@
           open.addEventListener('click', () => location.assign(`/projects/${escapePath(project.id)}`));
           const toggle = document.createElement('button'); toggle.type = 'button'; toggle.textContent = project.archived ? 'Restore project' : 'Archive project';
           toggle.addEventListener('click', async () => { await request(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' }); await load(); });
-          actions.append(open, toggle); row.append(name, summary, actions); list.append(row);
+          actions.append(open, toggle); row.append(name, summary, actions); rows.append(row);
         }
+        list.replaceChildren(rows);
       }
       filter.addEventListener('change', () => load().catch(error => { alert.textContent = error.message; }));
       form.addEventListener('submit', async event => {
