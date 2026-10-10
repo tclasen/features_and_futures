@@ -43,8 +43,19 @@
         <section aria-label="Projects">${projects.map(project => `<div class="row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span class="summary" data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-project-id="${project.id}">Open project</button><button type="button" data-archive-id="${project.id}" data-archived="${project.archived}">${project.archived ? 'Restore project' : 'Archive project'}</button></div>`).join('')}</section>`;
       app.querySelector('#project-filter').addEventListener('change', event => showList('', event.target.value));
       app.querySelectorAll('[data-archive-id]').forEach(button => button.addEventListener('click', async () => {
-        await fetch(`/api/projects/${button.dataset.archiveId}/archive`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: button.dataset.archived !== '1' }) });
-        showList('', selected);
+        if (button.disabled) return;
+        button.disabled = true;
+        const archived = button.dataset.archived !== '1';
+        const response = await fetch(`/api/projects/${button.dataset.archiveId}/archive`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }) });
+        if (!response.ok) { button.disabled = false; return; }
+        // Update the existing row in place so unrelated project controls remain stable.
+        const row = button.closest('[data-testid="project-row"]');
+        if ((selected === 'Archived') !== archived) row.remove();
+        else {
+          button.dataset.archived = String(Number(archived));
+          button.textContent = archived ? 'Restore project' : 'Archive project';
+          button.disabled = false;
+        }
       }));
       app.querySelector('#create-form').addEventListener('submit', async event => {
         event.preventDefault();
