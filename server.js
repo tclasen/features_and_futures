@@ -241,9 +241,15 @@ function page() {
       for (const value of ['All', 'Open', 'Completed']) {
         const option = element('option', value); option.value = value; filter.append(option);
       }
+      const priorityFilterLabel = element('label', 'Priority filter');
+      priorityFilterLabel.htmlFor = 'priority-filter';
+      const priorityFilter = document.createElement('select'); priorityFilter.id = 'priority-filter';
+      for (const value of ['All', 'Low', 'Normal', 'High']) {
+        const option = element('option', value); option.value = value; priorityFilter.append(option);
+      }
       const rows = element('div', undefined, 'rows');
       rows.setAttribute('aria-label', 'Tasks');
-      app.append(form, error, filterLabel, filter, rows);
+      app.append(form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, rows);
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const title = input.value.trim();
@@ -252,13 +258,14 @@ function page() {
         const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
         });
-        if (result.ok) { input.value = ''; await loadTasks(id, rows, filter.value); }
+        if (result.ok) { input.value = ''; await loadTasks(id, rows, filter.value, priorityFilter.value); }
       });
-      filter.addEventListener('change', () => loadTasks(id, rows, filter.value));
-      await loadTasks(id, rows, filter.value);
+      filter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value));
+      priorityFilter.addEventListener('change', () => loadTasks(id, rows, filter.value, priorityFilter.value));
+      await loadTasks(id, rows, filter.value, priorityFilter.value);
     }
 
-    async function loadTasks(projectId, rows, filter) {
+    async function loadTasks(projectId, rows, filter, priorityFilter) {
       const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks');
       const tasks = await response.json();
       const projectResponse = await fetch('/api/projects/' + encodeURIComponent(projectId));
@@ -266,6 +273,7 @@ function page() {
       rows.replaceChildren();
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+        if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
         const row = element('div', undefined, 'task-row'); row.dataset.testid = 'task-row';
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed);
         checkbox.disabled = Boolean(project.archived);
@@ -274,7 +282,7 @@ function page() {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
           });
-          await loadTasks(projectId, rows, filter);
+          await loadTasks(projectId, rows, filter, priorityFilter);
         });
         const title = element('span', task.title, 'task-title');
         const renameInput = document.createElement('input');
@@ -295,7 +303,7 @@ function page() {
           const result = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle })
           });
-          if (result.ok) await loadTasks(projectId, rows, filter);
+          if (result.ok) await loadTasks(projectId, rows, filter, priorityFilter);
         });
         const priority = document.createElement('select');
         priority.setAttribute('aria-label', 'Task priority');
@@ -308,6 +316,7 @@ function page() {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/tasks/' + encodeURIComponent(task.id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
           });
+          await loadTasks(projectId, rows, filter, priorityFilter);
         });
         row.append(checkbox, title, renameInput, renameButton, priority); rows.append(row);
       }
