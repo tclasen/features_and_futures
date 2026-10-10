@@ -27,15 +27,105 @@ function addProjectRow(project) {
   app.querySelector('#projects').append(row);
 }
 
+async function renderProject(projectId) {
+  app.innerHTML = `
+    <button id="back" type="button">Projects</button><h1></h1>
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="create-controls">
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <p role="alert" hidden></p>
+    <label for="task-filter">Task filter</label>
+    <select id="task-filter">
+      <option>All</option><option>Open</option><option>Completed</option>
+    </select>
+    <section id="tasks" aria-label="Tasks"></section>`;
+  app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+  const project = await request(`/api/projects/${projectId}`);
+  app.querySelector('h1').textContent = project.name;
+  document.title = `${project.name} · Workboard`;
+  const tasksPath = `/api/projects/${projectId}/tasks`;
+  const tasks = await request(tasksPath);
+  const filter = app.querySelector('#task-filter');
+  const rows = app.querySelector('#tasks');
+
+  function renderTasks() {
+    rows.replaceChildren();
+    for (const task of tasks) {
+      if (filter.value === 'Open' && task.completed) continue;
+      if (filter.value === 'Completed' && !task.completed) continue;
+      const row = document.createElement('div');
+      row.className = 'task-row';
+      row.dataset.testid = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        showAlert('');
+        try {
+          const saved = await request(`${tasksPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          task.completed = saved.completed;
+          renderTasks();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          showAlert(error.message);
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+      row.append(checkbox, title);
+      rows.append(row);
+    }
+  }
+
+  filter.addEventListener('change', renderTasks);
+  renderTasks();
+  const form = app.querySelector('form');
+  const input = app.querySelector('#task-title');
+  const button = form.querySelector('button');
+  button.disabled = false;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showAlert('');
+    if (!input.value.trim()) {
+      showAlert('Task title is required');
+      input.focus();
+      return;
+    }
+    button.disabled = true;
+    try {
+      const task = await request(tasksPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      });
+      tasks.push(task);
+      renderTasks();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 async function render() {
   const match = location.pathname.match(/^\/projects\/([1-9]\d*)$/);
   if (match) {
-    app.innerHTML = '<button id="back" type="button">Projects</button><h1></h1><p role="alert" hidden></p>';
-    app.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
-    const project = await request(`/api/projects/${match[1]}`);
-    app.querySelector('h1').textContent = project.name;
-    document.title = `${project.name} · Workboard`;
-    return;
+    return renderProject(match[1]);
   }
 
   app.innerHTML = `
