@@ -1,103 +1,23 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Workboard</title>
-  <style>
-    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
-    body { margin: 0; padding: 48px 20px; }
-    main { max-width: 760px; margin: 0 auto; }
-    h1 { margin-top: 0; }
-    form, .project-row, .project-detail { background: white; border: 1px solid #dce2eb; border-radius: 10px; padding: 18px; }
-    form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
-    label { display: grid; gap: 6px; flex: 1; min-width: 200px; font-weight: 600; }
-    input { font: inherit; padding: 10px; border: 1px solid #aab4c3; border-radius: 6px; }
-    button { font: inherit; padding: 10px 14px; border: 0; border-radius: 6px; color: white; background: #3157c8; cursor: pointer; }
-    button:hover { background: #2445a7; }
-    .project-list { display: grid; gap: 10px; margin-top: 20px; }
-    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    [role="alert"] { color: #b42318; margin: 12px 0; }
-    .back { margin-bottom: 20px; }
-    .task-row { display: flex; align-items: center; gap: 10px; background: white; border: 1px solid #dce2eb; border-radius: 10px; padding: 14px 18px; }
-    .task-row[hidden] { display: none; }
-    .task-row input { padding: 0; }
-  </style>
-</head>
-<body>
-  <main id="app"><h1>Workboard</h1><p>Loading projects…</p></main>
-  <script>
-    const app = document.querySelector('#app');
-    const escapeText = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    async function request(url, options) {
-      const response = await fetch(url, options);
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Request failed');
-      return body;
-    }
-    async function showList(error = '') {
-      const projects = await request('/api/projects');
-      app.innerHTML = `<h1>Workboard</h1>
-        <form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form>
-        <div id="message" role="alert" aria-live="polite">${escapeText(error)}</div>
-        <section class="project-list" aria-label="Projects">${projects.map(project => `<div class="project-row" data-testid="project-row"><span>${escapeText(project.name)}</span><button type="button" data-project="${encodeURIComponent(project.id)}">Open project</button></div>`).join('')}</section>`;
-      app.querySelector('#create-form').addEventListener('submit', async event => {
-        event.preventDefault();
-        const name = new FormData(event.currentTarget).get('name');
-        try {
-          await request('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-          await showList();
-        } catch (error) {
-          app.querySelector('#message').textContent = error.message;
-        }
-      });
-      app.querySelectorAll('[data-project]').forEach(button => button.addEventListener('click', () => {
-        history.pushState({}, '', `/projects/${button.dataset.project}`);
-        render();
-      }));
-    }
-    async function showProject(id) {
-      const back = () => { history.pushState({}, '', '/'); render(); };
-      try {
-        const project = await request(`/api/projects/${encodeURIComponent(id)}`);
-        const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
-        app.innerHTML = `<button class="back" type="button">Projects</button><section class="project-detail"><h1>${escapeText(project.name)}</h1></section>
-          <form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off"></label><button type="submit">Create task</button></form>
-          <div id="task-message" role="alert" aria-live="polite"></div>
-          <label style="margin-top:18px">Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
-          <section class="project-list" aria-label="Tasks">${tasks.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" ${task.completed ? 'checked' : ''} aria-label="Complete ${escapeText(task.title)}" data-task="${task.id}"><span>${escapeText(task.title)}</span></div>`).join('')}</section>`;
-        app.querySelector('.back').addEventListener('click', back);
-        const applyFilter = () => app.querySelectorAll('.task-row').forEach(row => {
-          const checked = row.querySelector('input').checked;
-          const filter = app.querySelector('#task-filter').value;
-          row.hidden = filter === 'Open' ? checked : filter === 'Completed' ? !checked : false;
-        });
-        app.querySelector('#task-filter').addEventListener('change', applyFilter);
-        applyFilter();
-        app.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
-          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.task)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
-          applyFilter();
-        }));
-        app.querySelector('#task-form').addEventListener('submit', async event => {
-          event.preventDefault();
-          const title = new FormData(event.currentTarget).get('title');
-          try {
-            await request(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
-            await showProject(id);
-          } catch (error) { app.querySelector('#task-message').textContent = error.message; }
-        });
-      } catch {
-        app.innerHTML = `<button class="back" type="button">Projects</button><h1>Project not found</h1>`;
-        app.querySelector('.back').addEventListener('click', back);
-      }
-    }
-    async function render() {
-      const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
-      if (match) await showProject(decodeURIComponent(match[1]));
-      else await showList();
-    }
-    addEventListener('popstate', render);
-    render();
-  </script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Workboard</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,sans-serif;color:#172033;background:#f5f7fb}body{margin:0;padding:48px 20px}main{max-width:760px;margin:auto}h1{margin-top:0}form,.project-row,.project-detail,.task-row{background:white;border:1px solid #dce2eb;border-radius:10px;padding:18px}form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}label{display:grid;gap:6px;flex:1;min-width:200px;font-weight:600}input,select{font:inherit;padding:10px;border:1px solid #aab4c3;border-radius:6px}button{font:inherit;padding:10px 14px;border:0;border-radius:6px;color:white;background:#3157c8;cursor:pointer}button:hover{background:#2445a7}button:disabled{opacity:.55;cursor:not-allowed}.project-list{display:grid;gap:10px;margin-top:20px}.project-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}[role=alert]{color:#b42318;margin:12px 0}.back{margin-bottom:20px}.task-row{display:flex;align-items:center;gap:10px;padding:14px 18px}.task-row[hidden]{display:none}.task-row input{padding:0}.summary{font-size:.9rem;color:#46536a}
+</style></head><body><main id="app"><h1>Workboard</h1><p>Loading…</p></main><script>
+const app=document.querySelector('#app');
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function request(url,options){const r=await fetch(url,options);const b=await r.json();if(!r.ok)throw Error(b.error||'Request failed');return b}
+const post=(url,body={})=>request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+async function showList(error=''){const projects=await request('/api/projects');const filter=new URLSearchParams(location.search).get('filter')||'Active';const shown=projects.filter(p=>Boolean(p.archived)===(filter==='Archived'));
+app.innerHTML=`<h1>Workboard</h1><label>Project filter<select id="project-filter"><option${filter==='Active'?' selected':''}>Active</option><option${filter==='Archived'?' selected':''}>Archived</option></select></label><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button>Create project</button></form><div id="message" role="alert" aria-live="polite">${esc(error)}</div><section class="project-list" aria-label="Projects">${shown.map(p=>`<div class="project-row" data-testid="project-row"><span>${esc(p.name)}</span><span class="summary" data-testid="project-summary">${p.completed_count}/${p.total_count} completed</span><div class="actions"><button type="button" data-open="${esc(p.id)}">Open project</button>${p.archived?`<button type="button" data-action="restore" data-id="${esc(p.id)}">Restore project</button>`:`<button type="button" data-action="archive" data-id="${esc(p.id)}">Archive project</button>`}</div></div>`).join('')}</section>`;
+app.querySelector('#project-filter').onchange=e=>{history.replaceState({},'',`/?filter=${e.target.value}`);showList()};
+app.querySelector('#create-form').onsubmit=async e=>{e.preventDefault();try{await post('/api/projects',{name:new FormData(e.currentTarget).get('name')});history.replaceState({},'','/');await showList()}catch(x){app.querySelector('#message').textContent=x.message}};
+app.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{history.pushState({},'',`/projects/${encodeURIComponent(b.dataset.open)}`);render()});
+app.querySelectorAll('[data-action]').forEach(b=>b.onclick=async()=>{await post(`/api/projects/${encodeURIComponent(b.dataset.id)}/${b.dataset.action}`);showList()});}
+async function showProject(id){const back=()=>{history.pushState({},'','/');render()};try{const project=await request(`/api/projects/${encodeURIComponent(id)}`);const tasks=await request(`/api/projects/${encodeURIComponent(id)}/tasks`);const archived=Boolean(project.archived);
+app.innerHTML=`<button class="back">Projects</button><section class="project-detail"><h1>${esc(project.name)}</h1>${archived?'<p>Archived project</p>':''}</section><form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off"${archived?' disabled':''}></label><button${archived?' disabled':''}>Create task</button></form><div id="task-message" role="alert" aria-live="polite"></div><label style="margin-top:18px">Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><section class="project-list" aria-label="Tasks">${tasks.map(t=>`<div class="task-row" data-testid="task-row"><input type="checkbox" ${t.completed?'checked':''}${archived?' disabled':''} aria-label="Complete ${esc(t.title)}" data-task="${esc(t.id)}"><span>${esc(t.title)}</span></div>`).join('')}</section>`;
+app.querySelector('.back').onclick=back;const apply=()=>app.querySelectorAll('.task-row').forEach(row=>{const checked=row.querySelector('input').checked,f=app.querySelector('#task-filter').value;row.hidden=f==='Open'?checked:f==='Completed'?!checked:false});app.querySelector('#task-filter').onchange=apply;apply();
+app.querySelectorAll('[data-task]').forEach(box=>box.onchange=async()=>{await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.task)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({completed:box.checked})});apply()});
+app.querySelector('#task-form').onsubmit=async e=>{e.preventDefault();try{await post(`/api/projects/${encodeURIComponent(id)}/tasks`,{title:new FormData(e.currentTarget).get('title')});showProject(id)}catch(x){app.querySelector('#task-message').textContent=x.message}};
+}catch{app.innerHTML='<button class="back">Projects</button><h1>Project not found</h1>';app.querySelector('.back').onclick=back}}
+function render(){const m=location.pathname.match(/^\/projects\/([^/]+)\/?$/);m?showProject(decodeURIComponent(m[1])):showList()}addEventListener('popstate',render);render();
+</script></body></html>

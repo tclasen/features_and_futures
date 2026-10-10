@@ -9,11 +9,13 @@ const base = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(base, 'data', 'workboard.sqlite');
 await mkdir(path.dirname(path.resolve(dbPath)), { recursive: true });
 const db = new DatabaseSync(dbPath);
-db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid`);
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -30,6 +32,13 @@ const server = http.createServer(async (req, res) => {
     return send(200, html, 'text/html; charset=utf-8');
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') return send(200, JSON.stringify(listProjects.all()));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
+  if (req.method === 'POST' && archiveMatch) {
+    const project = findProject.get(decodeURIComponent(archiveMatch[1]));
+    if (!project) return send(404, JSON.stringify({ error: 'Project not found' }));
+    setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, project.id);
+    return send(200, JSON.stringify({ ok: true }));
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let raw = '';
     try {
@@ -50,6 +59,7 @@ const server = http.createServer(async (req, res) => {
     if (!findProject.get(projectId)) return send(404, JSON.stringify({ error: 'Project not found' }));
     if (req.method === 'GET' && !taskMatch[2]) return send(200, JSON.stringify(listTasks.all(projectId)));
     if (req.method === 'POST' && !taskMatch[2]) {
+      if (findProject.get(projectId).archived) return send(409, JSON.stringify({ error: 'Archived project' }));
       try {
         let raw = ''; for await (const chunk of req) raw += chunk;
         const title = String(JSON.parse(raw).title ?? '').trim();
@@ -60,6 +70,7 @@ const server = http.createServer(async (req, res) => {
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
     if (req.method === 'PATCH' && taskMatch[2]) {
+      if (findProject.get(projectId).archived) return send(409, JSON.stringify({ error: 'Archived project' }));
       try {
         let raw = ''; for await (const chunk of req) raw += chunk;
         const completed = JSON.parse(raw).completed ? 1 : 0;
