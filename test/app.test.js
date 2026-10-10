@@ -26,7 +26,8 @@ class Element {
 function pageElements() {
   const ids = ['project-list', 'project-detail', 'projects', 'create-project', 'project-name',
     'error', 'create-task', 'task-title', 'task-filter', 'priority-filter', 'tasks', 'back-to-projects', 'project-heading',
-    'due-range', 'due-from', 'due-through', 'project-filter', 'archived-project', 'rename-project', 'new-project-name', 'default-task-priority'];
+    'due-range', 'due-from', 'due-through', 'project-filter', 'archived-project', 'rename-project', 'new-project-name', 'default-task-priority',
+    'search-projects', 'project-search', 'search-tasks', 'task-search'];
   const elements = new Map(ids.map((id) => [`#${id}`, new Element()]));
   elements.get('#create-task').append(new Element('button'));
   elements.get('#create-project').append(new Element('button'));
@@ -943,6 +944,200 @@ test('task moves list eligible projects, retain source filters, and recover from
         await moveForm(row).fire('submit');
         assert.equal(writes.length, 2);
       }
+    }
+  }
+});
+
+test('project search intersects archives, trims only outer whitespace, and resets on return', async () => {
+  let projects = [
+    { id: 1, name: 'Alpha  Plan', archived: 0, completed: 1, total: 3 },
+    { id: 2, name: 'alpha Plan', archived: 0, completed: 0, total: 0 },
+    { id: 3, name: 'ALPHA  Archived', archived: 1, completed: 2, total: 2 },
+    { id: 4, name: 'ÄLPHA', archived: 0, completed: 0, total: 0 },
+  ];
+  const fetch = async (path, options) => {
+    let data = projects;
+    if (options) {
+      const body = JSON.parse(options.body);
+      if (options.method === 'POST') {
+        data = { id: 5, ...body, archived: 0, completed: 0, total: 0 };
+        projects.push(data);
+      } else {
+        const id = Number(path.split('/').at(-1));
+        data = { ...projects.find((project) => project.id === id), archived: Number(body.archived) };
+        projects = projects.map((project) => project.id === id ? data : project);
+      }
+    }
+    return { ok: true, json: async () => structuredClone(data) };
+  };
+  const elements = pageElements();
+  const element = (id) => elements.get(`#${id}`);
+  await loadPage(elements, '/', fetch);
+  const rows = () => element('projects').children;
+  const names = () => rows().map((row) => row.children[0].textContent);
+  const search = async (query) => {
+    element('project-search').value = query;
+    await element('search-projects').fire('submit');
+  };
+  assert.equal(element('project-search').value, '');
+  await search(' \tAlPhA  \n');
+  assert.deepEqual(names(), ['Alpha  Plan', 'alpha Plan']);
+  assert.equal(rows()[0].children[1].textContent, '1/3 completed');
+  await search('alpha  '); // Outer spaces are trimmed; internal spaces remain significant.
+  await search(' alpha  p ');
+  assert.deepEqual(names(), ['Alpha  Plan']);
+  await search('alpha');
+  element('project-search').value = 'unapplied draft';
+  element('project-filter').value = 'Archived';
+  await element('project-filter').fire('change');
+  assert.deepEqual(names(), ['ALPHA  Archived']);
+  await rows()[0].children[3].fire('click');
+  assert.deepEqual(names(), []);
+  element('project-filter').value = 'Active';
+  await element('project-filter').fire('change');
+  assert.deepEqual(names(), ['Alpha  Plan', 'alpha Plan', 'ALPHA  Archived']);
+  element('project-name').value = 'Unmatched';
+  await element('create-project').fire('submit');
+  assert.deepEqual(names(), ['Alpha  Plan', 'alpha Plan', 'ALPHA  Archived']);
+  await search('älpha');
+  assert.deepEqual(names(), [], 'Non-ASCII case must remain significant');
+  await search('Älpha');
+  assert.deepEqual(names(), ['ÄLPHA']);
+  await search(' \t ');
+  assert.deepEqual(names(), projects.map((project) => project.name));
+  const reopened = pageElements();
+  await loadPage(reopened, '/', fetch);
+  assert.equal(reopened.get('#project-search').value, '');
+  assert.equal(reopened.get('#projects').children.length, 5);
+});
+
+test('task search intersects all filters and re-evaluates edits while preserving queries', async () => {
+  let project = { id: 7, name: 'Source', archived: 0, default_priority: 'High' };
+  let savedTasks = [
+    { id: 1, title: 'Alpha  First', completed: false, priority: 'High', due_date: '2026-10-10' },
+    { id: 2, title: 'ALPHA Second', completed: false, priority: 'High', due_date: '2026-10-11' },
+    { id: 3, title: 'Alpha done', completed: true, priority: 'High', due_date: '2026-10-10' },
+    { id: 4, title: 'Alpha low', completed: false, priority: 'Low', due_date: '2026-10-10' },
+    { id: 5, title: 'Alpha undated', completed: false, priority: 'High', due_date: '' },
+    { id: 6, title: 'Other', completed: false, priority: 'High', due_date: '2026-10-10' },
+    { id: 7, title: 'ÄLPHA', completed: false, priority: 'High', due_date: '' },
+  ];
+  const writes = [];
+  const fetch = async (path, options) => {
+    let data;
+    if (!options) data = path.endsWith('/tasks') ? savedTasks : project;
+    else {
+      const body = JSON.parse(options.body);
+      writes.push(body);
+      if (!path.includes('/tasks')) data = project = { ...project, ...body };
+      else if (options.method === 'POST') {
+        data = { id: 8, ...body, completed: false, priority: project.default_priority, due_date: '' };
+        savedTasks.push(data);
+      } else {
+        const id = Number(path.split('/').at(-1));
+        data = { ...savedTasks.find((task) => task.id === id), ...body };
+        savedTasks = Object.hasOwn(body, 'destination_project_id')
+          ? savedTasks.filter((task) => task.id !== id)
+          : savedTasks.map((task) => task.id === id ? data : task);
+      }
+    }
+    return { ok: true, json: async () => structuredClone(data) };
+  };
+  const elements = pageElements();
+  const element = (id) => elements.get(`#${id}`);
+  await loadPage(elements, '/projects/7', fetch, () => assert.fail('Must stay on source'),
+    [{ id: 9, name: 'Destination', archived: 0 }]);
+  const rows = () => element('tasks').children;
+  const titles = () => rows().map((row) => row.children[1].textContent);
+  const search = async (query) => {
+    element('task-search').value = query;
+    await element('search-tasks').fire('submit');
+  };
+  await search('  aLpHa  f  ');
+  assert.deepEqual(titles(), ['Alpha  First']);
+  await search('älpha');
+  assert.deepEqual(titles(), []);
+  await search('Älpha');
+  assert.deepEqual(titles(), ['ÄLPHA']);
+  await search(' \tALPHA\n ');
+  assert.equal(element('task-search').value, 'ALPHA');
+  assert.equal(writes.length, 0, 'Search must never write stored data');
+  element('task-filter').value = 'Open';
+  await element('task-filter').fire('change');
+  element('priority-filter').value = 'High';
+  await element('priority-filter').fire('change');
+  element('due-from').value = '2026-10-10';
+  element('due-through').value = '2026-10-11';
+  await element('due-range').fire('submit');
+  assert.deepEqual(titles(), ['Alpha  First', 'ALPHA Second']);
+  const checkFilters = () => {
+    assert.equal(element('task-search').value, 'ALPHA');
+    assert.equal(element('task-filter').value, 'Open');
+    assert.equal(element('priority-filter').value, 'High');
+    assert.equal(element('due-from').value, '2026-10-10');
+    assert.equal(element('due-through').value, '2026-10-11');
+  };
+  let rename = rows()[0].children[2];
+  rename.children[1].children[0].value = 'Alpha renamed';
+  await rename.fire('submit');
+  assert.deepEqual(titles(), ['Alpha renamed', 'ALPHA Second']);
+  rename = rows()[0].children[2];
+  rename.children[1].children[0].value = 'No match';
+  await rename.fire('submit');
+  assert.deepEqual(titles(), ['ALPHA Second']);
+  const date = rows()[0].children[4];
+  date.children[1].children[0].value = '2026-10-12';
+  await date.fire('submit');
+  assert.deepEqual(titles(), []);
+  element('new-project-name').value = 'Renamed source';
+  await element('rename-project').fire('submit');
+  element('default-task-priority').value = 'Normal';
+  await element('default-task-priority').fire('change');
+  element('task-title').value = 'Alpha new';
+  await element('create-task').fire('submit');
+  assert.deepEqual(titles(), []);
+  checkFilters();
+  element('due-from').value = '';
+  element('due-through').value = '';
+  await element('due-range').fire('submit');
+  assert.deepEqual(titles(), ['ALPHA Second', 'Alpha undated']);
+  const priority = rows()[0].children[3].children[1];
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.deepEqual(titles(), ['Alpha undated']);
+  rows()[0].children[0].checked = true;
+  await rows()[0].children[0].fire('change');
+  assert.deepEqual(titles(), []);
+  element('task-filter').value = 'All';
+  await element('task-filter').fire('change');
+  assert.deepEqual(titles(), ['Alpha done', 'Alpha undated']);
+  await rows()[0].children[5].fire('submit');
+  assert.deepEqual(titles(), ['Alpha undated']);
+  element('task-search').value = 'unapplied draft';
+  element('priority-filter').value = 'All';
+  await element('priority-filter').fire('change');
+  assert.deepEqual(titles(), ['ALPHA Second', 'Alpha low', 'Alpha undated', 'Alpha new']);
+  await search(' \t ');
+  assert.deepEqual(titles(), savedTasks.map((task) => task.title));
+
+  for (const archived of [1, 0]) {
+    project.archived = archived;
+    const reopened = pageElements();
+    await loadPage(reopened, '/projects/7', fetch);
+    assert.equal(reopened.get('#task-search').value, '');
+    assert.equal(reopened.get('#tasks').children.length, savedTasks.length);
+    reopened.get('#task-search').value = 'alpha';
+    await reopened.get('#search-tasks').fire('submit');
+    assert.deepEqual(reopened.get('#tasks').children.map((row) => row.children[1].textContent),
+      ['ALPHA Second', 'Alpha low', 'Alpha undated', 'Alpha new']);
+    for (const row of reopened.get('#tasks').children) {
+      assert.equal(row.children[0].disabled, Boolean(archived));
+      assert.equal(row.children[3].children[1].disabled, Boolean(archived));
+      for (const index of [2, 4]) {
+        assert.equal(row.children[index].children[1].children[0].disabled, Boolean(archived));
+        assert.equal(row.children[index].children[1].children[1].disabled, Boolean(archived));
+      }
+      assert.equal(row.children[5].children[1].children[1].disabled, true, 'No destinations on reopened page');
     }
   }
 });

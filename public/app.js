@@ -4,6 +4,8 @@ const list = document.querySelector('#project-list');
 const detail = document.querySelector('#project-detail');
 const projects = document.querySelector('#projects');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#search-projects');
+const projectSearch = document.querySelector('#project-search');
 const form = document.querySelector('#create-project');
 const input = document.querySelector('#project-name');
 const error = document.querySelector('#error');
@@ -13,6 +15,8 @@ const taskForm = document.querySelector('#create-task');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const taskSearchForm = document.querySelector('#search-tasks');
+const taskSearch = document.querySelector('#task-search');
 const dueRangeForm = document.querySelector('#due-range');
 const dueFrom = document.querySelector('#due-from');
 const dueThrough = document.querySelector('#due-through');
@@ -22,6 +26,8 @@ const projectMatch = window.location.pathname.match(/^\/projects\/(\d+)$/);
 const tasksPath = projectMatch ? `/api/projects/${projectMatch[1]}/tasks` : null;
 let appliedDueFrom = '';
 let appliedDueThrough = '';
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
 let tasks = [];
 let projectData = [];
 let archived = false;
@@ -77,12 +83,32 @@ function projectRow(project) {
   return row;
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 function renderProjects() {
-  const filtered = projectData.filter((project) => Boolean(project.archived) === (projectFilter.value === 'Archived'));
+  const filtered = projectData.filter((project) =>
+    Boolean(project.archived) === (projectFilter.value === 'Archived')
+    && asciiLower(project.name).includes(appliedProjectQuery));
   projects.replaceChildren(...filtered.map(projectRow));
 }
 
 projectFilter.addEventListener('change', renderProjects);
+projectSearchForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  projectSearch.value = projectSearch.value.trim();
+  appliedProjectQuery = asciiLower(projectSearch.value);
+  showError();
+  renderProjects();
+});
+taskSearchForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  taskSearch.value = taskSearch.value.trim();
+  appliedTaskQuery = asciiLower(taskSearch.value);
+  showError();
+  renderTasks();
+});
 
 function taskRow(task) {
   const row = document.createElement('div');
@@ -286,7 +312,8 @@ function renderTasks() {
       || (Boolean(task.due_date)
         && (!appliedDueFrom || task.due_date >= appliedDueFrom)
         && (!appliedDueThrough || task.due_date <= appliedDueThrough));
-    return matchesCompletion && matchesPriority && matchesDueRange;
+    const matchesSearch = asciiLower(task.title).includes(appliedTaskQuery);
+    return matchesCompletion && matchesPriority && matchesDueRange && matchesSearch;
   });
   tasksContainer.replaceChildren(...filtered.map(taskRow));
 }
