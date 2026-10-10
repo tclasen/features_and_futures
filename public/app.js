@@ -158,10 +158,29 @@ async function showProject(id) {
     priorityFilter.append(option);
   }
   priorityFilterLabel.append(priorityFilter);
+  const dueRangeForm = element('form', undefined, 'create-form due-range-form');
+  const dueFromLabel = element('label', 'Due from');
+  dueFromLabel.htmlFor = 'due-from';
+  const dueFrom = element('input');
+  dueFrom.id = 'due-from';
+  dueFrom.type = 'text';
+  dueFrom.autocomplete = 'off';
+  dueFromLabel.append(dueFrom);
+  const dueThroughLabel = element('label', 'Due through');
+  dueThroughLabel.htmlFor = 'due-through';
+  const dueThrough = element('input');
+  dueThrough.id = 'due-through';
+  dueThrough.type = 'text';
+  dueThrough.autocomplete = 'off';
+  dueThroughLabel.append(dueThrough);
+  const applyDueRange = element('button', 'Apply due range');
+  applyDueRange.type = 'submit';
+  dueRangeForm.append(dueFromLabel, dueThroughLabel, applyDueRange);
+  let appliedDueRange = { from: '', through: '' };
   const taskList = element('div', undefined, 'task-list');
   taskList.setAttribute('aria-label', 'Tasks');
-  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, taskList);
-  else content.append(back, heading, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, taskList);
+  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, dueRangeForm, taskList);
+  else content.append(back, heading, renameForm, defaultPriorityLabel, form, alert, filterLabel, priorityFilterLabel, dueRangeForm, taskList);
 
   defaultPriority.addEventListener('change', async () => {
     const previousValue = project.defaultTaskPriority || 'Normal';
@@ -204,7 +223,11 @@ async function showProject(id) {
     taskList.replaceChildren();
     const matchingTasks = tasks.filter((task) => (filter.value === 'All'
       || (filter.value === 'Completed' ? task.completed : !task.completed))
-      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+      && (appliedDueRange.from === '' && appliedDueRange.through === ''
+        || task.dueDate !== null && task.dueDate !== undefined
+          && (appliedDueRange.from === '' || task.dueDate >= appliedDueRange.from)
+          && (appliedDueRange.through === '' || task.dueDate <= appliedDueRange.through)));
     for (const task of matchingTasks) {
       const row = element('article', undefined, 'task-row');
       row.dataset.testid = 'task-row';
@@ -329,6 +352,35 @@ async function showProject(id) {
 
   filter.addEventListener('change', () => { renderTasks().catch(() => {}); });
   priorityFilter.addEventListener('change', () => { renderTasks().catch(() => {}); });
+  dueRangeForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    const validDate = (value) => {
+      if (!value) return true;
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return false;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
+    };
+    if (!validDate(from) || !validDate(through)) {
+      alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+      alert.hidden = false;
+      return;
+    }
+    if (from && through && from > through) {
+      alert.textContent = 'Due from must not be after Due through';
+      alert.hidden = false;
+      return;
+    }
+    appliedDueRange = { from, through };
+    await renderTasks();
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     alert.hidden = true;
@@ -339,7 +391,6 @@ async function showProject(id) {
         body: JSON.stringify({ title: input.value }),
       });
       input.value = '';
-      filter.value = 'All';
       await renderTasks();
     } catch (error) {
       alert.textContent = error.message;
