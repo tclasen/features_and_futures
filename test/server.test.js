@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -67,6 +68,9 @@ test('health, projects, scoped tasks, completion, validation, and restart persis
     assert.equal(response.status, 201);
     const first = await response.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.total, 0);
+    assert.equal(first.completed, 0);
     const second = await (await create('<script>Second</script>')).json();
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await request('/api/projects')).json(), [first, second]);
@@ -118,16 +122,68 @@ test('health, projects, scoped tasks, completion, validation, and restart persis
     assert.deepEqual(await (await complete(task, true)).json(), { ...task, completed: true });
     assert.deepEqual(await (await complete(task, false)).json(), task);
     await complete(task, true);
+    const archive = (archived) => request(`/api/projects/${first.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
+    });
+    for (const invalid of [null, 1, 'true']) {
+      assert.equal((await archive(invalid)).status, 400);
+    }
+    assert.deepEqual(await (await archive(true)).json(), { ...first, archived: true, total: 2, completed: 1 });
+    assert.equal((await createTask('Blocked')).status, 409);
+    assert.equal((await complete(task, false)).status, 409);
+    assert.deepEqual(await (await request(taskPath)).json(), [{ ...task, completed: true }, nextTask]);
     await server.stop();
     server = undefined;
     server = await start(databasePath);
-    assert.deepEqual(await (await request('/api/projects')).json(), [first, second]);
-    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), first);
+    const archivedFirst = { ...first, archived: true, total: 2, completed: 1 };
+    assert.deepEqual(await (await request('/api/projects')).json(), [archivedFirst, { ...second, total: 1 }]);
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), archivedFirst);
     assert.deepEqual(await (await request(taskPath)).json(), [{ ...task, completed: true }, nextTask]);
     assert.deepEqual(await (await request(otherTaskPath)).json(), [otherTask]);
     assert.equal((await request(`/projects/${first.id}`)).status, 200);
+    assert.equal((await complete(task, false)).status, 409);
+    assert.deepEqual(await (await archive(false)).json(), { ...first, total: 2, completed: 1 });
     assert.deepEqual(await (await complete(task, false)).json(), task);
     assert.deepEqual(await (await request(taskPath)).json(), [task, nextTask]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), { ...first, total: 2 });
+    assert.deepEqual(await (await request(taskPath)).json(), [task, nextTask]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('upgrades a previous database without losing projects or completed tasks', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    INSERT INTO projects (id, name) VALUES (7, 'Existing project');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES (12, 7, 'Existing task', 1);
+  `);
+  database.close();
+  let server;
+  try {
+    for (let restart = 0; restart < 2; restart++) {
+      server = await start(databasePath);
+      assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), [
+        { id: 7, name: 'Existing project', archived: false, total: 1, completed: 1 },
+      ]);
+      assert.deepEqual(await (await fetch(`${server.url}/api/projects/7/tasks`)).json(), [
+        { id: 12, title: 'Existing task', completed: true },
+      ]);
+      await server.stop();
+      server = undefined;
+    }
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

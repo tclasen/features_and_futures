@@ -13,7 +13,7 @@ function showAlert(message) {
   alert.hidden = !message;
 }
 
-function appendProject(project) {
+function appendProject(project, onArchiveChange) {
   const row = document.createElement('li');
   row.dataset.testid = 'project-row';
   const name = document.createElement('span');
@@ -22,7 +22,30 @@ function appendProject(project) {
   open.type = 'button';
   open.textContent = 'Open project';
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(name, open);
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completed}/${project.total} completed`;
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    showAlert('');
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, saved);
+      onArchiveChange();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      archive.disabled = false;
+    }
+  });
+  row.append(name, summary, open, archive);
   document.querySelector('#projects').append(row);
 }
 
@@ -37,9 +60,21 @@ async function renderList() {
       </div>
     </form>
     <p id="error" role="alert" hidden></p>
+    <label for="project-filter">Project filter</label>
+    <select id="project-filter">
+      <option>Active</option>
+      <option>Archived</option>
+    </select>
     <ul id="projects" aria-label="Projects"></ul>`;
   const projects = await api('/api/projects');
-  projects.forEach(appendProject);
+  const filter = document.querySelector('#project-filter');
+  function renderProjects() {
+    document.querySelector('#projects').replaceChildren();
+    projects.filter((project) => project.archived === (filter.value === 'Archived'))
+      .forEach((project) => appendProject(project, renderProjects));
+  }
+  filter.addEventListener('change', renderProjects);
+  renderProjects();
   document.querySelector('#create-project').addEventListener('submit', async (event) => {
     event.preventDefault();
     const input = document.querySelector('#project-name');
@@ -54,7 +89,8 @@ async function renderList() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      appendProject(project);
+      projects.push(project);
+      renderProjects();
       input.value = '';
       input.focus();
     } catch (error) {
@@ -69,6 +105,7 @@ async function renderProject(id) {
   app.innerHTML = `
     <button id="back" type="button">Projects</button>
     <h1></h1>
+    <p id="archive-status" hidden>Archived project</p>
     <form id="create-task">
       <label for="task-title">Task title</label>
       <div class="form-controls">
@@ -88,6 +125,8 @@ async function renderProject(id) {
   const project = await api(`/api/projects/${id}`);
   document.querySelector('h1').textContent = project.name;
   document.title = `${project.name} — Workboard`;
+  document.querySelector('#archive-status').hidden = !project.archived;
+  document.querySelector('#create-task button').disabled = project.archived;
   const taskPath = `/api/projects/${id}/tasks`;
   const tasks = await api(taskPath);
   const filter = document.querySelector('#task-filter');
@@ -104,6 +143,7 @@ async function renderProject(id) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       const title = document.createElement('span');
       title.textContent = task.title;
@@ -125,7 +165,7 @@ async function renderProject(id) {
           checkbox.checked = task.completed;
           showAlert(error.message);
         } finally {
-          checkbox.disabled = false;
+          checkbox.disabled = project.archived;
         }
       });
     }
@@ -135,6 +175,7 @@ async function renderProject(id) {
   renderTasks();
   document.querySelector('#create-task').addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (project.archived) return;
     const input = document.querySelector('#task-title');
     const title = input.value.trim();
     showAlert('');
@@ -154,7 +195,7 @@ async function renderProject(id) {
     } catch (error) {
       showAlert(error.message);
     } finally {
-      if (button) button.disabled = false;
+      if (button) button.disabled = project.archived;
     }
   });
 }
