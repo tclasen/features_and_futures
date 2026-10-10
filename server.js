@@ -25,6 +25,8 @@ const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -63,7 +65,8 @@ function page(title, body) {
     .project-name { overflow-wrap: anywhere; min-width: 0; font-weight: 600; }
     .project-row form { flex-shrink: 0; }
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
-    .task-row input { flex-shrink: 0; width: 20px; height: 20px; }
+    .task-row input[type="checkbox"] { flex-shrink: 0; width: 20px; height: 20px; }
+    .task-rename { margin-top: 16px; }
     .task-create, .task-filter { margin-top: 24px; }
     @media (max-width: 500px) { main { margin: 20px auto; padding: 16px; } .project-row { align-items: flex-start; flex-direction: column; } }
   </style>
@@ -102,6 +105,11 @@ function projectPage(project, filter = 'All', error = '') {
       <form action="/projects/${project.id}/tasks/${task.id}" method="post">
         <input type="hidden" name="filter" value="${filter}">
         <label><input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+      </form>
+      <form class="task-rename" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-task-title-${task.id}">New task title</label>
+        <div class="controls"><input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
       </form>
     </div>`).join('');
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -219,7 +227,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+    const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/);
     if (req.method === 'POST' && taskMatch) {
       const project = getProject.get(taskMatch[1]);
       if (project) {
@@ -233,7 +241,18 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const filter = taskFilter(form.get('filter'));
-        if (taskMatch[2]) {
+        if (taskMatch[3]) {
+          if (!getTask.get(taskMatch[2], project.id)) {
+            html(res, 404, page('Not found', '<h1>Not found</h1>'));
+            return;
+          }
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            html(res, 200, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          renameTask.run(title, taskMatch[2], project.id);
+        } else if (taskMatch[2]) {
           const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
           if (!result.changes) {
             html(res, 404, page('Not found', '<h1>Not found</h1>'));
