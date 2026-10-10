@@ -77,6 +77,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'PATCH' && projectMatch) {
     try {
       const input = await readJson(req);
+      if (typeof input.name === 'string') {
+        const name = input.name.trim();
+        if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+        const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+        if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+        if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived projects cannot be changed' }));
+        db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, Number(projectMatch[1]));
+        return send(res, 200, JSON.stringify({ id: Number(projectMatch[1]), name }));
+      }
       if (typeof input.archived !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid archive state' }));
       const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(input.archived ? 1 : 0, Number(projectMatch[1]));
       if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Project not found' }));

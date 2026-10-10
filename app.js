@@ -128,6 +128,22 @@ async function renderProject(id) {
   content.append(back, element('h1', '', project.name));
   if (project.archived) content.append(element('p', 'archived-notice', 'Archived project'));
 
+  const renameForm = element('form', 'create-form');
+  const renameField = element('div', 'field');
+  const renameLabel = element('label', '', 'New project name');
+  renameLabel.htmlFor = 'new-project-name';
+  const renameInput = element('input');
+  renameInput.id = 'new-project-name';
+  renameInput.name = 'name';
+  renameInput.type = 'text';
+  renameInput.autocomplete = 'off';
+  renameInput.disabled = project.archived;
+  renameField.append(renameLabel, renameInput);
+  const renameButton = element('button', '', 'Rename project');
+  renameButton.type = 'submit';
+  renameButton.disabled = project.archived;
+  renameForm.append(renameField, renameButton);
+
   const form = element('form', 'create-form');
   const field = element('div', 'field');
   const label = element('label', '', 'Task title');
@@ -190,7 +206,28 @@ async function renderProject(id) {
   }
   filter.addEventListener('change', drawTasks);
   drawTasks();
-  content.append(form, alert, filterField, list);
+  content.append(renameForm, form, alert, filterField, list);
+  renameForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    alert.hidden = true;
+    const name = renameInput.value.trim();
+    if (!name) {
+      alert.textContent = 'Project name is required';
+      alert.hidden = false;
+      renameInput.focus();
+      return;
+    }
+    try {
+      await request(`/api/projects/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      renderProject(id);
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+    }
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     alert.hidden = true;
