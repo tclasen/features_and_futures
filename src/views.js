@@ -54,7 +54,7 @@ export function projectsPage(projects, error = '', submittedName = '', filter = 
     </section>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', error = '', submittedTitle = '', renameState = {}) {
+export function projectPage(project, tasks = [], filter = 'All', error = '', submittedTitle = '', renameState = {}, taskRenameState = {}) {
   return page(project.name, `
     <form action="/" method="get"><button class="secondary" type="submit">Projects</button></form>
     <p class="eyebrow detail-label">PROJECT</p>
@@ -93,6 +93,15 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', sub
             <input type="hidden" name="filter" value="${filter}">
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-submit-on-change>
             <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
+          </form>
+          <form class="task-rename-form" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <div class="form-controls">
+              <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(taskRenameState.taskId === task.id ? taskRenameState.submittedTitle : task.title)}"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+            </div>
+            ${taskRenameState.taskId === task.id && taskRenameState.error ? `<p class="alert" role="alert">${escapeHtml(taskRenameState.error)}</p>` : ''}
           </form>
         </article>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </section>`);

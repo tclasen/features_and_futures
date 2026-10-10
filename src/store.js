@@ -36,6 +36,11 @@ export function openWorkboardStore(databasePath) {
   const rename = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+  const renameTask = database.prepare(`
+    UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
   const updateTask = database.prepare(`
     UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
@@ -73,6 +78,17 @@ export function openWorkboardStore(databasePath) {
         if (!trimmedTitle) return { error: 'Task title is required' };
         const result = insertTask.run(projectId, trimmedTitle);
         return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0 };
+      },
+      rename(projectId, taskId, title) {
+        const project = find.get(projectId);
+        if (!project || !findTask.get(taskId, projectId)) {
+          return { error: 'Task not found', status: 404 };
+        }
+        if (project.archived) return { error: 'Archived project cannot be changed', status: 409 };
+        const trimmedTitle = title.trim();
+        if (!trimmedTitle) return { error: 'Task title is required', status: 400 };
+        renameTask.run(trimmedTitle, taskId, projectId);
+        return { id: taskId, title: trimmedTitle };
       },
       setCompleted(projectId, taskId, completed) {
         return updateTask.run(completed ? 1 : 0, taskId, projectId).changes > 0;

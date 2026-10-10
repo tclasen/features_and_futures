@@ -62,7 +62,7 @@ export function createWorkboardServer(databasePath) {
         } else {
           redirect(response, '/');
         }
-      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|tasks(?:\/[1-9]\d*\/completion)?))?$/.test(pathname)) {
+      } else if (/^\/projects\/[1-9]\d*(?:\/(?:archive|restore|rename|tasks(?:\/[1-9]\d*\/(?:completion|rename))?))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const id = Number(parts[2]);
         const project = Number.isSafeInteger(id) ? store.find(id) : undefined;
@@ -103,7 +103,21 @@ export function createWorkboardServer(databasePath) {
             }
           } else {
             const taskId = Number(parts[4]);
-            if (!Number.isSafeInteger(taskId) || !store.tasks.setCompleted(id, taskId, form.get('completed') === 'on')) {
+            if (!Number.isSafeInteger(taskId)) {
+              send(response, 404, notFoundPage());
+              return;
+            }
+            if (parts[5] === 'rename') {
+              const title = form.get('title') ?? '';
+              const result = store.tasks.rename(id, taskId, title);
+              if (result.error) {
+                send(response, result.status, result.status === 404 ? notFoundPage() :
+                  projectPage(project, store.tasks.list(id, filter), filter, '', '', {}, {
+                    taskId, error: result.error, submittedTitle: title,
+                  }));
+                return;
+              }
+            } else if (!store.tasks.setCompleted(id, taskId, form.get('completed') === 'on')) {
               send(response, 404, notFoundPage());
               return;
             }

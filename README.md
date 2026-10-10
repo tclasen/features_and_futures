@@ -37,3 +37,9 @@ the name and preserves the project URL, creation order, tasks, and completion
 summary. Blank names show a validation alert without changing the saved name.
 Archived projects disable renaming, and the server rejects rename requests until
 the project is restored. Renamed project names persist between restarts.
+
+Each task row offers New task title and Rename task. Renaming trims the title
+and updates the completion checkbox label while preserving ownership, creation
+order, completion, filter membership, and project counts. Blank titles show an
+alert without changing the saved task. Archived projects disable task renaming;
+the server rejects changes until restoration. Task titles persist between restarts.
