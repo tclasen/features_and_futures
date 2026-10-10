@@ -33,6 +33,104 @@ async function start(databasePath) {
   };
 }
 
+test('combined filters preserve selections, re-evaluate edits, and work while archived', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
+  const databasePath = join(directory, 'tasks.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const html = async (path = '/') => (await fetch(`${server.url}${path}`)).text();
+    const view = (filter, priorityFilter) => `/projects/1?${new URLSearchParams({ filter, priorityFilter })}`;
+    const rows = (body) => [...body.matchAll(/data-testid="task-row">\s*<span>(.*?)<\/span>/g)].map((match) => match[1]);
+    const select = (body, id) => body.match(new RegExp(`<select id="${id}"[^>]*>[\\s\\S]*?<\\/select>`))[0];
+    const selections = (body, completion, priority) => {
+      assert.match(select(body, 'task-filter'), new RegExp(`<option selected>${completion}<\\/option>`));
+      assert.match(select(body, 'priority-filter'), new RegExp(`<option selected>${priority}<\\/option>`));
+    };
+    await post('/projects', { name: 'Filters' });
+    const tasks = [];
+    for (const priority of ['Low', 'Normal', 'High']) {
+      for (const completed of [false, true]) {
+        const id = tasks.length + 1;
+        const title = `${priority} ${completed ? 'done' : 'open'}`;
+        await post('/projects/1/tasks', { title });
+        await post(`/projects/1/tasks/${id}/priority`, { priority });
+        if (completed) await post(`/projects/1/tasks/${id}`, { completed: '1' });
+        tasks.push({ title, priority, completed });
+      }
+    }
+    const defaultPage = await html('/projects/1');
+    selections(defaultPage, 'All', 'All');
+    assert.match(select(defaultPage, 'priority-filter'), /<option selected>All<\/option><option>Low<\/option><option>Normal<\/option><option>High<\/option>/);
+    // Both selects are in one GET form, so changing either submits the other too.
+    assert.match(defaultPage, /<form[^>]*method="get">\s*<label for="task-filter">[\s\S]*?id="priority-filter"[\s\S]*?<\/form>/);
+    for (const completion of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const body = await html(view(completion, priority));
+        selections(body, completion, priority);
+        assert.deepEqual(rows(body), tasks.filter((task) =>
+          (completion === 'All' || task.completed === (completion === 'Completed')) &&
+          (priority === 'All' || task.priority === priority)).map((task) => task.title));
+      }
+    }
+    assert.match(await html(), /3\/6 completed/);
+    const fields = { filter: 'Open', priorityFilter: 'High' };
+    const rename = await post('/projects/1/tasks/5/rename', { ...fields, title: '  Renamed high  ' });
+    assert.equal(rename.status, 303);
+    assert.equal(rename.headers.get('location'), view('Open', 'High'));
+    let body = await html(rename.headers.get('location'));
+    selections(body, 'Open', 'High');
+    assert.deepEqual(rows(body), ['Renamed high']);
+    assert.match(body, /aria-label="Complete Renamed high"/);
+    assert.match(select(body, 'task-priority-5'), /<option selected>High<\/option>/);
+    for (const form of body.matchAll(/<form[^>]*method="post">([\s\S]*?)<\/form>/g)) {
+      assert.match(form[1], /name="filter" value="Open"/);
+      assert.match(form[1], /name="priorityFilter" value="High"/);
+    }
+    const invalid = await post('/projects/1/tasks/5/rename', { ...fields, title: ' ' });
+    selections(await invalid.text(), 'Open', 'High');
+    const changedPriority = await post('/projects/1/tasks/5/priority', { ...fields, priority: 'Low' });
+    body = await html(changedPriority.headers.get('location'));
+    selections(body, 'Open', 'High');
+    assert.deepEqual(rows(body), []);
+    assert.match(await html(), /3\/6 completed/);
+    await post('/projects/1/tasks/5/priority', { priority: 'High' });
+    const changedCompletion = await post('/projects/1/tasks/5', { ...fields, completed: '1' });
+    body = await html(changedCompletion.headers.get('location'));
+    selections(body, 'Open', 'High');
+    assert.deepEqual(rows(body), []);
+    assert.deepEqual(rows(await html(view('Completed', 'High'))), ['Renamed high', 'High done']);
+    assert.match(await html(), /4\/6 completed/);
+    await post('/projects/1/archive');
+    const archived = await html(view('Completed', 'High'));
+    selections(archived, 'Completed', 'High');
+    assert.doesNotMatch(select(archived, 'task-filter'), /disabled/);
+    assert.doesNotMatch(select(archived, 'priority-filter'), /disabled/);
+    assert.equal((archived.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+    assert.equal((archived.match(/id="task-priority-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((archived.match(/id="new-task-title-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((archived.match(/disabled>Rename task/g) || []).length, 2);
+    const denied = await post('/projects/1/tasks/5/priority', { ...fields, priority: 'Normal' });
+    assert.equal(denied.status, 403);
+    selections(await denied.text(), 'Open', 'High');
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await html(view('Completed', 'High')), archived);
+    await post('/projects/1/restore');
+    body = await html(view('Completed', 'High'));
+    assert.deepEqual(rows(body), ['Renamed high', 'High done']);
+    assert.doesNotMatch(body, / disabled/);
+    selections(await html('/projects/1'), 'All', 'All');
+    assert.match(await html(), /4\/6 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, trim, render safely, navigate, and persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const databasePath = join(directory, 'nested', 'projects.sqlite');
