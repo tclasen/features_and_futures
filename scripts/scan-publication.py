@@ -19,6 +19,15 @@ LEASE = re.compile(rb'e30\.([A-Za-z0-9_-]+)\.([0-9a-f]{48})(?![0-9a-f])')
 TOKEN_FIELDS = {'access', 'refresh', 'access_token', 'refresh_token', 'api_key', 'apikey', 'token', 'accountid', 'account_id', 'id_token', 'idtoken', 'openai_api_key'}
 
 
+def require_complete_publication_tree(repo):
+    """Diagnostic clones must be archived as data, never accidental submodules."""
+    for args in (['ls-tree', '-r', 'HEAD'], ['ls-files', '--stage']):
+        rows = subprocess.run(['git', '-C', str(repo), *args], check=True,
+                              capture_output=True, text=True).stdout.splitlines()
+        if any(row.startswith('160000 ') for row in rows):
+            raise ValueError('Publication tree/index contains a gitlink; preserve its bundle and remove the diagnostic clone entry')
+
+
 def credential_values(value):
     result = set()
     if isinstance(value, dict):
@@ -157,6 +166,7 @@ def main():
         raise ValueError('No known credential sources loaded; refuse an incomplete publication scan')
     scanner = Scanner(secrets)
     repo = args.repo.resolve()
+    require_complete_publication_tree(repo)
     target_commit = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], check=True, capture_output=True).stdout.decode().strip()
     paths = subprocess.run(['git', '-C', str(repo), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], check=True, capture_output=True).stdout.split(b'\0')
     for raw_path in paths:

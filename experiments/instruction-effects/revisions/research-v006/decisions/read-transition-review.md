@@ -1,0 +1,5 @@
+Prospective review for research-v006, no native calls.
+
+Frozen048 missing search-to-rename membership barrier and nested persistence wait corrected only in prospective copies.046 has distinct active/archive project membership before opening;047 search intersections use nonempty ordered membership and retained-controls assertions;048 now waits for Other title absence and two known matching rows before filling rename. Independent rename observer waits for known Other title then returns renamed count to an outer retry. Clear-search transitions followed by Projects do not make further edits in the old project; project opening resets filters by public contract. Earlier024/025/032/040 positive filter/range barriers and039/040/042/055 known-row move observers are inherited. Full68delayed-read positives remain pending; this review alone is not verification.
+
+Future21/22 gates remain drafts until the first complete20round report and allowed inspection; freezing additional rounds before that audit would make the report require unfinished new tasks. Mathematical inspection rules remain unchanged.

@@ -16,6 +16,27 @@ spec.loader.exec_module(module)
 
 
 class PublicationScanTests(unittest.TestCase):
+    def test_gitlink_blocked_in_index_and_head_but_deleted_history_retained(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            def git(*args):
+                return subprocess.run(['git', '-C', str(repo), *args], check=True,
+                                      capture_output=True, text=True).stdout.strip()
+            git('init', '-q'); git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.invalid')
+            (repo/'source.txt').write_text('fixture source')
+            git('add', 'source.txt'); git('commit', '-qm', 'original')
+            head = git('rev-parse', 'HEAD')
+            module.require_complete_publication_tree(repo)
+            git('update-index', '--add', '--cacheinfo', '160000,'+head+',diagnostic-clone')
+            with self.assertRaises(ValueError): module.require_complete_publication_tree(repo)
+            git('commit', '-qm', 'accidental gitlink')
+            git('rm', '--cached', 'diagnostic-clone')
+            with self.assertRaises(ValueError): module.require_complete_publication_tree(repo)
+            git('commit', '-qm', 'explicit correction')
+            module.require_complete_publication_tree(repo)
+            self.assertEqual(git('rev-list', '--count', 'HEAD'), '3')
+
     def test_decoded_archives_and_lease_detection(self):
         secret = b'test-only-secret-not-a-real-credential'
         scanner = module.Scanner({secret})
