@@ -24,7 +24,7 @@ class Element {
   async fire(name) { await this.listeners[name]({ preventDefault() {} }); }
 }
 
-async function page(archived = false, savedDates = {}) {
+async function page(archived = false, savedDates = {}, destinations = []) {
   const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
     .replace("import { normalizeDueDate } from './due-date.js';", '');
   const elements = new Map();
@@ -57,7 +57,10 @@ async function page(archived = false, savedDates = {}) {
         writes.push({ path, ...options });
         const input = JSON.parse(options.body);
         let item;
-        if (options.method === 'POST' && path.endsWith('/tasks')) {
+        if (options.method === 'POST' && path.endsWith('/move')) {
+          const index = tasks.findIndex((task) => task.id === Number(path.split('/').at(-2)));
+          item = tasks.splice(index, 1)[0];
+        } else if (options.method === 'POST' && path.endsWith('/tasks')) {
           item = { id: tasks.length + 1, title: input.title, completed: false, priority: project.defaultTaskPriority, dueDate: '' };
           tasks.push(item);
         } else {
@@ -71,6 +74,8 @@ async function page(archived = false, savedDates = {}) {
         }
         Object.assign(item, input);
         result = item;
+      } else if (path === '/api/projects') {
+        result = [project, ...destinations];
       } else if (path.endsWith('/tasks')) {
         result = tasks;
       } else {
@@ -88,6 +93,43 @@ async function page(archived = false, savedDates = {}) {
   };
   return { get, tasks, rows, titles, filter, writes };
 }
+
+test('move controls list only other active projects and preserve all applied filters', async () => {
+  const destinations = [
+    { id: 2, name: 'First destination', archived: false },
+    { id: 3, name: 'Archived destination', archived: true },
+    { id: 4, name: 'Renamed destination', archived: false },
+  ];
+  const view = await page(false, { 0: '2024-01-01', 1: '2024-01-01' }, destinations);
+  await view.filter('priority-filter', 'Low');
+  await view.filter('task-filter', 'open');
+  view.get('due-from').value = '2024-01-01';
+  view.get('due-through').value = '2024-01-01';
+  await view.get('due-range').fire('submit');
+  const moveForm = view.rows()[0].children[6];
+  assert.equal(moveForm.children[0].textContent, 'Destination project');
+  const select = moveForm.children[1];
+  assert.deepEqual(select.children.map((option) => option.textContent), ['First destination', 'Renamed destination']);
+  assert.deepEqual(select.children.map((option) => option.value), ['2', '4']);
+  select.value = '4';
+  await moveForm.fire('submit');
+  assert.deepEqual(view.titles(), []);
+  assert.equal(view.get('task-filter').value, 'open');
+  assert.equal(view.get('priority-filter').value, 'Low');
+  assert.equal(view.get('due-from').value, '2024-01-01');
+  assert.equal(view.get('due-through').value, '2024-01-01');
+  assert.equal(JSON.parse(view.writes[0].body).destinationProjectId, 4);
+  await view.filter('task-filter', 'completed');
+  assert.deepEqual(view.titles(), ['Low true']);
+  await view.filter('priority-filter', 'Normal');
+  assert.deepEqual(view.titles(), []); // The applied date range is still active.
+  for (const disabledView of [await page(), await page(true, {}, destinations)]) {
+    for (const row of disabledView.rows()) {
+      assert.equal(row.children[6].children[1].disabled, true);
+      assert.equal(row.children[6].children[2].disabled, true);
+    }
+  }
+});
 
 test('combined filters intersect every completion and priority value in creation order without writes', async () => {
   const view = await page();

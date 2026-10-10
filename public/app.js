@@ -328,7 +328,46 @@ function renderTasks() {
         saveDueDateButton.disabled = archived;
       }
     });
-    row.append(checkbox, title, renameTaskForm, priorityLabel, prioritySelect, dueDateForm);
+    const moveForm = document.createElement('form');
+    moveForm.className = 'move-task';
+    const destinationLabel = document.createElement('label');
+    destinationLabel.htmlFor = `destination-project-${task.id}`;
+    destinationLabel.textContent = 'Destination project';
+    const destinationSelect = document.createElement('select');
+    destinationSelect.id = destinationLabel.htmlFor;
+    const destinations = projectItems.filter((project) => !project.archived && String(project.id) !== projectId);
+    for (const project of destinations) {
+      const option = document.createElement('option');
+      option.value = String(project.id);
+      option.textContent = project.name;
+      destinationSelect.append(option);
+    }
+    if (destinations.length) destinationSelect.value = String(destinations[0].id);
+    const moveButton = document.createElement('button');
+    moveButton.type = 'submit';
+    moveButton.textContent = 'Move task';
+    destinationSelect.disabled = moveButton.disabled = archived || destinations.length === 0;
+    moveForm.append(destinationLabel, destinationSelect, moveButton);
+    moveForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (archived || !destinations.length) return;
+      alert.hidden = true;
+      moveButton.disabled = true;
+      try {
+        await request(`/api/projects/${projectId}/tasks/${task.id}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: Number(destinationSelect.value) }),
+        });
+        tasks = tasks.filter((item) => item.id !== task.id);
+        renderTasks();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        moveButton.disabled = archived || destinations.length === 0;
+      }
+    });
+    row.append(checkbox, title, renameTaskForm, priorityLabel, prioritySelect, dueDateForm, moveForm);
     tasksElement.append(row);
   }
 }
@@ -377,6 +416,7 @@ async function loadPage() {
     newNameInput.disabled = archived;
     renameForm.querySelector('button').disabled = archived;
     showProjectName(project.name);
+    projectItems = await request('/api/projects');
     tasks = await request(`/api/projects/${projectId}/tasks`);
     renderTasks();
     detail.hidden = false;

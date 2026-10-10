@@ -507,6 +507,70 @@ test('due dates persist independently and preserve other task data through edits
   }
 });
 
+test('moves append, preserve task data and summaries, reject archived projects, and persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const port = await availablePort();
+  const base = `http://127.0.0.1:${port}/api/projects`;
+  let child;
+  const send = (path, method, body) => fetch(`${base}${path}`, {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const get = async (path) => (await fetch(`${base}${path}`)).json();
+  try {
+    child = await start(port, databasePath);
+    const source = await (await send('', 'POST', { name: 'Source' })).json();
+    const destination = await (await send('', 'POST', { name: 'Destination' })).json();
+    const a = `/${source.id}`;
+    const b = `/${destination.id}`;
+    const moved = await (await send(`${a}/tasks`, 'POST', { title: 'Move me' })).json();
+    const remaining = await (await send(`${a}/tasks`, 'POST', { title: 'Stay' })).json();
+    const existing = await (await send(`${b}/tasks`, 'POST', { title: 'Earlier destination task' })).json();
+    await send(`${a}/tasks/${moved.id}`, 'PATCH', { completed: true });
+    await send(`${a}/tasks/${moved.id}`, 'PATCH', { priority: 'Low' });
+    await send(`${a}/tasks/${moved.id}`, 'PATCH', { dueDate: '0001-01-01' });
+    await send(b, 'PATCH', { defaultTaskPriority: 'High' });
+    const expected = { ...moved, completed: true, priority: 'Low', dueDate: '0001-01-01' };
+    const move = (from, task, to) => send(`${from}/tasks/${task.id}/move`, 'POST', { destinationProjectId: to });
+    assert.equal((await move(a, moved, source.id)).status, 409);
+    assert.equal((await move(a, moved, 99999)).status, 404);
+    assert.equal((await move(a, moved, null)).status, 400);
+    await send(b, 'PATCH', { archived: true });
+    assert.equal((await move(a, moved, destination.id)).status, 409);
+    await send(b, 'PATCH', { archived: false });
+    await send(a, 'PATCH', { archived: true });
+    assert.equal((await move(a, moved, destination.id)).status, 409);
+    await send(a, 'PATCH', { archived: false });
+    const response = await move(a, moved, destination.id);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), expected);
+    assert.deepEqual(await get(`${a}/tasks`), [remaining]);
+    assert.deepEqual(await get(`${b}/tasks`), [existing, expected]);
+    assert.equal((await get(a)).completedCount, 0);
+    assert.equal((await get(a)).totalCount, 1);
+    assert.equal((await get(b)).completedCount, 1);
+    assert.equal((await get(b)).totalCount, 2);
+    const newest = await (await send(`${b}/tasks`, 'POST', { title: 'Newest' })).json();
+    await stop(child);
+    child = undefined;
+    child = await start(port, databasePath);
+    assert.deepEqual(await get(`${b}/tasks`), [existing, expected, newest]);
+    assert.equal((await move(b, moved, source.id)).status, 200);
+    assert.deepEqual(await get(`${a}/tasks`), [remaining, expected]);
+    assert.equal((await move(a, remaining, destination.id)).status, 200);
+    assert.deepEqual(await get(`${b}/tasks`), [existing, newest, remaining]);
+    assert.equal((await move(a, remaining, destination.id)).status, 404);
+    await stop(child);
+    child = undefined;
+    child = await start(port, databasePath);
+    assert.deepEqual(await get(`${a}/tasks`), [expected]);
+    assert.deepEqual(await get(`${b}/tasks`), [existing, newest, remaining]);
+  } finally {
+    if (child) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('existing project databases migrate without losing IDs or names', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
