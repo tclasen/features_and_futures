@@ -136,10 +136,20 @@ async function showProject(id) {
     filter.append(option);
   }
   filterLabel.append(filter);
+  const priorityFilterLabel = element('label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    priorityFilter.append(option);
+  }
+  priorityFilterLabel.append(priorityFilter);
   const taskList = element('div', undefined, 'task-list');
   taskList.setAttribute('aria-label', 'Tasks');
-  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, form, alert, filterLabel, taskList);
-  else content.append(back, heading, renameForm, form, alert, filterLabel, taskList);
+  if (archivedNotice) content.append(back, heading, archivedNotice, renameForm, form, alert, filterLabel, priorityFilterLabel, taskList);
+  else content.append(back, heading, renameForm, form, alert, filterLabel, priorityFilterLabel, taskList);
 
   renameForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -161,8 +171,9 @@ async function showProject(id) {
   const renderTasks = async () => {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     taskList.replaceChildren();
-    const matchingTasks = tasks.filter((task) => filter.value === 'All'
-      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    const matchingTasks = tasks.filter((task) => (filter.value === 'All'
+      || (filter.value === 'Completed' ? task.completed : !task.completed))
+      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     for (const task of matchingTasks) {
       const row = element('article', undefined, 'task-row');
       row.dataset.testid = 'task-row';
@@ -237,6 +248,7 @@ async function showProject(id) {
             body: JSON.stringify({ priority: priority.value }),
           });
           task.priority = priority.value;
+          await renderTasks();
         } catch (error) {
           priority.value = previousPriority;
           alert.textContent = error.message;
@@ -252,6 +264,7 @@ async function showProject(id) {
   };
 
   filter.addEventListener('change', () => { renderTasks().catch(() => {}); });
+  priorityFilter.addEventListener('change', () => { renderTasks().catch(() => {}); });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     alert.hidden = true;
