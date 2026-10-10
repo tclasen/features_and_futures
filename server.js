@@ -19,12 +19,12 @@ const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
+const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
-const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?');
 const app = await readFile(new URL('./index.html', import.meta.url));
 
 const server = http.createServer((req, res) => {
@@ -167,7 +167,7 @@ async function handleRequest(req, res) {
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
       const task = { id: randomUUID(), projectId, title, completed: 0 };
-      insertTask.run(task.id, projectId, title, Date.now(), getProject.get(projectId).default_priority);
+      insertTask.run(task.id, projectId, title, nextTaskOrder.get(projectId).value, getProject.get(projectId).default_priority);
       return send(201, JSON.stringify(task));
     }
     if (req.method === 'PATCH' && tasksMatch[2]) {
