@@ -111,6 +111,18 @@ async function render() {
           if (response.ok) { alert.hidden = true; await loadTasks(); }
         });
         row.append(renameForm);
+        const dueForm = element('form');
+        const dueInput = element('input', { type: 'text', 'aria-label': 'Task due date', placeholder: 'YYYY-MM-DD', value: task.dueDate || '' });
+        const dueButton = element('button', { type: 'submit' }, 'Save due date');
+        if (project.archived) { dueInput.disabled = true; dueButton.disabled = true; }
+        dueForm.append(dueInput, dueButton);
+        dueForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const response = await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: dueInput.value }) });
+          if (!response.ok) { const error = await response.json(); alert.textContent = error.error || 'Unable to save due date'; alert.hidden = false; }
+          else { alert.hidden = true; await loadTasks(); }
+        });
+        row.append(dueForm);
         list.append(row);
       }
     }
