@@ -16,6 +16,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const app = await readFile(new URL('./index.html', import.meta.url));
 
 const server = http.createServer((req, res) => {
@@ -70,6 +71,21 @@ async function handleRequest(req, res) {
     const project = { id: randomUUID(), name };
     insertProject.run(project.id, project.name, Date.now());
     return send(201, JSON.stringify(project));
+  }
+  const taskRenameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/rename$/);
+  if (req.method === 'PATCH' && taskRenameMatch) {
+    let data = '';
+    for await (const chunk of req) data += chunk;
+    let input;
+    try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+    const projectId = decodeURIComponent(taskRenameMatch[1]);
+    const taskId = decodeURIComponent(taskRenameMatch[2]);
+    if (!getTask.get(taskId, projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (getProject.get(projectId).archived) return send(403, JSON.stringify({ error: 'Archived project' }));
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
+    if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+    renameTask.run(title, taskId, projectId);
+    return send(200, JSON.stringify({ ok: true }));
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks(?:\/([^/]+))?$/);
   if (tasksMatch) {
