@@ -214,8 +214,10 @@ async function renderProject(id) {
       notesForm.addEventListener('submit', async event => {
         event.preventDefault();
         try {
-          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notesInput.value }) });
-          await refreshTasks();
+          const saved = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notesInput.value }) });
+          task.notes = saved.notes;
+          // Notes do not participate in filtering, so keep the editor in place after saving.
+          notesInput.value = saved.notes;
         } catch (error) { alert.textContent = error.message; alert.hidden = false; }
       });
       const title = element('span', { text: task.title });
