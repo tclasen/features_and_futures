@@ -5,10 +5,12 @@ import { randomUUID } from 'node:crypto';
 
 const db = new DatabaseSync(process.env.DB_PATH || './workboard.sqlite');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL)`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
-const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+const listProjects = db.prepare('SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid');
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
@@ -23,6 +25,17 @@ const server = http.createServer(async (req, res) => {
   };
   if (req.method === 'GET' && url.pathname === '/health') return send(200, JSON.stringify({ status: 'ok' }));
   if (req.method === 'GET' && url.pathname === '/api/projects') return send(200, JSON.stringify(listProjects.all()));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
+  if (req.method === 'PATCH' && archiveMatch) {
+    let data = '';
+    for await (const chunk of req) data += chunk;
+    let input;
+    try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+    const projectId = decodeURIComponent(archiveMatch[1]);
+    if (!getProject.get(projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
+    setArchived(input.archived ? 1 : 0, projectId);
+    return send(200, JSON.stringify({ ok: true }));
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let data = '';
     for await (const chunk of req) data += chunk;
@@ -44,6 +57,7 @@ const server = http.createServer(async (req, res) => {
     let input;
     try { input = JSON.parse(data); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
     if (req.method === 'POST' && !tasksMatch[2]) {
+      if (getProject.get(projectId).archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
       const task = { id: randomUUID(), projectId, title, completed: 0 };
@@ -53,6 +67,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PATCH' && tasksMatch[2]) {
       const taskId = decodeURIComponent(tasksMatch[2]);
       if (!getTask.get(taskId, projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
+      if (getProject.get(projectId).archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       updateTask.run(input.completed ? 1 : 0, taskId, projectId);
       return send(200, JSON.stringify({ ok: true }));
     }
