@@ -271,6 +271,28 @@ async function renderTasks(project) {
           alertMessage(error.message);
         } finally { saveDue.disabled = archived; }
       });
+      const notesForm = element('form');
+      const notesInput = element('textarea', '', { id: `task-notes-${task.id}`, rows: '4' });
+      const saveNotes = element('button', 'Save notes', { type: 'submit' });
+      notesInput.value = task.notes || '';
+      notesInput.disabled = archived;
+      saveNotes.disabled = archived;
+      notesForm.append(element('label', 'Task notes', { for: notesInput.id }), notesInput, saveNotes);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (archived) return;
+        saveNotes.disabled = true;
+        try {
+          const saved = await request(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          task.notes = saved.notes;
+          app.querySelector('[role="alert"]')?.remove();
+          draw();
+        } catch (error) { alertMessage(error.message); }
+        finally { saveNotes.disabled = archived; }
+      });
       const destination = element('select', '', { id: `destination-project-${task.id}` });
       for (const project of destinations) {
         destination.append(element('option', project.name, { value: String(project.id) }));
@@ -297,7 +319,7 @@ async function renderTasks(project) {
         }
       });
       row.append(checkbox, title, renameForm,
-        element('label', 'Task priority', { for: priority.id }), priority, dueForm,
+        element('label', 'Task priority', { for: priority.id }), priority, dueForm, notesForm,
         element('label', 'Destination project', { for: destination.id }), destination, move);
       list.append(row);
     }

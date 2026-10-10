@@ -517,6 +517,54 @@ test('archived task search is usable and clearing retains other filters', async 
 });
 
 
+test('notes save exact plain text, retain combined filters, and never add search matches', async () => {
+  const ui = await page();
+  ui.control('task-filter').value = 'Open';
+  await ui.control('task-filter').fire('change');
+  ui.control('priority-filter').value = 'High';
+  await ui.control('priority-filter').fire('change');
+  const due = ui.control('task-due-date-1');
+  due.value = '2024-02-29';
+  await due.parent.fire('submit');
+  ui.control('due-from').value = '2024-02-01';
+  ui.control('due-through').value = '2024-02-29';
+  await ui.control('due-from').parent.fire('submit');
+  ui.control('task-search').value = 'First';
+  await ui.control('task-search').parent.fire('submit');
+  const original = structuredClone(ui.tasks);
+  const notes = '  Notes\n日本語 🌻\n<script>literal</script>  ';
+  const input = ui.control('task-notes-1');
+  assert.equal(input.tag, 'textarea');
+  assert.equal(input.value, '');
+  assert.equal(input.parent.children[0].textContent, 'Task notes');
+  assert.equal(input.parent.children.at(-1).textContent, 'Save notes');
+  input.value = notes;
+  await input.parent.fire('submit');
+  assert.deepEqual(ui.tasks, original.map(task => task.id === 1 ? { ...task, notes } : task));
+  assert.equal(ui.control('task-notes-1').value, notes);
+  assert.deepEqual(ui.titles(), ['First']);
+  assert.equal(ui.control('task-filter').value, 'Open');
+  assert.equal(ui.control('priority-filter').value, 'High');
+  assert.equal(ui.control('due-from').value, '2024-02-01');
+  assert.equal(ui.control('due-through').value, '2024-02-29');
+  assert.equal(ui.control('task-search').value, 'First');
+  ui.control('task-search').value = 'Notes';
+  await ui.control('task-search').parent.fire('submit');
+  assert.deepEqual(ui.titles(), []);
+  ui.control('task-search').value = '';
+  await ui.control('task-search').parent.fire('submit');
+  assert.equal(ui.control('task-notes-1').value, notes);
+  ui.control('task-notes-1').value = '';
+  await ui.control('task-notes-1').parent.fire('submit');
+  assert.equal(ui.tasks[0].notes, '');
+  const archived = await page(true);
+  const archivedInput = archived.control('task-notes-1');
+  assert.equal(archivedInput.disabled, true);
+  assert.equal(archivedInput.parent.children.at(-1).disabled, true);
+  await archivedInput.parent.fire('submit');
+  assert.deepEqual(archived.writes, []);
+});
+
 test('task search normalizes only spaces and tabs without changing saved titles or filters', async () => {
   const ui = await page();
   const title = 'MiXeD  \t  SpAcEs';
