@@ -272,6 +272,10 @@ async function render() {
             renameAlert.hidden = false;
             return;
           }
+          renameAlert.hidden = true;
+          // The renamed task may no longer match the applied search. Refresh the
+          // list from the server so membership is recalculated without changing
+          // the user's search or any other active filters.
           await loadTasks();
         });
         row.append(renameForm, renameAlert);
