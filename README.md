@@ -16,7 +16,9 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. `GET /health` returns `{"status":"ok"}`.
 
-Verify validation, project order, routing, and persistence across process restarts:
+Each project has tasks with saved completion state and All, Open, and Completed filters.
+
+Verify project and task validation, creation order, project ownership, routing, and persistence across process restarts:
 
 ```sh
 npm test
