@@ -108,6 +108,8 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.match(tasksHtml, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
     assert.match(tasksHtml, /aria-label="Complete First task"/);
     assert.match(tasksHtml, /<span>First task<\/span>/);
+    assert.equal((tasksHtml.match(/>New task title<\/label>/g) || []).length, 2);
+    assert.equal((tasksHtml.match(/>Rename task<\/button>/g) || []).length, 2);
     assert.doesNotMatch(tasksHtml, / checked/);
     assert.equal((tasksHtml.match(/data-testid="task-row"/g) || []).length, 2);
     assert.ok(tasksHtml.indexOf('First task') < tasksHtml.indexOf('&lt;Second &amp; task&gt;'));
@@ -156,6 +158,10 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.equal((await postTask(paths[0] + '/rename', { name: 'Blocked rename' })).status, 403);
     assert.equal(await (await fetch(base + paths[0])).text(), archivedDetail);
     assert.match(archivedDetail, /<button type="submit" disabled>Create task/);
+    assert.equal((archivedDetail.match(/name="title" type="text" disabled/g) || []).length, 2);
+    assert.equal((archivedDetail.match(/disabled>Rename task/g) || []).length, 2);
+    assert.equal((await postTask(completionPath + '/rename', { title: 'Blocked rename' })).status, 403);
+    assert.equal(await (await fetch(base + paths[0])).text(), archivedDetail);
     assert.equal((archivedDetail.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
     assert.match(archivedDetail, /aria-label="Complete First task" checked disabled/);
     const archivedOpen = await (await fetch(base + paths[0] + '?filter=Open')).text();
@@ -208,6 +214,43 @@ test('projects validate, navigate, escape HTML, and persist across restarts', as
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/2 completed/);
     assert.equal((await postTask(taskPath, { title: 'After restore' })).status, 303);
     assert.match(await (await fetch(base)).text(), /data-testid="project-summary">0\/3 completed/);
+
+    await postTask(completionPath, { completed: '1' });
+    const beforeTaskRename = await (await fetch(base + paths[0])).text();
+    const beforeTaskRenameList = await (await fetch(base)).text();
+    const taskRenamePath = completionPath + '/rename';
+    for (const title of ['', '  \t\n ']) {
+      const invalid = await postTask(taskRenamePath, { title, filter: 'Completed' });
+      assert.equal(invalid.status, 200);
+      const invalidHtml = await invalid.text();
+      assert.match(invalidHtml, /role="alert">Task title is required/);
+      assert.match(invalidHtml, /aria-label="Complete First task" checked/);
+      assert.match(invalidHtml, /<option selected>Completed/);
+      assert.equal(await (await fetch(base + paths[0])).text(), beforeTaskRename);
+    }
+    assert.equal((await postTask(foreignTaskPath + '/rename', { title: 'Wrong owner' })).status, 404);
+    assert.equal((await postTask(taskPath + '/999999/rename', { title: 'Missing' })).status, 404);
+    const taskRenamed = await postTask(taskRenamePath, { title: '  <Renamed & task>  ', filter: 'Completed' });
+    assert.equal(taskRenamed.status, 303);
+    assert.equal(taskRenamed.headers.get('location'), paths[0] + '?filter=Completed');
+    const afterTaskRename = await (await fetch(base + paths[0])).text();
+    assert.equal(afterTaskRename, beforeTaskRename.replaceAll('First task', '&lt;Renamed &amp; task&gt;'));
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    assert.doesNotMatch(await (await fetch(base + paths[1])).text(), /data-testid="task-row"/);
+    assert.doesNotMatch(await (await fetch(base + paths[0] + '?filter=Open')).text(), /Complete &lt;Renamed/);
+    assert.match(await (await fetch(base + paths[0] + '?filter=Completed')).text(), /aria-label="Complete &lt;Renamed &amp; task&gt;" checked/);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base + paths[0])).text(), afterTaskRename);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    // Renaming an open task also preserves its completion and creation position.
+    const secondTaskPath = [...afterTaskRename.matchAll(/action="(\/projects\/\d+\/tasks\/\d+)"/g)][1][1];
+    await postTask(secondTaskPath + '/rename', { title: '  Second renamed  ', filter: 'Open' });
+    const openRenamed = await (await fetch(base + paths[0] + '?filter=Open')).text();
+    assert.match(openRenamed, /aria-label="Complete Second renamed"/);
+    assert.doesNotMatch(openRenamed, / checked/);
+    assert.ok(openRenamed.indexOf('Second renamed') < openRenamed.indexOf('After restore'));
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
