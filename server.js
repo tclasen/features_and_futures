@@ -11,6 +11,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -37,6 +44,34 @@ const server = http.createServer(async (req, res) => {
     if (detail && req.method === 'GET') {
       const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(detail[1]));
       return project ? sendJson(200, project) : sendJson(404, { error: 'Project not found' });
+    }
+    const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+    if (tasksPath && req.method === 'GET') {
+      const projectId = Number(tasksPath[1]);
+      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(404, { error: 'Project not found' });
+      return sendJson(200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    }
+    if (tasksPath && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      let payload;
+      try { payload = JSON.parse(body); } catch { return sendJson(400, { error: 'Invalid request' }); }
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return sendJson(400, { error: 'Task title is required' });
+      const projectId = Number(tasksPath[1]);
+      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(404, { error: 'Project not found' });
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return sendJson(201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    }
+    const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+    if (taskPath && req.method === 'PATCH') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      let payload;
+      try { payload = JSON.parse(body); } catch { return sendJson(400, { error: 'Invalid request' }); }
+      if (typeof payload.completed !== 'boolean') return sendJson(400, { error: 'Invalid completion state' });
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, Number(taskPath[1]));
+      return result.changes ? sendJson(200, { ok: true }) : sendJson(404, { error: 'Task not found' });
     }
     if (url.pathname.startsWith('/api/')) return sendJson(404, { error: 'Not found' });
     const html = await readFile(path.join(root, 'public', 'index.html'));
