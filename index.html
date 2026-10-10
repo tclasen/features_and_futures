@@ -122,9 +122,11 @@
         });
         const refresh = async () => {
           const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(response => response.json());
+          const destinations = project.archived ? [] : await projects('Active');
+          const eligible = destinations.filter(item => Number(item.id) !== Number(id));
           const filter = app.querySelector('#task-filter').value;
           const priorityFilter = app.querySelector('#priority-filter').value;
-          list.innerHTML = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === Boolean(task.completed)) && (priorityFilter === 'All' || task.priority === priorityFilter) && (!appliedDueFrom && !appliedDueThrough || task.dueDate && (!appliedDueFrom || task.dueDate >= appliedDueFrom) && (!appliedDueThrough || task.dueDate <= appliedDueThrough))).map(task => `<div class="task-row" data-testid="task-row"><span class="task-title">${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><input type="text" aria-label="New task title" data-rename-input="${task.id}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select><input type="text" aria-label="Task due date" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button></div>`).join('');
+          list.innerHTML = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === Boolean(task.completed)) && (priorityFilter === 'All' || task.priority === priorityFilter) && (!appliedDueFrom && !appliedDueThrough || task.dueDate && (!appliedDueFrom || task.dueDate >= appliedDueFrom) && (!appliedDueThrough || task.dueDate <= appliedDueThrough))).map(task => `<div class="task-row" data-testid="task-row"><span class="task-title">${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><input type="text" aria-label="New task title" data-rename-input="${task.id}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select><input type="text" aria-label="Task due date" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><select aria-label="Destination project" data-destination="${task.id}" ${project.archived || !eligible.length ? 'disabled' : ''}>${eligible.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select><button type="button" data-move="${task.id}" ${project.archived || !eligible.length ? 'disabled' : ''}>Move task</button></div>`).join('');
           list.querySelectorAll('[data-rename]').forEach(button => button.addEventListener('click', async () => {
             const input = list.querySelector(`[data-rename-input="${button.dataset.rename}"]`);
             const message = app.querySelector('#task-message');
@@ -141,6 +143,13 @@
             const response = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${button.dataset.saveDue}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: value }) });
             if (!response.ok) { message.textContent = 'Due date must be a valid YYYY-MM-DD date'; message.hidden = false; return; }
             message.hidden = true;
+            await refresh();
+          }));
+          list.querySelectorAll('[data-move]').forEach(button => button.addEventListener('click', async () => {
+            const taskId = button.dataset.move;
+            const destinationProjectId = list.querySelector(`[data-destination="${taskId}"]`).value;
+            if (!destinationProjectId) return;
+            await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${taskId}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId }) });
             await refresh();
           }));
           list.querySelectorAll('[data-priority]').forEach(select => select.addEventListener('change', async () => {

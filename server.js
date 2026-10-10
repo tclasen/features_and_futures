@@ -29,10 +29,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-  due_date TEXT
+  due_date TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+db.exec('UPDATE tasks SET sort_order = id WHERE sort_order = 0');
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
@@ -43,8 +46,9 @@ const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id ASC');
-const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, id ASC');
+const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const setTaskCompleted = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -104,8 +108,19 @@ const server = http.createServer(async (req, res) => {
       if (owningProject.archived) return send(403, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
-      const result = addTask.run(projectId, title, owningProject.defaultPriority);
+      const result = addTask.run(projectId, title, owningProject.defaultPriority, projectId);
       return send(201, 'application/json; charset=utf-8', JSON.stringify(getTask.get(Number(result.lastInsertRowid), projectId)));
+    }
+    const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+    if (moveMatch && req.method === 'POST') {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      let data; try { data = JSON.parse(raw); } catch { data = {}; }
+      const sourceId = Number(moveMatch[1]), taskId = Number(moveMatch[2]), destinationId = Number(data.destinationProjectId);
+      const source = getProject.get(sourceId), destination = getProject.get(destinationId);
+      if (!source || !destination || !getTask.get(taskId, sourceId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task or project not found' }));
+      if (source.archived || destination.archived || sourceId === destinationId) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid move destination' }));
+      moveTask.run(destinationId, destinationId, taskId, sourceId);
+      return send(200, 'application/json; charset=utf-8', JSON.stringify(getTask.get(taskId, destinationId)));
     }
     const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
     if (taskMatch && req.method === 'PATCH') {
