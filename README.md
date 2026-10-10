@@ -47,6 +47,14 @@ Dates must be real Gregorian calendar dates in YYYY-MM-DD format, with years
 Invalid dates leave saved data unchanged. Dates persist across restarts and
 renaming, and archived projects disable date edits until restored.
 
+Project pages offer Due from and Due through textboxes and Apply due range.
+Valid boundaries filter inclusively and intersect the completion and priority
+filters. Either boundary can be blank; undated tasks match only when both are
+blank. Invalid or reversed ranges show an alert and preserve the applied range.
+Edits retain all applied filters and immediately re-evaluate task membership.
+Range controls remain usable in archived projects. Opening a project from the
+list resets the range to empty; filtering never changes saved task data or counts.
+
 Run the integration checks:
 
 ```sh
