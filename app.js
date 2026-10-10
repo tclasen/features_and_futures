@@ -148,6 +148,25 @@ async function showProject(id) {
         if (response.ok) await showProject(id);
       });
       root.append(renameForm, renameError);
+      const defaultLabel = element('label', 'Default task priority');
+      defaultLabel.htmlFor = 'default-task-priority';
+      const defaultPriority = element('select');
+      defaultPriority.id = 'default-task-priority';
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', value);
+        option.value = value;
+        defaultPriority.append(option);
+      }
+      defaultPriority.value = project.defaultPriority || 'Normal';
+      defaultPriority.disabled = project.archived;
+      defaultPriority.addEventListener('change', async () => {
+        const response = await fetch(`/api/projects/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ defaultPriority: defaultPriority.value }),
+        });
+        if (!response.ok) defaultPriority.value = project.defaultPriority || 'Normal';
+      });
+      root.append(defaultLabel, defaultPriority);
       await renderTasks(id, project.archived);
     } else root.append(element('h1', 'Project not found'));
   } catch {

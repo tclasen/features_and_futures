@@ -15,6 +15,9 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -44,7 +47,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
       COUNT(t.id) AS totalCount, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id`).all().map(project => ({
@@ -55,6 +58,11 @@ const server = createServer(async (req, res) => {
   const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectRoute && req.method === 'PATCH') {
     const data = await readBody(req);
+    if (['Low', 'Normal', 'High'].includes(data?.defaultPriority)) {
+      const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(data.defaultPriority, Number(projectRoute[1]));
+      if (!result.changes) return json(res, 404, { error: 'Project not found' });
+      return json(res, 200, { id: Number(projectRoute[1]), defaultPriority: data.defaultPriority });
+    }
     const name = data?.name;
     if (typeof name !== 'string' || !name.trim()) return json(res, 400, { error: 'Project name is required' });
     const cleanName = name.trim();
@@ -89,8 +97,10 @@ const server = createServer(async (req, res) => {
       const title = data?.title;
       if (typeof title !== 'string' || !title.trim()) return json(res, 400, { error: 'Task title is required' });
       const cleanTitle = title.trim();
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, cleanTitle);
-      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title: cleanTitle, completed: false, priority: 'Normal' });
+      const project = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId);
+      const priority = project.default_priority || 'Normal';
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, cleanTitle, priority);
+      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title: cleanTitle, completed: false, priority });
     }
     if (req.method === 'PATCH' && taskRoute[2]) {
       const data = await readBody(req);
