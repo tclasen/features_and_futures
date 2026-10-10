@@ -19,8 +19,14 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+
+const taskPriorities = ['Low', 'Normal', 'High'];
 
 const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
   COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
@@ -30,10 +36,11 @@ const findProject = database.prepare('SELECT id, name, archived FROM projects WH
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const styles = readFileSync(new URL('./public/styles.css', import.meta.url));
 const projectScript = readFileSync(new URL('./public/project.js', import.meta.url));
 
@@ -140,6 +147,13 @@ function projectPage(project, filter = 'All', error = '') {
           <form action="/projects/${project.id}/tasks/${task.id}/completion" method="post">
             <input type="hidden" name="filter" value="${filter}">
             <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-submit-on-change>
+          </form>
+          <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="task-priority-${task.id}">Task priority</label>
+            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} data-submit-on-change>
+              ${taskPriorities.map(priority => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+            </select>
           </form>
           <form class="task-rename-form" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
             <input type="hidden" name="filter" value="${filter}">
@@ -255,7 +269,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const projectId = Number(taskRoute[1]);
       const taskId = taskRoute[2] ? Number(taskRoute[2]) : null;
@@ -287,6 +301,13 @@ const server = http.createServer(async (request, response) => {
               return;
             }
             result = renameTask.run(title, taskId, projectId);
+          } else if (taskRoute[3] === 'priority') {
+            const priority = body.get('priority');
+            if (!taskPriorities.includes(priority)) {
+              sendHtml(response, 400, projectPage(project, filter, 'Invalid task priority'));
+              return;
+            }
+            result = setTaskPriority.run(priority, taskId, projectId);
           } else {
             result = updateTask.run(body.get('completed') === '1' ? 1 : 0, taskId, projectId);
           }

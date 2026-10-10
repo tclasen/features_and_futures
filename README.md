@@ -12,7 +12,8 @@ path across restarts to preserve projects, tasks, completion state, and archives
 Active projects can be renamed without changing their URLs, order, or tasks.
 Each project provides task creation, completion checkboxes, and All/Open/Completed
 filters. Each task can be renamed while preserving its completion state, project,
-and creation order. The project list provides Active/Archived filters and completion summaries.
+and creation order. Each task has an independent Low/Normal/High priority, defaulting
+to Normal and saved across restarts. The project list provides Active/Archived filters and completion summaries.
 Archive projects to make their names and tasks read-only; restore them to resume editing.
 Existing databases are upgraded automatically. `GET /health` returns `{"status":"ok"}`.
 
