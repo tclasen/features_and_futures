@@ -45,3 +45,11 @@ the task's title, completion, ownership, order and current filter. Renaming also
 preserves priority. Archived projects disable priority changes until restored.
 Priorities persist in SQLite across restarts; existing databases are upgraded
 automatically.
+
+Project pages also provide a Priority filter with All, Low, Normal and High options.
+It combines with Task filter: only tasks matching both selections appear, in
+creation order. Both selections remain unchanged during task renames, priority
+edits and completion changes. Filter state lives in the page URL (`filter` and
+`priorityFilter`); opening from the project list starts with both set to All.
+Filtering remains available while archived and does not change saved tasks or
+completion summaries.
