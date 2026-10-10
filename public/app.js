@@ -10,7 +10,7 @@ function element(tag, text, attributes = {}) {
 async function api(path, options) {
   const response = await fetch(path, options);
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(result.error || 'Unable to load Workboard');
   return result;
 }
 
@@ -20,6 +20,92 @@ function projectRow(project) {
   open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
   row.append(element('span', project.name), open);
   return row;
+}
+
+async function renderTasks(projectId) {
+  const form = element('form');
+  const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text', autocomplete: 'off' });
+  const create = element('button', 'Create task', { type: 'submit', class: 'primary' });
+  create.disabled = true;
+  const controls = element('div', undefined, { class: 'controls' });
+  controls.append(input, create);
+  const alert = element('p', '', { role: 'alert', class: 'alert' });
+  alert.hidden = true;
+  form.append(element('label', 'Task title', { for: 'task-title' }), controls, alert);
+  const filterControls = element('div', undefined, { class: 'task-filter' });
+  const filter = element('select', undefined, { id: 'task-filter' });
+  for (const value of ['All', 'Open', 'Completed']) {
+    filter.append(element('option', value, { value }));
+  }
+  filter.value = 'All';
+  filterControls.append(element('label', 'Task filter', { for: 'task-filter' }), filter);
+  const list = element('section', undefined, { 'aria-label': 'Tasks', class: 'task-list' });
+  app.append(form, filterControls, list);
+  const path = `/api/projects/${projectId}/tasks`;
+  const tasks = await api(path);
+
+  function showError(error) {
+    alert.textContent = error.message;
+    alert.hidden = false;
+  }
+
+  function refresh() {
+    const visible = tasks.filter((task) => filter.value === 'All' ||
+      (filter.value === 'Completed' ? task.completed : !task.completed));
+    list.replaceChildren(...visible.map((task) => {
+      const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
+      const checkbox = element('input', undefined, {
+        type: 'checkbox', 'aria-label': `Complete ${task.title}`,
+      });
+      checkbox.checked = task.completed;
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        alert.hidden = true;
+        try {
+          const saved = await api(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          task.completed = saved.completed;
+        } catch (error) {
+          showError(error);
+        } finally {
+          refresh();
+        }
+      });
+      row.append(checkbox, element('span', task.title));
+      return row;
+    }));
+    if (!visible.length) list.append(element('p', 'No tasks to show.', { class: 'empty' }));
+  }
+
+  filter.addEventListener('change', refresh);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    const title = input.value.trim();
+    if (!title) {
+      showError(new Error('Task title is required'));
+      input.focus();
+      return;
+    }
+    create.disabled = true;
+    try {
+      tasks.push(await api(path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      }));
+      refresh();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(error);
+    } finally {
+      create.disabled = false;
+    }
+  });
+  refresh();
+  create.disabled = false;
 }
 
 async function render() {
@@ -32,6 +118,7 @@ async function render() {
     const project = await api(`/api/projects/${projectId}`);
     document.title = `${project.name} · Workboard`;
     app.append(element('h1', project.name));
+    await renderTasks(projectId);
     return;
   }
 
