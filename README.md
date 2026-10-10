@@ -30,6 +30,8 @@ Each project page also has a Priority filter with All, Low, Normal, and High opt
 
 Each project page has a Default task priority selector with Low, Normal, and High options, initially Normal. Changes affect only subsequent task creation in that project and preserve existing tasks, both selected filters, and completion summaries. Defaults persist independently across reloads, restarts, project renaming, archive, and restore. Archived projects display a disabled selector and reject default changes on the server. Existing databases are migrated without changing task priorities or project identity.
 
+Each task row has a Task due date textbox and Save due date button. Dates are optional: empty or whitespace-only input clears the saved date. Other values are trimmed and must be real Gregorian calendar dates in YYYY-MM-DD format with years 0001–9999. Validation uses calendar arithmetic without timezone conversion; invalid input leaves the saved date and other task data unchanged. Due dates persist independently through renaming, reloads, restarts, archive, and restore. Saving preserves both filters and completion summaries. Archived projects disable due-date controls and reject date changes on the server. Existing tasks migrate to empty dates.
+
 Run syntax checks and integration tests:
 
 ```sh
@@ -37,4 +39,4 @@ npm run check
 npm test
 ```
 
-The integration tests start real server processes on ephemeral ports and verify validation, creation order, escaping, task filtering, project isolation, completion updates, archive/restore, renaming without identity changes, independent task priorities, all combined priority/completion filters, filter retention during edits, completion summaries, archived mutation rejection, database migration, and restart persistence using temporary databases that are removed afterward.
+The integration tests start real server processes on ephemeral ports and verify validation, creation order, escaping, task filtering, project isolation, completion updates, archive/restore, renaming without identity changes, independent task priorities, all combined priority/completion filters, filter retention during edits, completion summaries, archived mutation rejection, due-date calendar boundaries and clearing, database migration, and restart persistence using temporary databases that are removed afterward.
