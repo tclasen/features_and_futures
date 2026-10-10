@@ -37,6 +37,7 @@ async function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/?$/);
   const completionRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/?$/);
+  const taskRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename\/?$/);
   async function readBody() {
     let body = '';
     for await (const chunk of req) {
@@ -64,6 +65,20 @@ async function handle(req, res) {
     if (!title) return json(res, 400, { error: 'Task title is required' });
     const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
     return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+  }
+  if (taskRenameRoute && req.method === 'PATCH') {
+    const projectId = Number(taskRenameRoute[1]);
+    const taskId = Number(taskRenameRoute[2]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 400, { error: 'Archived project' });
+    let body;
+    try { body = await readBody(); } catch (error) { return json(res, error.status || 400, { error: error.message }); }
+    const title = String(body.title ?? '').trim();
+    if (!title) return json(res, 400, { error: 'Task title is required' });
+    const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+    if (!result.changes) return json(res, 404, { error: 'Task not found' });
+    return json(res, 200, { id: taskId, projectId, title });
   }
   if (completionRoute && req.method === 'PATCH') {
     const projectId = Number(completionRoute[1]);

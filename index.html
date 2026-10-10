@@ -25,8 +25,10 @@
     .task-controls select { padding: 10px 12px; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
     .task-list { display: grid; gap: 10px; }
     .task-row { padding: 14px 16px; border: 1px solid #d8dee7; border-radius: 8px; background: white; }
-    .task-row input { flex: none; width: 18px; height: 18px; }
+    .task-row input[type="checkbox"] { flex: none; width: 18px; height: 18px; }
+    .task-rename input { flex: 1; }
     .task-row span { overflow-wrap: anywhere; }
+    .task-row .task-rename { display: flex; flex: 1; gap: 8px; }
     @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -223,6 +225,40 @@
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           const title = document.createElement('span');
           title.textContent = task.title;
+          const renameForm = document.createElement('form');
+          renameForm.className = 'task-rename';
+          const renameInput = document.createElement('input');
+          renameInput.type = 'text';
+          renameInput.autocomplete = 'off';
+          renameInput.setAttribute('aria-label', 'New task title');
+          renameInput.disabled = project.archived;
+          const renameButton = document.createElement('button');
+          renameButton.type = 'submit';
+          renameButton.textContent = 'Rename task';
+          renameButton.disabled = project.archived;
+          renameForm.append(renameInput, renameButton);
+          renameForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) {
+              alert.textContent = 'Task title is required';
+              alert.hidden = false;
+              renameInput.focus();
+              return;
+            }
+            const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/rename`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: newTitle }),
+            });
+            if (!saved.ok) {
+              alert.textContent = (await saved.json()).error || 'Could not rename task';
+              alert.hidden = false;
+              return;
+            }
+            task.title = (await saved.json()).title;
+            alert.hidden = true;
+            drawTasks();
+          });
           checkbox.addEventListener('change', async () => {
             checkbox.disabled = true;
             const saved = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
@@ -233,7 +269,7 @@
             checkbox.disabled = false;
             drawTasks();
           });
-          row.append(checkbox, title);
+          row.append(checkbox, title, renameForm);
           list.append(row);
         }
       }
