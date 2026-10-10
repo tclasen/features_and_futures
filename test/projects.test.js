@@ -391,3 +391,99 @@ test('archive migration preserves existing task IDs and completion', async () =>
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task rename preserves ownership, order, completion, filters, and archive restrictions across restarts', async () => {
+  const directory = await mkdtemp(join(process.cwd(), 'data-test-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'task-rename.sqlite');
+    server = await startServer(databasePath);
+    const read = path => fetch(`${server.url}${path}`).then(response => response.text());
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    await post('/projects', { name: 'First project' });
+    await post('/projects', { name: 'Second project' });
+    await post('/projects/1/tasks', { title: 'Done' });
+    await post('/projects/1/tasks', { title: 'Open' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const original = await read('/projects/1');
+    const other = await read('/projects/2');
+    const summary = await read('/');
+    assert.equal((original.match(/>New task title<\/label>/g) ?? []).length, 2);
+    assert.equal((original.match(/>Rename task<\/button>/g) ?? []).length, 2);
+    assert.match(original, /id="new-task-title-1" name="title" type="text">/);
+    assert.doesNotMatch(original, / disabled/);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await post('/projects/1/tasks/1/rename', { title, filter: 'completed' });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.match(html, /id="new-task-title-1"[^>]*aria-invalid="true"/);
+      assert.match(html, /aria-label="Complete Done" checked/);
+      assert.match(html, /value="completed" selected/);
+      assert.equal(await read('/projects/1'), original);
+      assert.equal(await read('/'), summary);
+    }
+    for (const path of [
+      '/projects/2/tasks/1/rename', '/projects/1/tasks/3/rename',
+      '/projects/1/tasks/99999/rename', '/projects/99999/tasks/1/rename',
+      '/projects/1/tasks/9007199254740992/rename',
+    ]) {
+      assert.equal((await post(path, { title: 'Forbidden' })).status, 404);
+    }
+    assert.equal(await read('/projects/2'), other);
+    const renamed = await post('/projects/1/tasks/1/rename', {
+      title: '  Renamed <done> & "task"  ', filter: 'completed',
+    });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=completed');
+    const escapedTitle = 'Renamed &lt;done&gt; &amp; &quot;task&quot;';
+    let detail = await read('/projects/1');
+    assert.ok(detail.includes(`<span>${escapedTitle}</span>`));
+    assert.ok(detail.includes(`aria-label="Complete ${escapedTitle}" checked`));
+    assert.match(detail, /action="\/projects\/1\/tasks\/1\/rename"/);
+    assert.ok(detail.indexOf(`<span>${escapedTitle}`) < detail.indexOf('<span>Open'));
+    assert.doesNotMatch(await read('/projects/1?filter=open'), /<span>Renamed/);
+    assert.match(await read('/projects/1?filter=completed'), /<span>Renamed/);
+    assert.equal(await read('/'), summary);
+    assert.equal(await read('/projects/2'), other);
+    const renameOpen = await post('/projects/1/tasks/2/rename', { title: '  Renamed open  ', filter: 'open' });
+    assert.equal(renameOpen.headers.get('location'), '/projects/1?filter=open');
+    assert.match(await read('/projects/1?filter=open'), /aria-label="Complete Renamed open" onchange/);
+    assert.doesNotMatch(await read('/projects/1?filter=completed'), /<span>Renamed open/);
+    detail = await read('/projects/1');
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await read('/projects/1'), detail);
+    assert.equal(await read('/'), summary);
+    assert.equal(await read('/projects/2'), other);
+    await post('/projects/1/archive');
+    const archived = await read('/projects/1');
+    assert.equal((archived.match(/id="new-task-title-\d+"[^>]* disabled/g) ?? []).length, 2);
+    assert.equal((archived.match(/<button type="submit" disabled>Rename task/g) ?? []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/rename', { title: 'Forbidden' })).status, 403);
+    assert.equal(await read('/projects/1'), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await read('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await read('/projects/1'), detail);
+    assert.equal((await post('/projects/1/tasks/1/rename', { title: '  Restored title  ' })).status, 303);
+    const restored = await read('/projects/1');
+    assert.match(restored, /aria-label="Complete Restored title" checked/);
+    assert.equal(await read('/'), summary);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await read('/projects/1'), restored);
+    // Completion still targets the same task after renaming.
+    await post('/projects/1/tasks/1');
+    assert.match(await read('/projects/1'), /aria-label="Complete Restored title" onchange/);
+    assert.match(await read('/'), /data-testid="project-summary">0\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

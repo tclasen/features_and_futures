@@ -22,6 +22,8 @@ The project list starts with Active projects and supports an Archived filter. Ar
 
 Active project pages support renaming with a trimmed, required name. Renaming preserves the project's URL, creation order, tasks, and completion counts. Archived projects disable rename controls and reject rename requests; restoring a project enables renaming again. Names persist across reloads and server restarts.
 
+Each task row supports renaming with a trimmed, required title. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries, while updating the completion checkbox label. Archived projects disable task rename controls and reject rename requests. Restoring a project enables task renaming again. Task titles persist across reloads and process restarts.
+
 Run syntax checks and integration tests:
 
 ```sh
