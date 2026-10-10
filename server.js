@@ -71,6 +71,22 @@ const server = createServer(async (request, response) => {
         return;
       }
       redirect(response, `/?filter=${projectFilter(form.get('filter'))}`);
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/rename$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? projects.find(id) : null;
+      if (!project) {
+        send(response, 404, notFoundPage());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) {
+        send(response, 409, projectPage(project, projects.tasks.list(id, filter), filter, 'Archived project'));
+      } else if (!projects.rename(id, form.get('name'))) {
+        send(response, 400, projectPage(project, projects.tasks.list(id, filter), filter, 'Project name is required'));
+      } else {
+        redirect(response, `/projects/${id}?filter=${filter}`);
+      }
     } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;

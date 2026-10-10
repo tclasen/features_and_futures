@@ -31,6 +31,7 @@ export function openWorkboard(databasePath) {
   `);
   const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const updateArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -41,6 +42,11 @@ export function openWorkboard(databasePath) {
     list: (filter = 'active') => list.all(filter === 'archived' ? 1 : 0),
     find: (id) => find.get(id),
     setArchived: (id, archived) => updateArchived.run(archived ? 1 : 0, id).changes > 0,
+    rename(id, name) {
+      const trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) return false;
+      return updateName.run(trimmedName, id).changes > 0;
+    },
     create(name) {
       const trimmedName = typeof name === 'string' ? name.trim() : '';
       if (!trimmedName) return null;

@@ -58,6 +58,14 @@ export function projectPage(project, tasks, filter = 'all', error = '') {
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form method="post" action="/projects/${project.id}/rename" class="create-form">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="form-controls">
+        <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+    </form>
     <form method="post" action="/projects/${project.id}/tasks" class="create-form">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
