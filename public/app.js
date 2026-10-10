@@ -1,5 +1,9 @@
 const app = document.querySelector('#app');
 
+function asciiFold(value) {
+  return value.replace(/[A-Z]/g, character => character.toLowerCase());
+}
+
 function element(tag, text, className) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -173,7 +177,7 @@ async function render() {
       for (const task of tasks.filter(t =>
         (filter.value === 'All' || (filter.value === 'Completed') === t.completed) &&
         (priorityFilter.value === 'All' || priorityFilter.value === t.priority) &&
-        t.title.toLowerCase().includes(appliedTaskQuery.toLowerCase()) &&
+        asciiFold(t.title).includes(asciiFold(appliedTaskQuery)) &&
         ((!appliedFrom && !appliedThrough) || (!!t.due_date && (!appliedFrom || t.due_date >= appliedFrom) && (!appliedThrough || t.due_date <= appliedThrough)))
       )) {
         const row = element('div', undefined, 'task-row');
@@ -327,7 +331,7 @@ async function render() {
     const response = await fetch('/api/projects');
     const projects = await response.json();
     list.replaceChildren();
-    for (const project of projects.filter(p => p.archived === (filter.value === 'Archived') && p.name.toLowerCase().includes(appliedProjectQuery.toLowerCase()))) {
+    for (const project of projects.filter(p => p.archived === (filter.value === 'Archived') && asciiFold(p.name).includes(asciiFold(appliedProjectQuery)))) {
       const row = element('div', undefined, 'project-row');
       row.dataset.testid = 'project-row';
       const details = element('div');
