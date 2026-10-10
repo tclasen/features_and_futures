@@ -58,7 +58,7 @@ const server = http.createServer((request, response) => {
         const projectId = Number(taskRoute[1]);
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-        const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+        const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
         if (!project) return sendJson(response, 404, { error: 'Project not found' });
         if (project.archived) return sendJson(response, 409, { error: 'Project is archived' });
         const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
