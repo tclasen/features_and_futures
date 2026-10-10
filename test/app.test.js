@@ -777,12 +777,69 @@ test('due ranges intersect filters and survive edits, validation and archived vi
     app = await start(databasePath);
     assert.deepEqual(titles(await get({ ...fields, priorityFilter: 'High' })), ['End']);
     await post(app.url, '/projects/1/restore', {});
-    assert.doesNotMatch(await get(), / disabled/);
+    // Move controls remain disabled with no other active project; restored editors do not.
+    assert.doesNotMatch((await get()).replace(/<form[^>]*\/move">[\s\S]*?<\/form>/g, ''), / disabled/);
     const reopened = await get();
     assert.equal(taskRows(reopened).length, 6);
     assert.match(reopened, /id="due-from"[^>]*value=""/);
     assert.match(reopened, /id="due-through"[^>]*value=""/);
     assert.match(reopened, /id="task-due-date-2"[^>]*value="2025-03-01"/);
+  } finally {
+    if (app) await app.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
+test('move controls list active destinations and retain the source filtered view', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-ui-'));
+  let app;
+  try {
+    app = await start(join(directory, 'db.sqlite'));
+    const html = async (path) => (await fetch(`${app.url}${path}`)).text();
+    await createProject(app.url, 'Source');
+    await post(app.url, '/projects/1/tasks', { title: 'Moving' });
+    const noDestination = await html('/projects/1');
+    assert.match(noDestination, /name="destinationId" disabled>\s*<\/select>/);
+    assert.match(noDestination, /<button type="submit" disabled>Move task<\/button>/);
+    await createProject(app.url, 'Destination');
+    await createProject(app.url, 'Archived');
+    await createProject(app.url, '<Last>');
+    await post(app.url, '/projects/3/archive', {});
+    await post(app.url, '/projects/2/rename', { name: 'Renamed destination' });
+    const ready = await html('/projects/1');
+    assert.match(ready, /name="destinationId">\s*<option value="2">Renamed destination<\/option><option value="4">&lt;Last&gt;<\/option>\s*<\/select>/);
+    await post(app.url, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await post(app.url, '/projects/1/tasks/1/completion', { completed: '1' });
+    await post(app.url, '/projects/1/tasks/1/due-date', { dueDate: '2030-05-10' });
+    await post(app.url, '/projects/1/tasks', { title: 'Remaining' });
+    const fields = { destinationId: '2', filter: 'Completed', priorityFilter: 'High', dueFrom: '2030-05-01', dueThrough: '2030-05-31' };
+    assert.equal((await post(app.url, '/projects/1/tasks/1/move', { ...fields, destinationId: '3' })).status, 400);
+    const moved = await post(app.url, '/projects/1/tasks/1/move', fields);
+    assert.equal(moved.status, 303);
+    const location = moved.headers.get('location');
+    assert.equal(location, '/projects/1?filter=Completed&priorityFilter=High&dueFrom=2030-05-01&dueThrough=2030-05-31');
+    const source = await html(location);
+    assert.deepEqual(taskRows(source), []);
+    assert.match(source, /<option selected>Completed<\/option>/);
+    assert.match(source, /<option selected>High<\/option>/);
+    assert.match(source, /id="due-from"[^>]*value="2030-05-01"/);
+    assert.deepEqual(taskRows(await html('/projects/1')).map((row) => row.title), ['Remaining']);
+    const destination = await html('/projects/2');
+    assert.deepEqual(taskRows(destination).map((row) => [row.title, row.completed]), [['Moving', true]]);
+    assert.match(destination, /name="dueDate"[^>]*value="2030-05-10"/);
+    assert.match(await html('/'), /data-testid="project-summary">1\/1 completed/);
+    await post(app.url, '/projects/2/archive', {});
+    const archived = await html('/projects/2');
+    assert.match(archived, /name="destinationId" disabled>/);
+    assert.match(archived, /<button type="submit" disabled>Move task<\/button>/);
+    assert.equal((await post(app.url, '/projects/2/tasks/1/move', { destinationId: '1' })).status, 409);
+    await post(app.url, '/projects/2/restore', {});
+    await app.stop();
+    app = await start(join(directory, 'db.sqlite'));
+    assert.deepEqual(taskRows(await html('/projects/2')).map((row) => row.title), ['Moving']);
+    assert.equal((await post(app.url, '/projects/2/tasks/1/move', { destinationId: '1' })).status, 303);
+    assert.deepEqual(taskRows(await html('/projects/1')).map((row) => row.title), ['Remaining', 'Moving']);
   } finally {
     if (app) await app.stop();
     await rm(directory, { recursive: true, force: true });

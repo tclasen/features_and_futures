@@ -36,6 +36,15 @@ export function openProjectStore(path) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  // Separate project-local order from identity so moved tasks append without new IDs.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+    database.exec(`
+      BEGIN;
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id;
+      COMMIT;
+    `);
+  }
   const list = database.prepare(`
     SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
       COALESCE(SUM(t.completed), 0) AS completed
@@ -48,10 +57,12 @@ export function openProjectStore(path) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
-  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+  const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
   const insertTask = database.prepare(`
-    INSERT INTO tasks (project_id, title, priority)
-    SELECT id, ?, default_priority FROM projects WHERE id = ? AND archived = 0
+    INSERT INTO tasks (project_id, title, priority, position)
+    SELECT id, ?, default_priority,
+      (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = projects.id)
+    FROM projects WHERE id = ? AND archived = 0
   `);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTaskTitle = database.prepare(`
@@ -69,7 +80,21 @@ export function openProjectStore(path) {
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
 
+  // A single statement validates ownership and both projects while appending atomically.
+  const moveTask = database.prepare(`
+    UPDATE tasks SET
+      position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?),
+      project_id = ?
+    WHERE project_id = ? AND id = ? AND project_id != ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+      AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)
+  `);
+
   return {
+    moveTask(projectId, taskId, destinationId) {
+      if (!Number.isSafeInteger(destinationId) || destinationId < 1) return false;
+      return moveTask.run(destinationId, destinationId, projectId, taskId, destinationId, destinationId).changes > 0;
+    },
     list: (archived = false) => list.all(archived ? 1 : 0),
     setArchived: (id, archived) => updateArchive.run(archived ? 1 : 0, id).changes > 0,
     find: (id) => find.get(id),

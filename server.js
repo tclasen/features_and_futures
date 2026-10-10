@@ -104,6 +104,8 @@ function dueRangeFields(range) {
 }
 
 function projectPage(project, filter = 'All', priority = 'All', error = '', range = { from: '', through: '' }) {
+  const destinations = store.list().filter((destination) => destination.id !== project.id);
+  const moveDisabled = project.archived || destinations.length === 0;
   const tasks = store.listTasks(project.id).filter((task) =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) &&
@@ -186,6 +188,14 @@ function projectPage(project, filter = 'All', priority = 'All', error = '', rang
             <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
           </div>
+        </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/move">
+          ${filterFields}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <select id="destination-project-${task.id}" name="destinationId"${moveDisabled ? ' disabled' : ''}>
+            ${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
         </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           ${filterFields}
@@ -335,7 +345,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?$/.exec(path);
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?$/.exec(path);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const project = Number.isSafeInteger(projectId) ? store.find(projectId) : undefined;
@@ -359,7 +369,14 @@ const server = createServer(async (request, response) => {
           const taskId = Number(taskMatch[2]);
           let updated = false;
           if (Number.isSafeInteger(taskId)) {
-            if (taskMatch[3] === 'rename') {
+            if (taskMatch[3] === 'move') {
+              const destinationId = Number(form.get('destinationId'));
+              updated = store.moveTask(projectId, taskId, destinationId);
+              if (!updated) {
+                sendHtml(response, 400, renderProject(project, filter, priority, 'Task must move to another active project'));
+                return;
+              }
+            } else if (taskMatch[3] === 'rename') {
               const title = (form.get('title') || '').trim();
               if (!title) {
                 sendHtml(response, 400, renderProject(project, filter, priority, 'Task title is required'));
