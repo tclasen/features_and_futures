@@ -326,7 +326,39 @@ async function showProject(id) {
       });
       const priorityControls = document.createElement('div');
       priorityControls.append(priorityLabel, priority);
-      row.append(title, checkbox, priorityControls, renameForm);
+      const dueDateForm = document.createElement('form');
+      dueDateForm.innerHTML = `
+        <label for="task-due-date-${task.id}">Task due date</label>
+        <div class="form-controls">
+          <input id="task-due-date-${task.id}" name="dueDate" type="text" autocomplete="off" placeholder="YYYY-MM-DD">
+          <button type="submit">Save due date</button>
+        </div>
+      `;
+      const dueDateInput = dueDateForm.querySelector('input');
+      const dueDateButton = dueDateForm.querySelector('button');
+      dueDateInput.value = task.dueDate;
+      dueDateInput.disabled = project.archived;
+      dueDateButton.disabled = project.archived;
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (project.archived) return;
+        dueDateButton.disabled = true;
+        showAlert('');
+        try {
+          const saved = await api(`${tasksPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dueDate: dueDateInput.value }),
+          });
+          tasks = tasks.map((current) => current.id === saved.id ? saved : current);
+          renderTasks();
+        } catch (error) {
+          showAlert(error.message);
+        } finally {
+          dueDateButton.disabled = project.archived;
+        }
+      });
+      row.append(title, checkbox, priorityControls, renameForm, dueDateForm);
       return row;
     }));
   }

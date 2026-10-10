@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { normalizeDueDate } from './task-dates.js';
 
 const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -29,6 +30,9 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
   database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `
   SELECT projects.id, projects.name, projects.archived, projects.default_priority AS defaultPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
@@ -40,12 +44,13 @@ const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 
 function taskValue(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -173,6 +178,19 @@ const server = createServer(async (request, response) => {
         const input = await readJson(request);
         if (findProject.get(projectId).archived) {
           return sendJson(response, 409, { error: 'Archived project is read-only' });
+        }
+        if (input && Object.hasOwn(input, 'dueDate')) {
+          if (['title', 'completed', 'priority'].some((field) => Object.hasOwn(input, field))) {
+            return sendJson(response, 400, { error: 'Due date changes must be separate requests' });
+          }
+          let dueDate;
+          try {
+            dueDate = normalizeDueDate(input.dueDate);
+          } catch (error) {
+            return sendJson(response, 400, { error: error.message });
+          }
+          updateTaskDueDate.run(dueDate, projectId, taskId);
+          return sendJson(response, 200, taskValue(findTask.get(projectId, taskId)));
         }
         if (input && Object.hasOwn(input, 'priority')) {
           if (Object.hasOwn(input, 'title') || Object.hasOwn(input, 'completed')) {

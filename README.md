@@ -69,6 +69,17 @@ Send `{ "defaultPriority": "High" }` to `PATCH /api/projects/:id`, separately
 from rename or archive changes. The server assigns the saved default when creating
 a task. Existing project databases migrate automatically without changing tasks.
 
+Each task row has a Task due date textbox and Save due date button. Dates are
+optional: saving blank or whitespace-only text clears the saved date. Otherwise,
+the server trims and validates a real Gregorian `YYYY-MM-DD` calendar date with
+a year from `0001` through `9999`, without timezone conversion. Invalid dates
+display an alert and leave saved task data unchanged. Dates persist independently
+through renaming, archival, restoration, and restarts. Saving a date preserves
+both filters and all other task fields. Archived projects disable these controls.
+Send `{ "dueDate": "2026-10-10" }` (or `{ "dueDate": "" }` to clear) to the task
+PATCH endpoint, separately from title, completion, or priority changes. Existing
+databases migrate automatically with empty due dates.
+
 Run tests:
 
 ```sh
@@ -81,5 +92,8 @@ validation, archive/restore protections, completion summaries, migration from
 existing databases, renaming, priorities and their read-only protections, and restart
 persistence for projects and tasks, project default inheritance, independent defaults,
 and migration of existing saved priorities.
+Due date tests cover calendar boundaries and leap-year rules, invalid input,
+trimming and clearing, independent task dates, migration, archived protections,
+and preservation of task data and summaries across restarts.
 Filter tests cover every completion/priority combination, creation order,
 unchanged source data, and membership after task edits.
