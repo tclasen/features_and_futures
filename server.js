@@ -28,6 +28,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   FROM projects p ORDER BY p.id`);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -47,6 +48,24 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, JSON.stringify(listProjects.all()));
+  }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (renameRoute && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > 100_000) return send(res, 413, JSON.stringify({ error: 'Request too large' }));
+      }
+      const name = String(JSON.parse(body).name ?? '').trim();
+      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+      const id = Number(renameRoute[1]);
+      const project = findProject.get(id);
+      if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(res, 409, JSON.stringify({ error: 'Archived project' }));
+      renameProject.run(name, id);
+      return send(res, 200, JSON.stringify(findProject.get(id)));
+    } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (archiveRoute && req.method === 'PATCH') {
