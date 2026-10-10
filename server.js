@@ -153,7 +153,10 @@ const server = createServer(async (request, response) => {
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) { json(response, 400, { error: 'Task title is required' }); return; }
     const defaultPriority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
-    const nextOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+    // Positions are retained after a task leaves a project. New arrivals must
+    // follow every position already established there, including positions
+    // belonging to tasks that are currently elsewhere.
+    const nextOrder = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
     const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, defaultPriority, nextOrder);
     db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, nextOrder);
     json(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: defaultPriority });
