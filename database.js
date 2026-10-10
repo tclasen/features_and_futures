@@ -44,6 +44,32 @@ export function openWorkboard(databasePath) {
       UPDATE tasks SET sort_position = id;
       COMMIT;`);
   }
+  // Keep departed tasks' positions reserved. sort_position is the current
+  // project's position; this table remembers it for every visited project.
+  database.exec(`BEGIN;
+    CREATE TABLE IF NOT EXISTS task_project_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL,
+      PRIMARY KEY (task_id, project_id)
+    );
+    CREATE INDEX IF NOT EXISTS task_positions_project ON task_project_positions(project_id, position);
+    INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+      SELECT id, project_id, sort_position FROM tasks;
+    COMMIT;`);
+
+  function transaction(operation) {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      database.exec('COMMIT');
+      return result;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -57,9 +83,18 @@ export function openWorkboard(databasePath) {
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_position, id');
   const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, sort_position)
-    VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))`);
+  const rememberCreatedTask = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, sort_position FROM tasks WHERE id = ?`);
+  const eligibleMove = database.prepare(`SELECT tasks.id FROM tasks
+    JOIN projects source ON source.id = tasks.project_id
+    JOIN projects destination ON destination.id = ?
+    WHERE tasks.project_id = ? AND tasks.id = ? AND source.id != destination.id
+      AND source.archived = 0 AND destination.archived = 0`);
+  const rememberDestination = database.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))`);
   const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
-    sort_position = (SELECT COALESCE(MAX(sort_position), 0) + 1 FROM tasks WHERE project_id = ?)
+    sort_position = (SELECT position FROM task_project_positions WHERE task_id = tasks.id AND project_id = ?)
     WHERE project_id = ? AND id = ? AND project_id != ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
       AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
@@ -104,7 +139,11 @@ export function openWorkboard(databasePath) {
         const trimmedTitle = typeof title === 'string' ? title.trim() : '';
         if (!trimmedTitle) return null;
         const priority = project?.default_task_priority ?? 'normal';
-        const result = insertTask.run(projectId, trimmedTitle, priority, projectId);
+        const result = transaction(() => {
+          const created = insertTask.run(projectId, trimmedTitle, priority, projectId);
+          rememberCreatedTask.run(created.lastInsertRowid);
+          return created;
+        });
         return { id: Number(result.lastInsertRowid), title: trimmedTitle, completed: 0, priority, due_date: '' };
       },
       setCompleted(projectId, taskId, completed) {
@@ -126,7 +165,11 @@ export function openWorkboard(databasePath) {
       },
       move(projectId, taskId, destinationId) {
         if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return false;
-        return moveTask.run(destinationId, destinationId, projectId, taskId, destinationId, destinationId).changes > 0;
+        return transaction(() => {
+          if (!eligibleMove.get(destinationId, projectId, taskId)) return false;
+          rememberDestination.run(taskId, destinationId, destinationId);
+          return moveTask.run(destinationId, destinationId, projectId, taskId, destinationId, destinationId).changes > 0;
+        });
       },
     },
     close: () => database.close(),
