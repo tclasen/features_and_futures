@@ -39,6 +39,7 @@ const listProjects = database.prepare(`
 `);
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -93,6 +94,27 @@ const server = createServer(async (request, response) => {
       return;
     }
     updateProjectArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, projectId);
+    sendJson(response, 200, findProject.get(projectId));
+    return;
+  }
+  if (request.method === 'PATCH' && projectMatch) {
+    const projectId = Number(projectMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    if (project.archived) {
+      sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+      return;
+    }
+    const body = await readJson(request);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) {
+      sendJson(response, 400, { error: 'Project name is required' });
+      return;
+    }
+    renameProject.run(name, projectId);
     sendJson(response, 200, findProject.get(projectId));
     return;
   }
