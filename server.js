@@ -32,6 +32,10 @@ if (!taskColumns.some(column => column.name === 'priority')) {
 if (!taskColumns.some(column => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some(column => column.name === 'sort_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE tasks SET sort_order = id');
+}
 
 function isValidDueDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -98,11 +102,26 @@ const server = createServer(async (req, res) => {
     return json(res, 201, { id: Number(result.lastInsertRowid), name: name.trim() });
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+  const moveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveRoute && req.method === 'PATCH') {
+    const sourceId = Number(moveRoute[1]);
+    const taskId = Number(moveRoute[2]);
+    const data = await readBody(req);
+    const destinationId = Number(data?.destinationProjectId);
+    const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+    const destination = db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!source || !destination || !task) return json(res, 404, { error: 'Project or task not found' });
+    if (source.archived || destination.archived || sourceId === destinationId) return json(res, 400, { error: 'Invalid destination project' });
+    const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next;
+    db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, order, taskId, sourceId);
+    return json(res, 200, { id: taskId, projectId: destinationId });
+  }
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
     if (req.method === 'GET' && !taskRoute[2]) {
-      return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return json(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (req.method === 'POST' && !taskRoute[2]) {
       const data = await readBody(req);
@@ -111,7 +130,8 @@ const server = createServer(async (req, res) => {
       const cleanTitle = title.trim();
       const project = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId);
       const priority = project.default_priority || 'Normal';
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, cleanTitle, priority);
+      const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next;
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, cleanTitle, priority, order);
       return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title: cleanTitle, completed: false, priority });
     }
     if (req.method === 'PATCH' && taskRoute[2]) {

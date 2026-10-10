@@ -235,6 +235,8 @@ async function renderTasks(projectId, archived) {
   rows.setAttribute('aria-label', 'Tasks');
   async function refresh() {
     const tasks = await getTasks(projectId);
+    const projects = await getProjects();
+    const destinations = projects.filter(project => !project.archived && String(project.id) !== String(projectId));
     rows.replaceChildren();
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed) continue;
@@ -328,6 +330,25 @@ async function renderTasks(projectId, archived) {
         if (response.ok) await refresh();
       });
       row.append(renameInput, renameButton, renameError);
+      const destination = element('select');
+      destination.setAttribute('aria-label', 'Destination project');
+      for (const candidate of destinations) {
+        const option = element('option', candidate.name);
+        option.value = candidate.id;
+        destination.append(option);
+      }
+      const moveButton = element('button', 'Move task');
+      moveButton.type = 'button';
+      destination.disabled = archived || destinations.length === 0;
+      moveButton.disabled = archived || destinations.length === 0;
+      moveButton.addEventListener('click', async () => {
+        const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}/move`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+        });
+        if (response.ok) await refresh();
+      });
+      row.append(destination, moveButton);
       rows.append(row);
     }
   }
