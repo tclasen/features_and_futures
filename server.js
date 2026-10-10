@@ -150,16 +150,32 @@ const server = createServer(async (request, response) => {
       const projectId = Number(taskMatch[1]);
       const taskId = Number(taskMatch[2]);
       const body = await readJson(request);
-      if (typeof body?.completed !== 'boolean') {
-        sendJson(response, 400, { error: 'Completion state is required' });
+      const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) {
+        sendJson(response, 404, { error: 'Project not found' });
         return;
       }
-      const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
-      if (!Number(result.changes)) {
+      if (project.archived) {
+        sendJson(response, 400, { error: 'Archived projects cannot be changed' });
+        return;
+      }
+      const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+      if (!task) {
         sendJson(response, 404, { error: 'Task not found' });
         return;
       }
-      sendJson(response, 200, { id: taskId, projectId, completed: body.completed });
+      if (typeof body?.completed === 'boolean') {
+        database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
+        sendJson(response, 200, { id: taskId, projectId, title: task.title, completed: body.completed });
+        return;
+      }
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) {
+        sendJson(response, 400, { error: 'Task title is required' });
+        return;
+      }
+      database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+      sendJson(response, 200, { id: taskId, projectId, title, completed: Boolean(task.completed) });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
