@@ -17,7 +17,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 
 const send = (res, status, body, contentType = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
-  res.end(typeof body === 'string' ? body : JSON.stringify(body));
+  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 };
 
 async function readJson(req) {
