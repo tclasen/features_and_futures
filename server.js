@@ -1,11 +1,21 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { openProjects } from './projects.js';
+import { openWorkboard } from './database.js';
 import { projectsPage, projectPage, notFoundPage } from './pages.js';
 
 const port = Number(process.env.PORT ?? 8080);
-const projects = openProjects(process.env.DB_PATH ?? './data/workboard.sqlite');
+const projects = openWorkboard(process.env.DB_PATH ?? './data/workboard.sqlite');
 const styles = readFileSync(new URL('./public/styles.css', import.meta.url));
+const appScript = readFileSync(new URL('./public/app.js', import.meta.url));
+
+function taskFilter(value) {
+  return ['open', 'completed'].includes(value) ? value : 'all';
+}
+
+function redirect(response, location) {
+  response.writeHead(303, { Location: location });
+  response.end();
+}
 
 function send(response, status, body, type = 'text/html; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': type });
@@ -34,6 +44,8 @@ const server = createServer(async (request, response) => {
       send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     } else if (request.method === 'GET' && url.pathname === '/styles.css') {
       send(response, 200, styles, 'text/css; charset=utf-8');
+    } else if (request.method === 'GET' && url.pathname === '/app.js') {
+      send(response, 200, appScript, 'text/javascript; charset=utf-8');
     } else if (request.method === 'GET' && url.pathname === '/') {
       send(response, 200, projectsPage(projects.list()));
     } else if (request.method === 'POST' && url.pathname === '/projects') {
@@ -42,13 +54,35 @@ const server = createServer(async (request, response) => {
       if (!project) {
         send(response, 400, projectsPage(projects.list(), 'Project name is required'));
       } else {
-        response.writeHead(303, { Location: '/' });
-        response.end();
+        redirect(response, '/');
       }
     } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? projects.find(id) : null;
-      send(response, project ? 200 : 404, project ? projectPage(project) : notFoundPage());
+      const filter = taskFilter(url.searchParams.get('filter'));
+      send(response, project ? 200 : 404, project
+        ? projectPage(project, projects.tasks.list(id, filter), filter) : notFoundPage());
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/completion)?$/.test(url.pathname)) {
+      const parts = url.pathname.split('/');
+      const projectId = Number(parts[2]);
+      const taskId = parts[4] ? Number(parts[4]) : null;
+      const project = Number.isSafeInteger(projectId) ? projects.find(projectId) : null;
+      if (!project || (taskId !== null && !Number.isSafeInteger(taskId))) {
+        send(response, 404, notFoundPage());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (taskId === null) {
+        if (!projects.tasks.create(projectId, form.get('title'))) {
+          send(response, 400, projectPage(project, projects.tasks.list(projectId, filter), filter, 'Task title is required'));
+          return;
+        }
+      } else if (!projects.tasks.setCompleted(projectId, taskId, form.get('completed') === 'true')) {
+        send(response, 404, notFoundPage());
+        return;
+      }
+      redirect(response, `/projects/${projectId}?filter=${filter}`);
     } else {
       send(response, 404, notFoundPage());
     }

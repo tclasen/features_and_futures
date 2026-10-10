@@ -12,6 +12,7 @@ function page(title, content) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} · Workboard</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
 </head>
 <body><main>${content}</main></body>
 </html>`;
@@ -39,10 +40,36 @@ export function projectsPage(projects, error = '') {
     </section>`);
 }
 
-export function projectPage(project) {
+export function projectPage(project, tasks, filter = 'all', error = '') {
   return page(project.name, `
     <form method="get" action="/"><button type="submit">Projects</button></form>
-    <h1>${escapeHtml(project.name)}</h1>`);
+    <h1>${escapeHtml(project.name)}</h1>
+    <form method="post" action="/projects/${project.id}/tasks" class="create-form">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <div class="form-controls">
+        <input id="task-title" name="title" type="text">
+        <button type="submit">Create task</button>
+      </div>
+    </form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form method="get" action="/projects/${project.id}" class="task-filter" data-submit-on-change>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter">
+        ${[['all', 'All'], ['open', 'Open'], ['completed', 'Completed']].map(([value, label]) =>
+          `<option value="${value}"${filter === value ? ' selected' : ''}>${label}</option>`).join('')}
+      </select>
+    </form>
+    <section aria-label="Tasks" class="tasks">
+      ${tasks.length ? tasks.map((task) => `
+        <div data-testid="task-row" class="task-row">
+          <span>${escapeHtml(task.title)}</span>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion" data-submit-on-change>
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="checkbox" name="completed" value="true" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}>
+          </form>
+        </div>`).join('') : '<p class="empty">No matching tasks.</p>'}
+    </section>`);
 }
 
 export function notFoundPage() {
