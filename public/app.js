@@ -5,6 +5,8 @@ const projectFilter = document.querySelector('#project-filter');
 const form = document.querySelector('#create-project');
 const input = document.querySelector('#project-name');
 const error = document.querySelector('#error');
+const renameForm = document.querySelector('#rename-project');
+const renameInput = document.querySelector('#new-project-name');
 const taskForm = document.querySelector('#create-task');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
@@ -115,6 +117,29 @@ function renderTasks() {
 }
 
 taskFilter.addEventListener('change', renderTasks);
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (archived || !projectMatch) return;
+  const name = renameInput.value.trim();
+  if (!name) return showError('Project name is required');
+  showError();
+  const button = renameForm.querySelector('button');
+  button.disabled = true;
+  try {
+    const project = await request(`/api/projects/${projectMatch[1]}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    document.querySelector('#project-heading').textContent = project.name;
+    document.title = `${project.name} · Workboard`;
+    renameInput.value = project.name;
+  } catch (failure) {
+    showError(failure.message);
+  } finally {
+    button.disabled = archived;
+  }
+});
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (archived) return;
@@ -176,6 +201,9 @@ async function load() {
     if (match) {
       const project = await request(`/api/projects/${match[1]}`);
       archived = Boolean(project.archived);
+      renameInput.value = project.name;
+      renameInput.disabled = archived;
+      renameForm.querySelector('button').disabled = archived;
       document.querySelector('#archived-project').hidden = !archived;
       taskForm.querySelector('button').disabled = archived;
       document.querySelector('#project-heading').textContent = project.name;

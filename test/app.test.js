@@ -25,10 +25,11 @@ class Element {
 function pageElements() {
   const ids = ['project-list', 'project-detail', 'projects', 'create-project', 'project-name',
     'error', 'create-task', 'task-title', 'task-filter', 'tasks', 'back-to-projects', 'project-heading',
-    'project-filter', 'archived-project'];
+    'project-filter', 'archived-project', 'rename-project', 'new-project-name'];
   const elements = new Map(ids.map((id) => [`#${id}`, new Element()]));
   elements.get('#create-task').append(new Element('button'));
   elements.get('#create-project').append(new Element('button'));
+  elements.get('#rename-project').append(new Element('button'));
   elements.get('#task-filter').value = 'All';
   elements.get('#project-filter').value = 'Active';
   return elements;
@@ -175,6 +176,10 @@ test('archived project disables task writes while preserving task filters', asyn
   const rows = () => element('tasks').children;
   assert.equal(element('archived-project').hidden, false);
   assert.equal(element('create-task').querySelector('button').disabled, true);
+  assert.equal(element('new-project-name').disabled, true);
+  assert.equal(element('rename-project').querySelector('button').disabled, true);
+  element('new-project-name').value = 'Blocked rename';
+  await element('rename-project').fire('submit');
   assert.equal(rows().length, 2);
   assert.ok(rows().every((row) => row.children[0].disabled));
   element('task-title').value = 'Blocked';
@@ -187,4 +192,55 @@ test('archived project disables task writes while preserving task filters', asyn
   element('task-filter').value = 'Open';
   await element('task-filter').fire('change');
   assert.deepEqual(rows().map((row) => row.children[1].textContent), ['Open']);
+});
+
+test('active project renames trim input, preserve displayed tasks, and handle errors', async () => {
+  const elements = pageElements();
+  const element = (id) => elements.get(`#${id}`);
+  let project = { id: 7, name: 'Original', archived: 0, completed: 1, total: 2 };
+  const tasks = [
+    { id: 1, title: 'Open', completed: false },
+    { id: 2, title: 'Done', completed: true },
+  ];
+  const writes = [];
+  let rejectWrite = false;
+  let destination;
+  await loadPage(elements, '/projects/7', async (path, options) => {
+    if (!options) {
+      return { ok: true, json: async () => path.endsWith('/tasks') ? tasks : project };
+    }
+    const body = JSON.parse(options.body);
+    writes.push({ path, method: options.method, body });
+    if (rejectWrite) return { ok: false, json: async () => ({ error: 'Archived project' }) };
+    project = { ...project, name: body.name };
+    return { ok: true, json: async () => project };
+  }, (path) => { destination = path; });
+  assert.equal(element('new-project-name').value, 'Original');
+  assert.equal(element('new-project-name').disabled, false);
+  assert.equal(element('rename-project').querySelector('button').disabled, false);
+  const originalRows = element('tasks').children;
+  for (const name of ['', ' \t\n ']) {
+    element('new-project-name').value = name;
+    await element('rename-project').fire('submit');
+    assert.equal(element('error').textContent, 'Project name is required');
+    assert.equal(element('error').hidden, false);
+    assert.equal(element('project-heading').textContent, 'Original');
+  }
+  assert.equal(writes.length, 0);
+  element('new-project-name').value = '  Renamed <project>  ';
+  await element('rename-project').fire('submit');
+  assert.deepEqual(writes, [{ path: '/api/projects/7', method: 'PATCH', body: { name: 'Renamed <project>' } }]);
+  assert.equal(element('project-heading').textContent, 'Renamed <project>');
+  assert.equal(element('new-project-name').value, 'Renamed <project>');
+  assert.equal(element('error').hidden, true);
+  assert.equal(destination, undefined);
+  assert.equal(element('tasks').children, originalRows);
+  assert.equal(originalRows[0].children[0].checked, false);
+  assert.equal(originalRows[1].children[0].checked, true);
+  rejectWrite = true;
+  element('new-project-name').value = 'Rejected';
+  await element('rename-project').fire('submit');
+  assert.equal(element('project-heading').textContent, 'Renamed <project>');
+  assert.equal(element('error').textContent, 'Archived project');
+  assert.equal(element('rename-project').querySelector('button').disabled, false);
 });
