@@ -1,3 +1,5 @@
+import { validDueDate } from './dates.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -104,6 +106,13 @@ async function renderTasks(project) {
     <select id="priority-filter">
       <option>All</option><option>Low</option><option>Normal</option><option>High</option>
     </select>
+    <form id="due-range-form">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <section id="tasks" aria-label="Tasks"></section>`;
   app.append(section);
   const form = section.querySelector('form');
@@ -112,6 +121,29 @@ async function renderTasks(project) {
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('#tasks');
+  const rangeForm = section.querySelector('#due-range-form');
+  const dueFrom = section.querySelector('#due-from');
+  const dueThrough = section.querySelector('#due-through');
+  // Draft inputs do not change membership until a valid range is applied.
+  let appliedFrom = '';
+  let appliedThrough = '';
+  rangeForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if ((from && !validDueDate(from)) || (through && !validDueDate(through))) {
+      showAlert('Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (from && through && from > through) {
+      showAlert('Due from must not be after Due through');
+      return;
+    }
+    appliedFrom = dueFrom.value = from;
+    appliedThrough = dueThrough.value = through;
+    showAlert('');
+    displayTasks();
+  });
   const defaultPriority = section.querySelector('#default-task-priority');
   defaultPriority.value = project.default_priority;
   defaultPriority.disabled = Boolean(project.archived);
@@ -138,7 +170,10 @@ async function renderTasks(project) {
     const visible = tasks.filter(task =>
       (filter.value === 'All' ||
         (filter.value === 'Completed' ? task.completed : !task.completed)) &&
-      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+      ((!appliedFrom && !appliedThrough) ||
+        (task.due_date && (!appliedFrom || task.due_date >= appliedFrom) &&
+          (!appliedThrough || task.due_date <= appliedThrough))));
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('div');
       row.className = 'task-row';

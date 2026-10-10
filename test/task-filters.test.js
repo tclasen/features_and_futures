@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { validDueDate } from '../public/dates.js';
 
 // Small DOM stand-in lets the actual browser event handlers run without dependencies.
 class Element {
@@ -71,6 +72,7 @@ async function page(archived = false) {
   }
   const project = { id: 1, archived, default_priority: 'Normal' };
   const context = vm.createContext({
+    validDueDate,
     document: {
       querySelector: selector => selector === '#app' ? app : alert,
       createElement: tag => new Element(tag),
@@ -93,7 +95,7 @@ async function page(archived = false) {
     },
   });
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  vm.runInContext(source.replace(/render\(\);\s*$/, ''), context);
+  vm.runInContext(source.replace(/^import .*\n/, '').replace(/render\(\);\s*$/, ''), context);
   await context.renderTasks(structuredClone(project));
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
@@ -226,4 +228,120 @@ test('due date controls save and clear independently without resetting filters o
   assert.deepEqual(p.titles(), ['New title']);
   assert.equal(p.completion.value, 'Open');
   assert.equal(p.priority.value, 'High');
+});
+
+async function applyRange(p, from, through) {
+  p.app.querySelector('#due-from').value = from;
+  p.app.querySelector('#due-through').value = through;
+  await p.app.querySelector('#due-range-form').fire('submit');
+}
+
+async function saveDate(p, rowIndex, value) {
+  const form = p.rows()[rowIndex].querySelectorAll('form')[1];
+  form.querySelector('input').value = value;
+  await form.fire('submit');
+}
+
+async function datedPage() {
+  const p = await page();
+  for (const [index, date] of ['0001-01-01', '2024-02-28', '2024-02-29', '2024-03-01', '9999-12-31'].entries()) {
+    await saveDate(p, index, date);
+  }
+  return p;
+}
+
+test('due boundaries are inclusive, unbounded when blank, and intersect both filters', async () => {
+  const p = await datedPage();
+  assert.equal(p.app.querySelector('#due-from').value, '');
+  assert.equal(p.app.querySelector('#due-through').value, '');
+  await applyRange(p, ' 2024-02-28 ', ' 2024-03-01 ');
+  assert.deepEqual(p.titles(), ['Low done', 'Normal open', 'Normal done']);
+  assert.equal(p.app.querySelector('#due-from').value, '2024-02-28');
+  await p.select(p.completion, 'Open');
+  await p.select(p.priority, 'Normal');
+  assert.deepEqual(p.titles(), ['Normal open']);
+  await applyRange(p, '', '2024-02-28');
+  assert.deepEqual(p.titles(), []);
+  assert.equal(p.completion.value, 'Open');
+  assert.equal(p.priority.value, 'Normal');
+  await p.select(p.completion, 'All');
+  await p.select(p.priority, 'All');
+  assert.deepEqual(p.titles(), ['Low open', 'Low done']);
+  await applyRange(p, '2024-03-01', '');
+  assert.deepEqual(p.titles(), ['Normal done', 'High open']);
+  await applyRange(p, '0001-01-01', '9999-12-31');
+  assert.equal(p.rows().length, 5);
+  await applyRange(p, ' ', ' ');
+  assert.equal(p.rows().length, 6);
+});
+
+test('invalid range drafts preserve applied membership even after filter changes', async () => {
+  const p = await datedPage();
+  await applyRange(p, '2024-02-29', '2024-03-01');
+  for (const invalid of ['0000-01-01', '2023-02-29', '1900-02-29', '2024-04-31', '2024-13-01', '2024-00-01', '2024-01-00', '2024-2-29', '10000-01-01', 'no date']) {
+    await applyRange(p, invalid, '');
+    assert.equal(p.alert.textContent, 'Due range must use valid YYYY-MM-DD dates');
+    assert.deepEqual(p.titles(), ['Normal open', 'Normal done']);
+    await applyRange(p, '', invalid);
+    assert.deepEqual(p.titles(), ['Normal open', 'Normal done']);
+  }
+  await applyRange(p, '2024-03-02', '2024-03-01');
+  assert.equal(p.alert.textContent, 'Due from must not be after Due through');
+  await p.select(p.completion, 'Completed');
+  assert.deepEqual(p.titles(), ['Normal done']);
+  await applyRange(p, '2000-02-29', '2400-02-29');
+  assert.equal(p.alert.hidden, true);
+});
+
+test('task edits, creation and defaults retain the range and re-evaluate membership', async () => {
+  const p = await datedPage();
+  await applyRange(p, '2024-02-28', '2024-03-01');
+  await p.select(p.completion, 'Open');
+  await p.select(p.priority, 'Normal');
+  const rename = p.rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'Renamed';
+  await rename.fire('submit');
+  assert.deepEqual(p.titles(), ['Renamed']);
+  await p.select(p.app.querySelector('#default-task-priority'), 'High');
+  p.app.querySelector('#task-title').value = 'Undated new task';
+  await p.app.querySelector('#task-form').fire('submit');
+  assert.deepEqual(p.titles(), ['Renamed']);
+  await saveDate(p, 0, '2024-03-02');
+  assert.deepEqual(p.titles(), []);
+  await p.select(p.completion, 'All');
+  assert.deepEqual(p.titles(), ['Normal done']);
+  await p.select(p.rows()[0].querySelector('select'), 'High');
+  assert.deepEqual(p.titles(), []);
+  await p.select(p.priority, 'High');
+  assert.deepEqual(p.titles(), ['Normal done']);
+  await p.select(p.completion, 'Completed');
+  const checkbox = p.rows()[0].querySelector('input');
+  checkbox.checked = false;
+  await checkbox.fire('change');
+  assert.deepEqual(p.titles(), []);
+  await p.select(p.completion, 'Open');
+  assert.deepEqual(p.titles(), ['Normal done']);
+  await saveDate(p, 0, '');
+  assert.deepEqual(p.titles(), []);
+  assert.equal(p.app.querySelector('#due-from').value, '2024-02-28');
+  assert.equal(p.app.querySelector('#due-through').value, '2024-03-01');
+  assert.equal(p.completion.value, 'Open');
+  assert.equal(p.priority.value, 'High');
+});
+
+test('archived pages allow due-range applications and a fresh page has no range', async () => {
+  const p = await page(true);
+  await applyRange(p, '2024-01-01', '');
+  assert.deepEqual(p.titles(), []);
+  await applyRange(p, '', '');
+  assert.equal(p.rows().length, 6);
+  for (const row of p.rows()) {
+    for (const tag of ['input', 'button', 'select']) {
+      for (const control of row.querySelectorAll(tag)) assert.equal(control.disabled, true);
+    }
+  }
+  const reopened = await page();
+  assert.equal(reopened.app.querySelector('#due-from').value, '');
+  assert.equal(reopened.app.querySelector('#due-through').value, '');
+  assert.equal(reopened.rows().length, 6);
 });
