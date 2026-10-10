@@ -28,6 +28,55 @@ async function start(dbPath) {
   } };
 }
 
+test('tasks validate, filter, remain project-owned, and persist completion across restarts', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'workboard.sqlite');
+    server = await start(dbPath);
+    const post = (path, values) => fetch(server.base + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual'
+    });
+    const detail = (id, filter = 'All') => fetch(`${server.base}/projects/${id}?filter=${filter}`).then(res => res.text());
+    for (const name of ['One', 'Two']) assert.equal((await post('/projects', { name })).status, 303);
+    let html = await detail(1);
+    assert.match(html, /Task title/);
+    assert.match(html, /<option selected>All<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 400);
+      html = await response.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.doesNotMatch(html, /data-testid="task-row"/);
+    }
+    for (const title of ['  First task  ', '<Second & task>']) {
+      assert.equal((await post('/projects/1/tasks', { title })).status, 303);
+    }
+    html = await detail(1);
+    assert.equal((html.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(html, /aria-label="Complete First task"/);
+    assert.doesNotMatch(html, / checked/);
+    assert.ok(html.indexOf('First task') < html.indexOf('&lt;Second &amp; task&gt;'));
+    assert.doesNotMatch(await detail(2), /data-testid="task-row"/);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '1' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/1', { completed: '1' })).status, 303);
+    assert.match(await detail(1, 'Completed'), /aria-label="Complete First task" checked/);
+    assert.doesNotMatch(await detail(1, 'Completed'), /Second &amp;/);
+    assert.doesNotMatch(await detail(1, 'Open'), /First task/);
+    assert.match(await detail(1, 'Open'), /Second &amp;/);
+    const saved = await detail(1);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await detail(1), saved);
+    assert.equal((await post('/projects/1/tasks/1', {})).status, 303);
+    assert.doesNotMatch(await detail(1, 'Completed'), /data-testid="task-row"/);
+    assert.equal(((await detail(1, 'Open')).match(/data-testid="task-row"/g) || []).length, 2);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('project creation, validation, navigation, and restart persistence', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   let server;
