@@ -18,6 +18,15 @@ if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name ===
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'sort_order')) { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); db.exec('UPDATE tasks SET sort_order = id'); }
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_order (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY(task_id, project_id)
+)`);
+// Seed remembered positions from the existing per-project ordering on upgrade.
+db.exec(`INSERT OR IGNORE INTO task_project_order (task_id, project_id, position)
+  SELECT id, project_id, sort_order FROM tasks`);
 function validDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
@@ -61,7 +70,7 @@ const server = http.createServer(async (req, res) => {
     catch { return send(400, {error:'Invalid request'}); }
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
-  if (taskRoute && req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(taskRoute[1])).map(task => ({...task, completed: Boolean(task.completed)})));
+  if (taskRoute && req.method === 'GET') return send(200, db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date FROM tasks t LEFT JOIN task_project_order o ON o.task_id = t.id AND o.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(o.position, t.sort_order), t.id`).all(Number(taskRoute[1])).map(task => ({...task, completed: Boolean(task.completed)})));
   if (taskRoute && req.method === 'POST') {
     try {
       const projectId = Number(taskRoute[1]);
@@ -72,6 +81,7 @@ const server = http.createServer(async (req, res) => {
       if (!title) return send(400, {error:'Task title is required'});
       const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM tasks WHERE project_id = ?').get(projectId).n;
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, order);
+      db.prepare('INSERT INTO task_project_order (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, order);
       return send(201, {id:Number(result.lastInsertRowid), title, completed:false});
     } catch { return send(400, {error:'Invalid request'}); }
   }
@@ -82,8 +92,16 @@ const server = http.createServer(async (req, res) => {
       const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(Number(destinationId));
       const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
       if (!source || source.archived || !destination || destination.archived || sourceId === Number(destinationId)) return send(400, {error:'Invalid destination project'});
-      const order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM tasks WHERE project_id = ?').get(Number(destinationId)).n;
-      const result = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(Number(destinationId), order, taskId, sourceId);
+      const destinationProjectId = Number(destinationId);
+      const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+      if (!task) return send(404, {error:'Task not found'});
+      let remembered = db.prepare('SELECT position FROM task_project_order WHERE task_id = ? AND project_id = ?').get(taskId, destinationProjectId);
+      if (!remembered) {
+        const order = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM task_project_order WHERE project_id = ?').get(destinationProjectId).n;
+        db.prepare('INSERT INTO task_project_order (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationProjectId, order);
+        remembered = { position: order };
+      }
+      const result = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationProjectId, remembered.position, taskId, sourceId);
       return result.changes ? send(200, {ok:true}) : send(404, {error:'Task not found'});
     } catch { return send(400, {error:'Invalid request'}); }
   }
