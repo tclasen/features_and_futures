@@ -49,9 +49,23 @@ if (!taskColumns.some(column => column.name === 'position')) {
   db.exec('UPDATE tasks SET position = id');
 }
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
+)`);
+// Seed membership history for databases created before per-project positions existed.
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks ORDER BY position, id`);
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0))');
+const rememberTaskPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+const getRememberedPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextProjectPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_project_positions WHERE project_id = ?');
+const setTaskPosition = db.prepare('UPDATE tasks SET position = ? WHERE id = ?');
 const eligibleDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -115,7 +129,10 @@ async function handle(request, response) {
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
     const result = createTask.run(projectId, title, project.default_priority, projectId);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: 0, priority: project.default_priority });
+    const taskId = Number(result.lastInsertRowid);
+    const position = db.prepare('SELECT position FROM tasks WHERE id = ?').get(taskId).position;
+    rememberTaskPosition.run(taskId, projectId, position);
+    return sendJson(response, 201, { id: taskId, title, completed: 0, priority: project.default_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
@@ -136,7 +153,20 @@ async function handle(request, response) {
       if (!source || source.archived || !destination || destination.archived || destinationId === projectId) {
         return sendJson(response, 400, { error: 'Invalid destination project' });
       }
-      moveTask.run(destinationId, destinationId, taskId, projectId);
+      db.exec('BEGIN');
+      try {
+        let remembered = getRememberedPosition.get(taskId, destinationId);
+        if (!remembered) {
+          const position = nextProjectPosition.get(destinationId).position;
+          rememberTaskPosition.run(taskId, destinationId, position);
+          remembered = { position };
+        }
+        moveTask.run(destinationId, remembered.position, taskId, projectId);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
       return sendJson(response, 200, { id: taskId, project_id: destinationId });
     }
     if (typeof body?.due_date === 'string') {
