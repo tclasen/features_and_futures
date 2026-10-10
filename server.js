@@ -18,6 +18,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 const projectHtml = await readFile(new URL('./project.html', import.meta.url));
@@ -86,7 +87,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) { json(response, 404, { error: 'Project not found' }); return; }
-    json(response, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    json(response, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     return;
   }
   if (tasksMatch && request.method === 'POST') {
@@ -112,6 +113,14 @@ const server = createServer(async (request, response) => {
       const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
       if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }
       json(response, 200, { id: taskId, title });
+      return;
+    }
+    if (Object.hasOwn(body || {}, 'priority')) {
+      const priority = body.priority;
+      if (!['Low', 'Normal', 'High'].includes(priority)) { json(response, 400, { error: 'Invalid task priority' }); return; }
+      const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(priority, taskId, projectId);
+      if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }
+      json(response, 200, { id: taskId, priority });
       return;
     }
     if (typeof body?.completed !== 'boolean') { json(response, 400, { error: 'Completion state is required' }); return; }
