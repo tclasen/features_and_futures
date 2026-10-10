@@ -18,6 +18,10 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   )
 `);
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 
 const indexHtml = await readFile(new URL('./index.html', import.meta.url));
 
@@ -41,8 +45,34 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = database.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const projects = database.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id`).all().map((project) => ({
+        ...project, id: Number(project.id), archived: Boolean(project.archived),
+        totalCount: Number(project.totalCount), completedCount: Number(project.completedCount),
+      }));
     sendJson(response, 200, projects);
+    return;
+  }
+
+  const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectMatch && request.method === 'PATCH') {
+    try {
+      const body = await readJson(request);
+      if (typeof body?.archived !== 'boolean') {
+        sendJson(response, 400, { error: 'Archive state is required' });
+        return;
+      }
+      const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), Number(projectMatch[1]));
+      if (!Number(result.changes)) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      sendJson(response, 200, { id: Number(projectMatch[1]), archived: body.archived });
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
     return;
   }
 
@@ -55,7 +85,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
-      sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), name, archived: false, totalCount: 0, completedCount: 0 });
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
@@ -79,9 +109,13 @@ const server = createServer(async (request, response) => {
   if (tasksMatch && request.method === 'POST') {
     try {
       const projectId = Number(tasksMatch[1]);
-      const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+      const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
       if (!project) {
         sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 400, { error: 'Archived projects cannot have new tasks' });
         return;
       }
       const body = await readJson(request);

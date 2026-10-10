@@ -52,6 +52,14 @@
         app.replaceChildren();
         app.append(element('h1', 'Workboard'));
         const panel = element('section', undefined, 'panel');
+        const projectFilterLabel = element('label', 'Project filter');
+        const projectFilter = document.createElement('select');
+        for (const value of ['Active', 'Archived']) {
+          const option = element('option', value);
+          option.value = value;
+          projectFilter.append(option);
+        }
+        projectFilterLabel.append(projectFilter);
         const form = document.createElement('form');
         const label = element('label', 'Project name');
         const input = document.createElement('input');
@@ -66,7 +74,7 @@
         alert.setAttribute('role', 'alert');
         alert.hidden = true;
         const list = element('ul');
-        panel.append(form, alert, list);
+        panel.append(projectFilterLabel, form, alert, list);
         app.append(panel);
 
         form.addEventListener('submit', async (event) => {
@@ -91,16 +99,36 @@
           const project = await response.json();
           alert.hidden = true;
           input.value = '';
-          appendProject(list, project);
+          projects.push(project);
+          renderProjects();
         });
 
-        for (const project of await loadProjects()) appendProject(list, project);
+        const projects = await loadProjects();
+        function renderProjects() {
+          list.replaceChildren();
+          for (const project of projects.filter((item) => item.archived === (projectFilter.value === 'Archived'))) {
+            appendProject(list, project, async () => {
+              const response = await fetch(`/api/projects/${project.id}`, {
+                method: 'PATCH', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ archived: !project.archived }),
+              });
+              if (!response.ok) return;
+              project.archived = !project.archived;
+              renderProjects();
+            });
+          }
+        }
+        projectFilter.addEventListener('change', renderProjects);
+        renderProjects();
       }
 
-      function appendProject(list, project) {
+      function appendProject(list, project, onArchive) {
         const row = element('li', undefined, 'project-row');
         row.dataset.testid = 'project-row';
         row.append(element('span', project.name, 'project-name'));
+        const summary = element('span', `${project.completedCount}/${project.totalCount} completed`);
+        summary.dataset.testid = 'project-summary';
+        row.append(summary);
         const open = element('button', 'Open project');
         open.type = 'button';
         open.addEventListener('click', () => {
@@ -108,6 +136,10 @@
           showProject(project);
         });
         row.append(open);
+        const archive = element('button', project.archived ? 'Restore project' : 'Archive project');
+        archive.type = 'button';
+        archive.addEventListener('click', onArchive);
+        row.append(archive);
         list.append(row);
       }
 
@@ -121,6 +153,7 @@
         });
         const heading = element('h1', project.name);
         const panel = element('section', undefined, 'panel');
+        if (project.archived) panel.append(element('p', 'Archived project'));
         const form = document.createElement('form');
         const label = element('label', 'Task title');
         const input = document.createElement('input');
@@ -130,6 +163,7 @@
         label.append(input);
         const submit = element('button', 'Create task');
         submit.type = 'submit';
+        submit.disabled = project.archived;
         form.append(label, submit);
         const alert = element('p');
         alert.setAttribute('role', 'alert');
@@ -150,7 +184,7 @@
         function renderTasks() {
           list.replaceChildren();
           const matching = tasks.filter((task) => filter.value === 'All' || (filter.value === 'Completed') === task.completed);
-          for (const task of matching) appendTask(list, task, project.id, (updated) => {
+          for (const task of matching) appendTask(list, task, project.id, project.archived, (updated) => {
             tasks = tasks.map((item) => item.id === updated.id ? updated : item);
             renderTasks();
           });
@@ -189,13 +223,14 @@
         return response.json();
       }
 
-      function appendTask(list, task, projectId, onUpdate) {
+      function appendTask(list, task, projectId, archived, onUpdate) {
         const row = element('li', undefined, 'task-row');
         row.dataset.testid = 'task-row';
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = task.completed;
+        checkbox.disabled = archived;
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         checkbox.addEventListener('change', async () => {
           checkbox.disabled = true;
