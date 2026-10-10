@@ -143,7 +143,20 @@ async function renderProject(id) {
           await refreshTasks();
         } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
       });
-      row.append(checkbox, element('span', { text: task.title }), priorityLabel, priority, renameForm); list.append(row);
+      const dueForm = element('form', { className: 'create-form' });
+      const dueLabel = element('label', { text: 'Task due date' });
+      const dueInput = element('input'); dueInput.type = 'text'; dueInput.value = task.dueDate || ''; dueInput.disabled = Boolean(project.archived);
+      dueLabel.htmlFor = `task-due-date-${task.id}`; dueInput.id = dueLabel.htmlFor;
+      const dueButton = element('button', { text: 'Save due date' }); dueButton.type = 'submit'; dueButton.disabled = Boolean(project.archived);
+      dueForm.append(dueLabel, dueInput, dueButton);
+      dueForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/due-date`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: dueInput.value }) });
+          await refreshTasks();
+        } catch (error) { alert.textContent = error.message; alert.hidden = false; }
+      });
+      row.append(checkbox, element('span', { text: task.title }), priorityLabel, priority, renameForm, dueForm); list.append(row);
     }
   }
   form.addEventListener('submit', async event => {

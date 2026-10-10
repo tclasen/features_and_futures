@@ -18,25 +18,28 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT
   )
 `);
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 database.exec('PRAGMA foreign_keys = ON');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const addProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0');
-const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -113,6 +116,28 @@ const server = createServer(async (request, response) => {
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
     const result = renameTask.run(title, taskId, projectId);
+    return result.changes ? sendJson(response, 200, getTask.get(taskId)) : sendJson(response, 404, { error: 'Task not found' });
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
+  if (dueDateMatch && request.method === 'PATCH') {
+    const projectId = Number(dueDateMatch[1]);
+    const taskId = Number(dueDateMatch[2]);
+    const project = getProject.get(projectId);
+    if (!project || project.archived) return sendJson(response, 404, { error: 'Active project not found' });
+    const body = await readBody(request);
+    const rawDate = typeof body?.dueDate === 'string' ? body.dueDate.trim() : '';
+    let dueDate = null;
+    if (rawDate) {
+      const match = rawDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!match) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const [, yearText, monthText, dayText] = match;
+      const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      dueDate = rawDate;
+    }
+    const result = updateDueDate.run(dueDate, taskId, projectId);
     return result.changes ? sendJson(response, 200, getTask.get(taskId)) : sendJson(response, 404, { error: 'Task not found' });
   }
   const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
