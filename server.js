@@ -92,6 +92,21 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, { completed: data.completed });
     } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
   }
+  const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (request.method === 'PATCH' && taskRenameMatch) {
+    try {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const data = JSON.parse(body);
+      const title = typeof data.title === 'string' ? data.title.trim() : '';
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      const task = database.prepare('SELECT tasks.id, projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(Number(taskRenameMatch[1]));
+      if (!task) return sendJson(response, 404, { error: 'Task not found' });
+      if (task.archived) return sendJson(response, 409, { error: 'Archived project' });
+      database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, Number(taskRenameMatch[1]));
+      return sendJson(response, 200, { title });
+    } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'PATCH' && projectMatch) {
     try {

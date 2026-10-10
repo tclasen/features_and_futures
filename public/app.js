@@ -38,7 +38,24 @@ function renderTasks() {
       if (response.ok) { task.completed = checkbox.checked; renderTasks(); }
       else showTaskError('Unable to update task');
     });
-    row.append(title, checkbox);
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.disabled = Boolean(window.currentProjectArchived);
+    const renameButton = document.createElement('button');
+    renameButton.type = 'button';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = Boolean(window.currentProjectArchived);
+    renameButton.addEventListener('click', async () => {
+      const newTitle = renameInput.value.trim();
+      if (!newTitle) { showTaskError('Task title is required'); return; }
+      const response = await fetch(`/api/tasks/${task.id}/rename`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+      if (!response.ok) { showTaskError('Unable to rename task'); return; }
+      task.title = newTitle;
+      renderTasks();
+    });
+    row.append(title, renameInput, renameButton, checkbox);
     container.append(row);
   }
 }
