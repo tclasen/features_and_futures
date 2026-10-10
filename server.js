@@ -23,6 +23,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const page = await readFile(new URL('./index.html', import.meta.url));
 
@@ -87,7 +90,7 @@ const server = createServer(async (req, res) => {
     const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return sendJson(res, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+      return sendJson(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
     }
     if (req.method === 'POST') {
       if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
@@ -96,7 +99,7 @@ const server = createServer(async (req, res) => {
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(res, 201, { id: Number(result.lastInsertRowid), title, completed: 0 });
+      return sendJson(res, 201, { id: Number(result.lastInsertRowid), title, completed: 0, priority: 'Normal' });
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -116,8 +119,23 @@ const server = createServer(async (req, res) => {
   if (req.method === 'PATCH' && taskMatch) {
     let data;
     try { data = await readJson(req); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
-    if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
-    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, Number(taskMatch[1]));
+    const hasCompletion = Object.hasOwn(data, 'completed');
+    const hasPriority = Object.hasOwn(data, 'priority');
+    if (!hasCompletion && !hasPriority) return sendJson(res, 400, { error: 'No task changes supplied' });
+    if (hasCompletion && typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
+    if (hasPriority && !['Low', 'Normal', 'High'].includes(data.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+    const taskId = Number(taskMatch[1]);
+    const task = db.prepare('SELECT t.id, p.archived FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(taskId);
+    if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    if (task.archived) return sendJson(res, 409, { error: 'Archived project' });
+    if (hasCompletion && hasPriority) {
+      db.prepare('UPDATE tasks SET completed = ?, priority = ? WHERE id = ?').run(data.completed ? 1 : 0, data.priority, taskId);
+    } else if (hasCompletion) {
+      db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, taskId);
+    } else {
+      db.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(data.priority, taskId);
+    }
+    const result = { changes: 1 };
     return result.changes ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Task not found' });
   }
   if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
