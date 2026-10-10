@@ -10,6 +10,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -39,7 +40,11 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    json(response, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
+    json(response, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
+      FROM projects p WHERE p.archived = ? ORDER BY p.id`).all(archived).map(p => ({...p, archived: Boolean(p.archived)})));
     return;
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
@@ -52,9 +57,16 @@ const server = createServer(async (request, response) => {
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (!project) { json(response, 404, { error: 'Project not found' }); return; }
-    json(response, 200, project);
+    json(response, 200, {...project, archived: Boolean(project.archived)});
+    return;
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (request.method === 'POST' && archiveMatch) {
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
+    if (!result.changes) { json(response, 404, { error: 'Project not found' }); return; }
+    json(response, 200, { archived: archiveMatch[2] === 'archive' });
     return;
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
@@ -68,6 +80,7 @@ const server = createServer(async (request, response) => {
   if (tasksMatch && request.method === 'POST') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) { json(response, 404, { error: 'Project not found' }); return; }
+    if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) { json(response, 403, { error: 'Archived project' }); return; }
     const body = await readBody(request);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) { json(response, 400, { error: 'Task title is required' }); return; }
@@ -80,6 +93,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
     const body = await readBody(request);
+    if (db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId)?.archived) { json(response, 403, { error: 'Archived project' }); return; }
     if (typeof body?.completed !== 'boolean') { json(response, 400, { error: 'Completion state is required' }); return; }
     const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(body.completed ? 1 : 0, taskId, projectId);
     if (!result.changes) { json(response, 404, { error: 'Task not found' }); return; }

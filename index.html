@@ -23,6 +23,7 @@
       <label>Project name<input id="project-name" name="name" type="text" autocomplete="off"></label>
       <button type="submit">Create project</button>
     </form>
+    <label>Project filter<select id="project-filter"><option value="false">Active</option><option value="true">Archived</option></select></label>
     <p id="alert" role="alert" aria-live="polite"></p>
     <ul id="projects" aria-label="Projects"></ul>
   </main>
@@ -30,7 +31,8 @@
     const list = document.querySelector('#projects');
     const alertBox = document.querySelector('#alert');
     async function loadProjects() {
-      const response = await fetch('/api/projects');
+      const archived = document.querySelector('#project-filter').value;
+      const response = await fetch(`/api/projects?archived=${archived}`);
       const projects = await response.json();
       list.replaceChildren(...projects.map(project => {
         const row = document.createElement('li');
@@ -38,11 +40,23 @@
         row.dataset.testid = 'project-row';
         const name = document.createElement('span');
         name.textContent = project.name;
+        const actions = document.createElement('div');
+        const summary = document.createElement('span');
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = `${project.completed_count}/${project.total_count} completed`;
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Open project';
         button.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-        row.append(name, button);
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          await fetch(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+          await loadProjects();
+        });
+        actions.append(button, archive);
+        row.append(name, summary, actions);
         return row;
       }));
     }
@@ -56,6 +70,7 @@
       document.querySelector('#project-name').value = '';
       await loadProjects();
     });
+    document.querySelector('#project-filter').addEventListener('change', loadProjects);
     loadProjects();
   </script>
 </body>
