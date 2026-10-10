@@ -25,6 +25,9 @@ const projectId = window.location.pathname.match(/^\/projects\/([1-9]\d*)$/)?.[1
 let tasks = [];
 let projectItems = [];
 let archived = false;
+let pendingWrites = 0;
+let stateVersion = 0;
+const destinationSelections = new Map();
 const projectFilter = document.querySelector('#project-filter');
 
 function showError(message) {
@@ -33,10 +36,18 @@ function showError(message) {
 }
 
 async function request(path, options) {
-  const response = await fetch(path, options);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed');
-  return result;
+  if (options) {
+    pendingWrites++;
+    stateVersion++;
+  }
+  try {
+    const response = await fetch(path, options);
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Request failed');
+    return result;
+  } finally {
+    if (options) pendingWrites--;
+  }
 }
 
 function renderProjects() {
@@ -342,7 +353,14 @@ function renderTasks() {
       option.textContent = project.name;
       destinationSelect.append(option);
     }
-    if (destinations.length) destinationSelect.value = String(destinations[0].id);
+    const selectedDestination = destinationSelections.get(task.id);
+    if (destinations.length) {
+      destinationSelect.value = destinations.some((project) => String(project.id) === selectedDestination)
+        ? selectedDestination : String(destinations[0].id);
+    }
+    destinationSelect.addEventListener('change', () => {
+      destinationSelections.set(task.id, destinationSelect.value);
+    });
     const moveButton = document.createElement('button');
     moveButton.type = 'submit';
     moveButton.textContent = 'Move task';
@@ -360,6 +378,7 @@ function renderTasks() {
           body: JSON.stringify({ destinationProjectId: Number(destinationSelect.value) }),
         });
         tasks = tasks.filter((item) => item.id !== task.id);
+        destinationSelections.delete(task.id);
         renderTasks();
       } catch (error) {
         showError(error.message);
@@ -404,18 +423,27 @@ taskForm.addEventListener('submit', async (event) => {
 
 document.querySelector('#back').addEventListener('click', () => window.location.assign('/'));
 
+function showProject(project) {
+  archived = project.archived;
+  defaultTaskPriority = project.defaultTaskPriority;
+  defaultPrioritySelect.value = defaultTaskPriority;
+  defaultPrioritySelect.disabled = archived;
+  document.querySelector('#archived-notice').hidden = !archived;
+  taskForm.querySelector('button').disabled = archived;
+  newNameInput.disabled = archived;
+  renameForm.querySelector('button').disabled = archived;
+  showProjectName(project.name);
+}
+
+function destinationOptions(items) {
+  return items.filter((project) => !project.archived && String(project.id) !== projectId)
+    .map(({ id, name }) => ({ id, name }));
+}
+
 async function loadPage() {
   if (projectId) {
     const project = await request(`/api/projects/${projectId}`);
-    archived = project.archived;
-    defaultTaskPriority = project.defaultTaskPriority;
-    defaultPrioritySelect.value = defaultTaskPriority;
-    defaultPrioritySelect.disabled = archived;
-    document.querySelector('#archived-notice').hidden = !archived;
-    taskForm.querySelector('button').disabled = archived;
-    newNameInput.disabled = archived;
-    renameForm.querySelector('button').disabled = archived;
-    showProjectName(project.name);
+    showProject(project);
     projectItems = await request('/api/projects');
     tasks = await request(`/api/projects/${projectId}/tasks`);
     renderTasks();
@@ -426,4 +454,40 @@ async function loadPage() {
   }
 }
 
-loadPage().catch((error) => showError(error.message));
+// Keep separately opened pages current after transfers, without navigating or
+// resetting filters. Ignore snapshots that overlap a local write.
+let refreshing = false;
+async function refreshPage() {
+  if (refreshing || pendingWrites) return;
+  refreshing = true;
+  const version = stateVersion;
+  try {
+    const nextProjects = await request('/api/projects');
+    const nextTasks = projectId ? await request(`/api/projects/${projectId}/tasks`) : null;
+    if (pendingWrites || version !== stateVersion) return;
+    const projectsChanged = JSON.stringify(nextProjects) !== JSON.stringify(projectItems);
+    const destinationsChanged = JSON.stringify(destinationOptions(nextProjects)) !== JSON.stringify(destinationOptions(projectItems));
+    projectItems = nextProjects;
+    if (!projectId) {
+      if (projectsChanged) renderProjects();
+      return;
+    }
+    const project = projectItems.find((item) => String(item.id) === projectId);
+    if (!project) return;
+    const archiveChanged = archived !== project.archived;
+    showProject(project);
+    const tasksChanged = JSON.stringify(nextTasks) !== JSON.stringify(tasks);
+    tasks = nextTasks;
+    if (tasksChanged || destinationsChanged || archiveChanged) renderTasks();
+  } catch {
+    // A temporary background connection failure must not interrupt editing.
+    // Explicit user actions still report errors through the visible alert.
+  } finally {
+    refreshing = false;
+  }
+}
+
+loadPage().then(() => {
+  setInterval(refreshPage, 500);
+  window.addEventListener('focus', refreshPage);
+}).catch((error) => showError(error.message));

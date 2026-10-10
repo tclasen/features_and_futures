@@ -46,11 +46,13 @@ async function page(archived = false, savedDates = {}, destinations = []) {
   }
   for (const [index, date] of Object.entries(savedDates)) tasks[index].dueDate = date;
   const writes = [];
+  let refresh;
   const project = { id: 1, name: 'Project', archived, defaultTaskPriority: 'Normal' };
   runInNewContext(source, {
     normalizeDueDate,
     document: { querySelector: (selector) => get(selector.slice(1)), createElement: (tag) => new Element(tag) },
-    window: { location: { pathname: '/projects/1' } },
+    setInterval: (callback) => { refresh = callback; },
+    window: { location: { pathname: '/projects/1' }, addEventListener() {} },
     fetch: async (path, options) => {
       let result;
       if (options) {
@@ -91,7 +93,7 @@ async function page(archived = false, savedDates = {}, destinations = []) {
     get(id).value = value;
     await get(id).fire('change');
   };
-  return { get, tasks, rows, titles, filter, writes };
+  return { get, tasks, rows, titles, filter, writes, refresh: () => refresh() };
 }
 
 test('move controls list only other active projects and preserve all applied filters', async () => {
@@ -129,6 +131,47 @@ test('move controls list only other active projects and preserve all applied fil
       assert.equal(row.children[6].children[2].disabled, true);
     }
   }
+});
+
+test('an open destination observes incoming tasks without resetting combined filters', async () => {
+  const view = await page(false, { 4: '2033-01-01' });
+  await view.filter('task-filter', 'open');
+  await view.filter('priority-filter', 'High');
+  await applyRange(view, '2033-01-01', '2033-01-01');
+  const transferred = { id: 20, title: 'Transferred', completed: false, priority: 'High', dueDate: '2033-01-01' };
+  view.tasks.push(transferred);
+  await view.refresh();
+  assert.deepEqual(view.titles(), ['High false', 'Transferred']);
+  assert.equal(view.get('task-filter').value, 'open');
+  assert.equal(view.get('priority-filter').value, 'High');
+  assert.equal(view.get('due-from').value, '2033-01-01');
+  assert.equal(view.get('due-through').value, '2033-01-01');
+  view.tasks.splice(view.tasks.findIndex((task) => task.id === 20), 1);
+  await view.refresh();
+  assert.deepEqual(view.titles(), ['High false']);
+  assert.equal(view.writes.length, 0);
+});
+
+test('destination selection survives task edits and background refreshes before moving', async () => {
+  const view = await page(false, {}, [
+    { id: 2, name: 'First', archived: false },
+    { id: 3, name: 'Chosen', archived: false },
+  ]);
+  let row = view.rows()[0];
+  const select = row.children[6].children[1];
+  select.value = '3';
+  await select.fire('change');
+  row.children[5].children[1].value = '2033-01-01';
+  await row.children[5].fire('submit');
+  row = view.rows()[0];
+  assert.equal(row.children[6].children[1].value, '3');
+  view.tasks[1].title = 'Externally renamed';
+  await view.refresh();
+  row = view.rows()[0];
+  assert.equal(row.children[6].children[1].value, '3');
+  await row.children[6].fire('submit');
+  assert.equal(JSON.parse(view.writes.at(-1).body).destinationProjectId, 3);
+  assert.equal(view.titles().includes('Low false'), false);
 });
 
 test('combined filters intersect every completion and priority value in creation order without writes', async () => {
