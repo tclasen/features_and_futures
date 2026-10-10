@@ -1015,7 +1015,7 @@ test('move controls list eligible projects, retain filters, recover from errors,
   assert.equal(select.parent.children[2].disabled, true);
 });
 
-test('project search applies ASCII substrings, preserves whitespace and archive filter, and resets on entry', async () => {
+test('project search normalizes spaces and tabs, preserves names and archive filter, and resets on entry', async () => {
   const projects = [
     { id: 1, name: 'Alpha  Beta', archived: 0, completed_count: 1, total_count: 3 },
     { id: 2, name: 'alpha Beta', archived: 0, completed_count: 0, total_count: 0 },
@@ -1049,8 +1049,9 @@ test('project search applies ASCII substrings, preserves whitespace and archive 
   assert.deepEqual(names(), ['Alpha  Beta', 'alpha Beta', 'Älpha']);
   for (const [query, expected] of [
     [' \tALPHA\n ', ['Alpha  Beta', 'alpha Beta']],
-    ['alpha  b', ['Alpha  Beta']],
-    ['alpha b', ['alpha Beta']],
+    ['alpha  b', ['Alpha  Beta', 'alpha Beta']],
+    ['alpha\t \tb', ['Alpha  Beta', 'alpha Beta']],
+    ['alpha b', ['Alpha  Beta', 'alpha Beta']],
     ['älpha', []], ['ÄLPHA', ['Älpha']], [' \t ', ['Alpha  Beta', 'alpha Beta', 'Älpha']],
   ]) {
     search.value = query;
@@ -1113,7 +1114,7 @@ test('task search intersects every filter, retains applied query, and stays usab
     assert.equal(app.find((node) => node.htmlFor === search.id).textContent, 'Task search');
     assert.equal(search.parent.children[2].textContent, 'Search tasks');
     assert.equal(search.parent.children[2].disabled, false);
-    for (const query of ['alpha', 'alpha  ', 'alpha  f', 'alpha s', 'älpha', 'Älpha', ' \t ']) {
+    for (const query of ['alpha', 'alpha  ', 'alpha  f', 'alpha\t \tf', 'alpha s', 'älpha', 'Älpha', ' \t ']) {
       for (const completed of ['All', 'Open', 'Completed']) {
         for (const selectedPriority of ['All', 'Low', 'Normal', 'High']) {
           completion.value = completed;
@@ -1124,7 +1125,7 @@ test('task search intersects every filter, retains applied query, and stays usab
           await from.parent.fire('submit');
           search.value = ` ${query} `;
           await search.parent.fire('submit');
-          const fold = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+          const fold = (text) => text.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
           const expected = tasks.filter((task) => task.due_date === '2024-02-29' &&
             (completed === 'All' || task.completed === (completed === 'Completed')) &&
             (selectedPriority === 'All' || task.priority === selectedPriority) &&
@@ -1159,6 +1160,41 @@ test('task search intersects every filter, retains applied query, and stays usab
   }
   assert.equal(mutations, 0);
   assert.equal(JSON.stringify(tasks), original);
+});
+
+test('search collapses only ASCII spaces and tabs and displays original saved names and titles', async () => {
+  const names = ['MiXeD \t  Case', 'mixed case', 'mixed\ncase', 'mixed\u00a0case'];
+  const projects = names.map((name, index) => ({ id: index + 1, name, archived: 0,
+    completed_count: 0, total_count: 0, default_task_priority: 'Normal' }));
+  const tasks = names.map((title, index) => ({ id: index + 1, project_id: 1, title,
+    completed: false, priority: 'Normal', due_date: '' }));
+  const original = JSON.stringify({ projects, tasks });
+  const fetch = async (path, options = {}) => {
+    assert.equal(options.method, undefined, 'Search must not write stored data');
+    return jsonResponse(path === '/api/projects' ? projects : path === '/api/projects/1' ? projects[0] : tasks);
+  };
+  for (const [path, searchId, listLabel] of [
+    ['/', 'project-search', 'Projects'], ['/projects/1', 'task-search', 'Tasks'],
+  ]) {
+    const { app } = await renderUI(path, fetch);
+    const search = app.find((node) => node.id === searchId);
+    const list = app.find((node) => node.attributes['aria-label'] === listLabel);
+    for (const [query, expected] of [
+      [' \tMIXED  \t CASE\n', names.slice(0, 2)],
+      ['mixed case', names.slice(0, 2)],
+      ['mixed\ncase', [names[2]]],
+      ['mixed\u00a0case', [names[3]]],
+      [' \t ', names],
+    ]) {
+      search.value = query;
+      await search.parent.fire('submit');
+      assert.deepEqual(list.children.map((row) => row.children[0].textContent), expected);
+      assert.equal(JSON.stringify({ projects, tasks }), original);
+    }
+    const reloaded = await renderUI(path, fetch);
+    assert.deepEqual(reloaded.app.find((node) => node.attributes['aria-label'] === listLabel)
+      .children.map((row) => row.children[0].textContent), names);
+  }
 });
 
 test('task mutations re-evaluate search while preserving all applied filters and current data', async () => {

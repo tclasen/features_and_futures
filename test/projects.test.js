@@ -84,10 +84,10 @@ test('launch contract, project and task validation, ownership, completion, and r
       assert.deepEqual(await response.json(), { error: 'Project name is required' });
       assert.deepEqual(await list(), []);
     }
-    const firstResponse = await create('  First project  ');
+    const firstResponse = await create('  First \t  project  ');
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
-    assert.equal(first.name, 'First project');
+    assert.equal(first.name, 'First \t  project');
     assert.equal(first.archived, 0);
     assert.equal(first.default_task_priority, 'Normal');
     assert.equal(first.total_count, 0);
@@ -120,10 +120,10 @@ test('launch contract, project and task validation, ownership, completion, and r
       assert.deepEqual(await response.json(), { error: 'Task title is required' });
       assert.deepEqual(await taskList(first.id), []);
     }
-    const taskResponse = await createTask(first.id, '  First task  ');
+    const taskResponse = await createTask(first.id, '  First \t  task  ');
     assert.equal(taskResponse.status, 201);
     const firstTask = await taskResponse.json();
-    assert.equal(firstTask.title, 'First task');
+    assert.equal(firstTask.title, 'First \t  task');
     assert.equal(firstTask.completed, false);
     assert.equal(firstTask.priority, 'Normal');
     const secondTask = await (await createTask(first.id, '<script> & Second task')).json();

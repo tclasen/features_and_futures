@@ -25,8 +25,8 @@ function showError(message) {
   alert.textContent = message;
 }
 
-function asciiLowercase(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 function searchControls(labelText, buttonText, id) {
@@ -42,12 +42,12 @@ function searchControls(labelText, buttonText, id) {
   let appliedQuery = '';
   return {
     form,
-    matches: (value) => asciiLowercase(value).includes(appliedQuery),
+    matches: (value) => normalizeSearch(value).includes(appliedQuery),
     onApply(draw) {
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         input.value = input.value.trim();
-        appliedQuery = asciiLowercase(input.value);
+        appliedQuery = normalizeSearch(input.value);
         draw();
       });
     },
