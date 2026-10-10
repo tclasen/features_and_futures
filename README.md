@@ -18,6 +18,6 @@ Open `http://localhost:8080`. The server binds to `0.0.0.0`; `PORT` defaults to 
 npm test
 ```
 
-Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. Tasks belong only to their project. The project list supports Active/Archived filtering, archive/restore controls, and completion summaries. Archived projects remain readable and filterable, but task creation and completion changes are disabled and rejected by the server.
+Project pages support task creation, completion checkboxes, and All/Open/Completed filtering. Tasks belong only to their project. The project list supports Active/Archived filtering, archive/restore controls, and completion summaries. Active project pages also support renaming with trimmed, nonblank names while preserving project URLs, creation order, tasks, and completion summaries. Archived projects remain readable and filterable, but renaming, task creation, and completion changes are disabled and rejected by the server.
 
-Tests use isolated temporary databases and verify project and task validation, creation order, HTML escaping, project navigation, task isolation, filtering, completion changes, health, archive/restore, completion summaries, legacy database migration, read-only archived tasks, and persistence across server restarts.
+Tests use isolated temporary databases and verify project and task validation, creation order, HTML escaping, project navigation, task isolation, filtering, completion changes, health, archive/restore, completion summaries, legacy database migration, read-only archived tasks, project rename validation and identity preservation, and persistence across server restarts.
