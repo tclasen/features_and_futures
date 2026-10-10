@@ -17,3 +17,5 @@ Retain L034 executed-assertion controls for prospective task006 preparation. Its
 Candidate inspection still starts at20tasks and repeats every10; select new features before comparative inspection. Execution and first-assessment classifications must be identified and stable in adjacent windows. Unidentified costs may enter confirmation as unresolved, never findings. The study completes only when all36 whole confidence intervals classify and reproduce in two disjoint registered batches for the same candidate and plan. No source-line or fixed task limit applies.
 
 Task005 barrier: L026 retained-incident controls verified on four original unknown receipts; strict accounting stays incomplete. L038 cumulative fixture names checked before task007 freeze; original failed fixture preserved.
+
+Task009 barrier: all six original incident histories and full native working trees restore, including exact original porcelain status. L039 full52-variant due-range fixture rerun verifies before task010freeze; failed original source/results preserved.

@@ -43,3 +43,5 @@ Review [the append-only journal](records.jsonl) and [the required procedure](../
 | L036 | Define first observed assessment separately from scheduled attempt acceptance | verified |
 | L037 | Recheck hash-bound originals after a readiness report | verified |
 | L038 | Keep cumulative test project names distinct under shared selectors | verified |
+
+| L039 | Preserve fault effects through shared fixture response paths | verified |
