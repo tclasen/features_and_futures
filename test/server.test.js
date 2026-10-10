@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects migrate, tasks stay isolated, and archive state and summaries persist across restarts', async () => {
+test('projects migrate, rename preserves identity, and tasks, archives and summaries persist across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
   legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
@@ -53,7 +53,7 @@ test('projects migrate, tasks stay isolated, and archive state and summaries per
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
     const firstResponse = await create('  First project  ');
     assert.equal(firstResponse.status, 201);
-    const first = await firstResponse.json();
+    let first = await firstResponse.json();
     assert.equal(first.name, 'First project');
     const second = await (await create('<Second & project>')).json();
     assert.notEqual(first.id, second.id);
@@ -97,11 +97,29 @@ test('projects migrate, tasks stay isolated, and archive state and summaries per
     const archive = (project, archived) => fetch(`${base}/api/projects/${project.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
     });
+    const rename = (project, name) => fetch(`${base}/api/projects/${project.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    for (const name of ['', '  \t\n']) {
+      const invalid = await rename(first, name);
+      assert.equal(invalid.status, 400);
+      assert.match((await invalid.json()).error, /Project name is required/);
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    }
+    const renamed = await rename(first, '  Renamed project  ');
+    assert.equal(renamed.status, 200);
+    assert.deepEqual(await renamed.json(), { ...first, name: 'Renamed project' });
+    first = { ...first, name: 'Renamed project' };
+    assert.deepEqual(await readTasks(first), [completed, nextTask]);
+    assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    assert.equal((await rename({ id: 99999 }, 'Missing')).status, 404);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [
       { ...first, total: 2, completed: 1 }, { ...second, total: 1, completed: 0 },
     ]);
     assert.equal((await archive(first, 'true')).status, 400);
     assert.deepEqual(await (await archive(first, true)).json(), { ...first, archived: 1 });
+    assert.equal((await rename(first, 'Cannot rename while archived')).status, 409);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), { ...first, archived: 1 });
     assert.equal((await createTask(first, 'Cannot create while archived')).status, 409);
     assert.equal((await completeTask(first, task, false)).status, 409);
     assert.deepEqual(await readTasks(first), [completed, nextTask]);
@@ -119,6 +137,8 @@ test('projects migrate, tasks stay isolated, and archive state and summaries per
     assert.equal((await fetch(`${base}/api/projects/99999`)).status, 404);
     assert.deepEqual(await (await archive(first, false)).json(), first);
     assert.deepEqual(await readTasks(first), [completed, nextTask]);
+    assert.deepEqual(await (await rename(first, '  Restored project  ')).json(), { ...first, name: 'Restored project' });
+    first = { ...first, name: 'Restored project' };
     assert.deepEqual(await (await completeTask(first, task, false)).json(), task);
     await stop();
     base = await start();

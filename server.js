@@ -16,6 +16,7 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.nam
 }
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +70,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PATCH' && match) {
       if (!getProject.get(match[1])) return json(res, 404, { error: 'Project not found' });
       const input = await readBody(req);
+      if (Object.hasOwn(input || {}, 'name')) {
+        if (getProject.get(match[1]).archived) return json(res, 409, { error: 'Archived project' });
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return json(res, 400, { error: 'Project name is required' });
+        renameProject.run(name, match[1]);
+        return json(res, 200, getProject.get(match[1]));
+      }
       if (typeof input?.archived !== 'boolean') return json(res, 400, { error: 'Archive state must be a boolean' });
       updateProject.run(Number(input.archived), match[1]);
       return json(res, 200, getProject.get(match[1]));

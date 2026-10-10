@@ -12,6 +12,8 @@ Open http://localhost:8080. Both environment variables are optional; the values 
 
 The project list initially shows Active projects. Each row includes its completed/total task summary and an Archive project button. Select Archived to open or restore archived projects. Archived project pages keep task filtering available and disable task creation and completion changes. Archive state persists, and existing databases are migrated automatically without losing projects or tasks.
 
+Active project pages provide New project name and Rename project controls. Renaming trims whitespace and preserves the project URL, list position, tasks, and completion summary. Blank names show an alert; archived projects disable renaming until restored. Names persist across reloads and restarts.
+
 Health check:
 
 ```sh
