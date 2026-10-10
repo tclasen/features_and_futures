@@ -9,7 +9,7 @@
     body { margin: 0; }
     main { max-width: 720px; margin: 64px auto; padding: 0 24px; }
     h1 { margin: 0 0 28px; font-size: 2rem; }
-    form, .project-row { display: flex; align-items: center; gap: 12px; }
+    form, .project-row, .task-row { display: flex; align-items: center; gap: 12px; }
     form { margin-bottom: 24px; }
     label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
     input { flex: 1; min-width: 0; padding: 11px 12px; border: 1px solid #b8c2ce; border-radius: 6px; font: inherit; }
@@ -19,6 +19,10 @@
     [role="alert"] { color: #a12622; margin: 0 0 16px; }
     .project-row { justify-content: space-between; padding: 16px; margin: 10px 0; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
     .project-name { font-weight: 600; overflow-wrap: anywhere; }
+    .task-row { justify-content: flex-start; padding: 14px 16px; margin: 10px 0; background: white; border: 1px solid #dce2e9; border-radius: 8px; }
+    .task-row input { flex: initial; width: 18px; height: 18px; }
+    .task-row label { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+    #task-filter { margin-bottom: 14px; padding: 9px 12px; border: 1px solid #b8c2ce; border-radius: 6px; font: inherit; }
   </style>
 </head>
 <body>
@@ -84,7 +88,67 @@
       if (!project) {
         app.innerHTML = '<h1>Project not found</h1><button type="button" id="back">Projects</button>';
       } else {
-        app.innerHTML = `<h1>${escapeHtml(project.name)}</h1><button type="button" id="back">Projects</button>`;
+        app.innerHTML = `
+          <h1>${escapeHtml(project.name)}</h1>
+          <button type="button" id="back">Projects</button>
+          <form id="create-task">
+            <label for="task-title">Task title</label>
+            <input id="task-title" name="title" type="text" aria-label="Task title">
+            <button type="submit">Create task</button>
+          </form>
+          <p id="message" role="alert" hidden></p>
+          <label for="task-filter">Task filter</label>
+          <select id="task-filter">
+            <option>All</option><option>Open</option><option>Completed</option>
+          </select>
+          <section id="tasks" aria-label="Tasks"></section>`;
+        const form = app.querySelector('#create-task');
+        const input = app.querySelector('#task-title');
+        const message = app.querySelector('#message');
+        const filter = app.querySelector('#task-filter');
+        const list = app.querySelector('#tasks');
+
+        async function refresh() {
+          const response = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
+          const tasks = await response.json();
+          const visible = tasks.filter((task) => filter.value === 'All'
+            || (filter.value === 'Open' && !task.completed)
+            || (filter.value === 'Completed' && task.completed));
+          list.innerHTML = visible.map((task) => `
+            <div class="task-row" data-testid="task-row">
+              <input type="checkbox" id="task-${task.id}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} aria-label="Complete ${escapeHtml(task.title)}">
+              <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+            </div>`).join('');
+          list.querySelectorAll('input[data-task-id]').forEach((checkbox) => {
+            checkbox.addEventListener('change', async () => {
+              await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${checkbox.dataset.taskId}`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ completed: checkbox.checked }),
+              });
+              await refresh();
+            });
+          });
+        }
+
+        filter.addEventListener('change', refresh);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          message.hidden = true;
+          const response = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ title: input.value.trim() }),
+          });
+          if (!response.ok) {
+            message.textContent = 'Task title is required';
+            message.hidden = false;
+            return;
+          }
+          input.value = '';
+          await refresh();
+        });
+        await refresh();
       }
       app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
     }
