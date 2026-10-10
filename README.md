@@ -7,7 +7,7 @@ npm start
 ```
 
 The server binds to `0.0.0.0`, using `PORT` (default `8080`). Set `DB_PATH`
-to the SQLite file to retain projects, archive state, their tasks, and completion state across
+to the SQLite file to retain projects, archive state, defaults, tasks, priorities, and completion state across
 restarts; the default is `data/workboard.sqlite`. Its parent directory is created automatically.
 `GET /health` returns `{"status":"ok"}`.
 
@@ -34,7 +34,7 @@ and completion summaries. Task rename controls are disabled while the project
 is archived and become available after restoration.
 
 Each task has a Task priority dropdown with Low, Normal, and High options.
-New and existing tasks default to Normal. Priority is saved independently for
+Existing tasks retain their saved priority. Priority is saved independently for
 each task and survives renaming, completion changes, and restarts. Archived
 projects disable priority edits; restoration preserves the saved priorities.
 
@@ -43,3 +43,9 @@ Tasks must match both filters and retain their creation order. Changing either
 filter preserves the other selection. Completion and priority edits immediately
 update which rows match; renaming preserves both selections. Both filters remain
 available on archived projects. Filters do not change saved data or summaries.
+
+Default task priority saves a separate Low, Normal, or High default for each
+project. Existing and new projects initially use Normal. New tasks inherit the
+project's saved default; changing it never updates existing tasks or either
+filter. The default survives renaming and restarts. Archived projects show it
+in a disabled dropdown, and restoration enables editing again.

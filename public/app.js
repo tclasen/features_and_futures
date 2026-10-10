@@ -151,11 +151,47 @@ async function renderProject(id) {
       app.append(notice);
     }
     renderRename(project);
+    renderDefaultTaskPriority(project);
     await renderTasks(id, project.archived);
   } catch (error) {
     app.querySelector('h1').textContent = 'Project unavailable';
     showError(app.querySelector('[role="alert"]'), error.message);
   }
+}
+
+function renderDefaultTaskPriority(project) {
+  const section = document.createElement('section');
+  section.innerHTML = `
+    <label for="default-task-priority">Default task priority</label>
+    <select id="default-task-priority">
+      <option value="Low">Low</option>
+      <option value="Normal">Normal</option>
+      <option value="High">High</option>
+    </select>
+    <p role="alert" hidden></p>`;
+  const select = section.querySelector('select');
+  const alert = section.querySelector('[role="alert"]');
+  select.value = project.defaultTaskPriority;
+  select.disabled = project.archived;
+  select.addEventListener('change', async () => {
+    if (select.disabled) return;
+    select.disabled = true;
+    alert.hidden = true;
+    try {
+      const updated = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultTaskPriority: select.value }),
+      });
+      project.defaultTaskPriority = updated.defaultTaskPriority;
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      select.value = project.defaultTaskPriority;
+      select.disabled = project.archived;
+    }
+  });
+  app.append(section);
 }
 
 function renderRename(project) {

@@ -101,10 +101,14 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'PATCH') {
         const input = await readJson(request);
+        const fields = ['name', 'archived', 'defaultTaskPriority'].filter((field) => input && Object.hasOwn(input, field));
+        if (fields.length > 1) {
+          return json(response, 400, { error: 'Change project name, archive state, or default task priority separately' });
+        }
+        if (fields[0] === 'defaultTaskPriority') {
+          return json(response, 200, store.setDefaultTaskPriority(projectApi[1], input.defaultTaskPriority));
+        }
         if (input && Object.hasOwn(input, 'name')) {
-          if (Object.hasOwn(input, 'archived')) {
-            return json(response, 400, { error: 'Change project name or archive state separately' });
-          }
           return json(response, 200, store.rename(projectApi[1], input.name));
         }
         if (typeof input?.archived !== 'boolean') {
