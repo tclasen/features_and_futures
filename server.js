@@ -63,6 +63,21 @@ const server = http.createServer(async (req, res) => {
       return send(200, JSON.stringify({ ok: true }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (renameRoute && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const name = String(JSON.parse(body).name ?? '').trim();
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, Number(renameRoute[1]));
+      if (!result.changes) {
+        const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(Number(renameRoute[1]));
+        return send(project ? 400 : 404, JSON.stringify({ error: project ? 'Archived project' : 'Project not found' }));
+      }
+      return send(200, JSON.stringify({ name }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
