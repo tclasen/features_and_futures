@@ -6,13 +6,27 @@ import { runInNewContext } from 'node:vm';
 test('combined filters retain selections and reevaluate completion, priority and rename edits', async () => {
   // Execute the actual page scripts with a DOM-shaped fixture.
   const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
-  const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+  const validator = source.match(/function validDueDate\(value\) \{[\s\S]*?\n\}/)[0];
+  const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1].replace('${validDueDate.toString()}', validator));
   function control(value) {
     return { value, disabled: false, addEventListener(type, handler) { this[type] = handler; } };
   }
   const completionFilter = control('All');
   const priorityFilter = control('All');
   const alert = { textContent: '' };
+  const dueFrom = control('');
+  const dueThrough = control('');
+  const range = control('');
+  const create = control('');
+  const renameProject = Object.assign(control(''), {
+    action: '/project-rename', elements: { name: control('') }, querySelector: () => control('')
+  });
+  Object.assign(create, {
+    action: '/task-create', elements: { title: control('') }, querySelector: () => control('')
+  });
+  const heading = { textContent: 'Original project' };
+  let sectionReplaced = false;
+  const section = { replaceWith() { sectionReplaced = true; } };
   const defaultPriority = Object.assign(control('Normal'), {
     dataset: { defaultUrl: '/default-priority', savedPriority: 'Normal' }
   });
@@ -27,10 +41,10 @@ test('combined filters retain selections and reevaluate completion, priority and
     const span = { textContent: `Task ${index}` };
     const button = control('');
     const row = { hidden: false, checkbox, select, span,
-      querySelector: selector => selector === '[data-priority-url]' ? select : selector === 'span' ? span : checkbox
+      querySelector: selector => selector === '[data-saved-date]' ? row.dueDateForm.elements.due_date : selector === '[data-priority-url]' ? select : selector === 'span' ? span : checkbox
     };
     row.dueDateForm = Object.assign(control(''), {
-      action: `/due-date/${index}`, elements: { due_date: control('') },
+      action: `/due-date/${index}`, elements: { due_date: Object.assign(control(''), { dataset: { savedDate: '' } }) },
       querySelector: () => button
     });
     row.form = Object.assign(control(''), {
@@ -43,9 +57,11 @@ test('combined filters retain selections and reevaluate completion, priority and
   let responseStatus = 204;
   const context = {
     URLSearchParams,
-    fetch: async () => ({ ok: saveOk, status: responseStatus }),
+    fetch: async () => ({ ok: saveOk, status: responseStatus, text: async () => '<section></section>' }),
+    DOMParser: class { parseFromString() { return { querySelector: () => section }; } },
     document: {
-      getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : alert,
+      querySelector: selector => selector === 'h1' ? heading : section,
+      getElementById: id => id === 'task-filter' ? completionFilter : id === 'priority-filter' ? priorityFilter : id === 'default-task-priority' ? defaultPriority : ({ 'due-from': dueFrom, 'due-through': dueThrough, 'due-range': range, 'task-create': create, 'project-rename': renameProject })[id] || alert,
       querySelectorAll: selector => ({
         '[data-testid="task-row"]': rows,
         '[data-completion-url]': rows.map(row => row.checkbox),
@@ -120,6 +136,55 @@ test('combined filters retain selections and reevaluate completion, priority and
   assert.deepEqual(visible(), []);
   assert.equal(completionFilter.value, 'Open');
   assert.equal(priorityFilter.value, 'High');
+  saveOk = true;
+  responseStatus = 204;
+  completionFilter.value = 'All';
+  priorityFilter.value = 'All';
+  const applyRange = (from, through) => {
+    dueFrom.value = from;
+    dueThrough.value = through;
+    range.submit({ preventDefault() {} });
+  };
+  rows[0].dueDateForm.elements.due_date.dataset.savedDate = '0001-01-01';
+  rows[1].dueDateForm.elements.due_date.dataset.savedDate = '2024-02-29';
+  rows[2].dueDateForm.elements.due_date.dataset.savedDate = '2024-02-29';
+  rows[3].dueDateForm.elements.due_date.dataset.savedDate = '9999-12-31';
+  applyRange(' 2024-02-29 ', '2024-02-29 ');
+  assert.deepEqual(visible(), [1, 2]);
+  for (const invalid of ['2023-02-29', '1900-02-29', '0000-01-01', '2024-2-29', '2024-04-31']) {
+    applyRange(invalid, '');
+    assert.equal(alert.textContent, 'Due range must use valid YYYY-MM-DD dates');
+    assert.deepEqual(visible(), [1, 2]);
+  }
+  applyRange('2025-01-01', '2024-02-29');
+  assert.equal(alert.textContent, 'Due from must not be after Due through');
+  assert.deepEqual(visible(), [1, 2]);
+  renameProject.elements.name.value = '  Renamed project  ';
+  await renameProject.submit({ preventDefault() {}, currentTarget: renameProject });
+  assert.equal(heading.textContent, 'Renamed project');
+  assert.deepEqual(visible(), [1, 2]);
+  create.elements.title.value = '  Created task  ';
+  await create.submit({ preventDefault() {}, currentTarget: create });
+  assert.equal(sectionReplaced, true);
+  assert.equal(create.elements.title.value, '');
+  assert.deepEqual(visible(), [1, 2]);
+  assert.equal(completionFilter.value, 'All');
+  assert.equal(priorityFilter.value, 'All');
+  priorityFilter.value = 'High';
+  priorityFilter.change();
+  assert.deepEqual(visible(), []);
+  rows[2].select.value = 'High';
+  await rows[2].select.change();
+  assert.deepEqual(visible(), [2]);
+  rows[2].dueDateForm.elements.due_date.value = '2025-01-01';
+  await rows[2].dueDateForm.submit({ preventDefault() {} });
+  assert.deepEqual(visible(), []);
+  applyRange('', '2024-02-29');
+  assert.deepEqual(visible(), [0]);
+  applyRange('2024-02-29', '');
+  assert.deepEqual(visible(), [2, 3]);
+  applyRange('', '');
+  assert.deepEqual(visible(), [0, 2, 3]);
   // Read-only archived rows can still be filtered without enabling their editors.
   rows.forEach(row => { row.checkbox.disabled = true; row.select.disabled = true; });
   completionFilter.value = 'Completed';

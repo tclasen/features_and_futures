@@ -130,7 +130,7 @@ function projectPage(project, error = '') {
     <form action="/" method="get"><button type="submit">Projects</button></form>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <div role="alert" id="task-error">${escapeHtml(error)}</div>
-    <form action="/projects/${project.id}/rename" method="post">
+    <form action="/projects/${project.id}/rename" method="post" id="project-rename">
       <label for="new-project-name">New project name</label>
       <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
       <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
@@ -139,7 +139,7 @@ function projectPage(project, error = '') {
     <select id="default-task-priority" data-default-url="/projects/${project.id}/default-priority" data-saved-priority="${project.default_priority}"${project.archived ? ' disabled' : ''}>
       ${['Low', 'Normal', 'High'].map(priority => `<option${priority === project.default_priority ? ' selected' : ''}>${priority}</option>`).join('')}
     </select>
-    <form action="/projects/${project.id}/tasks" method="post">
+    <form action="/projects/${project.id}/tasks" method="post" id="task-create">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text">
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
@@ -152,6 +152,13 @@ function projectPage(project, error = '') {
     <select id="priority-filter">
       <option>All</option><option>Low</option><option>Normal</option><option>High</option>
     </select>
+    <form id="due-range">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text">
+      <button type="submit">Apply due range</button>
+    </form>
     <section aria-label="Tasks">${listTasks.all(project.id).map(task => `
       <div class="task-row" data-testid="task-row">
         <input type="checkbox" aria-label="${escapeHtml(`Complete ${task.title}`)}"
@@ -168,24 +175,51 @@ function projectPage(project, error = '') {
         </form>
         <form action="/projects/${project.id}/tasks/${task.id}/due-date" method="post" data-task-due-date>
           <label for="task-due-date-${task.id}">Task due date</label>
-          <input id="task-due-date-${task.id}" name="due_date" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <input id="task-due-date-${task.id}" name="due_date" type="text" value="${escapeHtml(task.due_date)}" data-saved-date="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
       </div>`).join('')}</section>
     <script>
       const filter = document.getElementById('task-filter');
       const priorityFilter = document.getElementById('priority-filter');
+      const dueFrom = document.getElementById('due-from');
+      const dueThrough = document.getElementById('due-through');
+      let appliedFrom = '';
+      let appliedThrough = '';
+      ${validDueDate.toString()}
+      document.getElementById('due-range').addEventListener('submit', event => {
+        event.preventDefault();
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        const alert = document.getElementById('task-error');
+        if (!validDueDate(from) || !validDueDate(through)) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through';
+          return;
+        }
+        alert.textContent = '';
+        appliedFrom = dueFrom.value = from;
+        appliedThrough = dueThrough.value = through;
+        applyFilter();
+      });
       function applyFilter() {
         document.querySelectorAll('[data-testid="task-row"]').forEach(row => {
           const completed = row.querySelector('[data-completion-url]').checked;
           const priority = row.querySelector('[data-priority-url]').value;
           const matchesCompletion = filter.value === 'All' || (filter.value === 'Completed' ? completed : !completed);
           const matchesPriority = priorityFilter.value === 'All' || priorityFilter.value === priority;
-          row.hidden = !matchesCompletion || !matchesPriority;
+          const date = row.querySelector('[data-saved-date]').dataset.savedDate;
+          const matchesDate = (!appliedFrom && !appliedThrough) ||
+            (date && (!appliedFrom || date >= appliedFrom) && (!appliedThrough || date <= appliedThrough));
+          row.hidden = !matchesCompletion || !matchesPriority || !matchesDate;
         });
       }
       filter.addEventListener('change', applyFilter);
       priorityFilter.addEventListener('change', applyFilter);
+      function bindTaskRows() {
       document.querySelectorAll('[data-completion-url]').forEach(checkbox => {
         checkbox.addEventListener('change', async () => {
           const completed = checkbox.checked;
@@ -205,8 +239,6 @@ function projectPage(project, error = '') {
           }
         });
       });
-    </script>
-    <script>
       document.querySelectorAll('[data-task-rename]').forEach(form => {
         form.addEventListener('submit', async event => {
           event.preventDefault();
@@ -236,8 +268,6 @@ function projectPage(project, error = '') {
           }
         });
       });
-    </script>
-    <script>
       document.querySelectorAll('[data-priority-url]').forEach(select => {
         select.addEventListener('change', async () => {
           const priority = select.value;
@@ -259,8 +289,6 @@ function projectPage(project, error = '') {
           }
         });
       });
-    </script>
-    <script>
       document.querySelectorAll('[data-task-due-date]').forEach(form => {
         form.addEventListener('submit', async event => {
           event.preventDefault();
@@ -280,12 +308,66 @@ function projectPage(project, error = '') {
             }
             if (!response.ok) throw new Error('Due date update failed');
             input.value = dueDate;
+            input.dataset.savedDate = dueDate;
+            applyFilter();
           } catch {
             alert.textContent = 'Could not save task due date. Please try again.';
           } finally {
             button.disabled = false;
           }
         });
+      });
+      }
+      bindTaskRows();
+      document.getElementById('task-create').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const alert = document.getElementById('task-error');
+        const title = form.elements.title.value.trim();
+        alert.textContent = '';
+        if (!title) {
+          alert.textContent = 'Task title is required';
+          return;
+        }
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+          const response = await fetch(form.action, { method: 'POST', body: new URLSearchParams({ title }) });
+          if (!response.ok) throw new Error('Task creation failed');
+          const updated = new DOMParser().parseFromString(await response.text(), 'text/html');
+          document.querySelector('section[aria-label="Tasks"]').replaceWith(updated.querySelector('section[aria-label="Tasks"]'));
+          form.elements.title.value = '';
+          bindTaskRows();
+          applyFilter();
+        } catch {
+          alert.textContent = 'Could not create task. Please try again.';
+        } finally {
+          button.disabled = false;
+        }
+      });
+      document.getElementById('project-rename').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const name = form.elements.name.value.trim();
+        const alert = document.getElementById('task-error');
+        alert.textContent = '';
+        if (!name) {
+          alert.textContent = 'Project name is required';
+          return;
+        }
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+          const response = await fetch(form.action, { method: 'POST', body: new URLSearchParams({ name }) });
+          if (!response.ok) throw new Error('Project rename failed');
+          document.querySelector('h1').textContent = name;
+          document.title = name + ' — Workboard';
+          form.elements.name.value = name;
+        } catch {
+          alert.textContent = 'Could not rename project. Please try again.';
+        } finally {
+          button.disabled = false;
+        }
       });
       const defaultPriority = document.getElementById('default-task-priority');
       defaultPriority.addEventListener('change', async () => {

@@ -74,7 +74,7 @@ test('due dates validate calendar days, migrate, persist and respect task owners
     assert.equal(await get('/projects/1'), detail);
     await post('/projects/1/archive');
     detail = await get('/projects/1');
-    assert.match(detail, /id="task-due-date-1"[^>]*value="2026-04-30" disabled/);
+    assert.match(detail, /id="task-due-date-1"[^>]*value="2026-04-30"[^>]* disabled/);
     assert.match(detail, /<button type="submit" disabled>Save due date/);
     assert.equal((await save('')).status, 403);
     await server.stop();

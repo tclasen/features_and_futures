@@ -14,6 +14,8 @@ Open a project to create tasks, toggle completion, and filter All, Open, or Comp
 
 Each task has a `Task due date` textbox and `Save due date` button. Save a real Gregorian date in `YYYY-MM-DD` format (years 0001–9999), or leave it blank to clear it. Invalid dates are rejected without changing saved data. Dates persist independently through renames and restarts. Archived projects disable date editing until restored.
 
+Use `Due from`, `Due through`, and `Apply due range` for inclusive date filtering alongside completion and priority. Either boundary may be blank; undated tasks match only when both are blank. Invalid ranges leave the applied range unchanged. Edits, task creation, and renames retain all applied filters. Reopening a project resets its filters, and archived projects still allow filtering.
+
 Run automated HTTP, browser-script, and SQLite restart-persistence checks:
 
 ```sh
