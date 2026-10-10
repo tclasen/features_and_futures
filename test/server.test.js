@@ -48,7 +48,7 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     const page = await (await fetch(base)).text();
     assert.match(page, /<h1>Workboard<\/h1>/);
     const script = await (await fetch(`${base}/app.js`)).text();
-    for (const label of ['Project name', 'Create project', 'Open project', 'Projects', 'project-row', 'Task title', 'Create task', 'Task filter', 'All', 'Open', 'Completed', 'task-row', 'Complete ${task.title}', 'Project filter', 'Active', 'Archived', 'Archive project', 'Restore project', 'Archived project', 'project-summary']) {
+    for (const label of ['Project name', 'Create project', 'Open project', 'Projects', 'project-row', 'Task title', 'Create task', 'Task filter', 'All', 'Open', 'Completed', 'task-row', 'Complete ${task.title}', 'Project filter', 'Active', 'Archived', 'Archive project', 'Restore project', 'Archived project', 'project-summary', 'New project name', 'Rename project']) {
       assert.ok(script.includes(label));
     }
     for (const blank of ['', '  \t\n']) {
@@ -109,9 +109,14 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     const setArchive = archived => fetch(`${base}/api/projects/${first.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
     });
+    const rename = name => fetch(`${base}/api/projects/${first.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
     assert.equal((await setArchive('yes')).status, 400);
     const archived = { ...current, completed: 1, archived: 1 };
     assert.deepEqual(await (await setArchive(true)).json(), archived);
+    assert.equal((await rename('Not allowed')).status, 409);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), archived);
     assert.equal((await createTask('Not allowed')).status, 409);
     assert.equal((await complete(task, false)).status, 409);
     assert.deepEqual(await getTasks(), [completedTask, nextTask]);
@@ -127,6 +132,25 @@ test('projects and tasks validate, stay isolated and ordered, and survive server
     assert.deepEqual(await getTasks(), [completedTask, nextTask]);
     assert.equal((await complete(task, false)).status, 200);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), current);
+    for (const name of ['', '  \t\n']) {
+      const invalid = await rename(name);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Project name is required' });
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), current);
+    }
+    await complete(task, true);
+    const renamed = { ...current, name: 'Renamed project', completed: 1 };
+    const renamedResponse = await rename('  Renamed project  ');
+    assert.equal(renamedResponse.status, 200);
+    assert.deepEqual(await renamedResponse.json(), renamed);
+    assert.deepEqual(await getTasks(), [completedTask, nextTask]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    await stop();
+    await start();
+    assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), renamed);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [renamed, second]);
+    assert.deepEqual(await getTasks(), [completedTask, nextTask]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
