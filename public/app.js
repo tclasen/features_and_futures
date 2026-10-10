@@ -28,6 +28,7 @@ let archived = false;
 let pendingWrites = 0;
 let stateVersion = 0;
 const destinationSelections = new Map();
+const taskRows = new Map();
 const projectFilter = document.querySelector('#project-filter');
 
 function showError(message) {
@@ -197,7 +198,11 @@ dueRangeForm.addEventListener('submit', (event) => {
 });
 
 function renderTasks() {
-  tasksElement.replaceChildren();
+  const visibleRows = [];
+  const context = JSON.stringify([archived, destinationOptions(projectItems)]);
+  for (const id of taskRows.keys()) {
+    if (!tasks.some((task) => task.id === id)) taskRows.delete(id);
+  }
   for (const task of tasks) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
@@ -205,6 +210,12 @@ function renderTasks() {
     if ((dueFrom || dueThrough) && !task.dueDate) continue;
     if (dueFrom && task.dueDate < dueFrom) continue;
     if (dueThrough && task.dueDate > dueThrough) continue;
+    const existing = taskRows.get(task.id);
+    if (existing && existing.task === task && existing.context === context) {
+      existing.update();
+      visibleRows.push(existing.row);
+      continue;
+    }
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -334,6 +345,7 @@ function renderTasks() {
         dueDateInput.value = saved.dueDate;
         renderTasks();
       } catch (error) {
+        dueDateInput.value = task.dueDate;
         showError(error.message);
       } finally {
         saveDueDateButton.disabled = archived;
@@ -387,7 +399,24 @@ function renderTasks() {
       }
     });
     row.append(checkbox, title, renameTaskForm, priorityLabel, prioritySelect, dueDateForm, moveForm);
-    tasksElement.append(row);
+    let savedDueDate = task.dueDate;
+    const update = () => {
+      title.textContent = task.title;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.checked = task.completed;
+      prioritySelect.value = task.priority;
+      // Unrelated edits must not erase a due-date draft or detach its form.
+      if (savedDueDate !== task.dueDate) {
+        dueDateInput.value = task.dueDate;
+        savedDueDate = task.dueDate;
+      }
+    };
+    taskRows.set(task.id, { task, context, row, update });
+    visibleRows.push(row);
+  }
+  const currentRows = Array.from(tasksElement.children);
+  if (currentRows.length !== visibleRows.length || currentRows.some((row, index) => row !== visibleRows[index])) {
+    tasksElement.replaceChildren(...visibleRows);
   }
 }
 
@@ -477,7 +506,15 @@ async function refreshPage() {
     const archiveChanged = archived !== project.archived;
     showProject(project);
     const tasksChanged = JSON.stringify(nextTasks) !== JSON.stringify(tasks);
-    tasks = nextTasks;
+    if (tasksChanged) {
+      // Event handlers close over task objects. Reconcile snapshots in place so
+      // a refresh cannot disconnect an existing row from the current model.
+      const currentTasks = new Map(tasks.map((task) => [task.id, task]));
+      tasks = nextTasks.map((next) => {
+        const current = currentTasks.get(next.id);
+        return current ? Object.assign(current, next) : next;
+      });
+    }
     if (tasksChanged || destinationsChanged || archiveChanged) renderTasks();
   } catch {
     // A temporary background connection failure must not interrupt editing.

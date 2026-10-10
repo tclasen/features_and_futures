@@ -174,6 +174,67 @@ test('destination selection survives task edits and background refreshes before 
   assert.equal(view.titles().includes('Low false'), false);
 });
 
+test('unchanged polling snapshots do not disconnect due-date and completion handlers', async () => {
+  const view = await page();
+  const row = view.rows()[4];
+  await view.refresh();
+  const dateForm = row.children[5];
+  dateForm.children[1].value = '2029-01-15';
+  await dateForm.fire('submit');
+  assert.equal(view.tasks[4].dueDate, '2029-01-15');
+  assert.equal(view.rows()[4].children[5].children[1].value, '2029-01-15');
+  await view.refresh();
+  row.children[0].checked = true;
+  await row.children[0].fire('change');
+  assert.equal(view.rows()[4].children[0].checked, true);
+  await view.filter('task-filter', 'completed');
+  await view.filter('priority-filter', 'High');
+  await applyRange(view, '2029-01-15', '2029-01-15');
+  assert.deepEqual(view.titles(), ['High false']);
+});
+
+test('unrelated local and remote edits preserve due-date drafts and live row handlers', async () => {
+  const view = await page();
+  const row = view.rows()[0];
+  const dateForm = row.children[5];
+  dateForm.children[1].value = '2029-01-15';
+  row.children[4].value = 'High';
+  await row.children[4].fire('change');
+  assert.equal(view.rows()[0], row);
+  assert.equal(dateForm.children[1].value, '2029-01-15');
+  view.tasks[1].title = 'Remote rename';
+  await view.refresh();
+  assert.equal(view.rows()[0], row);
+  await dateForm.fire('submit');
+  assert.equal(view.rows()[0].children[5].children[1].value, '2029-01-15');
+  assert.equal(view.tasks[0].priority, 'High');
+  assert.equal(view.titles()[1], 'Remote rename');
+});
+
+test('completion after polling still matches combined filters before moving', async () => {
+  const view = await page(false, { 0: '2033-01-01' }, [
+    { id: 2, name: 'Target', archived: false },
+  ]);
+  await view.refresh();
+  let row = view.rows()[0];
+  row.children[4].value = 'High';
+  await row.children[4].fire('change');
+  await view.refresh();
+  row.children[0].checked = true;
+  await row.children[0].fire('change');
+  await view.filter('task-filter', 'completed');
+  await view.filter('priority-filter', 'High');
+  await applyRange(view, '2033-01-01', '2033-01-01');
+  assert.deepEqual(view.titles(), ['Low false']);
+  row = view.rows()[0];
+  await row.children[6].fire('submit');
+  assert.deepEqual(view.titles(), []);
+  assert.equal(JSON.parse(view.writes.at(-1).body).destinationProjectId, 2);
+  assert.equal(view.get('task-filter').value, 'completed');
+  assert.equal(view.get('priority-filter').value, 'High');
+  assert.equal(view.get('due-from').value, '2033-01-01');
+});
+
 test('combined filters intersect every completion and priority value in creation order without writes', async () => {
   const view = await page();
   assert.equal(view.get('priority-filter').value, 'all');
