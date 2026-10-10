@@ -378,6 +378,7 @@ test('existing task databases migrate without losing IDs or completion', async (
     assert.match(detail, /data-task-id="73"/);
     assert.match(detail, /aria-label="Complete Existing task" checked>/);
     assert.match(detail, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    assert.match(detail, /<select id="default-task-priority" name="priority"><option>Low<\/option><option selected>Normal<\/option><option>High<\/option><\/select>/);
     assert.doesNotMatch(detail, /<p>Archived project<\/p>/);
     await server.stop();
     server = await startServer(databasePath);
@@ -634,6 +635,9 @@ test('priority and completion filters intersect and survive edits, archive and r
     const filterForm = { requestSubmit() { submissions.push([completionFilter.value, priorityFilter.value]); } };
     completionFilter.form = priorityFilter.form = filterForm;
     const prioritySelect = control('Low');
+    const defaultPrioritySelect = control('Normal');
+    let defaultSubmitted = false;
+    defaultPrioritySelect.form = { requestSubmit() { defaultSubmitted = true; } };
     let prioritySubmitted = false;
     prioritySelect.form = { requestSubmit() { prioritySubmitted = true; } };
     const checkbox = Object.assign(control(), { dataset: { taskId: '5' }, checked: true });
@@ -642,7 +646,7 @@ test('priority and completion filters intersect and survive edits, archive and r
     let saveSucceeds = true;
     runInNewContext(/<script>([\s\S]*?)<\/script>/.exec(original)[1], {
       document: {
-        getElementById: (id) => ({ 'task-filter': completionFilter, 'priority-filter': priorityFilter, 'task-error': alert })[id],
+        getElementById: (id) => ({ 'task-filter': completionFilter, 'priority-filter': priorityFilter, 'default-task-priority': defaultPrioritySelect, 'task-error': alert })[id],
         querySelectorAll: (selector) => selector === '[data-task-priority]' ? [prioritySelect] : [checkbox],
       },
       window: { location: { reload() { reloads++; } } },
@@ -655,6 +659,10 @@ test('priority and completion filters intersect and survive edits, archive and r
     assert.deepEqual(submissions, [['All', 'High'], ['Open', 'High']]);
     prioritySelect.listeners.change();
     assert.equal(prioritySubmitted, true);
+    defaultPrioritySelect.listeners.change({ target: defaultPrioritySelect });
+    assert.equal(defaultSubmitted, true);
+    assert.equal(priorityFilter.value, 'High');
+    assert.equal(completionFilter.value, 'Open');
     completionFilter.value = 'All';
     await checkbox.listeners.change();
     assert.equal(reloads, 1); // Priority-only filtering also re-evaluates completion edits.
@@ -737,6 +745,115 @@ test('priority and completion filters intersect and survive edits, archive and r
     assert.equal(await html('/projects/1'), saved);
     assert.equal(await html('/'), summary);
     assertFilters(await html('/projects/1'), 'All', 'All');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project defaults affect only future tasks and persist independently through archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async (path) => (await fetch(`${server.base}${path}`)).text();
+    const rows = (content) => [...content.matchAll(/<div class="task" data-testid="task-row">([\s\S]*?)<\/div>/g)]
+      .map((match) => match[1]);
+    const assertDefault = (content, priority, disabled = false) => {
+      assert.match(content, /<label for="default-task-priority">Default task priority<\/label>/);
+      const select = /<select id="default-task-priority"[^>]*>([\s\S]*?)<\/select>/.exec(content);
+      assert.ok(select);
+      assert.equal(select[0].includes(' disabled'), disabled);
+      assert.deepEqual([...select[1].matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)].map((match) => match[1]),
+        ['Low', 'Normal', 'High']);
+      assert.match(select[1], new RegExp(`<option selected>${priority}</option>`));
+    };
+    const assertTask = (row, id, title, priority, completed = false) => {
+      assert.match(row, new RegExp(`data-task-id="${id}"`));
+      assert.match(row, new RegExp(`aria-label="Complete ${title}"${completed ? ' checked' : ''}>`));
+      assert.match(/<select[^>]*data-task-priority[^>]*>([\s\S]*?)<\/select>/.exec(row)[1],
+        new RegExp(`<option selected>${priority}</option>`));
+    };
+    await post('/projects', { name: 'One' });
+    await post('/projects', { name: 'Two' });
+    assertDefault(await html('/projects/1'), 'Normal');
+    assertDefault(await html('/projects/2'), 'Normal');
+    await post('/projects/1/tasks', { title: 'Original' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/2/tasks', { title: 'Other' });
+    const initial = await html('/projects/1');
+    const other = await html('/projects/2');
+    const summary = await html('/');
+    const filters = { filter: 'Completed', priorityFilter: 'Normal' };
+    const filteredPath = '/projects/1?filter=Completed&priorityFilter=Normal';
+    const filteredRows = rows(await html(filteredPath));
+    for (const priority of ['', 'Urgent', 'normal']) {
+      assert.equal((await post('/projects/1/default-priority', { ...filters, priority })).status, 400);
+      assert.equal(await html('/projects/1'), initial);
+    }
+    assert.equal((await post('/projects/999/default-priority', { priority: 'High' })).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const changed = await post('/projects/1/default-priority', { ...filters, priority });
+      assert.equal(changed.status, 303);
+      assert.equal(changed.headers.get('location'), filteredPath);
+      const filtered = await html(changed.headers.get('location'));
+      assertDefault(filtered, priority);
+      assert.match(filtered, /<option selected>Completed<\/option>/);
+      assert.match(filtered, /<select id="priority-filter"[^>]*><option>All<\/option><option>Low<\/option><option selected>Normal<\/option>/);
+      assert.deepEqual(rows(filtered), filteredRows);
+      assert.equal(await html('/projects/2'), other);
+      assert.equal(await html('/'), summary);
+    }
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Inherited low' });
+    await post('/projects/2/tasks', { title: 'Still normal' });
+    let taskRows = rows(await html('/projects/1'));
+    assert.equal(taskRows.length, 3);
+    assertTask(taskRows[0], 1, 'Original', 'Normal', true);
+    assertTask(taskRows[1], 3, 'Inherited high', 'High');
+    assertTask(taskRows[2], 4, 'Inherited low', 'Low');
+    const otherRows = rows(await html('/projects/2'));
+    assertTask(otherRows[0], 2, 'Other', 'Normal');
+    assertTask(otherRows[1], 5, 'Still normal', 'Normal');
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    await post('/projects/1/tasks/3/rename', { title: 'Renamed task' });
+    await post('/projects/1/tasks/3/priority', { priority: 'Normal' });
+    assertDefault(await html('/projects/1'), 'Low');
+    const saved = await html('/projects/1');
+    const savedOther = await html('/projects/2');
+    const savedSummary = await html('/');
+    assert.match(savedSummary, /data-testid="project-summary">1\/3 completed/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html('/projects/1'), saved);
+    assert.equal(await html('/projects/2'), savedOther);
+    assert.equal(await html('/'), savedSummary);
+
+    await post('/projects/1/archive');
+    const archived = await html(filteredPath);
+    assertDefault(archived, 'Low', true);
+    const blocked = await post('/projects/1/default-priority', { ...filters, priority: 'High' });
+    assert.equal(blocked.status, 403);
+    assertDefault(await blocked.text(), 'Low', true);
+    assert.equal(await html(filteredPath), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await html(filteredPath), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), saved);
+    assert.equal(await html('/'), savedSummary);
+    await post('/projects/1/tasks', { title: 'After restoration' });
+    taskRows = rows(await html('/projects/1'));
+    assertTask(taskRows[3], 6, 'After restoration', 'Low');
+    await post('/projects/1/default-priority', { priority: 'High' });
+    assertDefault(await html('/projects/1'), 'High');
+    assert.deepEqual(rows(await html('/projects/1')), taskRows);
+    assert.equal(await html('/projects/2'), savedOther);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

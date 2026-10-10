@@ -40,8 +40,9 @@ state and the selected filter. Archived projects disable task rename controls an
 reject rename requests until restored. Renamed titles persist across restarts.
 
 Each task has a Task priority selector with Low, Normal and High options. Existing
-and new tasks default to Normal. Priority changes save immediately and preserve
-the task's title, completion, ownership, order and current filter. Renaming also
+tasks default to Normal. New tasks inherit their project's saved default. Priority
+changes save immediately and preserve the task's title, completion, ownership,
+order and current filter. Renaming also
 preserves priority. Archived projects disable priority changes until restored.
 Priorities persist in SQLite across restarts; existing databases are upgraded
 automatically.
@@ -53,3 +54,10 @@ edits and completion changes. Filter state lives in the page URL (`filter` and
 `priorityFilter`); opening from the project list starts with both set to All.
 Filtering remains available while archived and does not change saved tasks or
 completion summaries.
+
+Each project page provides a Default task priority selector with Low, Normal and
+High options, initially Normal. Changes save immediately for that project and
+apply only to tasks created afterward. Existing tasks and both selected filters
+remain unchanged. Defaults persist across reloads, restarts and project renaming.
+Archived projects display the saved default but disable changes until restored.
+Existing SQLite databases are upgraded with Normal defaults without altering tasks.
