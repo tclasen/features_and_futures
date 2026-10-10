@@ -21,6 +21,7 @@ database.exec(`
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal',
     created_at INTEGER NOT NULL
   )
 `);
@@ -28,6 +29,10 @@ database.exec(`
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 
 const listProjects = database.prepare(`
@@ -40,11 +45,12 @@ const getProject = database.prepare('SELECT id, name, archived FROM projects WHE
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 async function readJson(request) {
   let body = '';
@@ -143,13 +149,18 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST') {
+      const project = getProject.get(projectId);
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived projects cannot have tasks changed' });
+        return;
+      }
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) {
         sendJson(response, 400, { error: 'Task title is required' });
         return;
       }
-      const task = { id: randomUUID(), projectId, title, completed: 0 };
+      const task = { id: randomUUID(), projectId, title, completed: 0, priority: 'Normal' };
       insertTask.run(task.id, projectId, title, Date.now());
       sendJson(response, 201, task);
       return;
@@ -191,7 +202,21 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, { ...existing, title });
       return;
     }
-    sendJson(response, 400, { error: 'Task update must include a title or completion state' });
+    if (typeof body?.priority === 'string') {
+      const project = getProject.get(projectId);
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) {
+        sendJson(response, 400, { error: 'Task priority must be Low, Normal, or High' });
+        return;
+      }
+      updateTaskPriority.run(body.priority, taskId, projectId);
+      sendJson(response, 200, { ...existing, priority: body.priority });
+      return;
+    }
+    sendJson(response, 400, { error: 'Task update must include a title, completion state, or priority' });
     return;
   }
 

@@ -154,6 +154,27 @@ async function renderProject(id) {
           }
         });
         const title = element('span', task.title);
+        const priority = element('select', undefined, { 'aria-label': 'Task priority' });
+        for (const value of ['Low', 'Normal', 'High']) {
+          priority.append(element('option', value, { value }));
+        }
+        priority.value = task.priority || 'Normal';
+        priority.disabled = archived;
+        priority.addEventListener('change', async () => {
+          const previous = task.priority || 'Normal';
+          try {
+            const updated = await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ priority: priority.value }),
+            });
+            task.priority = updated.priority;
+          } catch (error) {
+            priority.value = previous;
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
         const renameForm = element('form');
         const renameInput = element('input', undefined, {
           type: 'text',
@@ -179,7 +200,7 @@ async function renderProject(id) {
             alert.hidden = false;
           }
         });
-        row.append(title, checkbox, renameForm);
+        row.append(title, checkbox, priority, renameForm);
         list.append(row);
       }
     };
