@@ -95,6 +95,20 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 200, { ...task, completed: Boolean(task.completed) });
   }
   const match = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (req.method === 'PATCH' && match) {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let update;
+    try { update = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+    const id = Number(match[1]);
+    const project = getProject.get(id);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 403, { error: 'Archived project' });
+    const name = typeof update.name === 'string' ? update.name.trim() : '';
+    if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+    db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+    return sendJson(res, 200, getProject.get(id));
+  }
   if (req.method === 'GET' && match) {
     const project = getProject.get(Number(match[1]));
     return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
