@@ -33,6 +33,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
@@ -102,10 +103,16 @@ const server = http.createServer(async (req, res) => {
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const payload = JSON.parse(raw);
-      if (typeof payload.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
       const owner = getProject.get(taskMatch[1]);
       if (!owner) return json(res, 404, { error: 'Project not found' });
       if (owner.archived) return json(res, 403, { error: 'Archived project' });
+      if (typeof payload.title === 'string') {
+        const title = payload.title.trim();
+        if (!title) return json(res, 400, { error: 'Task title is required' });
+        const result = updateTaskTitle.run(title, taskMatch[2], taskMatch[1]);
+        return result.changes ? json(res, 200, { title }) : json(res, 404, { error: 'Task not found' });
+      }
+      if (typeof payload.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
       const result = updateTask.run(payload.completed ? 1 : 0, taskMatch[2], taskMatch[1]);
       return result.changes ? json(res, 200, { completed: payload.completed }) : json(res, 404, { error: 'Task not found' });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
