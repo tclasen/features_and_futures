@@ -45,6 +45,13 @@ restoring enables it again. The task API accepts
 `PATCH /api/projects/:projectId/tasks/:taskId` with `{ "title": "New title" }`;
 send completion changes separately from renames.
 
+Each task has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Priorities persist independently without
+changing task titles, completion, ownership, order, or project summaries. Archived
+projects disable priority changes; restoring preserves priorities and enables edits.
+Send `{ "priority": "High" }` to the task PATCH endpoint, separately from title
+or completion changes. Existing task databases migrate automatically.
+
 Run integration tests:
 
 ```sh
@@ -54,5 +61,5 @@ npm test
 Tests use a temporary database outside the repository and check validation,
 creation order, the health endpoint, detail routes, project isolation, completion
 validation, archive/restore protections, completion summaries, migration from
-existing databases, renaming and its read-only protections, and restart
+existing databases, renaming, priorities and their read-only protections, and restart
 persistence for projects and tasks.
