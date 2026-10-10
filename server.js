@@ -152,6 +152,14 @@ function projectPage(project, filter = 'All', priority = 'All', error = '') {
           </select>
           <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save priority</button></noscript>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+          ${filterFields}
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <div class="create">
+            <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          </div>
+        </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           ${filterFields}
           <label for="new-task-title-${task.id}">New task title</label>
@@ -278,7 +286,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?$/.exec(path);
+    const taskMatch = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?$/.exec(path);
     if (request.method === 'POST' && taskMatch) {
       const projectId = Number(taskMatch[1]);
       const project = Number.isSafeInteger(projectId) ? store.find(projectId) : undefined;
@@ -308,6 +316,14 @@ const server = createServer(async (request, response) => {
                 return;
               }
               updated = store.renameTask(projectId, taskId, title);
+            } else if (taskMatch[3] === 'due-date') {
+              try {
+                updated = store.setTaskDueDate(projectId, taskId, form.get('dueDate') || '');
+              } catch (error) {
+                if (error.message !== 'Due date must be a valid YYYY-MM-DD date') throw error;
+                sendHtml(response, 400, projectPage(project, filter, priority, error.message));
+                return;
+              }
             } else if (taskMatch[3] === 'priority') {
               const taskPriority = form.get('priority');
               if (!['Low', 'Normal', 'High'].includes(taskPriority)) {

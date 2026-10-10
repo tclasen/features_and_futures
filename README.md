@@ -27,4 +27,6 @@ Project pages combine the Task filter with a Priority filter (All, Low, Normal, 
 
 Each project has a saved Default task priority (Low, Normal, High), initially Normal for both existing and new projects. Changes affect only tasks created afterward in that project, preserve both filters, and never update existing tasks. Defaults survive renaming, reloads, and restarts. Archived projects display the saved default but disable and reject edits until restored.
 
-The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, priorities, combined filters, project defaults, and migration from the previous schema.
+Every task has an optional Task due date textbox and Save due date button. Dates are trimmed and validated as real Gregorian calendar days in `YYYY-MM-DD` format (years 0001–9999), without timezone conversion. Empty input clears the date; invalid input displays an alert and preserves the saved date. Dates persist independently without affecting task data, filters, or summaries. Archived projects disable and reject due-date edits until restored.
+
+The tests use temporary SQLite databases and real HTTP requests, including server restarts to check persistence, task filtering, completion toggles, validation, project isolation, archive/restore, summaries, renaming, priorities, combined filters, project defaults, due-date validation and persistence, and migration from previous schemas.
