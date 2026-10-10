@@ -19,6 +19,8 @@
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     [role="alert"] { color: #b42318; margin: 12px 0; }
     .back { margin-bottom: 20px; }
+    .task-row { display: flex; align-items: center; gap: 10px; background: white; border: 1px solid #dce2eb; border-radius: 10px; padding: 14px 18px; }
+    .task-row input { padding: 0; }
   </style>
 </head>
 <body>
@@ -54,13 +56,37 @@
       }));
     }
     async function showProject(id) {
+      const back = () => { history.pushState({}, '', '/'); render(); };
       try {
         const project = await request(`/api/projects/${encodeURIComponent(id)}`);
-        app.innerHTML = `<button class="back" type="button">Projects</button><section class="project-detail"><h1>${escapeText(project.name)}</h1></section>`;
-        app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+        app.innerHTML = `<button class="back" type="button">Projects</button><section class="project-detail"><h1>${escapeText(project.name)}</h1></section>
+          <form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off"></label><button type="submit">Create task</button></form>
+          <div id="task-message" role="alert" aria-live="polite"></div>
+          <label style="margin-top:18px">Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
+          <section class="project-list" aria-label="Tasks">${tasks.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" ${task.completed ? 'checked' : ''} aria-label="Complete ${escapeText(task.title)}" data-task="${task.id}"><span>${escapeText(task.title)}</span></div>`).join('')}</section>`;
+        app.querySelector('.back').addEventListener('click', back);
+        const applyFilter = () => app.querySelectorAll('.task-row').forEach(row => {
+          const checked = row.querySelector('input').checked;
+          const filter = app.querySelector('#task-filter').value;
+          row.hidden = filter === 'Open' ? checked : filter === 'Completed' ? !checked : false;
+        });
+        app.querySelector('#task-filter').addEventListener('change', applyFilter);
+        app.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.task)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });
+          applyFilter();
+        }));
+        app.querySelector('#task-form').addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = new FormData(event.currentTarget).get('title');
+          try {
+            await request(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+            await showProject(id);
+          } catch (error) { app.querySelector('#task-message').textContent = error.message; }
+        });
       } catch {
         app.innerHTML = `<button class="back" type="button">Projects</button><h1>Project not found</h1>`;
-        app.querySelector('.back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        app.querySelector('.back').addEventListener('click', back);
       }
     }
     async function render() {
