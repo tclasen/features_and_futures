@@ -20,7 +20,9 @@ function projectIdFromPath() {
 }
 
 function searchKey(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  // Search folds ASCII case and treats runs of spaces/tabs as one space,
+  // without changing the stored or displayed project/task text.
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 async function renderList() {
