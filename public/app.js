@@ -5,6 +5,12 @@ const form = document.querySelector('#create-project-form');
 const nameInput = document.querySelector('#project-name');
 const alertMessage = document.querySelector('#form-alert');
 const detailTitle = document.querySelector('#detail-title');
+const taskForm = document.querySelector('#create-task-form');
+const taskInput = document.querySelector('#task-title');
+const taskAlert = document.querySelector('#task-alert');
+const taskFilter = document.querySelector('#task-filter');
+const taskContainer = document.querySelector('#tasks');
+let activeProjectId = null;
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -41,9 +47,49 @@ async function renderRoute() {
     return;
   }
   const project = await request(`/api/projects/${match[1]}`);
+  activeProjectId = match[1];
   detailTitle.textContent = project.name;
   listSection.hidden = true;
   detailSection.hidden = false;
+  await renderTasks();
+}
+
+async function renderTasks() {
+  if (!activeProjectId) return;
+  const tasks = await request(`/api/projects/${activeProjectId}/tasks`);
+  const visibleTasks = tasks.filter((task) => taskFilter.value === 'All'
+    || (taskFilter.value === 'Open' && !task.completed)
+    || (taskFilter.value === 'Completed' && task.completed));
+  taskContainer.replaceChildren(...visibleTasks.map((task) => {
+    const row = document.createElement('div');
+    row.dataset.testid = 'task-row';
+    row.className = 'task-row';
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = Boolean(task.completed);
+    checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    checkbox.addEventListener('change', async () => {
+      try {
+        await request(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        await renderTasks();
+      } catch (error) { showTaskError(error); }
+    });
+    const title = document.createElement('span');
+    title.textContent = task.title;
+    label.append(checkbox, title);
+    row.append(label);
+    return row;
+  }));
+}
+
+function showTaskError(error) {
+  taskAlert.textContent = error.message;
+  taskAlert.hidden = false;
 }
 
 function navigate(path) {
@@ -78,5 +124,21 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+taskForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const title = taskInput.value.trim();
+  if (!title) { showTaskError(new Error('Task title is required')); return; }
+  taskAlert.hidden = true;
+  try {
+    await request(`/api/projects/${activeProjectId}/tasks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    taskInput.value = '';
+    await renderTasks();
+  } catch (error) { showTaskError(error); }
+});
+taskFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
 window.addEventListener('popstate', () => renderRoute().catch(showError));
 renderRoute().catch(showError);
