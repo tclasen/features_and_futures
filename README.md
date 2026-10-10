@@ -64,9 +64,17 @@ tasks in that project, leaving existing tasks, both filters, and summaries intac
 Defaults persist through restarts, renaming, archival, and restoration. Archived
 projects disable this selector and reject default changes with HTTP 403.
 
+Each task has an optional Task due date textbox and Save due date button. Values
+are trimmed and must be real Gregorian dates in YYYY-MM-DD format (years
+0001–9999); blank values clear the date. Invalid values show an alert without
+changing saved data. Dates are calendar days without timezone conversion, persist
+independently, and preserve filters and other task fields. Archived projects
+disable these controls and reject due-date edits with HTTP 403. Existing databases
+migrate with empty due dates.
+
 Tests launch isolated servers and temporary databases, covering validation,
 HTML escaping, ordering, navigation routes, health, project isolation, filtering,
 completion toggles, archive/restore, project and task renaming, priorities,
 combined filter combinations and selection preservation, project default priorities
-and inheritance without changing existing tasks,
-summaries, legacy schema migration, reloads, and persistence across process restarts.
+and inheritance without changing existing tasks, due-date calendar boundaries,
+validation, clearing, independence and archive protection, summaries, legacy schema migration, reloads, and persistence across process restarts.
