@@ -9,6 +9,7 @@ const archivedNotice = document.querySelector('#archived-notice');
 const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const taskList = document.querySelector('#task-list');
 const detailError = document.querySelector('#detail-error');
 const renameForm = document.querySelector('#rename-form');
@@ -54,6 +55,7 @@ async function render() {
   taskList.replaceChildren();
   taskInput.value = '';
   taskFilter.value = 'All';
+  priorityFilter.value = 'All';
   document.querySelector('#task-controls').hidden = true;
   if (match) {
     const title = document.querySelector('#project-title');
@@ -138,6 +140,7 @@ function renderTasks() {
   for (const task of tasks) {
     if (taskFilter.value === 'Open' && task.completed) continue;
     if (taskFilter.value === 'Completed' && !task.completed) continue;
+    if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -256,6 +259,7 @@ function renderTasks() {
 }
 
 taskFilter.addEventListener('change', renderTasks);
+priorityFilter.addEventListener('change', renderTasks);
 projectFilter.addEventListener('change', render);
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
