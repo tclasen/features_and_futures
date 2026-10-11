@@ -137,6 +137,10 @@ const page = `<!doctype html>
       return day >= 1 && day <= monthDays[month - 1] ? date : null;
     }
 
+    function searchKey(value) {
+      return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+    }
+
     async function loadProjects() {
       const response = await fetch('/api/projects');
       if (!response.ok) throw new Error('Could not load projects');
@@ -153,8 +157,13 @@ const page = `<!doctype html>
       form.append(input, submit);
       const filter = element('select', undefined, { 'aria-label': 'Project filter' });
       for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
+      const searchForm = element('form');
+      const searchInput = element('input', undefined, { type: 'text', 'aria-label': 'Project search', autocomplete: 'off' });
+      const searchButton = element('button', 'Search projects', { type: 'submit' });
+      searchForm.append(searchInput, searchButton);
       const list = element('section', undefined, { class: 'project-list', 'aria-label': 'Projects' });
-      app.append(alert, form, filter, list);
+      app.append(alert, form, filter, searchForm, list);
+      let appliedQuery = '';
       let refreshSequence = 0;
       async function refresh() {
         const sequence = ++refreshSequence;
@@ -163,6 +172,7 @@ const page = `<!doctype html>
         list.replaceChildren();
         for (const project of projects) {
           if (Boolean(project.archived) !== (filter.value === 'Archived')) continue;
+          if (!searchKey(project.name).includes(searchKey(appliedQuery))) continue;
           const row = element('div', undefined, { class: 'project-row', 'data-testid': 'project-row' });
           const name = element('span', project.name, { class: 'project-name' });
           const summary = element('span', project.completedCount + '/' + project.totalCount + ' completed', { 'data-testid': 'project-summary' });
@@ -198,6 +208,11 @@ const page = `<!doctype html>
         await refresh();
       });
       filter.addEventListener('change', () => refresh().catch(showLoadError));
+      searchForm.addEventListener('submit', event => {
+        event.preventDefault();
+        appliedQuery = searchInput.value.trim();
+        refresh().catch(showLoadError);
+      });
       await refresh();
     }
 
@@ -245,8 +260,13 @@ const page = `<!doctype html>
       const dueThrough = element('input', undefined, { type: 'text', 'aria-label': 'Due through', autocomplete: 'off' });
       const applyDueRange = element('button', 'Apply due range', { type: 'button' });
       let appliedDueRange = { from: '', through: '' };
+      const searchForm = element('form');
+      const searchInput = element('input', undefined, { type: 'text', 'aria-label': 'Task search', autocomplete: 'off' });
+      const searchButton = element('button', 'Search tasks', { type: 'submit' });
+      searchForm.append(searchInput, searchButton);
+      let appliedQuery = '';
       const list = element('section', undefined, { class: 'project-list', 'aria-label': 'Tasks' });
-      app.append(alert, renameForm, defaultPriorityLabel, form, controls, list);
+      app.append(alert, renameForm, defaultPriorityLabel, form, controls, searchForm, list);
       controls.append(filterLabel, priorityFilterLabel, dueFrom, dueThrough, applyDueRange);
       let refreshSequence = 0;
       async function refresh() {
@@ -259,6 +279,7 @@ const page = `<!doctype html>
         for (const task of tasks) {
           if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if (!searchKey(task.title).includes(searchKey(appliedQuery))) continue;
           if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
           if (appliedDueRange.from && task.dueDate < appliedDueRange.from) continue;
           if (appliedDueRange.through && task.dueDate > appliedDueRange.through) continue;
@@ -337,6 +358,11 @@ const page = `<!doctype html>
       }
       filter.addEventListener('change', () => refresh().catch(showLoadError));
       priorityFilter.addEventListener('change', () => refresh().catch(showLoadError));
+      searchForm.addEventListener('submit', event => {
+        event.preventDefault();
+        appliedQuery = searchInput.value.trim();
+        refresh().catch(showLoadError);
+      });
       applyDueRange.addEventListener('click', async () => {
         const fromValue = dueFrom.value.trim();
         const throughValue = dueThrough.value.trim();
