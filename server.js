@@ -11,7 +11,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low','Normal','High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +24,10 @@ CREATE TABLE IF NOT EXISTS tasks (
 );`);
 
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 
@@ -80,13 +85,13 @@ const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     try {
-      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(tasksMatch[1]);
+      const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(tasksMatch[1]);
       if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
       if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       const title = String(JSON.parse(raw).title ?? '').trim();
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(tasksMatch[1], title);
-      return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: 0 }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(tasksMatch[1], title, project.default_priority);
+      return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: 0, priority: project.default_priority }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -116,14 +121,20 @@ const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     try {
-      const name = String(JSON.parse(raw).name ?? '').trim();
+      const payload = JSON.parse(raw);
+      if (Object.hasOwn(payload, 'defaultPriority')) {
+        if (!['Low', 'Normal', 'High'].includes(payload.defaultPriority)) return send(400, JSON.stringify({ error: 'Invalid priority' }));
+        const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(payload.defaultPriority, projectMatch[1]);
+        return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
+      }
+      const name = String(payload.name ?? '').trim();
       if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
       const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, projectMatch[1]);
       return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   if (projectMatch && req.method === 'GET') {
-    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(projectMatch[1]);
+    const project = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectMatch[1]);
     return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Not found' }));
   }
   if (url.pathname === '/' || url.pathname.startsWith('/projects/')) {
