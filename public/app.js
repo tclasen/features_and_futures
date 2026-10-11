@@ -154,13 +154,24 @@ async function showTasks(projectId, archived) {
   }
   const filters = element('div');
   filters.className = 'task-filter';
-  filters.append(filterLabel, filter);
+  const priorityFilterLabel = element('label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    priorityFilter.append(option);
+  }
+  filters.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
   const list = element('ul');
   list.className = 'tasks';
 
   function renderTasks() {
-    const visible = tasks.filter((task) => filter.value === 'All'
-      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    const visible = tasks.filter((task) =>
+      (filter.value === 'All'
+        || (filter.value === 'Completed' ? task.completed : !task.completed))
+      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li');
       row.dataset.testid = 'task-row';
@@ -237,6 +248,7 @@ async function showTasks(projectId, archived) {
   }
 
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;

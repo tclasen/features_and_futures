@@ -37,6 +37,104 @@ class Node {
 
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 
+for (const archived of [false, true]) {
+  test(`combined task filters: ${archived ? 'archived' : 'active'} project`, async () => {
+    const app = new Node('main');
+    const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
+      { id: index * 2 + 1, title: `${priority} open`, completed: false, priority },
+      { id: index * 2 + 2, title: `${priority} done`, completed: true, priority },
+    ]);
+    const originalTasks = structuredClone(tasks);
+    let writes = 0;
+    runInNewContext(source, {
+      document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+      location: { pathname: '/projects/1', assign() {} },
+      async fetch(path, options) {
+        let data;
+        if (path === '/api/projects/1') data = { id: 1, name: 'Example', archived };
+        else if (!options) data = tasks.map((task) => ({ ...task }));
+        else {
+          assert.equal(archived, false);
+          writes++;
+          const task = tasks.find((task) => path.endsWith(`/${task.id}`));
+          Object.assign(task, JSON.parse(options.body));
+          data = { ...task };
+        }
+        return { ok: true, json: async () => data };
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    const completion = filters.children[1];
+    const priority = filters.children[3];
+    const list = app.querySelector('ul');
+    const titles = () => list.children.map((row) => row.children[1].textContent);
+    assert.equal(filters.children[2].textContent, 'Priority filter');
+    assert.equal(filters.children[2].htmlFor, priority.id);
+    assert.equal(completion.value, 'All');
+    assert.equal(priority.value, 'All');
+    assert.deepEqual(priority.children.map((option) => option.textContent), ['All', 'Low', 'Normal', 'High']);
+    assert.ok(!completion.disabled && !priority.disabled);
+    // All twelve intersections preserve creation order and never write data.
+    for (const completionValue of ['All', 'Open', 'Completed']) {
+      completion.value = completionValue;
+      await completion.fire('change');
+      for (const priorityValue of ['All', 'Low', 'Normal', 'High']) {
+        priority.value = priorityValue;
+        await priority.fire('change');
+        assert.equal(completion.value, completionValue);
+        assert.deepEqual(titles(), tasks.filter((task) =>
+          (completionValue === 'All' || task.completed === (completionValue === 'Completed'))
+          && (priorityValue === 'All' || task.priority === priorityValue)).map((task) => task.title));
+      }
+      assert.equal(priority.value, 'High');
+    }
+    assert.equal(writes, 0);
+    assert.deepEqual(tasks, originalTasks);
+    if (archived) {
+      assert.equal(list.children.length, 1);
+      const row = list.children[0];
+      assert.equal(row.children[0].disabled, true);
+      assert.equal(row.children[2].children[1].disabled, true);
+      assert.equal(row.children[2].children[2].disabled, true);
+      assert.equal(row.children[4].disabled, true);
+      return;
+    }
+    completion.value = 'Open';
+    await completion.fire('change');
+    assert.equal(priority.value, 'High');
+    const rename = list.children[0].children[2];
+    rename.children[1].value = '  Renamed high  ';
+    await rename.fire('submit');
+    assert.deepEqual(titles(), ['Renamed high']);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+    assert.equal(list.children[0].children[0].attributes['aria-label'], 'Complete Renamed high');
+    assert.equal(list.children[0].children[4].value, 'High');
+    const taskPriority = list.children[0].children[4];
+    taskPriority.value = 'Low';
+    await taskPriority.fire('change');
+    assert.deepEqual(titles(), []);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+    priority.value = 'Low';
+    await priority.fire('change');
+    assert.deepEqual(titles(), ['Low open', 'Renamed high']);
+    const checkbox = list.children[1].children[0];
+    checkbox.checked = true;
+    await checkbox.fire('change');
+    assert.deepEqual(titles(), ['Low open']);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'Low');
+    completion.value = 'Completed';
+    await completion.fire('change');
+    assert.deepEqual(titles(), ['Low done', 'Renamed high']);
+    assert.equal(priority.value, 'Low');
+    assert.deepEqual(tasks[4], { id: 5, title: 'Renamed high', completed: true, priority: 'Low' });
+    assert.equal(writes, 3);
+  });
+}
+
 test('project list: active default, archive/restore, summaries, and creation in either filter', async () => {
   const app = new Node('main');
   const projects = [
