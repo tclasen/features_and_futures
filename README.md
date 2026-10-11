@@ -192,3 +192,12 @@ tasks, and the owner totals add up to the global directory summary. Duplicate
 project names remain separate rows; task sorting does not reorder these owners.
 Open project resets that project's view filters, including for archived owners.
 Empty results show no owners. This list never writes project or task data.
+
+Delete visible tasks marks matching live tasks deleted in Active scope; Restore
+visible tasks restores matching tasks only in the Active scope's Deleted filter.
+Both actions resolve all applied filters in one transaction and retain directory
+ordering and controls. Rows, owner totals, global totals, and project live-task
+summaries reflect the saved result. Archived scope, incompatible task filters,
+and empty results disable the corresponding controls and direct requests cannot
+change protected records. Deletion changes only the deletion flag, preserving
+all fields, ownership, stored order, and remembered return positions across restarts.

@@ -507,6 +507,154 @@ test('directory owner totals keep duplicate identities and follow resolved membe
   }
 });
 
+test('directory deletion and restoration preserve fields, owners and reserved positions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-deletion-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return Object.fromEntries(['projects', 'tasks', 'task_project_positions'].map((table) =>
+        [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map((row) => ({ ...row }))]));
+    } finally { database.close(); }
+  };
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = async (path, values = {}) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+      assert.equal(response.status, 303);
+      return response.headers.get('location');
+    };
+    const path = (state) => `/directory?${new URLSearchParams(state)}`;
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title">(.*?)<\/div>/g)].map((match) => match[1]);
+    const assertButtons = (html, canDelete, canRestore) => {
+      for (const [label, enabled] of [['Delete visible tasks', canDelete], ['Restore visible tasks', canRestore]]) {
+        const button = html.match(new RegExp(`<button[^>]*>${label}</button>`));
+        assert.ok(button);
+        assert.equal(button[0].includes(' disabled'), !enabled);
+      }
+    };
+    const task = (title, completed = false, overrides = {}) => ({
+      title, completed, priority: 'High', dueDate: '2028-02-29',
+      notes: ' \n日本語 <b>literal</b>\t ', deleted: false, ...overrides,
+    });
+    for (const project of [
+      { name: 'Same owner', archived: false, defaultPriority: 'Normal', tasks: [
+        task('Zulu match', true), task('Zulu open match'),
+        task('Low match', false, { priority: 'Low' }),
+        task('Undated match', false, { dueDate: '' }),
+        task('Later match', false, { dueDate: '2028-03-01' }),
+        task('Unrelated'), task('Deleted match', true, { deleted: true }),
+      ] },
+      { name: 'Same owner', archived: false, defaultPriority: 'Low', tasks: [task('Alpha match')] },
+      { name: 'Same owner', archived: true, defaultPriority: 'High', tasks: [
+        task('Archive match', true), task('Archive deleted match', false, { deleted: true }),
+      ] },
+    ]) {
+      await post('/projects/import', { importedName: project.name,
+        json: JSON.stringify({ format: 'workboard-project', version: 1, project }) });
+    }
+    // Establish a second remembered destination before deleting the task.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    const before = snapshot();
+    const state = { scope: 'Active', filter: 'All', priorityFilter: 'High',
+      dueFrom: '2028-02-29', dueThrough: '2028-02-29', search: 'match', order: 'Title' };
+    const deletedState = { ...state, filter: 'Deleted' };
+    const initial = await get(path(state));
+    assert.deepEqual(titles(initial), ['Alpha match', 'Zulu match', 'Zulu open match']);
+    assertDirectorySummary(initial, 1, 3);
+    assert.deepEqual(directoryOwners(initial), [
+      { id: 1, name: 'Same owner', completed: 1, total: 2 },
+      { id: 2, name: 'Same owner', completed: 0, total: 1 },
+    ]);
+    for (const filter of ['All', 'Open', 'Completed']) {
+      assertButtons(await get(path({ ...state, filter })), true, false);
+      await post('/directory/restore', { ...state, filter });
+      assert.deepEqual(snapshot(), before);
+    }
+    assertButtons(await get(path(deletedState)), false, true);
+    await post('/directory/delete', deletedState);
+    for (const filter of ['All', 'Open', 'Completed', 'Deleted']) {
+      const protectedState = { ...state, scope: 'Archived', filter };
+      assertButtons(await get(path(protectedState)), false, false);
+      for (const action of ['delete', 'restore']) await post(`/directory/${action}`, protectedState);
+    }
+    for (const filter of ['All', 'Deleted']) {
+      const emptyState = { ...state, filter, search: 'absent' };
+      assertButtons(await get(path(emptyState)), false, false);
+      for (const action of ['delete', 'restore']) await post(`/directory/${action}`, emptyState);
+    }
+    assert.deepEqual(snapshot(), before);
+    const location = await post('/directory/delete', state);
+    assert.deepEqual(Object.fromEntries(new URL(location, server.url).searchParams), state);
+    const empty = await get(location);
+    assertDirectorySummary(empty, 0, 0);
+    assert.deepEqual(directoryOwners(empty), []);
+    assertButtons(empty, false, false);
+    const expected = structuredClone(before);
+    for (const row of expected.tasks) if ([1, 2, 8].includes(row.id)) row.deleted = 1;
+    assert.deepEqual(snapshot(), expected);
+    assertDirectorySummary(await get(path(deletedState)), 2, 4);
+    assert.deepEqual(titles(await get(path(deletedState))), ['Alpha match', 'Deleted match', 'Zulu match', 'Zulu open match']);
+    assert.match(await get('/'), /data-testid="project-summary">0\/4 completed/);
+    assert.match(await get('/'), /data-testid="project-summary">0\/0 completed/);
+    // A deleted task is read-only and cannot move, even via a direct request.
+    const move = await fetch(`${server.url}/projects/1/tasks/1/move`, {
+      method: 'POST', body: new URLSearchParams({ destination: '2' }), redirect: 'manual',
+    });
+    assert.equal(move.status, 403);
+    assert.deepEqual(snapshot(), expected);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), expected);
+    assertDirectorySummary(await get(path(deletedState)), 2, 4);
+    // Reserve later positions and change the default while the original tasks are deleted.
+    await post('/projects/1/tasks', { title: 'New task' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    const beforeRestore = snapshot();
+    const restoreLocation = await post('/directory/restore', deletedState);
+    assert.deepEqual(Object.fromEntries(new URL(restoreLocation, server.url).searchParams), deletedState);
+    assertDirectorySummary(await get(restoreLocation), 0, 0);
+    assertButtons(await get(restoreLocation), false, false);
+    const restored = structuredClone(beforeRestore);
+    for (const row of restored.tasks) if ([1, 2, 7, 8].includes(row.id)) row.deleted = 0;
+    assert.deepEqual(snapshot(), restored);
+    assertDirectorySummary(await get(path(state)), 2, 4);
+    const exported = JSON.parse(await get('/projects/1/export'));
+    assert.deepEqual(exported.project.tasks.map((row) => row.title), [
+      'Zulu match', 'Zulu open match', 'Low match', 'Undated match', 'Later match', 'Unrelated', 'Deleted match', 'New task',
+    ]);
+    assert.equal(exported.project.tasks[0].priority, 'High');
+    assert.equal(exported.project.tasks[0].notes, before.tasks[0].notes);
+    assert.match(await get('/'), /data-testid="project-summary">2\/8 completed/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), restored);
+    // Completion-filter-specific deletion leaves the other matching live tasks intact.
+    for (const [filter, ids] of [['Open', [2, 8]], ['Completed', [1, 7]]]) {
+      const liveState = { ...state, filter };
+      const current = snapshot();
+      await post('/directory/delete', liveState);
+      for (const row of current.tasks) if (ids.includes(row.id)) row.deleted = 1;
+      assert.deepEqual(snapshot(), current);
+      assertDirectorySummary(await get(path(liveState)), 0, 0);
+      await post('/directory/restore', deletedState);
+      assert.deepEqual(snapshot(), restored);
+    }
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(snapshot(), restored);
+    assert.deepEqual(JSON.parse(await get('/projects/1/export')), exported);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: databasePath },

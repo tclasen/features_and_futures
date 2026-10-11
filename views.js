@@ -111,6 +111,8 @@ export function taskDirectoryPage(tasks, owners, state, errors = {}) {
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
+  const canDelete = canEdit && tasks.length > 0;
+  const canRestore = scope === 'Active' && filter === 'Deleted' && tasks.length > 0;
   const completedCount = tasks.filter((task) => task.completed).length;
   const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
   const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority) + hidden('order', order);
@@ -148,6 +150,8 @@ export function taskDirectoryPage(tasks, owners, state, errors = {}) {
       ${selections}${boundaries}${hidden('search', search)}
       <button type="submit"${canComplete ? '' : ' disabled'}>Complete visible tasks</button>
       <button type="submit" formaction="/directory/reopen"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
+      <button type="submit" formaction="/directory/delete"${canDelete ? '' : ' disabled'}>Delete visible tasks</button>
+      <button type="submit" formaction="/directory/restore"${canRestore ? '' : ' disabled'}>Restore visible tasks</button>
     </form>
     <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     ${tasks.length === 0 ? '<p role="status">No matching tasks</p>' : ''}

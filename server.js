@@ -248,6 +248,17 @@ function setDirectoryCompletion(state, completed) {
   });
 }
 
+function setDirectoryDeletion(state, deleted) {
+  // Deletion and restoration target opposite views; archived owners are protected.
+  const eligibleFilter = deleted ? state.filter !== 'Deleted' : state.filter === 'Deleted';
+  if (state.scope !== 'Active' || !eligibleFilter) return;
+  inTransaction(() => {
+    for (const task of directoryTasks(state)) {
+      setTaskDeleted.run(Number(deleted), task.id, task.project_id);
+    }
+  });
+}
+
 function redirect(response, location) {
   response.writeHead(303, { Location: location });
   response.end();
@@ -286,6 +297,10 @@ const server = createServer(async (request, response) => {
     } else if (request.method === 'POST' && ['/directory/complete', '/directory/reopen'].includes(pathname)) {
       const state = directoryState(await readForm(request));
       setDirectoryCompletion(state, pathname === '/directory/complete');
+      redirect(response, directoryLocation(state));
+    } else if (request.method === 'POST' && ['/directory/delete', '/directory/restore'].includes(pathname)) {
+      const state = directoryState(await readForm(request));
+      setDirectoryDeletion(state, pathname === '/directory/delete');
       redirect(response, directoryLocation(state));
     } else if (request.method === 'POST' && pathname === '/directory/due-range') {
       const form = await readForm(request);
