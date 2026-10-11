@@ -104,6 +104,7 @@ async function showRoute() {
     document.querySelector('#directory-task-filter').value = 'All';
     document.querySelector('#directory-priority-filter').value = 'All';
     document.querySelector('#directory-order').value = 'Original';
+    document.querySelector('#visible-tasks-priority').value = 'Normal';
     document.querySelector('#directory-due-from').value = '';
     document.querySelector('#directory-due-through').value = '';
     document.querySelector('#directory-search').value = '';
@@ -160,10 +161,12 @@ async function loadDirectory() {
   const reopenButton = document.querySelector('#reopen-visible-tasks');
   const deleteButton = document.querySelector('#delete-visible-tasks');
   const restoreButton = document.querySelector('#restore-visible-tasks');
+  const setPriorityButton = document.querySelector('#set-visible-priority');
   completeButton.disabled = true;
   reopenButton.disabled = true;
   deleteButton.disabled = true;
   restoreButton.disabled = true;
+  setPriorityButton.disabled = true;
   const response = await fetch('/api/directory');
   const tasks = await response.json();
   const results = document.querySelector('#directory-results');
@@ -175,6 +178,7 @@ async function loadDirectory() {
   const visibleCompletedIds = [];
   const visibleLiveIds = [];
   const visibleDeletedIds = [];
+  const visibleLiveTaskIds = [];
   results.replaceChildren();
   const matchingTasks = [];
   for (const [originalIndex, task] of tasks.entries()) {
@@ -245,6 +249,7 @@ async function loadDirectory() {
   for (const { task } of matchingTasks) {
     if (task.deleted) visibleDeletedIds.push(task.id);
     else {
+      visibleLiveTaskIds.push(task.id);
       visibleLiveIds.push(task.id);
       (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
     }
@@ -263,7 +268,20 @@ async function loadDirectory() {
   reopenButton.disabled = !actionsAllowed || visibleCompletedIds.length === 0;
   deleteButton.disabled = scope !== 'Active' || taskFilter === 'Deleted' || visibleLiveIds.length === 0;
   restoreButton.disabled = scope !== 'Active' || taskFilter !== 'Deleted' || visibleDeletedIds.length === 0;
+  setPriorityButton.disabled = scope !== 'Active' || taskFilter === 'Deleted' || visibleLiveTaskIds.length === 0;
   emptyNotice.hidden = results.childElementCount !== 0;
+}
+
+async function updateVisiblePriority() {
+  const taskIds = [...document.querySelectorAll('[data-testid="directory-task-row"]')]
+    .filter((row) => row.querySelector('[data-testid="directory-task-completion"]').textContent !== 'Deleted')
+    .map((row) => Number(row.dataset.taskId));
+  if (!taskIds.length) return;
+  const response = await fetch('/api/directory/priority', {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ priority: document.querySelector('#visible-tasks-priority').value, taskIds }),
+  });
+  if (response.ok) await loadDirectory();
 }
 
 async function updateVisibleCompletion(completed) {
@@ -578,6 +596,7 @@ document.querySelector('#complete-visible-tasks').addEventListener('click', () =
 document.querySelector('#reopen-visible-tasks').addEventListener('click', () => updateVisibleCompletion(false));
 document.querySelector('#delete-visible-tasks').addEventListener('click', () => updateVisibleDeletion(true));
 document.querySelector('#restore-visible-tasks').addEventListener('click', () => updateVisibleDeletion(false));
+document.querySelector('#set-visible-priority').addEventListener('click', updateVisiblePriority);
 for (const selector of ['#directory-project-scope', '#directory-task-filter', '#directory-priority-filter', '#directory-order']) {
   document.querySelector(selector).addEventListener('change', loadDirectory);
 }
