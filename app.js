@@ -27,6 +27,10 @@ function asciiLower(value) {
   return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
+function normalizeSearchText(value) {
+  return asciiLower(value.replace(/[ \t]+/g, ' '));
+}
+
 async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) return;
@@ -35,7 +39,7 @@ async function loadProjects() {
   for (const project of projects) {
     if (projectFilter.value === 'active' && project.archived) continue;
     if (projectFilter.value === 'archived' && !project.archived) continue;
-    if (appliedProjectQuery && !asciiLower(project.name).includes(asciiLower(appliedProjectQuery))) continue;
+    if (appliedProjectQuery && !normalizeSearchText(project.name).includes(normalizeSearchText(appliedProjectQuery))) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -147,7 +151,7 @@ async function loadTasks(projectId, archived = false) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
     if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
-    if (appliedTaskQuery && !asciiLower(task.title).includes(asciiLower(appliedTaskQuery))) continue;
+    if (appliedTaskQuery && !normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskQuery))) continue;
     if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
     if (appliedDueRange.from && task.dueDate < appliedDueRange.from) continue;
     if (appliedDueRange.through && task.dueDate > appliedDueRange.through) continue;
