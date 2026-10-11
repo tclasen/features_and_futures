@@ -133,7 +133,7 @@
           const visible = tasks.filter((task) =>
             (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed)) &&
             (selectedPriority === 'All' || task.priority === selectedPriority));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -190,6 +190,26 @@
           renderTasks();
         });
         list.addEventListener('click', async (event) => {
+          const dueDateButton = event.target.closest('button[data-save-due-date-task-id]');
+          if (dueDateButton) {
+            const taskId = Number(dueDateButton.dataset.saveDueDateTaskId);
+            const input = list.querySelector(`input[data-due-date-task-id="${taskId}"]`);
+            const result = await fetch(`/api/tasks/${taskId}/due-date`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ due_date: input.value })
+            });
+            const message = app.querySelector('#task-message');
+            if (!result.ok) {
+              message.textContent = (await result.json()).error || 'Could not save due date';
+              return;
+            }
+            const saved = await result.json();
+            const task = tasks.find((item) => item.id === taskId);
+            if (task) task.due_date = saved.due_date;
+            input.value = saved.due_date || '';
+            message.textContent = '';
+            return;
+          }
           const button = event.target.closest('button[data-rename-task-id]');
           if (!button) return;
           const task = tasks.find((item) => item.id === Number(button.dataset.renameTaskId));
