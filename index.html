@@ -108,7 +108,7 @@
           });
           const filterLabel = element('label', 'Task filter');
           const filter = element('select', undefined, { 'aria-label': 'Task filter' });
-          for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+          for (const value of ['All', 'Open', 'Completed', 'Deleted']) filter.append(element('option', value, { value }));
           filterLabel.append(filter);
           const priorityFilterLabel = element('label', 'Priority filter');
           const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
@@ -304,7 +304,8 @@
         fetch('/api/projects').then(response => response.json())
       ]);
       const visibleTasks = tasks.filter(task =>
-        (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
+        (filter === 'Deleted' ? task.deleted : !task.deleted &&
+          (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed))) &&
         (priorityFilter === 'All' || task.priority === priorityFilter) &&
         normalizeSearchText(task.title).includes(normalizeSearchText(search.trim())) &&
         ((!dueRange.from && !dueRange.through) || (task.dueDate &&
@@ -315,7 +316,7 @@
         const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
         const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = task.completed;
-        checkbox.disabled = archived;
+        checkbox.disabled = archived || task.deleted;
         checkbox.addEventListener('change', async () => {
           await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
@@ -326,7 +327,7 @@
         const priority = element('select', undefined, { 'aria-label': 'Task priority' });
         for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', value, { value }));
         priority.value = task.priority || 'Normal';
-        priority.disabled = archived;
+        priority.disabled = archived || task.deleted;
         priority.addEventListener('change', async () => {
           const response = await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -343,8 +344,8 @@
           type: 'text', 'aria-label': 'New task title', autocomplete: 'off'
         });
         const renameButton = element('button', 'Rename task', { type: 'submit' });
-        renameInput.disabled = archived;
-        renameButton.disabled = archived;
+        renameInput.disabled = archived || task.deleted;
+        renameButton.disabled = archived || task.deleted;
         renameForm.append(renameInput, renameButton);
         renameForm.addEventListener('submit', async event => {
           event.preventDefault();
@@ -370,9 +371,9 @@
           placeholder: 'YYYY-MM-DD', class: 'task-due-date'
         });
         dueDateInput.value = task.dueDate || '';
-        dueDateInput.disabled = archived;
+        dueDateInput.disabled = archived || task.deleted;
         const saveDueDate = element('button', 'Save due date', { type: 'button' });
-        saveDueDate.disabled = archived;
+        saveDueDate.disabled = archived || task.deleted;
         saveDueDate.addEventListener('click', async () => {
           const response = await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -392,9 +393,9 @@
         });
         const notes = element('textarea', undefined, { 'aria-label': 'Task notes', class: 'task-notes' });
         notes.value = task.notes || '';
-        notes.disabled = archived;
+        notes.disabled = archived || task.deleted;
         const saveNotes = element('button', 'Save notes', { type: 'button' });
-        saveNotes.disabled = archived;
+        saveNotes.disabled = archived || task.deleted;
         saveNotes.addEventListener('click', async () => {
           const response = await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -415,9 +416,9 @@
         for (const project of destinations) {
           destination.append(element('option', project.name, { value: project.id }));
         }
-        destination.disabled = archived || destinations.length === 0;
+        destination.disabled = archived || task.deleted || destinations.length === 0;
         const move = element('button', 'Move task', { type: 'button' });
-        move.disabled = archived || destinations.length === 0;
+        move.disabled = archived || task.deleted || destinations.length === 0;
         move.addEventListener('click', async () => {
           if (!destination.value) return;
           const response = await fetch(`/api/tasks/${task.id}`, {
@@ -426,7 +427,16 @@
           });
           if (response.ok) await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
         });
-        row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate, notes, saveNotes, destination, move);
+        const deletion = element('button', task.deleted ? 'Restore task' : 'Delete task', { type: 'button' });
+        deletion.disabled = archived;
+        deletion.addEventListener('click', async () => {
+          const response = await fetch(`/api/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deleted: !task.deleted })
+          });
+          if (response.ok) await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
+        });
+        row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate, notes, saveNotes, destination, move, deletion);
         return row;
       }));
     }

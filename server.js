@@ -44,6 +44,9 @@ if (!taskColumns.some(column => column.name === 'sort_order')) {
 if (!taskColumns.some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!taskColumns.some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+}
 // Keep a task's slot in every project it has visited so a later return can
 // restore its former position. Existing tasks start with their current order.
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -73,8 +76,8 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     const projects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0 AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0) AS totalCount
       FROM projects p ORDER BY p.id`).all().map(project => ({
         ...project, archived: Boolean(project.archived),
         completedCount: Number(project.completedCount), totalCount: Number(project.totalCount)
@@ -137,8 +140,8 @@ const server = createServer(async (req, res) => {
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskRoute && req.method === 'GET') {
-    const tasks = db.prepare("SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id").all(Number(taskRoute[1]));
-    return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed), notes: task.notes ?? '' })));
+    const tasks = db.prepare("SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id").all(Number(taskRoute[1]));
+    return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted), notes: task.notes ?? '' })));
   }
   if (taskRoute && req.method === 'POST') {
     try {
@@ -163,10 +166,16 @@ const server = createServer(async (req, res) => {
     try {
       const payload = await readJson(req);
       const taskId = Number(taskUpdate[1]);
-      const task = db.prepare(`SELECT t.id, t.completed, t.project_id AS projectId, p.archived
+      const task = db.prepare(`SELECT t.id, t.completed, t.deleted, t.project_id AS projectId, p.archived
         FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?`).get(taskId);
       if (!task) return sendJson(res, 404, { error: 'Task not found' });
       if (task.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
+      if (Object.hasOwn(payload, 'deleted')) {
+        if (typeof payload.deleted !== 'boolean') return sendJson(res, 400, { error: 'Invalid deletion state' });
+        db.prepare('UPDATE tasks SET deleted = ? WHERE id = ?').run(payload.deleted ? 1 : 0, taskId);
+        return sendJson(res, 200, { id: taskId, deleted: payload.deleted });
+      }
+      if (task.deleted) return sendJson(res, 409, { error: 'Deleted tasks cannot be changed' });
       if (Object.hasOwn(payload, 'destinationProjectId')) {
         const destinationId = Number(payload.destinationProjectId);
         const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
