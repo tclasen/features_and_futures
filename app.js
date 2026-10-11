@@ -131,7 +131,18 @@ async function renderProject(id) {
     history.pushState({}, '', '/');
     renderList();
   });
-  const download = element('a', 'Download project', { href: `/api/projects/${encodeURIComponent(id)}/export`, download: 'workboard-project.json' });
+  const download = element('button', 'Download project', { type: 'button' });
+  download.addEventListener('click', async () => {
+    const result = await fetch(`/api/projects/${encodeURIComponent(id)}/export`);
+    if (!result.ok) return;
+    const file = new Blob([await result.text()], { type: 'application/json;charset=utf-8' });
+    const fileUrl = URL.createObjectURL(file);
+    const link = element('a', undefined, { href: fileUrl, download: 'workboard-project.json' });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+  });
   const renameForm = element('form');
   const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New project name', autocomplete: 'off' });
   const renameButton = element('button', 'Rename project', { type: 'submit' });
