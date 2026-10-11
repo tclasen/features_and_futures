@@ -50,6 +50,7 @@ const page = `<!doctype html>
     button:focus-visible, input:focus-visible { outline: 3px solid #8ab4ff; outline-offset: 2px; }
     [data-testid="project-row"] { justify-content: space-between; padding: 1rem; margin: .5rem 0; background: white; border: 1px solid #dce2ec; border-radius: .4rem; }
     [data-testid="task-row"] { display: flex; align-items: center; gap: .75rem; padding: 1rem; margin: .5rem 0; background: white; border: 1px solid #dce2ec; border-radius: .4rem; }
+    [data-testid="task-row"][hidden] { display: none; }
     [data-testid="task-row"] input { flex: initial; min-width: auto; }
     select { padding: .65rem; border: 1px solid #9aa5b8; border-radius: .35rem; font: inherit; }
     [role="alert"] { color: #a22020; min-height: 1.5em; }
