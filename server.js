@@ -39,6 +39,8 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
+  AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
 
 const page = `<!doctype html>
 <html lang="en">
@@ -61,7 +63,9 @@ const page = `<!doctype html>
     .project-name { overflow-wrap: anywhere; }
     .task-controls { display: grid; gap: .65rem; margin: 1.5rem 0; }
     .task-row { display: flex; align-items: center; gap: .75rem; padding: .85rem 1rem; background: #fff; border: 1px solid #d5dce5; border-radius: .4rem; }
-    .task-row input { flex: none; }
+    .task-title { flex: 1; overflow-wrap: anywhere; }
+    .task-row input[type="checkbox"] { flex: none; }
+    .task-row input[type="text"] { flex: 1; min-width: 4rem; }
   </style>
 </head>
 <body>
@@ -197,7 +201,21 @@ const page = `<!doctype html>
             alert.hidden = true;
             await refresh();
           });
-          row.append(checkbox, element('span', task.title));
+          const title = element('span', task.title, { class: 'task-title' });
+          const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', autocomplete: 'off' });
+          const renameButton = element('button', 'Rename task', { type: 'button' });
+          if (project.archived) { renameInput.disabled = true; renameButton.disabled = true; }
+          renameButton.addEventListener('click', async () => {
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) { alert.textContent = 'Task title is required'; alert.hidden = false; renameInput.focus(); return; }
+            alert.hidden = true;
+            const renameResponse = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: newTitle })
+            });
+            if (!renameResponse.ok) { alert.textContent = 'Could not rename task'; alert.hidden = false; return; }
+            await refresh();
+          });
+          row.append(checkbox, title, renameInput, renameButton);
           list.append(row);
         }
       }
@@ -325,6 +343,19 @@ const server = createServer(async (request, response) => {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
     const body = await readJson(request);
+    if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
+      const result = renameTask.run(title, taskId, projectId, projectId);
+      if (!result.changes) {
+        const project = getProject.get(projectId);
+        const task = getTask.get(taskId, projectId);
+        sendJson(response, !project || !task ? 404 : 409, { error: !project || !task ? 'Task not found' : 'Archived projects cannot rename tasks' });
+        return;
+      }
+      sendJson(response, 200, getTask.get(taskId, projectId));
+      return;
+    }
     if (typeof body?.completed !== 'boolean') { sendJson(response, 400, { error: 'Completed must be a boolean' }); return; }
     const result = updateTask.run(body.completed ? 1 : 0, taskId, projectId);
     if (!result.changes) { sendJson(response, 404, { error: 'Task not found' }); return; }
