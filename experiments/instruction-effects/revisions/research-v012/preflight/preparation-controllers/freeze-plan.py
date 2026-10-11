@@ -11,6 +11,7 @@ assert inputs['controller_sha256']==__import__('hashlib').sha256((baselines[0].p
 assert inputs['suite_files']==file_hashes(v/'preflight/task020-executed-suite')==file_hashes(v/'decisions/frozen-prefix-drafts/task-020/suite')
 controls=list((v/'preflight').glob('search051-check-*/verified.json'));assert len(controls)==1
 c=json.loads(controls[0].read_text());assert c['verified'] and len(c['results'])==24
+for closed in [baselines[0],controls[0]]:assert json.loads((closed.parent/'input-closure.json').read_text())['verified']
 assert sum(x['exit']==0 for x in c['results'])==6 and sum(x['exit']!=0 for x in c['results'])==18
 controls_inputs=json.loads((v/'preflight/search051-inputs.json').read_text());assert controls_inputs['controller_sha256']==__import__('hashlib').sha256((controls[0].parent/'executed-controller.mjs').read_bytes()).hexdigest()
 for p,key in [(v/'preflight/pm-checks/verified.json','verified'),(v/'preflight/runtime/verified.json','passed'),(v/'preflight/prefix-phase-listing/verified.json','verified')]:assert json.loads(p.read_text())[key]
