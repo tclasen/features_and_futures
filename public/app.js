@@ -227,6 +227,50 @@ async function showTasks(projectId, archived) {
   create.disabled = archived;
 }
 
+function showRenameForm(project, heading) {
+  const form = element('form');
+  const label = element('label', 'New project name');
+  label.htmlFor = 'new-project-name';
+  const input = element('input');
+  input.id = 'new-project-name';
+  input.name = 'name';
+  input.type = 'text';
+  input.disabled = project.archived;
+  const rename = element('button', 'Rename project');
+  rename.type = 'submit';
+  rename.disabled = project.archived;
+  form.append(label, input, rename);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (rename.disabled) return;
+    app.querySelector('[role="alert"]')?.remove();
+    const name = input.value.trim();
+    if (!name) {
+      showAlert('Project name is required');
+      input.focus();
+      return;
+    }
+    rename.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      Object.assign(project, saved);
+      heading.textContent = project.name;
+      document.title = `${project.name} — Workboard`;
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      rename.disabled = project.archived;
+    }
+  });
+  app.append(form);
+}
+
 async function showProject(id) {
   app.replaceChildren();
   const back = element('button', 'Projects');
@@ -236,8 +280,10 @@ async function showProject(id) {
   try {
     const project = await api(`/api/projects/${id}`);
     document.title = `${project.name} — Workboard`;
-    app.prepend(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.prepend(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
+    showRenameForm(project, heading);
     await showTasks(id, Boolean(project.archived));
   } catch (error) {
     if (!app.querySelector('h1')) app.prepend(element('h1', 'Workboard'));

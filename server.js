@@ -29,7 +29,8 @@ const projectQuery = `SELECT p.id, p.name, p.archived,
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
 const listProjects = database.prepare(`${projectQuery} GROUP BY p.id ORDER BY p.id`);
 const getProject = database.prepare(`${projectQuery} WHERE p.id = ? GROUP BY p.id`);
-const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
@@ -125,10 +126,19 @@ const server = createServer(async (request, response) => {
       if (request.method === 'GET') return json(response, 200, projectJson(project));
       if (request.method === 'PATCH') {
         const input = await readJson(request);
-        if (typeof input?.archived !== 'boolean') {
-          return json(response, 400, { error: 'Archived must be a boolean' });
+        if (input && Object.hasOwn(input, 'name')) {
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project cannot be changed' });
+          }
+          const name = typeof input.name === 'string' ? input.name.trim() : '';
+          if (!name) return json(response, 400, { error: 'Project name is required' });
+          renameProject.run(name, projectId);
+        } else {
+          if (typeof input?.archived !== 'boolean') {
+            return json(response, 400, { error: 'Archived must be a boolean' });
+          }
+          setProjectArchived.run(Number(input.archived), projectId);
         }
-        updateProject.run(Number(input.archived), projectId);
         return json(response, 200, projectJson(getProject.get(projectId)));
       }
     }

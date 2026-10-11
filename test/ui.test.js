@@ -112,7 +112,15 @@ test('archived project is read-only while task filters still work', async () => 
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.querySelector('p').textContent, 'Archived project');
-  const form = app.querySelector('form');
+  const renameForm = app.children.find((node) => node.tag === 'form'
+    && node.children[0].textContent === 'New project name');
+  assert.equal(renameForm.children[1].disabled, true);
+  assert.equal(renameForm.children[2].disabled, true);
+  renameForm.children[1].value = 'Forbidden rename';
+  await renameForm.fire('submit');
+  assert.equal(app.querySelector('h1').textContent, 'Archived example');
+  const form = app.children.find((node) => node.tag === 'form'
+    && node.children[0].textContent === 'Task title');
   assert.equal(form.children[2].disabled, true);
   form.children[1].value = 'Not allowed';
   await form.fire('submit');
@@ -157,7 +165,8 @@ test('project task UI: labels, validation, completion, and filters in creation o
   // The controller's initial render completes through promise microtasks.
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.querySelector('h1').textContent, 'Example');
-  const form = app.querySelector('form');
+  const form = app.children.find((node) => node.tag === 'form'
+    && node.children[0].textContent === 'Task title');
   const [label, input, button] = form.children;
   assert.equal(label.textContent, 'Task title');
   assert.equal(label.htmlFor, input.id);
@@ -198,4 +207,63 @@ test('project task UI: labels, validation, completion, and filters in creation o
   filter.value = 'All';
   await filter.fire('change');
   assert.deepEqual(titles(), ['First', 'Second']);
+});
+
+test('renaming validates, updates the heading, and preserves the route and task UI', async () => {
+  const app = new Node('main');
+  const project = { id: 7, name: 'Original', archived: false, totalCount: 1, completedCount: 1 };
+  const document = { querySelector: () => app, createElement: (tag) => new Node(tag) };
+  let failRename = false;
+  const calls = [];
+  runInNewContext(source, {
+    document,
+    location: { pathname: '/projects/7', assign() { assert.fail('Rename must not navigate'); } },
+    async fetch(path, options) {
+      if (options) {
+        calls.push({ path, ...JSON.parse(options.body) });
+        assert.equal(options.method, 'PATCH');
+        if (failRename) return { ok: false, json: async () => ({ error: 'Unable to rename' }) };
+        Object.assign(project, JSON.parse(options.body));
+      }
+      const data = path.endsWith('/tasks')
+        ? [{ id: 3, title: 'Saved task', completed: true }] : { ...project };
+      return { ok: true, json: async () => data };
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const form = app.children.find((node) => node.tag === 'form'
+    && node.children[0].textContent === 'New project name');
+  const [label, input, button] = form.children;
+  assert.equal(label.htmlFor, input.id);
+  assert.equal(input.type, 'text');
+  assert.equal(input.disabled, false);
+  assert.equal(button.textContent, 'Rename project');
+  assert.equal(button.disabled, false);
+  const list = app.querySelector('ul');
+  const originalRow = list.children[0];
+  const filter = app.querySelector('select');
+  filter.value = 'Completed';
+  for (const name of ['', ' \t\n ']) {
+    input.value = name;
+    await form.fire('submit');
+    assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+    assert.equal(app.querySelector('h1').textContent, 'Original');
+  }
+  assert.equal(calls.length, 0);
+  input.value = '  New name  ';
+  await form.fire('submit');
+  assert.deepEqual(calls, [{ path: '/api/projects/7', name: 'New name' }]);
+  assert.equal(app.querySelector('h1').textContent, 'New name');
+  assert.equal(document.title, 'New name — Workboard');
+  assert.equal(app.querySelector('[role="alert"]'), undefined);
+  assert.equal(input.value, '');
+  assert.equal(filter.value, 'Completed');
+  assert.equal(list.children[0], originalRow);
+  assert.equal(originalRow.children[0].checked, true);
+  failRename = true;
+  input.value = 'Failed name';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Unable to rename');
+  assert.equal(app.querySelector('h1').textContent, 'New name');
+  assert.equal(button.disabled, false);
 });

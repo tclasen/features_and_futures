@@ -8,7 +8,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The server binds to `0.0.0.0`. Keep the database file to preserve projects, archive state, tasks, and completion state across restarts. Existing databases are migrated automatically. Parent directories are created automatically.
 
-Create projects on the home page, then open a project to create tasks and toggle completion. The Task filter shows All, Open, or Completed tasks in creation order; it defaults to All on each page load.
+Create projects on the home page, then open a project to create tasks and toggle completion. Use New project name and Rename project to rename an active project. Names are trimmed and required; renaming preserves the URL, creation order, tasks, and completion summary and persists across restarts. The Task filter shows All, Open, or Completed tasks in creation order; it defaults to All on each page load.
 
 The Project filter defaults to Active. Archive projects to move them to Archived, or restore them without losing tasks. Archived project pages are read-only, but task filtering remains available. Each project row summarizes completed tasks out of all tasks.
 

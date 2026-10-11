@@ -134,7 +134,7 @@ test('health, project validation, creation order, routes, and restart persistenc
     assert.deepEqual(await (await request(otherTasksPath)).json(), [otherTask]);
     await server.stop();
     server = await start(databasePath);
-    const firstSummary = { ...first, totalCount: 2, completedCount: 1 };
+    let firstSummary = { ...first, totalCount: 2, completedCount: 1 };
     const secondSummary = { ...second, totalCount: 1, completedCount: 0 };
     assert.deepEqual(await (await request('/api/projects')).json(), [firstSummary, secondSummary]);
     assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), firstSummary);
@@ -143,11 +143,34 @@ test('health, project validation, creation order, routes, and restart persistenc
     assert.deepEqual(await (await completeTask(task.id, false)).json(), task);
     assert.equal((await request(`/projects/${first.id}`)).status, 200);
     await completeTask(task.id, true);
+    const rename = (name) => request(`/api/projects/${first.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    for (const name of ['', ' \t\n ', null, 42]) {
+      const invalid = await rename(name);
+      assert.equal(invalid.status, 400);
+      assert.match((await invalid.json()).error, /Project name is required/);
+      assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), firstSummary);
+    }
+    const renamed = await rename('  Renamed project  ');
+    assert.equal(renamed.status, 200);
+    firstSummary = { ...firstSummary, name: 'Renamed project' };
+    assert.deepEqual(await renamed.json(), firstSummary);
+    assert.deepEqual(await (await request('/api/projects')).json(), [firstSummary, secondSummary]);
+    assert.deepEqual(await (await request(tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request('/api/projects')).json(), [firstSummary, secondSummary]);
+    assert.equal((await request(`/projects/${first.id}`)).status, 200);
     const archiveProject = (archived) => request(`/api/projects/${first.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
     });
     assert.equal((await archiveProject('true')).status, 400);
     assert.deepEqual(await (await archiveProject(true)).json(), { ...firstSummary, archived: true });
+    assert.equal((await rename('Forbidden rename')).status, 409);
+    assert.deepEqual(await (await request(`/api/projects/${first.id}`)).json(), {
+      ...firstSummary, archived: true,
+    });
     assert.equal((await createTask('Forbidden')).status, 409);
     assert.equal((await completeTask(task.id, false)).status, 409);
     assert.deepEqual(await (await request(tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
@@ -157,6 +180,8 @@ test('health, project validation, creation order, routes, and restart persistenc
       { ...firstSummary, archived: true }, secondSummary,
     ]);
     assert.deepEqual(await (await archiveProject(false)).json(), firstSummary);
+    firstSummary = { ...firstSummary, name: 'Restored and renamed' };
+    assert.deepEqual(await (await rename(' Restored and renamed ')).json(), firstSummary);
     assert.deepEqual(await (await request(tasksPath)).json(), [{ ...task, completed: true }, nextTask]);
     assert.equal((await completeTask(task.id, false)).status, 200);
     await server.stop();
