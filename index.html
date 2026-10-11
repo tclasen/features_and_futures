@@ -147,11 +147,19 @@
           const action = element('button', undefined, { class: 'secondary' });
           action.addEventListener('click', async () => {
             const archived = action.dataset.archived === 'true';
-            await fetch(`/api/projects/${project.id}/archive`, {
-              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ archived: !archived })
-            });
-            await loadProjects(list, filter);
+            // Keep the row stable while the archive request is in flight. A
+            // second click here could otherwise race the list refresh and
+            // make the row repeatedly disappear and return.
+            action.disabled = true;
+            try {
+              const response = await fetch(`/api/projects/${project.id}/archive`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ archived: !archived })
+              });
+              if (response.ok) await loadProjects(list, filter);
+            } finally {
+              action.disabled = false;
+            }
           });
           actions.append(summary, open, action);
           row.append(name, actions);
