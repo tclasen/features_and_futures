@@ -162,6 +162,43 @@ async function showProject(projectId) {
       });
       checkboxLabel.append(checkbox, element('span', { text: task.title }));
       row.append(checkboxLabel);
+      const renameForm = element('form', { className: 'task-rename-form' });
+      const renameLabel = element('label', { text: 'New task title' });
+      const renameInput = element('input');
+      renameInput.type = 'text';
+      renameInput.name = `newTaskTitle-${task.id}`;
+      renameInput.disabled = project.archived;
+      renameLabel.append(renameInput);
+      const renameButton = element('button', { text: 'Rename task', className: 'secondary-button' });
+      renameButton.type = 'submit';
+      renameButton.disabled = project.archived;
+      renameForm.append(renameLabel, renameButton);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const title = renameInput.value.trim();
+        if (!title) {
+          alert.textContent = 'Task title is required';
+          alert.hidden = false;
+          renameInput.focus();
+          return;
+        }
+        renameButton.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}/rename`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ title }),
+          });
+          if (!response.ok) throw new Error('Could not rename task');
+          await loadTasks();
+          alert.hidden = true;
+        } catch {
+          alert.textContent = 'Could not rename task';
+          alert.hidden = false;
+          renameButton.disabled = project.archived;
+        }
+      });
+      row.append(renameForm);
       taskList.append(row);
     }
   }

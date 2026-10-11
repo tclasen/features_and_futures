@@ -202,6 +202,40 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const renameTaskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename$/);
+  if (renameTaskRoute && request.method === 'PATCH') {
+    try {
+      const projectId = Number(renameTaskRoute[1]);
+      const taskId = Number(renameTaskRoute[2]);
+      const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      if (project.archived) {
+        send(response, 409, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+        return;
+      }
+      const payload = await readJson(request);
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
+        return;
+      }
+      const result = database.prepare(
+        'UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?'
+      ).run(title, taskId, projectId);
+      if (result.changes === 0) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ id: taskId, projectId, title }));
+    } catch {
+      send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
+    }
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/styles.css') {
     send(response, 200, 'text/css; charset=utf-8', styles);
     return;
