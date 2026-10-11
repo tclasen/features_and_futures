@@ -8,3 +8,8 @@ Set `DB_PATH` to select a persistent SQLite file (default `data/workboard.sqlite
 Example: `PORT=8080 DB_PATH=data/workboard.sqlite npm start`
 
 Run verification with `npm test`.
+
+Create projects on the home page and open a project to create tasks. Task titles
+are trimmed, tasks start open, and the Task filter shows All, Open, or Completed
+tasks in creation order. Completion changes and project ownership are stored in
+the configured SQLite file and survive restarts.
