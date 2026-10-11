@@ -43,6 +43,9 @@ if (!taskColumns.some((column) => column.name === 'sort_position')) {
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+}
 database.exec(`
   CREATE TABLE IF NOT EXISTS task_project_positions (
     task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -56,7 +59,8 @@ database.exec(`
 `);
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  SUM(CASE WHEN t.deleted = 0 THEN 1 ELSE 0 END) AS totalCount,
+  COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived, default_task_priority AS defaultTaskPriority FROM projects WHERE id = ?');
@@ -64,15 +68,16 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-const listTasks = database.prepare("SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_position, id");
+const listTasks = database.prepare("SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_position, id");
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_position) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_position) + 1 FROM task_project_positions WHERE project_id = ?), 1))');
 const getTaskPosition = database.prepare('SELECT sort_position AS sortPosition FROM tasks WHERE id = ?');
-const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
+const setTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, sort_position =
   ?
   WHERE id = ? AND project_id = ?`);
@@ -282,6 +287,10 @@ const server = createServer(async (request, response) => {
         sendJson(response, 409, { error: 'Tasks can only move between different active projects' });
         return;
       }
+      if (listTasks.all(sourceProjectId).find((item) => item.id === taskId)?.deleted) {
+        sendJson(response, 409, { error: 'Deleted tasks must be restored before moving' });
+        return;
+      }
       database.exec('BEGIN IMMEDIATE');
       try {
         const rememberedPosition = getRememberedPosition.get(taskId, destinationProjectId);
@@ -302,6 +311,33 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
+  const taskDeletionMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/(delete|restore)$/);
+  if (request.method === 'PATCH' && taskDeletionMatch) {
+    try {
+      const projectId = Number(taskDeletionMatch[1]);
+      const taskId = Number(taskDeletionMatch[2]);
+      const project = getProject.get(projectId);
+      const task = listTasks.all(projectId).find((item) => item.id === taskId);
+      if (!project || !task) {
+        sendJson(response, 404, { error: 'Task or project not found' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      const deleted = taskDeletionMatch[3] === 'delete';
+      if (Boolean(task.deleted) === deleted) {
+        sendJson(response, 409, { error: deleted ? 'Task is already deleted' : 'Task is not deleted' });
+        return;
+      }
+      setTaskDeleted.run(deleted ? 1 : 0, taskId, projectId);
+      sendJson(response, 200, listTasks.all(projectId).find((item) => item.id === taskId));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (request.method === 'PATCH' && taskMatch) {
     try {
@@ -314,6 +350,10 @@ const server = createServer(async (request, response) => {
       }
       if (getProject.get(projectId).archived) {
         sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      if (task.deleted) {
+        sendJson(response, 409, { error: 'Deleted tasks cannot be edited' });
         return;
       }
       const body = await readBody(request);
@@ -345,6 +385,10 @@ const server = createServer(async (request, response) => {
         sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
         return;
       }
+      if (task.deleted) {
+        sendJson(response, 409, { error: 'Deleted tasks cannot be edited' });
+        return;
+      }
       const { title } = await readBody(request);
       if (typeof title !== 'string' || !title.trim()) {
         sendJson(response, 400, { error: 'Task title is required' });
@@ -369,6 +413,10 @@ const server = createServer(async (request, response) => {
       }
       if (getProject.get(projectId).archived) {
         sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      if (task.deleted) {
+        sendJson(response, 409, { error: 'Deleted tasks cannot be edited' });
         return;
       }
       const { dueDate } = await readBody(request);
@@ -400,6 +448,10 @@ const server = createServer(async (request, response) => {
       }
       if (getProject.get(projectId).archived) {
         sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      if (task.deleted) {
+        sendJson(response, 409, { error: 'Deleted tasks cannot be edited' });
         return;
       }
       const { notes } = await readBody(request);

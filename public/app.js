@@ -140,9 +140,11 @@ async function renderTasks() {
     request('/api/projects?archived=false'),
   ]);
   const destinations = activeProjects.filter((project) => String(project.id) !== activeProjectId);
-  const visibleTasks = tasks.filter((task) => taskFilter.value === 'All'
-    || (taskFilter.value === 'Open' && !task.completed)
-    || (taskFilter.value === 'Completed' && task.completed))
+  const visibleTasks = tasks.filter((task) => taskFilter.value === 'Deleted'
+    ? Boolean(task.deleted)
+    : !task.deleted && (taskFilter.value === 'All'
+      || (taskFilter.value === 'Open' && !task.completed)
+      || (taskFilter.value === 'Completed' && task.completed)))
     .filter((task) => priorityFilter.value === 'All' || task.priority === priorityFilter.value)
     .filter((task) => {
       if (!appliedDueRange.from && !appliedDueRange.through) return true;
@@ -160,7 +162,8 @@ async function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(task.completed);
-    checkbox.disabled = activeProjectArchived;
+    const taskUnavailable = activeProjectArchived || Boolean(task.deleted);
+    checkbox.disabled = taskUnavailable;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       try {
@@ -179,7 +182,7 @@ async function renderTasks() {
     priorityLabel.textContent = 'Task priority';
     const priority = document.createElement('select');
     priority.setAttribute('aria-label', 'Task priority');
-    priority.disabled = activeProjectArchived;
+    priority.disabled = taskUnavailable;
     for (const value of ['Low', 'Normal', 'High']) {
       const option = document.createElement('option');
       option.value = value;
@@ -203,11 +206,11 @@ async function renderTasks() {
     renameInput.type = 'text';
     renameInput.value = task.title;
     renameInput.setAttribute('aria-label', 'New task title');
-    renameInput.disabled = activeProjectArchived;
+    renameInput.disabled = taskUnavailable;
     const renameButton = document.createElement('button');
     renameButton.type = 'submit';
     renameButton.textContent = 'Rename task';
-    renameButton.disabled = activeProjectArchived;
+    renameButton.disabled = taskUnavailable;
     rename.addEventListener('submit', async (event) => {
       event.preventDefault();
       const nextTitle = renameInput.value.trim();
@@ -229,11 +232,11 @@ async function renderTasks() {
     dueDateInput.type = 'text';
     dueDateInput.value = task.dueDate ?? '';
     dueDateInput.setAttribute('aria-label', 'Task due date');
-    dueDateInput.disabled = activeProjectArchived;
+    dueDateInput.disabled = taskUnavailable;
     const dueDateButton = document.createElement('button');
     dueDateButton.type = 'submit';
     dueDateButton.textContent = 'Save due date';
-    dueDateButton.disabled = activeProjectArchived;
+    dueDateButton.disabled = taskUnavailable;
     dueDateForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       taskAlert.hidden = true;
@@ -252,11 +255,11 @@ async function renderTasks() {
     const notesInput = document.createElement('textarea');
     notesInput.value = task.notes ?? '';
     notesInput.setAttribute('aria-label', 'Task notes');
-    notesInput.disabled = activeProjectArchived;
+    notesInput.disabled = taskUnavailable;
     const notesButton = document.createElement('button');
     notesButton.type = 'submit';
     notesButton.textContent = 'Save notes';
-    notesButton.disabled = activeProjectArchived;
+    notesButton.disabled = taskUnavailable;
     notesForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       try {
@@ -280,12 +283,12 @@ async function renderTasks() {
       option.textContent = project.name;
       destinationSelect.append(option);
     }
-    destinationSelect.disabled = activeProjectArchived || destinations.length === 0;
+    destinationSelect.disabled = taskUnavailable || destinations.length === 0;
     destinationLabel.append(destinationSelect);
     const moveButton = document.createElement('button');
     moveButton.type = 'button';
     moveButton.textContent = 'Move task';
-    moveButton.disabled = activeProjectArchived || destinations.length === 0;
+    moveButton.disabled = taskUnavailable || destinations.length === 0;
     moveButton.addEventListener('click', async () => {
       try {
         await request(`/api/projects/${activeProjectId}/tasks/${task.id}/move`, {
@@ -296,7 +299,19 @@ async function renderTasks() {
         await renderTasks();
       } catch (error) { showTaskError(error); }
     });
-    row.append(label, priorityLabel, rename, dueDateForm, notesForm, destinationLabel, moveButton);
+    const deletionButton = document.createElement('button');
+    deletionButton.type = 'button';
+    deletionButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+    deletionButton.disabled = activeProjectArchived;
+    deletionButton.addEventListener('click', async () => {
+      try {
+        await request(`/api/projects/${activeProjectId}/tasks/${task.id}/${task.deleted ? 'restore' : 'delete'}`, {
+          method: 'PATCH',
+        });
+        await renderTasks();
+      } catch (error) { showTaskError(error); }
+    });
+    row.append(label, priorityLabel, rename, dueDateForm, notesForm, destinationLabel, moveButton, deletionButton);
     return row;
   }));
 }
