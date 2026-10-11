@@ -122,6 +122,11 @@ const page = `<!doctype html>
       return value.replace(/[A-Z]/g, letter => String.fromCharCode(letter.charCodeAt(0) + 32));
     }
 
+    function normalizeSearch(value, query = false) {
+      const trimmed = query ? value.trim() : value;
+      return asciiLower(trimmed.replace(/[ \\t]+/g, ' '));
+    }
+
     function renderList(projects, selectedFilter = 'Active') {
       app.replaceChildren();
       const heading = document.createElement('h1');
@@ -176,8 +181,8 @@ const page = `<!doctype html>
       list.id = 'projects';
       function drawProjects(items) {
         list.replaceChildren();
-        const query = asciiLower(appliedSearch);
-        for (const project of items.filter(item => asciiLower(item.name).includes(query))) {
+        const query = normalizeSearch(appliedSearch, true);
+        for (const project of items.filter(item => normalizeSearch(item.name).includes(query))) {
           const row = document.createElement('li');
           row.dataset.testid = 'project-row';
           const name = document.createElement('span');
@@ -404,7 +409,7 @@ const page = `<!doctype html>
           (!appliedFrom && !appliedThrough || Boolean(task.dueDate)) &&
           (!appliedFrom || task.dueDate >= appliedFrom) &&
           (!appliedThrough || task.dueDate <= appliedThrough)
-          && asciiLower(task.title).includes(asciiLower(appliedTaskSearch))
+          && normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch, true))
         );
         for (const task of visible) {
           const row = document.createElement('li');
