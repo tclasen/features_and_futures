@@ -17,6 +17,12 @@ Open a project to create tasks, change completion with each task's checkbox, and
 filter tasks by All, Open, or Completed. Tasks appear in creation order and belong
 only to the project where they were created.
 
+The project list starts with Active projects. Use Project filter to view Archived
+projects and restore them. Archived project pages show their tasks and allow
+filtering, while task creation and completion controls are disabled. Each project
+row summarizes completed tasks out of all its tasks. Archive state persists, and
+existing databases are upgraded automatically without losing projects or tasks.
+
 Run the integration checks:
 
 ```sh
@@ -25,4 +31,5 @@ npm test
 
 The checks use a temporary SQLite file and verify validation, creation order,
 project pages, safe rendering, task completion and filters, project isolation,
-health, and persistence after a server restart.
+health, database migration, archive/restore, completion summaries, archived write
+protection, and persistence after server restarts.
