@@ -35,6 +35,17 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
+// Keep a slot even while its task belongs elsewhere. Seed current positions on
+// migration without changing the order established by earlier versions.
+db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (project_id, task_id)
+);
+CREATE INDEX IF NOT EXISTS task_positions_order ON task_positions(project_id, position);
+INSERT OR IGNORE INTO task_positions (project_id, task_id, position)
+  SELECT project_id, id, position FROM tasks;`);
 const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total_count,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed_count
@@ -48,10 +59,23 @@ const projectValue = project => ({ ...project, archived: Boolean(project.archive
 const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-  WHERE project_id = ? AND id = ?`);
+  VALUES (?, ?, ?, ?)`);
+const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
+const rememberPosition = db.prepare('INSERT INTO task_positions (project_id, task_id, position) VALUES (?, ?, ?)');
+const getPosition = db.prepare('SELECT position FROM task_positions WHERE project_id = ? AND task_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE project_id = ? AND id = ?');
+
+function transaction(action) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = action();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -150,7 +174,12 @@ const server = http.createServer(async (req, res) => {
         if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, getProject.get(projectId).default_priority, projectId);
+        const result = transaction(() => {
+          const position = nextPosition.get(projectId).position;
+          const inserted = insertTask.run(projectId, title, getProject.get(projectId).default_priority, position);
+          rememberPosition.run(projectId, inserted.lastInsertRowid, position);
+          return inserted;
+        });
         return json(res, 201, taskValue(getTask.get(projectId, result.lastInsertRowid)));
       }
       if (req.method === 'PATCH' && taskId) {
@@ -165,8 +194,14 @@ const server = http.createServer(async (req, res) => {
           const destination = getProject.get(destinationId);
           if (!destination) return json(res, 404, { error: 'Destination project not found' });
           if (destination.archived) return json(res, 409, { error: 'Archived project' });
-          // One SQLite statement changes ownership and appends to destination order.
-          moveTask.run(destinationId, destinationId, projectId, taskId);
+          transaction(() => {
+            let position = getPosition.get(destinationId, taskId)?.position;
+            if (position === undefined) {
+              position = nextPosition.get(destinationId).position;
+              rememberPosition.run(destinationId, taskId, position);
+            }
+            moveTask.run(destinationId, position, projectId, taskId);
+          });
           return json(res, 200, taskValue(getTask.get(destinationId, taskId)));
         }
         if (input && Object.hasOwn(input, 'due_date')) {

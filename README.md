@@ -2,7 +2,10 @@
 
 Each task row provides Destination project and Move task. Destinations are active
 projects other than the source, listed by project creation order under their current
-names. Moving appends the task after the destination's existing tasks while keeping
+names. A first arrival appends after all positions established in the destination;
+a returning task resumes its remembered position relative to other tasks. Each
+project remembers its task positions independently, even while tasks are elsewhere.
+New tasks come after established positions, including absent tasks. Movement keeps
 its identity, title, completion, priority and due date. The source stays open with
 its filters and applied range unchanged; both project summaries reflect current
 ownership. Moves persist across reloads and restarts. Archived projects cannot be
@@ -105,5 +108,6 @@ Due-range checks cover inclusive and one-sided boundaries, undated tasks,
 calendar validation, preservation after invalid submissions, intersection with
 both combobox filters, membership updates after edits, and archived filtering.
 Move checks cover schema migration, appending older tasks after newer destination
-tasks, repeated moves, subsequent creation, saved values and summaries, restart
+tasks, restoring independent positions on reverse-order returns, creation and first
+arrivals while tasks are absent, saved values and summaries, restart
 persistence, archive protection, destination options, and source filter retention.

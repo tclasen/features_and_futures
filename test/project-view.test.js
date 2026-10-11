@@ -70,6 +70,15 @@ const settled = () => new Promise(resolve => setImmediate(resolve));
 
 async function browser(storage, projects, pending = {}) {
   const tasks = pending.tasks || [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];
+  const positions = new Map();
+  function remember(task, owner) {
+    const key = `${owner}:${task.id}`;
+    if (!positions.has(key)) {
+      const slots = [...positions].filter(([key]) => key.startsWith(`${owner}:`)).map(([, slot]) => slot);
+      positions.set(key, Math.max(0, ...slots) + 1);
+    }
+  }
+  for (const task of tasks) remember(task, task.project_id ?? 1);
   const app = new Element('main', true);
   const location = { pathname: '/' };
   const document = {
@@ -97,6 +106,7 @@ async function browser(storage, projects, pending = {}) {
           project_id: owner.id, title: JSON.parse(options.body).title,
           completed: false, priority: owner.default_priority };
         tasks.push(result);
+        remember(result, owner.id);
       } else if (options?.method === 'PATCH') {
         if (pending.wait) await pending.wait;
         const taskMatch = path.match(/\/tasks\/(\d+)$/);
@@ -105,6 +115,7 @@ async function browser(storage, projects, pending = {}) {
         const input = JSON.parse(options.body);
         if (taskMatch && Object.hasOwn(input, 'destination_project_id')) {
           item.project_id = input.destination_project_id;
+          remember(item, item.project_id);
           tasks.splice(tasks.indexOf(item), 1);
           tasks.push(item);
         } else {
@@ -116,6 +127,7 @@ async function browser(storage, projects, pending = {}) {
       } else if (path.endsWith('/tasks')) {
         const owner = Number(path.match(/projects\/(\d+)/)[1]);
         result = tasks.filter(task => task.project_id === undefined || task.project_id === owner)
+          .sort((a, b) => positions.get(`${owner}:${a.id}`) - positions.get(`${owner}:${b.id}`))
           .map(task => ({ ...task }));
       } else {
         result = { ...projects.find(item => path === `/api/projects/${item.id}`) };
@@ -731,7 +743,7 @@ test('move controls list eligible destinations and preserve source filters, orde
   await settled();
   await control(rows(app)[0], 'Open project').emit('click');
   await settled();
-  assert.deepEqual(taskTitles(app), ['Remaining', 'Hidden', 'Move me']);
+  assert.deepEqual(taskTitles(app), ['Move me', 'Remaining', 'Hidden']);
 });
 
 test('move controls disable when no destination exists and on archived sources, then enable on restoration', async () => {
