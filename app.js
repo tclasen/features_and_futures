@@ -115,6 +115,8 @@ async function loadTasks() {
   if (currentProjectId === null) return;
   const response = await fetch(`/api/projects/${currentProjectId}/tasks`);
   const tasks = await response.json();
+  const projectsResponse = await fetch('/api/projects?filter=Active');
+  const activeProjects = await projectsResponse.json();
   tasksContainer.replaceChildren();
   for (const task of tasks) {
     if (taskFilter.value === 'Open' && task.completed) continue;
@@ -222,7 +224,35 @@ async function loadTasks() {
       dueDateAlert.hidden = true;
       await loadTasks();
     });
-    row.append(title, checkbox, priority, renameForm, dueDateForm);
+    const moveForm = document.createElement('form');
+    moveForm.className = 'task-move-form';
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    for (const candidate of activeProjects) {
+      if (candidate.id === currentProjectId) continue;
+      const option = document.createElement('option');
+      option.value = candidate.id;
+      option.textContent = candidate.name;
+      destination.append(option);
+    }
+    const moveButton = document.createElement('button');
+    moveButton.type = 'submit';
+    moveButton.textContent = 'Move task';
+    const noDestination = destination.options.length === 0;
+    destination.disabled = currentProjectArchived || noDestination;
+    moveButton.disabled = currentProjectArchived || noDestination;
+    moveForm.append(destination, moveButton);
+    moveForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (currentProjectArchived || !destination.value) return;
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+      });
+      if (response.ok) await loadTasks();
+    });
+    row.append(title, checkbox, priority, renameForm, dueDateForm, moveForm);
     tasksContainer.append(row);
   }
 }

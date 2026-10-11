@@ -21,7 +21,8 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-    due_date TEXT
+    due_date TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0
   )
 `);
 // Upgrade databases created by earlier task checkpoints.
@@ -38,6 +39,13 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 }
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'sort_order')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  database.exec(`UPDATE tasks AS task SET sort_order = (
+    SELECT COUNT(*) - 1 FROM tasks AS earlier
+    WHERE earlier.project_id = task.project_id AND earlier.id <= task.id
+  )`);
 }
 
 function isValidDueDate(value) {
@@ -133,7 +141,7 @@ const server = createServer(async (request, response) => {
   }
   const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksPath && request.method === 'GET') {
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksPath[1]));
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(tasksPath[1]));
     return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksPath && request.method === 'POST') {
@@ -148,7 +156,8 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksPath[1]);
     const project = database.prepare('SELECT id, default_task_priority AS defaultTaskPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.defaultTaskPriority);
+    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+    const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.defaultTaskPriority, nextOrder);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultTaskPriority, dueDate: null });
   }
   const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -165,6 +174,16 @@ const server = createServer(async (request, response) => {
       FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?
     `).get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (changes.destinationProjectId !== undefined) {
+      const destinationId = Number(changes.destinationProjectId);
+      if (!Number.isInteger(destinationId)) return sendJson(response, 400, { error: 'Invalid destination project' });
+      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot move tasks' });
+      const destination = database.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+      if (!destination || destinationId === task.projectId) return sendJson(response, 400, { error: 'Invalid destination project' });
+      const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+      database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
+      return sendJson(response, 200, { id: taskId, projectId: destinationId });
+    }
     if (typeof changes.title === 'string') {
       const title = changes.title.trim();
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
