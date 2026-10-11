@@ -241,7 +241,7 @@ const server = http.createServer(async (req, res) => {
     const project = getProject.get(decodeURIComponent(match[1]));
     return project ? json(200, project) : json(404, { error: 'Not found' });
   }
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || url.pathname.startsWith('/projects/'))) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(page);
   }
