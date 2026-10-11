@@ -31,6 +31,87 @@ async function start(databasePath) {
   };
 }
 
+test('project defaults migrate, affect only new tasks, and survive independent edits and restarts', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp('data/test-');
+  const databasePath = resolve(directory, 'defaults.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Original', 1, 'Low');
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const defaultSelect = html => html.match(/<select id="default-task-priority"[^>]*>[\s\S]*?<\/select>/)[0];
+    const selectedDefault = (html, value) => {
+      const select = defaultSelect(html);
+      assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)].map(match => match[1]), ['Low', 'Normal', 'High']);
+      assert.match(select, new RegExp(`<option selected>${value}</option>`));
+    };
+    selectedDefault(await get('/projects/1'), 'Normal');
+    await post('/projects', { name: 'New' });
+    selectedDefault(await get('/projects/2'), 'Normal');
+    const path = '/projects/1?filter=Completed&priorityFilter=Low';
+    const before = await get(path);
+    const summary = await get('/');
+    const filters = { filter: 'Completed', priorityFilter: 'Low' };
+    const response = await post('/projects/1/default-priority', { ...filters, priority: 'High' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), path);
+    const after = await get(path);
+    selectedDefault(after, 'High');
+    assert.equal(after.replace(defaultSelect(after), ''), before.replace(defaultSelect(before), ''));
+    assert.equal(await get('/'), summary);
+    selectedDefault(await get('/projects/2'), 'Normal');
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post('/projects/1/default-priority', { priority })).status, 422);
+    }
+    assert.equal((await post('/projects/999/default-priority', { priority: 'Low' })).status, 404);
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Inherited low' });
+    await post('/projects/2/tasks', { title: 'Independent normal' });
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    await post('/projects/1/tasks/2/rename', { title: 'Renamed high' });
+    await post('/projects/1/tasks/2', { completed: '1' });
+    assert.match(await get('/'), /2\/3 completed/);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    selectedDefault(archived, 'Low');
+    assert.match(defaultSelect(archived), / disabled/);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Normal' })).status, 403);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(defaultSelect(await get('/projects/1')), /disabled/);
+    selectedDefault(await get('/projects/1'), 'Low');
+    await post('/projects/1/tasks', { title: 'After restoration' });
+    const db = new DatabaseSync(databasePath);
+    try {
+      assert.deepEqual(db.prepare('SELECT project_id, title, completed, priority FROM tasks ORDER BY id').all().map(row => ({ ...row })), [
+        { project_id: 1, title: 'Original', completed: 1, priority: 'Low' },
+        { project_id: 1, title: 'Renamed high', completed: 1, priority: 'High' },
+        { project_id: 1, title: 'Inherited low', completed: 0, priority: 'Low' },
+        { project_id: 2, title: 'Independent normal', completed: 0, priority: 'Normal' },
+        { project_id: 1, title: 'After restoration', completed: 0, priority: 'Low' },
+      ]);
+    } finally { db.close(); }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('combined filters preserve selections, intersect in creation order and re-evaluate edits', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp('data/test-');
@@ -141,13 +222,15 @@ test('priorities migrate, remain independent, preserve task state and persist th
     const highOptions = '<option>Low</option><option>Normal</option><option selected>High</option>';
     const original = await get('/projects/1');
     const summary = await get('/');
-    assert.equal(original.split(normalOptions).length - 1, 2);
+    assert.equal(original.split(normalOptions).length - 1, 3); // Two tasks and the project default.
     assert.match(original, /<label for="task-priority-1">Task priority<\/label>/);
     const changed = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
     assert.equal(changed.status, 303);
     assert.equal(changed.headers.get('location'), '/projects/1?filter=Completed');
     const highPage = await get('/projects/1');
-    assert.equal(highPage, original.replace(normalOptions, highOptions));
+    assert.equal(highPage, original.replace(
+      /(<select id="task-priority-1"[^>]*>\s*)[^<]*(?:<option[^>]*>[^<]*<\/option>){3}/,
+      `$1${highOptions}`));
     assert.equal(await get('/'), summary);
     assert.doesNotMatch(await get('/projects/1?filter=Open'), /First/);
     assert.match(await get('/projects/1?filter=Completed'), /First/);
@@ -181,7 +264,7 @@ test('priorities migrate, remain independent, preserve task state and persist th
     assert.equal(await get('/projects/1'), saved);
     await post('/projects/1/tasks/1/priority', { priority: 'Low' });
     await post('/projects/1/tasks', { title: 'New task' });
-    assert.equal((await get('/projects/1')).split(normalOptions).length - 1, 1);
+    assert.equal((await get('/projects/1')).split(normalOptions).length - 1, 2); // One task and the project default.
     assert.match(await get('/'), /data-testid="project-summary">1\/3 completed/);
   } finally {
     if (server) await server.stop();
