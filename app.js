@@ -42,8 +42,13 @@ async function renderList() {
   await populateProjects(list, filter.value);
 }
 
+let projectListRequest = 0;
 async function populateProjects(list, filter = 'Active') {
+  const requestId = ++projectListRequest;
   const projects = await request('/api/projects');
+  // Ignore responses from an earlier filter/action request so stale data cannot
+  // replace the current list after a faster request has already completed.
+  if (requestId !== projectListRequest) return;
   list.replaceChildren(...projects.filter(project => Boolean(project.archived) === (filter === 'Archived')).map(project => {
     const row = element('div', undefined, { 'data-testid': 'project-row' });
     const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary' });
