@@ -50,7 +50,13 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     const legacy = new DatabaseSync(databasePath);
     legacy.exec(`CREATE TABLE projects (
       position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL
-    ); INSERT INTO projects (id, name) VALUES ('legacy', 'Existing project')`);
+    ); INSERT INTO projects (id, name) VALUES ('legacy', 'Existing project');
+    CREATE TABLE tasks (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+      project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    ); INSERT INTO tasks (id, project_id, title, completed)
+      VALUES ('legacy-task', 'legacy', 'Existing task', 1)`);
     legacy.close();
     server = await start(databasePath);
     const get = async path => {
@@ -64,8 +70,10 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
       body: JSON.stringify({ name }),
     });
     assert.deepEqual(await get('/health'), { status: 'ok' });
-    const existing = { id: 'legacy', name: 'Existing project', archived: false, total: 0, completed: 0 };
+    const existing = { id: 'legacy', name: 'Existing project', archived: false, total: 1, completed: 1 };
     assert.deepEqual(await get('/api/projects'), [existing]);
+    const legacyTasks = [{ id: 'legacy-task', title: 'Existing task', completed: true, priority: 'Normal' }];
+    assert.deepEqual(await get('/api/projects/legacy/tasks'), legacyTasks);
     for (const name of ['', ' \t\n ']) {
       const response = await create(name);
       assert.equal(response.status, 400);
@@ -110,6 +118,7 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     assert.ok(firstTask.id);
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.priority, 'Normal');
     const nextTaskResponse = await createTask(firstTasks, 'Second task');
     const secondTask = await nextTaskResponse.json();
     assert.notEqual(firstTask.id, secondTask.id);
@@ -117,6 +126,8 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     assert.deepEqual(await get(secondTasks), []);
     const otherTaskResponse = await createTask(secondTasks, 'Other project task');
     const otherTask = await otherTaskResponse.json();
+    assert.equal(secondTask.priority, 'Normal');
+    assert.equal(otherTask.priority, 'Normal');
     assert.deepEqual(await get(secondTasks), [otherTask]);
     const wrongProject = await completeTask(`${secondTasks}/${firstTask.id}`, true);
     assert.equal(wrongProject.status, 404);
@@ -140,6 +151,27 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     first.total = 2;
     first.completed = 1;
     second.total = 1;
+    const setPriority = (path, priority) => fetch(server.url + path, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    });
+    assert.equal((await setPriority(`${secondTasks}/${firstTask.id}`, 'High')).status, 404);
+    for (const priority of ['', 'high', 'Urgent', null, 123]) {
+      assert.equal((await setPriority(`${firstTasks}/${firstTask.id}`, priority)).status, 400);
+      assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+    }
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await setPriority(`${firstTasks}/${firstTask.id}`, priority);
+      assert.equal(response.status, 200);
+      firstTask.priority = priority;
+      assert.deepEqual(await response.json(), firstTask);
+      assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+      assert.deepEqual(await get(secondTasks), [otherTask]);
+      assert.deepEqual(await get('/api/projects'), [existing, first, second]);
+    }
+    assert.equal((await setPriority(`${firstTasks}/${secondTask.id}`, 'Low')).status, 200);
+    secondTask.priority = 'Low';
     const renameTask = (path, title) => fetch(server.url + path, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -194,6 +226,7 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     assert.equal((await createTask(firstTasks, 'Blocked')).status, 409);
     assert.equal((await completeTask(`${firstTasks}/${firstTask.id}`, false)).status, 409);
     assert.equal((await renameTask(`${firstTasks}/${firstTask.id}`, 'Blocked task rename')).status, 409);
+    assert.equal((await setPriority(`${firstTasks}/${firstTask.id}`, 'Low')).status, 409);
     assert.equal((await rename('Blocked rename')).status, 409);
     assert.deepEqual(await get(`/api/projects/${first.id}`), first);
     assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
@@ -211,16 +244,20 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     await server.stop();
     server = undefined;
     server = await start(databasePath);
+    assert.deepEqual(await get('/api/projects/legacy/tasks'), legacyTasks);
     assert.deepEqual(await get('/api/projects'), [existing, first, second]);
     assert.deepEqual(await get(`/api/projects/${first.id}`), first);
     assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
     assert.deepEqual(await get(secondTasks), [otherTask]);
     assert.equal((await createTask(firstTasks, 'Still blocked')).status, 409);
     assert.equal((await renameTask(`${firstTasks}/${firstTask.id}`, 'Still blocked rename')).status, 409);
+    assert.equal((await setPriority(`${firstTasks}/${firstTask.id}`, 'Normal')).status, 409);
     const restored = await setArchived(false);
     first.archived = false;
     assert.equal(restored.status, 200);
     assert.deepEqual(await restored.json(), first);
+    assert.equal((await setPriority(`${firstTasks}/${firstTask.id}`, 'Low')).status, 200);
+    firstTask.priority = 'Low';
     const renamedAfterRestoration = await rename('  Restored and renamed  ');
     assert.equal(renamedAfterRestoration.status, 200);
     first.name = 'Restored and renamed';

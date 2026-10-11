@@ -42,7 +42,7 @@ test('project rename validates, updates the heading, preserves the URL and tasks
     fetch: async (path, options) => {
       if (!options) {
         const body = path.endsWith('/tasks')
-          ? [{ id: 'task', title: 'Existing task', completed: true }]
+          ? [{ id: 'task', title: 'Existing task', completed: true, priority: 'Normal' }]
           : { id: 'example', name: 'Original', archived: false };
         return { ok: true, json: async () => body };
       }
@@ -94,9 +94,9 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   element('#rename-form').button = new Element();
   element('#task-filter').value = 'all';
   const savedTasks = [
-    { id: 'one', title: 'First task', completed: false },
-    { id: 'two', title: 'Second task', completed: true },
-    { id: 'three', title: 'Third task', completed: false },
+    { id: 'one', title: 'First task', completed: false, priority: 'Normal' },
+    { id: 'two', title: 'Second task', completed: true, priority: 'High' },
+    { id: 'three', title: 'Third task', completed: false, priority: 'Low' },
   ];
   const writes = [];
   let failNextWrite = false;
@@ -115,7 +115,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
         }
         const input = JSON.parse(options.body);
         if (options.method === 'POST') {
-          body = { id: 'four', title: input.title, completed: false };
+          body = { id: 'four', title: input.title, completed: false, priority: 'Normal' };
           savedTasks.push(body);
         } else {
           const task = savedTasks.find(task => path.endsWith(`/${task.id}`));
@@ -138,6 +138,13 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.ok(rows().every(row => row.dataset.testid === 'task-row'));
   assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete First task');
   assert.equal(rows()[1].children[0].checked, true);
+  assert.deepEqual(rows().map(row => row.children[3].value), ['Normal', 'High', 'Low']);
+  for (const row of rows()) {
+    const priority = row.children[3];
+    assert.equal(priority.attributes['aria-label'], 'Task priority');
+    assert.equal(priority.disabled, false);
+    assert.deepEqual(priority.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  }
   const renameRow = rows()[1];
   const renameForm = renameRow.children[2];
   const [renameInput, renameButton] = renameForm.children;
@@ -160,6 +167,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.equal(renameRow.children[1].textContent, 'Renamed task');
   assert.equal(renameRow.children[0].attributes['aria-label'], 'Complete Renamed task');
   assert.equal(renameRow.children[0].checked, true);
+  assert.equal(renameRow.children[3].value, 'High');
   assert.deepEqual(titles(), ['First task', 'Renamed task', 'Third task']);
   failNextWrite = true;
   renameInput.value = 'Failed rename';
@@ -174,6 +182,23 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.equal(element('#task-alert').hidden, false);
   assert.equal(writes.length, 2);
   assert.equal(rows().length, 3);
+  const priority = rows()[1].children[3];
+  priority.value = 'Low';
+  await priority.dispatch('change');
+  assert.equal(writes.at(-1).path, '/api/projects/example/tasks/two');
+  assert.deepEqual(JSON.parse(writes.at(-1).body), { priority: 'Low' });
+  assert.equal(savedTasks[1].priority, 'Low');
+  assert.equal(priority.value, 'Low');
+  assert.equal(priority.disabled, false);
+  assert.equal(renameRow.children[0].checked, true);
+  assert.deepEqual(titles(), ['First task', 'Renamed task', 'Third task']);
+  assert.equal(rows()[0].children[3].value, 'Normal');
+  failNextWrite = true;
+  priority.value = 'High';
+  await priority.dispatch('change');
+  assert.equal(priority.value, 'Low');
+  assert.equal(priority.disabled, false);
+  assert.equal(element('#task-alert').textContent, 'Save failed');
   await filter('open');
   assert.deepEqual(titles(), ['First task', 'Third task']);
   const firstCheckbox = rows()[0].children[0];
@@ -189,6 +214,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   await completedCheckbox.dispatch('change');
   assert.equal(savedTasks[0].completed, false);
   assert.deepEqual(titles(), ['Renamed task']);
+  assert.equal(rows()[0].children[3].value, 'Low');
   element('#task-title').value = '  Fourth task  ';
   await element('#task-form').dispatch('submit');
   assert.equal(savedTasks[3].title, 'Fourth task');
@@ -196,6 +222,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.deepEqual(titles(), ['Renamed task']);
   await filter('all');
   assert.deepEqual(titles(), ['First task', 'Renamed task', 'Third task', 'Fourth task']);
+  assert.equal(rows()[3].children[3].value, 'Normal');
   failNextWrite = true;
   const checkbox = rows()[0].children[0];
   checkbox.checked = true;
@@ -273,8 +300,8 @@ test('archived project UI disables task changes while keeping filters usable', a
     fetch: async (path, options) => {
       if (options) writes++;
       const body = path.endsWith('/tasks') ? [
-        { id: 'a', title: 'Open task', completed: false },
-        { id: 'b', title: 'Done task', completed: true },
+        { id: 'a', title: 'Open task', completed: false, priority: 'Low' },
+        { id: 'b', title: 'Done task', completed: true, priority: 'High' },
       ] : { id: 'one', name: 'Archived example', archived: true };
       return { ok: true, json: async () => body };
     },
@@ -289,6 +316,9 @@ test('archived project UI disables task changes while keeping filters usable', a
   await element('#rename-form').dispatch('submit');
   assert.equal(rows().length, 2);
   assert.ok(rows().every(row => row.children[0].disabled));
+  assert.ok(rows().every(row => row.children[3].disabled));
+  assert.deepEqual(rows().map(row => row.children[3].value), ['Low', 'High']);
+  await rows()[0].children[3].dispatch('change');
   assert.ok(rows().every(row => row.children[2].children.every(control => control.disabled)));
   rows()[0].children[2].children[0].value = 'Blocked task rename';
   await rows()[0].children[2].dispatch('submit');
@@ -297,6 +327,8 @@ test('archived project UI disables task changes while keeping filters usable', a
   assert.equal(rows().length, 1);
   assert.equal(rows()[0].children[1].textContent, 'Done task');
   assert.equal(rows()[0].children[0].disabled, true);
+  assert.equal(rows()[0].children[3].disabled, true);
+  assert.equal(rows()[0].children[3].value, 'High');
   element('#task-filter').value = 'open';
   await element('#task-filter').dispatch('change');
   assert.equal(rows()[0].children[1].textContent, 'Open task');
