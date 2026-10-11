@@ -53,3 +53,5 @@ L064 corrected prospective40 prototype terminal: three full140 render variants a
 L060 broader002 prospective preparation: separate controller adds ten process-local cumulative lifecycle assertion probes to five full140 reload/restore variants. Original prepared controller retained. Syntax and input hashes verified, behavior pending. No actual restart claim; native per-builder upgrade/restart remains required. Evidence: `research-v014/preflight/task040-broader002-inputs.json`.
 
 L062 focused031 controls independently verified: three four-case positive render runs and ten exact selected genuine faults, full closed file/input binding, no skips/flakes. Serial batch continues; remaining032–039 and broader/native gates pending. Evidence: `research-v014/preflight/future031-focused-check-1791743915266/independently-verified.json`.
+
+L062 focused032 independently verified: three four-case positive render variants and thirteen exact selected faults, complete file/input binding, zero skips/flakes. Remaining033–039 and broader/native readiness pending. Evidence: `research-v014/preflight/future032-focused-check-1791744126215/independently-verified.json`.
