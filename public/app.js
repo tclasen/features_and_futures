@@ -112,7 +112,11 @@ async function renderRoute() {
 
 async function renderTasks() {
   if (!activeProjectId) return;
-  const tasks = await request(`/api/projects/${activeProjectId}/tasks`);
+  const [tasks, activeProjects] = await Promise.all([
+    request(`/api/projects/${activeProjectId}/tasks`),
+    request('/api/projects?archived=false'),
+  ]);
+  const destinations = activeProjects.filter((project) => String(project.id) !== activeProjectId);
   const visibleTasks = tasks.filter((task) => taskFilter.value === 'All'
     || (taskFilter.value === 'Open' && !task.completed)
     || (taskFilter.value === 'Completed' && task.completed))
@@ -218,7 +222,33 @@ async function renderTasks() {
       } catch (error) { showTaskError(error); }
     });
     dueDateForm.append(dueDateInput, dueDateButton);
-    row.append(label, priorityLabel, rename, dueDateForm);
+    const destinationLabel = document.createElement('label');
+    destinationLabel.textContent = 'Destination project';
+    const destinationSelect = document.createElement('select');
+    destinationSelect.setAttribute('aria-label', 'Destination project');
+    for (const project of destinations) {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destinationSelect.append(option);
+    }
+    destinationSelect.disabled = activeProjectArchived || destinations.length === 0;
+    destinationLabel.append(destinationSelect);
+    const moveButton = document.createElement('button');
+    moveButton.type = 'button';
+    moveButton.textContent = 'Move task';
+    moveButton.disabled = activeProjectArchived || destinations.length === 0;
+    moveButton.addEventListener('click', async () => {
+      try {
+        await request(`/api/projects/${activeProjectId}/tasks/${task.id}/move`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: Number(destinationSelect.value) }),
+        });
+        await renderTasks();
+      } catch (error) { showTaskError(error); }
+    });
+    row.append(label, priorityLabel, rename, dueDateForm, destinationLabel, moveButton);
     return row;
   }));
 }

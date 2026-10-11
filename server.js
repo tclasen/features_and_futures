@@ -36,6 +36,10 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'sort_position')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_position INTEGER NOT NULL DEFAULT 0');
+  database.exec('UPDATE tasks SET sort_position = id');
+}
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
@@ -46,13 +50,16 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_position, id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_position) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_position) + 1 FROM tasks WHERE project_id = ?), 1))');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, sort_position =
+  COALESCE((SELECT MAX(sort_position) + 1 FROM tasks WHERE project_id = ?), 1)
+  WHERE id = ? AND project_id = ?`);
 
 function isValidDueDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -206,7 +213,7 @@ const server = createServer(async (request, response) => {
           sendJson(response, 400, { error: 'Task title is required' });
           return;
         }
-        const result = createTask.run(projectId, title.trim(), project.defaultTaskPriority);
+        const result = createTask.run(projectId, title.trim(), project.defaultTaskPriority, projectId);
         sendJson(response, 201, getTask.get(result.lastInsertRowid, projectId));
       } catch {
         sendJson(response, 400, { error: 'Invalid request' });
@@ -229,6 +236,32 @@ const server = createServer(async (request, response) => {
       }
       setProjectArchived.run(archived ? 1 : 0, projectId);
       sendJson(response, 200, getProject.get(projectId));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+  const moveTaskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (request.method === 'PATCH' && moveTaskMatch) {
+    try {
+      const sourceProjectId = Number(moveTaskMatch[1]);
+      const taskId = Number(moveTaskMatch[2]);
+      const { destinationProjectId } = await readBody(request);
+      const source = getProject.get(sourceProjectId);
+      const destination = Number.isSafeInteger(destinationProjectId)
+        ? getProject.get(destinationProjectId)
+        : null;
+      const task = getTask.get(taskId, sourceProjectId);
+      if (!source || !task || !destination) {
+        sendJson(response, 404, { error: 'Task or project not found' });
+        return;
+      }
+      if (source.archived || destination.archived || sourceProjectId === destinationProjectId) {
+        sendJson(response, 409, { error: 'Tasks can only move between different active projects' });
+        return;
+      }
+      moveTask.run(destinationProjectId, destinationProjectId, taskId, sourceProjectId);
+      sendJson(response, 200, getTask.get(taskId, destinationProjectId));
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
