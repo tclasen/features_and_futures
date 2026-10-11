@@ -42,6 +42,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+// Deletion reserves ownership and ordering; upgrades keep all earlier tasks live.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 // Preserve existing creation order, then append new and moved tasks per project.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
@@ -71,9 +75,9 @@ function transaction(action) {
     throw error;
   }
 }
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
 const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-const updateTaskLocation = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
+const updateTaskLocation = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ? AND deleted = 0');
 function moveTask(destinationId, taskId, sourceId) {
   transaction(() => {
     let position = rememberedPosition.get(taskId, destinationId)?.position;
@@ -84,9 +88,9 @@ function moveTask(destinationId, taskId, sourceId) {
     updateTaskLocation.run(destinationId, position, taskId, sourceId);
   });
 }
-const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
-const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
-const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ? AND deleted = 0');
+const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ? AND deleted = 0');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ? AND deleted = 0');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 function createTask(projectId, title, priority) {
   transaction(() => {
@@ -95,10 +99,12 @@ function createTask(projectId, title, priority) {
     rememberPosition.run(task.lastInsertRowid, projectId, position);
   });
 }
-const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
-const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
-const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
-const taskFilter = (value) => ['Open', 'Completed'].includes(value) ? value : 'All';
+const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ? AND deleted = 0');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ? AND deleted = 0');
+const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ? AND deleted = 0');
+const getAnyTask = db.prepare('SELECT id, deleted FROM tasks WHERE id = ? AND project_id = ?');
+const setTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
+const taskFilter = (value) => ['Open', 'Completed', 'Deleted'].includes(value) ? value : 'All';
 const priorityFilter = (value) => ['Low', 'Normal', 'High'].includes(value) ? value : 'All';
 const readSearch = (params, key) => (params.get('searchQuery') ?? params.get(key) ?? '').trim();
 const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
@@ -111,7 +117,7 @@ const projectsLocation = (filter, search) => `/?${new URLSearchParams({ filter, 
 const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
-  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted = 0
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({
@@ -196,7 +202,8 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
   const eligibleDestinations = destinations.all(project.id);
   const moveDisabled = project.archived || !eligibleDestinations.length;
   const tasks = listTasks.all(project.id).filter((task) =>
-    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+    (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
+      (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))) &&
     (priority === 'All' || task.priority === priority) &&
     matchesSearch(task.title, range.search || '') &&
     ((!range.from && !range.through) || (task.due_date &&
@@ -250,32 +257,39 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
       <form action="/projects/${project.id}" method="get">
         <label for="task-filter">Task filter</label>
         <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
-          ${['All', 'Open', 'Completed'].map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
+          ${['All', 'Open', 'Completed', 'Deleted'].map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
         </select>
         <label for="priority-filter">Priority filter</label>
         <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
           ${['All', 'Low', 'Normal', 'High'].map((option) => `<option${option === priority ? ' selected' : ''}>${option}</option>`).join('')}
         </select>
       </form>
-      ${tasks.map((task) => `<div class="task-row" data-testid="task-row">
+      ${tasks.map((task) => {
+        const editDisabled = project.archived || task.deleted;
+        return `<div class="task-row" data-testid="task-row">
+        <form action="/projects/${project.id}/tasks/${task.id}/${task.deleted ? 'restore' : 'delete'}" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priority}">
+          <button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
+        </form>
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
-          <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
+          <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${editDisabled ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
         </form>
         <form class="create" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
           <label for="new-task-title-${task.id}">New task title</label>
-          <input id="new-task-title-${task.id}" name="title" type="text" value="${escape(taskRenameError?.id === task.id ? taskRenameError.title : '')}"${project.archived ? ' disabled' : ''}${taskRenameError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-rename-error-${task.id}"` : ''}>
+          <input id="new-task-title-${task.id}" name="title" type="text" value="${escape(taskRenameError?.id === task.id ? taskRenameError.title : '')}"${editDisabled ? ' disabled' : ''}${taskRenameError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-rename-error-${task.id}"` : ''}>
           ${taskRenameError?.id === task.id ? `<div id="task-rename-error-${task.id}" role="alert">Task title is required</div>` : ''}
-          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          <button type="submit"${editDisabled ? ' disabled' : ''}>Rename task</button>
         </form>
         <form action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
           <label for="task-priority-${task.id}">Task priority</label>
-          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+          <select id="task-priority-${task.id}" name="priority"${editDisabled ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${['Low', 'Normal', 'High'].map((option) => `<option${option === task.priority ? ' selected' : ''}>${option}</option>`).join('')}
           </select>
         </form>
@@ -283,28 +297,29 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
           <label for="task-due-date-${task.id}">Task due date</label>
-          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escape(task.due_date)}"${project.archived ? ' disabled' : ''}${dueDateError === task.id ? ` aria-invalid="true" aria-describedby="due-date-error-${task.id}"` : ''}>
+          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escape(task.due_date)}"${editDisabled ? ' disabled' : ''}${dueDateError === task.id ? ` aria-invalid="true" aria-describedby="due-date-error-${task.id}"` : ''}>
           ${dueDateError === task.id ? `<div id="due-date-error-${task.id}" role="alert">Due date must be a valid YYYY-MM-DD date</div>` : ''}
-          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          <button type="submit"${editDisabled ? ' disabled' : ''}>Save due date</button>
         </form>
         <form class="create" action="/projects/${project.id}/tasks/${task.id}/notes" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
           <label for="task-notes-${task.id}">Task notes</label>
-          <textarea id="task-notes-${task.id}" name="notes"${project.archived ? ' disabled' : ''}>
+          <textarea id="task-notes-${task.id}" name="notes"${editDisabled ? ' disabled' : ''}>
 ${escape(task.notes)}</textarea>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+          <button type="submit"${editDisabled ? ' disabled' : ''}>Save notes</button>
         </form>
         <form action="/projects/${project.id}/tasks/${task.id}/move" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
           <label for="destination-project-${task.id}">Destination project</label>
-          <select id="destination-project-${task.id}" name="destination"${moveDisabled ? ' disabled' : ''}>
+          <select id="destination-project-${task.id}" name="destination"${moveDisabled || task.deleted ? ' disabled' : ''}>
             ${eligibleDestinations.map((destination) => `<option value="${destination.id}">${escape(destination.name)}</option>`).join('')}
           </select>
-          <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
+          <button type="submit"${moveDisabled || task.deleted ? ' disabled' : ''}>Move task</button>
         </form>
-      </div>`).join('')}
+      </div>`;
+      }).join('')}
     </section>`).replace(/<form\b[^>]*action="\/projects\/[^>]*>/g, (form) => `${form}
       <input type="hidden" name="taskSearch" value="${escape(range.search || '')}">
       <input type="hidden" name="rangeFrom" value="${escape(range.from || '')}">
@@ -399,6 +414,17 @@ const server = http.createServer(async (request, response) => {
         return sendHtml(response, 400, page('Invalid priority', '<h1>Invalid task priority</h1>'));
       }
       setDefaultPriority.run(priority, project.id);
+      response.writeHead(303, { Location: projectLocation(project.id, taskFilter(form.get('filter')), priorityFilter(form.get('priorityFilter')), readRange(form)) });
+      return response.end();
+    }
+    const deletionMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/(delete|restore)$/);
+    if (request.method === 'POST' && deletionMatch) {
+      const form = await readForm(request);
+      const project = getProject.get(deletionMatch[1]);
+      const task = project && getAnyTask.get(deletionMatch[2], project.id);
+      if (!task) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
+      if (project.archived) return sendHtml(response, 403, page('Archived project', '<h1>Archived project</h1><p>Restore the project to change its tasks.</p>'));
+      setTaskDeleted.run(deletionMatch[3] === 'delete' ? 1 : 0, task.id, project.id);
       response.writeHead(303, { Location: projectLocation(project.id, taskFilter(form.get('filter')), priorityFilter(form.get('priorityFilter')), readRange(form)) });
       return response.end();
     }
