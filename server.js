@@ -22,7 +22,7 @@ const page = `<!doctype html>
 <style>body{font:16px system-ui,sans-serif;max-width:760px;margin:3rem auto;padding:0 1rem;color:#172033}h1{font-size:2rem}form{display:flex;gap:.6rem;margin:1.5rem 0}input,button,select{font:inherit;padding:.55rem .8rem}input{flex:1;border:1px solid #9aa4b2;border-radius:4px}button{cursor:pointer;border:0;border-radius:4px;background:#2459a9;color:white}.project-row{display:flex;align-items:center;gap:1rem;padding:.8rem;border-bottom:1px solid #ddd}.project-name{flex:1}.alert{color:#a31621;margin:.5rem 0}</style></head>
 <body><main id="app"></main><script>
 const app=document.getElementById('app');
-const searchFold=s=>s.replace(/[A-Z]/g,c=>String.fromCharCode(c.charCodeAt(0)+32));
+const searchFold=s=>s.replace(/[ \t]+/g,' ').replace(/[A-Z]/g,c=>String.fromCharCode(c.charCodeAt(0)+32));
 async function projects(){return (await fetch('/api/projects')).json()}
 function go(path){history.pushState({},'',path);render()}
 async function render(){const match=location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);if(match){const items=await projects();const p=items.find(x=>String(x.id)===match[1]);if(!p){go('/');return}
