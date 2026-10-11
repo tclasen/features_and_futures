@@ -42,7 +42,7 @@ function page(title, content) {
 </html>`;
 }
 
-export function renderProjects(projects, filter = 'Active', error = '', query = '') {
+export function renderProjects(projects, filter = 'Active', error = '', query = '', importValues = {}) {
   return page('Projects', `
     <h1>Workboard</h1>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
@@ -52,6 +52,16 @@ export function renderProjects(projects, filter = 'Active', error = '', query = 
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text">
       <button type="submit">Create project</button>
+    </form>
+    <form class="create project-import" method="post" action="/imports/projects">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json" rows="6">
+${escapeHtml(importValues.json ?? '')}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <input id="imported-project-name" name="name" type="text" value="${escapeHtml(importValues.name ?? '')}">
+      <button type="submit">Import project</button>
     </form>
     <form class="create project-search" method="get" action="/">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">

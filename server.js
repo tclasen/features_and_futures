@@ -7,6 +7,7 @@ import { renderProjects, renderProject, renderNotFound } from './views.js';
 import { isValidDueDate, dueRangeError, matchesDueRange } from './dates.js';
 import { normalizeSearch, matchesSearch } from './search.js';
 import { exportProject } from './export.js';
+import { parseProjectImport } from './import.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const databasePath = process.env.DB_PATH ?? './data/workboard.sqlite';
@@ -75,6 +76,11 @@ const findProject = database.prepare('SELECT id, name, archived, default_task_pr
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
+const insertImportedProject = database.prepare('INSERT INTO projects (id, name, archived, default_task_priority) VALUES (?, ?, ?, ?)');
+const insertImportedTask = database.prepare(`
+  INSERT INTO tasks (id, project_id, title, completed, priority, due_date, notes, deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
 const listTasks = database.prepare(`
   SELECT tasks.id, title, completed, priority, due_date, notes, deleted
   FROM tasks JOIN task_project_positions AS ordering
@@ -124,6 +130,20 @@ function createTask(taskId, projectId, title, priority) {
   });
 }
 
+function importProject(name, project) {
+  return transaction(() => {
+    const projectId = randomUUID();
+    insertImportedProject.run(projectId, name, Number(project.archived), project.defaultPriority);
+    for (const task of project.tasks) {
+      const taskId = randomUUID();
+      insertImportedTask.run(taskId, projectId, task.title, Number(task.completed), task.priority,
+        task.dueDate, task.notes, Number(task.deleted));
+      rememberPosition(taskId, projectId);
+    }
+    return projectId;
+  });
+}
+
 function moveTask(destinationId, sourceId, taskId) {
   return transaction(() => {
     const result = updateTaskOwner.run(destinationId, sourceId, taskId);
@@ -136,10 +156,10 @@ function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
 
-function projectsPage(filter = 'Active', error = '', query = '') {
+function projectsPage(filter = 'Active', error = '', query = '', importValues = {}) {
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
     .filter((project) => matchesSearch(project.name, query));
-  return renderProjects(projects, filter, error, query);
+  return renderProjects(projects, filter, error, query, importValues);
 }
 
 function projectsLocation(filter, query) {
@@ -200,12 +220,12 @@ function sendHtml(response, status, html) {
   response.end(html);
 }
 
-async function readForm(request) {
+async function readForm(request, maxBytes = 65536) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 65536) {
+    if (size > maxBytes) {
       const error = new Error('Request body too large');
       error.status = 413;
       throw error;
@@ -225,6 +245,21 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && pathname === '/') {
       sendHtml(response, 200, projectsPage(projectFilter(searchParams.get('filter')), '', normalizeSearch(searchParams.get('query'))));
+      return;
+    }
+    if (request.method === 'POST' && pathname === '/imports/projects') {
+      const form = await readForm(request, Infinity);
+      const importValues = { json: form.get('json') ?? '', name: form.get('name') ?? '' };
+      const name = importValues.name.trim();
+      const project = name ? parseProjectImport(importValues.json) : null;
+      if (!name || !project) {
+        sendHtml(response, 422, projectsPage(projectFilter(form.get('filter')),
+          !name ? 'Project name is required' : 'Invalid project JSON',
+          normalizeSearch(form.get('query')), importValues));
+        return;
+      }
+      const projectId = importProject(name, project);
+      redirect(response, `/projects/${projectId}`);
       return;
     }
     if (request.method === 'POST' && pathname === '/projects') {
