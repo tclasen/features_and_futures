@@ -320,6 +320,8 @@ async function renderDirectory() {
   for (const value of ['All', 'Open', 'Completed', 'Deleted']) taskFilter.append(element('option', { value }, value));
   const priorityFilter = element('select', { 'aria-label': 'Priority filter' });
   for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', { value }, value));
+  const directoryOrder = element('select', { 'aria-label': 'Directory order' });
+  for (const value of ['Original', 'Priority', 'Due date', 'Title']) directoryOrder.append(element('option', { value }, value));
   const search = element('input', { type: 'text', 'aria-label': 'Directory search' });
   const searchButton = element('button', { type: 'button' }, 'Search directory');
   const from = element('input', { type: 'text', 'aria-label': 'Due from' });
@@ -331,7 +333,7 @@ async function renderDirectory() {
   const emptyMessage = element('p', {}, 'No matching tasks');
   emptyMessage.hidden = true;
   const rows = element('section', { 'aria-label': 'Directory results' });
-  app.append(scope, taskFilter, priorityFilter, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, emptyMessage, rows);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, emptyMessage, rows);
   let query = '', appliedFrom = '', appliedThrough = '';
   let matchingTasks = [];
   const renderRows = async () => {
@@ -347,6 +349,23 @@ async function renderDirectory() {
       if (!normalizeSearch(task.title).includes(normalizeSearch(query))) continue;
       if ((appliedFrom || appliedThrough) && (!task.dueDate || (appliedFrom && task.dueDate < appliedFrom) || (appliedThrough && task.dueDate > appliedThrough))) continue;
       matchingTasks.push(task);
+    }
+    const originalIndex = new Map(data.map((task, index) => [task.id, index]));
+    const compareCodePoints = (left, right) => {
+      const a = Array.from(left, character => character.codePointAt(0));
+      const b = Array.from(right, character => character.codePointAt(0));
+      for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+      return a.length - b.length;
+    };
+    const priorityRank = { High: 0, Normal: 1, Low: 2 };
+    matchingTasks.sort((left, right) => {
+      let difference = 0;
+      if (directoryOrder.value === 'Priority') difference = priorityRank[left.priority || 'Normal'] - priorityRank[right.priority || 'Normal'];
+      if (directoryOrder.value === 'Due date') difference = left.dueDate && right.dueDate ? left.dueDate.localeCompare(right.dueDate) : left.dueDate ? -1 : right.dueDate ? 1 : 0;
+      if (directoryOrder.value === 'Title') difference = compareCodePoints(left.title.replace(/[A-Z]/g, c => c.toLowerCase()), right.title.replace(/[A-Z]/g, c => c.toLowerCase()));
+      return difference || originalIndex.get(left.id) - originalIndex.get(right.id);
+    });
+    for (const task of matchingTasks) {
       const row = element('div', { 'data-testid': 'directory-task-row' });
       row.append(element('span', { 'data-testid': 'directory-task-title' }, task.title));
       row.append(element('span', { 'data-testid': 'directory-project-name' }, task.projectName));
@@ -373,7 +392,7 @@ async function renderDirectory() {
   completeVisible.addEventListener('click', () => bulkCompletion(matchingTasks.filter(task => !task.deleted && !task.completed), true));
   reopenVisible.addEventListener('click', () => bulkCompletion(matchingTasks.filter(task => !task.deleted && task.completed), false));
   const refresh = () => renderRows();
-  for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', refresh);
+  for (const control of [scope, taskFilter, priorityFilter, directoryOrder]) control.addEventListener('change', refresh);
   searchButton.addEventListener('click', () => { query = search.value.trim(); refresh(); });
   apply.addEventListener('click', () => {
     const valid = value => !value || /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.test(value) && Number(value.slice(0, 4)) > 0 && (() => { const [y,m,d] = value.split('-').map(Number); return m >= 1 && m <= 12 && d >= 1 && d <= [31, y%4===0&&(y%100!==0||y%400===0)?29:28,31,30,31,30,31,31,30,31,30,31][m-1]; })();
