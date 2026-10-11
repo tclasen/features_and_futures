@@ -32,6 +32,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
+}
 const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total_count,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed_count
@@ -42,9 +45,13 @@ const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?'
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const projectValue = project => ({ ...project, archived: Boolean(project.archived) });
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?`);
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -143,13 +150,25 @@ const server = http.createServer(async (req, res) => {
         if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, getProject.get(projectId).default_priority);
+        const result = insertTask.run(projectId, title, getProject.get(projectId).default_priority, projectId);
         return json(res, 201, taskValue(getTask.get(projectId, result.lastInsertRowid)));
       }
       if (req.method === 'PATCH' && taskId) {
         if (!getTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
         const input = await readInput(req);
         if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
+        if (input && Object.hasOwn(input, 'destination_project_id')) {
+          const destinationId = input.destination_project_id;
+          if (!Number.isSafeInteger(destinationId) || destinationId < 1 || destinationId === Number(projectId)) {
+            return json(res, 400, { error: 'Choose another active project' });
+          }
+          const destination = getProject.get(destinationId);
+          if (!destination) return json(res, 404, { error: 'Destination project not found' });
+          if (destination.archived) return json(res, 409, { error: 'Archived project' });
+          // One SQLite statement changes ownership and appends to destination order.
+          moveTask.run(destinationId, destinationId, projectId, taskId);
+          return json(res, 200, taskValue(getTask.get(destinationId, taskId)));
+        }
         if (input && Object.hasOwn(input, 'due_date')) {
           const date = typeof input.due_date === 'string' ? input.due_date.trim() : null;
           if (date === null || (date !== '' && !validDueDate(date))) {

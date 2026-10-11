@@ -128,6 +128,7 @@ async function render() {
     const renameSubmit = renameForm.querySelector('button');
     const endpoint = `/api/projects/${match[1]}/tasks`;
     let tasks = [];
+    let destinations = [];
     let archived = false;
     let savedDefaultPriority = 'Normal';
     defaultPriority.addEventListener('change', async () => {
@@ -318,7 +319,45 @@ async function render() {
           }
         });
         dueDateForm.append(dueDateLabel, dueDateSubmit);
-        row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm);
+        const moveForm = document.createElement('form');
+        moveForm.className = 'create-controls';
+        const destinationLabel = document.createElement('label');
+        destinationLabel.textContent = 'Destination project';
+        const destination = document.createElement('select');
+        destination.setAttribute('aria-label', 'Destination project');
+        for (const project of destinations) {
+          const option = document.createElement('option');
+          option.value = String(project.id);
+          option.textContent = project.name;
+          destination.append(option);
+        }
+        if (destinations.length) destination.value = String(destinations[0].id);
+        const moveSubmit = document.createElement('button');
+        moveSubmit.type = 'submit';
+        moveSubmit.textContent = 'Move task';
+        destination.disabled = moveSubmit.disabled = archived || !destinations.length;
+        destinationLabel.append(destination);
+        moveForm.append(destinationLabel, moveSubmit);
+        moveForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (moveSubmit.disabled) return;
+          destination.disabled = moveSubmit.disabled = true;
+          alertMessage('');
+          try {
+            await request(`${endpoint}/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+            });
+            tasks = tasks.filter(item => item.id !== task.id);
+            if (list.isConnected) displayTasks();
+          } catch (error) {
+            if (list.isConnected) alertMessage(error.message);
+          } finally {
+            destination.disabled = moveSubmit.disabled = archived || !destinations.length;
+          }
+        });
+        row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm, moveForm);
         return row;
       }));
     }
@@ -383,7 +422,11 @@ async function render() {
       renameSubmit.disabled = archived;
       app.querySelector('#archive-status').hidden = !archived;
       document.title = `${project.name} · Workboard`;
-      tasks = await request(endpoint);
+      const [savedTasks, projects] = await Promise.all([
+        request(endpoint), request('/api/projects'),
+      ]);
+      tasks = savedTasks;
+      destinations = projects.filter(item => !item.archived && item.id !== Number(match[1]));
       if (!list.isConnected) return;
       displayTasks();
       submit.disabled = archived;

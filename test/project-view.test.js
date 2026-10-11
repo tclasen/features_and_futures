@@ -102,12 +102,21 @@ async function browser(storage, projects, pending = {}) {
         const taskMatch = path.match(/\/tasks\/(\d+)$/);
         const item = taskMatch ? tasks.find(task => task.id === Number(taskMatch[1])) :
           projects.find(project => path === `/api/projects/${project.id}`);
-        Object.assign(item, JSON.parse(options.body));
+        const input = JSON.parse(options.body);
+        if (taskMatch && Object.hasOwn(input, 'destination_project_id')) {
+          item.project_id = input.destination_project_id;
+          tasks.splice(tasks.indexOf(item), 1);
+          tasks.push(item);
+        } else {
+          Object.assign(item, input);
+        }
         result = { ...item };
       } else if (path === '/api/projects') {
         result = projects.map(item => ({ ...item }));
       } else if (path.endsWith('/tasks')) {
-        result = tasks.map(task => ({ ...task }));
+        const owner = Number(path.match(/projects\/(\d+)/)[1]);
+        result = tasks.filter(task => task.project_id === undefined || task.project_id === owner)
+          .map(task => ({ ...task }));
       } else {
         result = { ...projects.find(item => path === `/api/projects/${item.id}`) };
       }
@@ -638,6 +647,94 @@ async function dueRange(app, from, through) {
 const taskTitles = app => rows(app).map(row => row.children[0].textContent);
 const dueDateForm = row => row.children.find(child => child.tag === 'form' &&
   child.querySelector('button').textContent === 'Save due date');
+const moveForm = row => row.children.find(child => child.tag === 'form' &&
+  child.querySelector('button').textContent === 'Move task');
+
+test('move controls list eligible destinations and preserve source filters, order, and saved task values', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Renamed destination', default_priority: 'Low' },
+    { ...project(), id: 3, name: 'Archived destination', archived: true },
+    { ...project(), id: 4, name: 'Last destination' }];
+  const pending = { tasks: [
+    { id: 1, project_id: 1, title: 'Move me', completed: true, priority: 'High', due_date: '2024-02-29' },
+    { id: 2, project_id: 1, title: 'Remaining', completed: true, priority: 'High', due_date: '2024-03-01' },
+    { id: 3, project_id: 1, title: 'Hidden', completed: false, priority: 'Normal', due_date: '' },
+    { id: 4, project_id: 2, title: 'Destination existing', completed: false, priority: 'Low', due_date: '' },
+  ] };
+  const original = { ...pending.tasks[0] };
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'High');
+  await dueRange(app, '2024-02-29', '2024-03-01');
+  const form = moveForm(rows(app)[0]);
+  const destination = form.querySelector('select');
+  assert.equal(destination.attributes['aria-label'], 'Destination project');
+  assert.deepEqual(destination.children.map(option => [option.value, option.textContent]),
+    [['2', 'Renamed destination'], ['4', 'Last destination']]);
+  assert.equal(destination.disabled, false);
+  assert.equal(form.querySelector('button').disabled, false);
+  await form.emit('submit');
+  assert.deepEqual(taskTitles(app), ['Remaining']);
+  assert.equal(app.querySelector('h1').textContent, 'Archive lifecycle');
+  assert.equal(app.querySelector('#task-filter').value, 'Completed');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+  assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  assert.deepEqual(pending.tasks.find(task => task.id === 1), { ...original, project_id: 2 });
+  await filter(app, 'All');
+  await priorityFilter(app, 'All');
+  await dueRange(app, '', '');
+  assert.deepEqual(taskTitles(app), ['Remaining', 'Hidden']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[1], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(taskTitles(app), ['Destination existing', 'Move me']);
+  assert.deepEqual(moveForm(rows(app)[1]).querySelector('select').children.map(option => option.value), ['1', '4']);
+  await moveForm(rows(app)[1]).emit('submit');
+  assert.deepEqual(taskTitles(app), ['Destination existing']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(taskTitles(app), ['Remaining', 'Hidden', 'Move me']);
+});
+
+test('move controls disable when no destination exists and on archived sources, then enable on restoration', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Other', archived: true }];
+  const pending = { tasks: [{ id: 1, project_id: 1, title: 'Saved', completed: false, priority: 'Normal', due_date: '' }] };
+  const storage = new Map();
+  let app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  let form = moveForm(rows(app)[0]);
+  assert.equal(form.querySelector('select').children.length, 0);
+  assert.equal(form.querySelector('select').disabled, true);
+  assert.equal(form.querySelector('button').disabled, true);
+  await form.emit('submit');
+  assert.equal(rows(app).length, 1);
+  projects[1].archived = false;
+  projects[0].archived = true;
+  app = await browser(storage, projects, pending);
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  form = moveForm(rows(app)[0]);
+  assert.deepEqual(form.querySelector('select').children.map(option => option.value), ['2']);
+  assert.equal(form.querySelector('select').disabled, true);
+  assert.equal(form.querySelector('button').disabled, true);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  form = moveForm(rows(app)[0]);
+  assert.equal(form.querySelector('select').disabled, false);
+  assert.equal(form.querySelector('button').disabled, false);
+  assert.equal(pending.tasks[0].due_date, '');
+});
 
 test('due ranges are inclusive, intersect both filters, validate calendars and preserve the applied range', async () => {
   const projects = [{ ...project(), total_count: 5, completed_count: 2 }];

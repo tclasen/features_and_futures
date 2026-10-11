@@ -1,5 +1,14 @@
 # Workboard
 
+Each task row provides Destination project and Move task. Destinations are active
+projects other than the source, listed by project creation order under their current
+names. Moving appends the task after the destination's existing tasks while keeping
+its identity, title, completion, priority and due date. The source stays open with
+its filters and applied range unchanged; both project summaries reflect current
+ownership. Moves persist across reloads and restarts. Archived projects cannot be
+sources or destinations; controls are disabled for archived sources or when no
+eligible destination exists. Restoring a project enables eligible moves again.
+
 Project pages provide Due from and Due through textboxes and Apply due range.
 The applied range includes both boundaries and intersects the completion and
 priority filters. Blank boundaries are unbounded; undated tasks match only when
@@ -94,3 +103,6 @@ rename preservation, and archive/restore protection.
 Due-range checks cover inclusive and one-sided boundaries, undated tasks,
 calendar validation, preservation after invalid submissions, intersection with
 both combobox filters, membership updates after edits, and archived filtering.
+Move checks cover schema migration, appending older tasks after newer destination
+tasks, repeated moves, subsequent creation, saved values and summaries, restart
+persistence, archive protection, destination options, and source filter retention.
