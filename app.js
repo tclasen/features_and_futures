@@ -90,7 +90,7 @@ function taskFilterFields(filters) {
       ${dueRangeFields(filters)}`;
 }
 
-function projectPage(project, tasks, filters, error = '') {
+function projectPage(project, tasks, filters, error = '', destinations = []) {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
@@ -162,6 +162,14 @@ function projectPage(project, tasks, filters, error = '') {
           <div class="input-group"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/move" class="task-move">
+          ${taskFilterFields(filters)}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <select id="destination-project-${task.id}" name="destinationProject"${project.archived || !destinations.length ? ' disabled' : ''}>
+            ${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${project.archived || !destinations.length ? ' disabled' : ''}>Move task</button>
+        </form>
       </div>`).join('')}
     </section>`);
 }
@@ -211,6 +219,16 @@ export function createWorkboardServer(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  // IDs encode the original creation order. Moves need an independent position
+  // so a task can append to a new project while retaining its identity.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+    database.exec(`BEGIN;
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id;
+      COMMIT;`);
+  }
+  database.exec('CREATE INDEX IF NOT EXISTS tasks_project_position ON tasks(project_id, position, id)');
+  const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
   const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -224,8 +242,12 @@ export function createWorkboardServer(databasePath) {
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?)
       AND (? = '' OR due_date >= ?)
-      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY id`);
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY position, id`);
+  const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE id = ? AND project_id = ?`);
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -235,6 +257,10 @@ export function createWorkboardServer(databasePath) {
     const priority = filters.priority === 'All' ? null : filters.priority;
     return listTasks.all(projectId, completed, completed, priority, priority,
       filters.dueFrom, filters.dueFrom, filters.dueThrough, filters.dueThrough);
+  }
+
+  function renderProjectPage(project, filters, error = '') {
+    return projectPage(project, tasksFor(project.id, filters), filters, error, listDestinations.all(project.id));
   }
 
   const server = createServer(async (request, response) => {
@@ -273,14 +299,14 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/due-range|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/due-range|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
         if (project) {
           if (request.method === 'GET' && url.pathname === `/projects/${id}`) {
             const filters = readTaskFilters(url.searchParams);
-            return send(200, projectPage(project, tasksFor(id, filters), filters));
+            return send(200, renderProjectPage(project, filters));
           }
           if (request.method === 'POST' && url.pathname !== `/projects/${id}`) {
             const form = await readForm(request);
@@ -291,22 +317,22 @@ export function createWorkboardServer(databasePath) {
                 const previous = normalizeDueRange(form.get('appliedDueFrom') ?? '', form.get('appliedDueThrough') ?? '');
                 filters.dueFrom = previous.dueFrom ?? '';
                 filters.dueThrough = previous.dueThrough ?? '';
-                return send(400, projectPage(project, tasksFor(id, filters), filters, range.error));
+                return send(400, renderProjectPage(project, filters, range.error));
               }
               response.writeHead(303, { Location: projectPath(id, { ...filters, ...range }) });
               return response.end();
             }
             if (project.archived) {
-              return send(409, projectPage(project, tasksFor(id, filters), filters, 'Archived project is read-only'));
+              return send(409, renderProjectPage(project, filters, 'Archived project is read-only'));
             }
             if (url.pathname === `/projects/${id}/rename`) {
               const name = (form.get('name') ?? '').trim();
-              if (!name) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Project name is required'));
+              if (!name) return send(400, renderProjectPage(project, filters, 'Project name is required'));
               renameProject.run(name, id);
             } else if (url.pathname === `/projects/${id}/default-priority`) {
               const priority = form.get('priority');
               if (!taskPriorities.includes(priority)) {
-                return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task priority is invalid'));
+                return send(400, renderProjectPage(project, filters, 'Task priority is invalid'));
               }
               updateDefaultPriority.run(priority, id);
             } else if (match[2]) {
@@ -315,20 +341,27 @@ export function createWorkboardServer(databasePath) {
                 return send(404, page('Not found', '<h1>Task not found</h1>'));
               }
               let result;
-              if (match[3] === 'rename') {
+              if (match[3] === 'move') {
+                const destinationId = Number(form.get('destinationProject'));
+                const destination = Number.isSafeInteger(destinationId) ? findProject.get(destinationId) : undefined;
+                if (!destination || destination.archived || destinationId === id) {
+                  return send(400, renderProjectPage(project, filters, 'Destination project must be another active project'));
+                }
+                result = moveTask.run(destinationId, destinationId, taskId, id);
+              } else if (match[3] === 'rename') {
                 const title = (form.get('title') ?? '').trim();
-                if (!title) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task title is required'));
+                if (!title) return send(400, renderProjectPage(project, filters, 'Task title is required'));
                 result = renameTask.run(title, taskId, id);
               } else if (match[3] === 'priority') {
                 const priority = form.get('priority');
                 if (!taskPriorities.includes(priority)) {
-                  return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task priority is invalid'));
+                  return send(400, renderProjectPage(project, filters, 'Task priority is invalid'));
                 }
                 result = updatePriority.run(priority, taskId, id);
               } else if (match[3] === 'due-date') {
                 const dueDate = normalizeDueDate(form.get('dueDate') ?? '');
                 if (dueDate === null) {
-                  return send(400, projectPage(project, tasksFor(id, filters), filters, 'Due date must be a valid YYYY-MM-DD date'));
+                  return send(400, renderProjectPage(project, filters, 'Due date must be a valid YYYY-MM-DD date'));
                 }
                 result = updateDueDate.run(dueDate, taskId, id);
               } else {
@@ -337,8 +370,8 @@ export function createWorkboardServer(databasePath) {
               if (!result.changes) return send(404, page('Not found', '<h1>Task not found</h1>'));
             } else {
               const title = (form.get('title') ?? '').trim();
-              if (!title) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task title is required'));
-              insertTask.run(id, title, project.default_priority);
+              if (!title) return send(400, renderProjectPage(project, filters, 'Task title is required'));
+              insertTask.run(id, title, project.default_priority, id);
             }
             response.writeHead(303, { Location: projectPath(id, filters) });
             return response.end();

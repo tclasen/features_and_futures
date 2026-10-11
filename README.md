@@ -66,3 +66,10 @@ Task edits immediately re-evaluate membership, and all edits retain the three
 filters. Range controls remain usable in archived projects. Applied boundaries
 are page state in the URL, preserved on reload; reopening from the project list
 starts with empty boundaries.
+Each task can move to another active project through Destination project and
+Move task. Destinations use current project names in project creation order.
+Moves retain task identity, title, completion, priority, and due date, appending
+at the destination without applying its default priority. The source stays open
+with all filters intact, and both summaries reflect current ownership. Ordering
+and ownership persist across restarts. Archived projects cannot send or receive
+tasks; move controls also disable when there are no eligible destinations.
