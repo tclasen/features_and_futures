@@ -42,6 +42,14 @@ async function startServer(databasePath) {
   };
 }
 
+async function post(baseUrl, path, values) {
+  return fetch(baseUrl + path, {
+    method: 'POST',
+    body: new URLSearchParams(values),
+    redirect: 'manual',
+  });
+}
+
 async function create(baseUrl, name) {
   return fetch(`${baseUrl}/projects`, {
     method: 'POST',
@@ -100,6 +108,68 @@ test('project validation, creation order, navigation, escaping, and restart pers
     const finalListing = await (await fetch(server.baseUrl)).text();
     assert.equal((finalListing.match(/data-testid="project-row"/g) || []).length, 3);
     assert.ok(finalListing.indexOf('Third') > finalListing.indexOf('&lt;Second'));
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('tasks validate, filter, remain project-owned, and persist completion across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    await create(server.baseUrl, 'One');
+    await create(server.baseUrl, 'Two');
+    const detail = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    const rows = html => (html.match(/data-testid="task-row"/g) || []).length;
+    let html = await detail();
+    assert.match(html, /<label for="task-title">Task title<\/label>/);
+    assert.match(html, />Create task<\/button>/);
+    assert.match(html, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(html, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post(server.baseUrl, '/projects/1/tasks', { title });
+      html = await response.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(rows(html), 0);
+    }
+    for (const title of ['  First task  ', '<Second & "task">']) {
+      assert.equal((await post(server.baseUrl, '/projects/1/tasks', { title })).status, 303);
+    }
+    html = await detail();
+    assert.equal(rows(html), 2);
+    assert.match(html, /<span>First task<\/span>/);
+    assert.match(html, /aria-label="Complete First task"/);
+    assert.match(html, /aria-label="Complete &lt;Second &amp; &quot;task&quot;&gt;"/);
+    assert.doesNotMatch(html, / checked/);
+    assert.ok(html.indexOf('<span>First task') < html.indexOf('<span>&lt;Second'));
+    assert.equal(rows(await detail('/projects/2')), 0);
+    assert.equal(rows(await detail('/projects/1?filter=Completed')), 0);
+    assert.equal(rows(await detail('/projects/1?filter=Open')), 2);
+
+    assert.equal((await post(server.baseUrl, '/projects/2/tasks/1', { completed: '1' })).status, 404);
+    assert.equal((await post(server.baseUrl, '/projects/999/tasks', { title: 'Missing' })).status, 404);
+    assert.equal((await post(server.baseUrl, '/projects/1/tasks/999', { completed: '1' })).status, 404);
+    const completed = await post(server.baseUrl, '/projects/1/tasks/1', { completed: '1', filter: 'Open' });
+    assert.equal(completed.status, 303);
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    html = await detail('/projects/1?filter=Completed');
+    assert.equal(rows(html), 1);
+    assert.match(html, /aria-label="Complete First task" checked/);
+    assert.equal(rows(await detail('/projects/1?filter=Open')), 1);
+    const saved = await detail();
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await detail(), saved);
+    assert.equal(rows(await detail('/projects/2')), 0);
+    await post(server.baseUrl, '/projects/1/tasks/1', {});
+    assert.equal(rows(await detail('/projects/1?filter=Completed')), 0);
+    assert.equal(rows(await detail('/projects/1?filter=Open')), 2);
+    assert.doesNotMatch(await detail(), / checked/);
+    assert.match(await detail('/projects/1?filter=invalid'), /<option selected>All/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
