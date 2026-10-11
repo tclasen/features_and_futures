@@ -1,0 +1,3 @@
+# Task 039: Archive or restore represented projects
+
+Add Archive visible projects and Restore visible projects in Task directory. Archive operates only in Active scope and restore only in Archived scope, on each represented matching owner exactly once, including when matching tasks are Deleted. The other action and both empty-result actions are disabled. Preserve current directory controls, original owner creation order, defaults, every task including excluded/deleted tasks, and all reserved positions. Do not archive or restore owners without matching tasks. Duplicate names remain distinct. Successful mutation re-evaluates membership; the existing task bulk protections remain unchanged. Verify reload, later moves and actual restart.

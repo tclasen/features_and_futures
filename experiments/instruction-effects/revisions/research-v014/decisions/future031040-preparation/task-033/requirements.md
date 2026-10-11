@@ -1,0 +1,3 @@
+# Task033: Bound task titles
+
+Task creation and rename accept trimmed nonempty titles of at most 500 Unicode code points. Oversized direct input shows a visible alert containing Task title must be at most 500 characters, retains the rejected input and causes no mutation. Both import formats reject oversized titles atomically using their existing invalid-JSON messages, including an oversized last task. Existing longer records remain unchanged. Preserve literal internal whitespace, Unicode, completion, priority, due date, notes, deletion and every owner position. Successful renames re-evaluate existing search and ordering.

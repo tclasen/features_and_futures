@@ -27,3 +27,5 @@ L028 recovery verified at task019/b011/attempt005: rejected committed and native
 L028 monitoring at task020/b011: four rejected submissions have two source trees and fail directory064/066. Preserve each attempt and exposure despite repeated trees; frozen own-checkpoint recovery remains active. Source cause unestablished. Evidence: `preflight/repair-observations/task020-b011-first-four.json`.
 
 L062 recovery verifier adopted: `scripts/verify-checkpoint-recoveries.py` derives accepted identities from events, restores both task019/task020 before-reversion committed/native archives and working files, and passes its no-overwrite guard. Use alongside closed-prefix originals verification for extra recovery snapshots. Evidence: `preflight/checkpoint-recovery-audits/verified-f3f36d91d5cce8ba`.
+
+L062 publication preparation: both legacy-schema and stale-count failures are retained before snapshot creation. Derive the actual full ref set and directly bind new-run indexes; corrected immutable scan is live, not yet verified. Evidence: `preflight/publication-controller-failures/`.
