@@ -1,5 +1,6 @@
 const app = document.querySelector('#app');
 const projectViewState = new Map();
+const asciiSearch = value => value.replace(/[A-Z]/g, character => character.toLowerCase());
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -74,26 +75,33 @@ async function render() {
     const dueThrough = element('input', { id: 'due-through', type: 'text', 'aria-label': 'Due through' });
     const applyDueRange = element('button', { type: 'button' }, 'Apply due range');
     const rangeAlert = element('p', { role: 'alert', hidden: '' });
-    const viewState = projectViewState.get(match[1]) || { appliedFrom: '', appliedThrough: '', dueFrom: '', dueThrough: '', taskFilter: 'All', priorityFilter: 'All' };
+    const viewState = projectViewState.get(match[1]) || { appliedFrom: '', appliedThrough: '', dueFrom: '', dueThrough: '', taskFilter: 'All', priorityFilter: 'All', taskQuery: '', taskInput: '' };
     let appliedFrom = viewState.appliedFrom, appliedThrough = viewState.appliedThrough;
     dueFrom.value = viewState.dueFrom;
     dueThrough.value = viewState.dueThrough;
+    let taskQuery = viewState.taskQuery;
+    const taskSearchInput = element('input', { type: 'text', 'aria-label': 'Task search', value: viewState.taskInput });
+    const taskSearchButton = element('button', { type: 'button' }, 'Search tasks');
     filter.value = viewState.taskFilter;
     priorityFilter.value = viewState.priorityFilter;
     const saveViewState = () => {
-      projectViewState.set(match[1], { appliedFrom, appliedThrough, dueFrom: dueFrom.value, dueThrough: dueThrough.value, taskFilter: filter.value, priorityFilter: priorityFilter.value });
+      projectViewState.set(match[1], { appliedFrom, appliedThrough, dueFrom: dueFrom.value, dueThrough: dueThrough.value, taskFilter: filter.value, priorityFilter: priorityFilter.value, taskQuery, taskInput: taskSearchInput.value });
     };
     dueFrom.addEventListener('input', saveViewState);
     dueThrough.addEventListener('input', saveViewState);
+    taskSearchInput.addEventListener('input', saveViewState);
+    taskSearchButton.addEventListener('click', () => { taskQuery = taskSearchInput.value.trim(); saveViewState(); refresh(); });
     const destinations = await request('/api/projects?archived=false');
     const eligibleDestinations = destinations.filter(item => item.id !== project.id);
     const tasks = element('section', { 'aria-label': 'Tasks' });
     app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter,
-      dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rangeAlert, tasks);
+      dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rangeAlert,
+      taskSearchInput, taskSearchButton, tasks);
     const refresh = async () => {
       const items = await request(`/api/projects/${encodeURIComponent(match[1])}/tasks`);
       tasks.replaceChildren();
       for (const task of items) {
+        if (!asciiSearch(task.title).includes(asciiSearch(taskQuery))) continue;
         if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
         if ((appliedFrom || appliedThrough) && (!task.dueDate ||
@@ -215,12 +223,17 @@ async function render() {
   const labelFilter = element('label', { for: 'project-filter' }, 'Project filter');
   const filter = element('select', { id: 'project-filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', { value }, value));
+  const projectSearchInput = element('input', { type: 'text', 'aria-label': 'Project search' });
+  const projectSearchButton = element('button', { type: 'button' }, 'Search projects');
+  let projectQuery = '';
   const list = element('section', { 'aria-label': 'Projects' });
-  app.append(labelFilter, filter, list);
+  app.append(labelFilter, filter, projectSearchInput, projectSearchButton, list);
   const renderProjects = async () => {
     const projects = await request(`/api/projects?archived=${filter.value === 'Archived'}`);
     list.replaceChildren();
+    const query = asciiSearch(projectQuery);
     for (const project of projects) {
+      if (!asciiSearch(project.name).includes(query)) continue;
       const row = element('div', { 'data-testid': 'project-row', class: 'project-row' });
       row.append(element('span', {}, project.name));
       row.append(element('span', { 'data-testid': 'project-summary' }, `${project.completedCount}/${project.totalCount} completed`));
@@ -234,6 +247,7 @@ async function render() {
       row.append(open, action); list.append(row);
     }
   };
+  projectSearchButton.addEventListener('click', () => { projectQuery = projectSearchInput.value.trim(); renderProjects(); });
   filter.addEventListener('change', renderProjects);
   await renderProjects();
 }
