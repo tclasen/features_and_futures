@@ -14,7 +14,7 @@ projects, tasks, completion state, priorities, due dates, and project defaults a
 `{"status":"ok"}`.
 
 Open a project to create tasks, change completion with each task's checkbox, and
-filter tasks by All, Open, or Completed. Priority filter offers All, Low, Normal,
+filter live tasks by All, Open, or Completed, or view deleted tasks with Deleted. Priority filter offers All, Low, Normal,
 and High. Tasks must match both filters and any applied due range, and appear in creation order. Changing
 either filter preserves the other selection; task edits immediately update the
 matching rows and retain both selections. Opening a project from the list starts
@@ -24,7 +24,7 @@ not change saved data or completion summaries. Tasks belong to one project at a 
 The project list starts with Active projects. Use Project filter to view Archived
 projects and restore them. Archived project pages show their tasks and allow
 filtering, while task creation and completion controls are disabled. Each project
-row summarizes completed tasks out of all its tasks. Archive state persists, and
+row summarizes completed live tasks out of all its live tasks. Archive state persists, and
 existing databases are upgraded automatically without losing projects or tasks.
 
 Use New project name and Rename project on an active project page to rename it.
@@ -120,3 +120,15 @@ retention through edits and errors, navigation resets, and persistence after
 server restarts. Notes checks cover migration, exact text and safe rendering,
 filter retention, ownership protection, movement and return order, archival,
 restoration, clearing, and restart persistence.
+
+Use Delete task to remove a live task from live filters and completion summaries.
+The Deleted filter shows deleted tasks within the same priority, due-range, and
+title-search filters. Deleted tasks retain all fields and remembered project
+positions, but editing and moving are disabled. Restore task returns a task to
+its reserved position with its saved completion, priority, date, and notes.
+Deletion and restoration retain the current filters and search. Archived projects
+allow reading deleted tasks but disable deletion and task restoration. Existing
+databases initialize every earlier task as live; deletion state persists across
+restarts. Integration checks cover migration, filter intersections, summaries,
+read-only controls and write protection, archive/restart persistence, restoration
+order, and movement after restoration.
