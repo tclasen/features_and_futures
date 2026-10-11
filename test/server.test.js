@@ -191,6 +191,69 @@ test('archive migration, summaries, read-only tasks and restoration persist', as
 });
 
 
+test('task rename preserves ownership, order, completion and persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.base + path)).text();
+    const post = (path, data = {}) => fetch(server.base + path, {
+      method: 'POST', body: new URLSearchParams(data), redirect: 'manual',
+    });
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Original' });
+    await post('/projects/1/tasks', { title: 'Later' });
+    await post('/projects/1/tasks/1/completion', { completed: '1' });
+    const original = await get('/projects/1');
+    assert.equal((original.match(/>New task title<\/label>/g) || []).length, 2);
+    assert.equal((original.match(/>Rename task<\/button>/g) || []).length, 2);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post('/projects/1/tasks/1/rename', { title, filter: 'Completed' });
+      assert.equal(response.status, 400);
+      assert.match(await response.text(), /role="alert">Task title is required/);
+      assert.equal(await get('/projects/1'), original);
+    }
+    assert.equal((await post('/projects/2/tasks/1/rename', { title: 'Wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/rename', { title: 'Missing' })).status, 404);
+    const response = await post('/projects/1/tasks/1/rename', { title: '  <Renamed & task>  ', filter: 'Completed' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
+    const detail = await get('/projects/1');
+    assert.match(detail, /Complete &lt;Renamed &amp; task&gt;" checked/);
+    assert.match(detail, /<span>&lt;Renamed &amp; task&gt;<\/span>/);
+    assert.ok(detail.indexOf('Complete &lt;Renamed &amp; task&gt;') < detail.indexOf('Complete Later'));
+    assert.doesNotMatch(detail, /Original/);
+    assert.doesNotMatch(await get('/projects/2'), /data-testid="task-row"/);
+    assert.doesNotMatch(await get('/projects/1?filter=Open'), /Renamed/);
+    assert.match(await get('/projects/1?filter=Completed'), /Renamed/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.equal((archived.match(/id="new-task-title-\d+"[^>]* disabled>/g) || []).length, 2);
+    assert.equal((archived.match(/<button type="submit" disabled>Rename task/g) || []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/rename', { title: 'Forbidden' })).status, 403);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(await get('/projects/1'), /\sdisabled[\s>]/);
+    await post('/projects/1/tasks/2/rename', { title: '  Open renamed  ', filter: 'Open' });
+    assert.match(await get('/projects/1?filter=Open'), /Complete Open renamed/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /Open renamed/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.match(await get('/projects/1'), /Complete Open renamed/);
+    assert.match(await get('/projects/1'), /Complete &lt;Renamed &amp; task&gt;" checked/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('rename preserves identity, order and tasks, validates and respects archive state', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
   const dbPath = join(directory, 'workboard.sqlite');
