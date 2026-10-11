@@ -51,6 +51,13 @@ default preserves existing tasks and both selected filters. Defaults persist
 independently across reloads, restarts, renaming, archiving, and restoration.
 Archived projects show the saved default but disable changes until restoration.
 
+Each task row has a `Task due date` textbox and `Save due date` button.
+Save a real Gregorian date in YYYY-MM-DD format (years 0001–9999), or save
+an empty value to clear it. Surrounding whitespace is trimmed. Invalid dates
+show an alert and preserve the saved date. Dates persist as calendar days,
+independently of timezones, and preserve all other task data and both filters.
+Archived projects disable date edits until restoration.
+
 Run the integration checks with:
 
 ```sh
