@@ -224,17 +224,23 @@ const server = createServer(async (request, response) => {
         send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Choose another project' }));
         return;
       }
-      const move = database.transaction(() => {
+      // DatabaseSync does not expose a transaction wrapper. Keep the copy and
+      // delete atomic with explicit SQLite transaction statements.
+      database.exec('BEGIN IMMEDIATE');
+      try {
         const task = database.prepare('SELECT title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
-        if (!task) return false;
+        if (!task) {
+          database.exec('ROLLBACK');
+          send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
         database.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES (?, ?, ?, ?, ?)')
           .run(destinationId, task.title, task.completed, task.priority, task.due_date);
         database.prepare('DELETE FROM tasks WHERE id = ? AND project_id = ?').run(taskId, sourceId);
-        return true;
-      });
-      if (!move()) {
-        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
-        return;
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
       }
       send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ moved: true }));
     } catch {
