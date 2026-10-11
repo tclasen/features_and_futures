@@ -34,6 +34,9 @@ const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 database.exec('PRAGMA foreign_keys = ON');
 
 const indexHtml = await readFile(path.join(root, 'index.html'));
@@ -108,7 +111,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -145,6 +148,12 @@ const server = createServer(async (req, res) => {
       database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(data.priority, taskId);
       return sendJson(res, 200, { id: taskId, priority: data.priority });
     }
+    if (Object.hasOwn(data, 'dueDate')) {
+      const dueDate = typeof data.dueDate === 'string' ? data.dueDate.trim() : '';
+      if (dueDate && !isValidDate(dueDate)) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, taskId);
+      return sendJson(res, 200, { id: taskId, dueDate: dueDate || null });
+    }
     if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, taskId);
     return sendJson(res, 200, { completed: data.completed });
@@ -168,6 +177,18 @@ const server = createServer(async (req, res) => {
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
   res.end('Not found');
 });
+
+function isValidDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= monthDays[month - 1];
+}
 
 const port = Number(process.env.PORT || 8080);
 server.listen(port, '0.0.0.0');

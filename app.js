@@ -175,6 +175,30 @@ async function loadTasks(projectId, archived = false) {
       });
       if (response.ok) await loadTasks(projectId, archived);
     });
+    const dueDate = document.createElement('input');
+    dueDate.type = 'text';
+    dueDate.value = task.dueDate || '';
+    dueDate.setAttribute('aria-label', 'Task due date');
+    dueDate.disabled = archived;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'button';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = archived;
+    saveDueDate.addEventListener('click', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dueDate: dueDate.value }),
+      });
+      if (response.ok) {
+        taskAlert.hidden = true;
+        const saved = await response.json();
+        dueDate.value = saved.dueDate || '';
+      } else {
+        const error = await response.json();
+        taskAlert.textContent = error.error || 'Unable to save due date';
+        taskAlert.hidden = false;
+      }
+    });
     const label = document.createElement('label');
     label.className = 'task-check-label';
     const checkbox = document.createElement('input');
@@ -190,7 +214,7 @@ async function loadTasks(projectId, archived = false) {
       await loadTasks(projectId);
     });
     label.append(checkbox);
-    row.append(title, renameInput, renameButton, priority, label);
+    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, label);
     taskContainer.append(row);
   }
 }
