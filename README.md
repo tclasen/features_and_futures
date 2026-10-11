@@ -52,3 +52,11 @@ default at creation; changing the default leaves existing tasks and both selecte
 filters unchanged. Defaults are independent per project and persist through
 reloads, restarts, renaming, archive and restore. Archived projects display their
 saved default in a disabled control and reject changes until restored.
+
+Tasks have an optional saved due date. Save due date accepts a trimmed Gregorian
+calendar date in `YYYY-MM-DD` format (years 0001–9999); blank input clears it.
+Invalid dates display an alert and preserve the saved date. Dates use no timezone
+conversion, default to empty for existing and new tasks, and persist across
+restarts. Saving a date preserves all other task data, both filters, and project
+summaries. Archived projects disable due-date controls and reject saves until
+restored.

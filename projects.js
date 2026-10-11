@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { TASK_PRIORITIES } from './task-priorities.js';
+import { normalizeDueDate } from './task-dates.js';
 
 export function openProjects(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -29,6 +30,9 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
     database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -41,7 +45,7 @@ export function openProjects(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
-    SELECT id, title, completed, priority FROM tasks
+    SELECT id, title, completed, priority, due_date FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?) ORDER BY id
   `);
@@ -59,6 +63,10 @@ export function openProjects(databasePath) {
   `);
   const updateTaskPriority = database.prepare(`
     UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
+  const updateTaskDueDate = database.prepare(`
+    UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
 
@@ -104,6 +112,11 @@ export function openProjects(databasePath) {
     setTaskPriority(projectId, taskId, priority) {
       if (!TASK_PRIORITIES.includes(priority)) return false;
       return updateTaskPriority.run(priority, taskId, projectId).changes > 0;
+    },
+    setTaskDueDate(projectId, taskId, value) {
+      const date = normalizeDueDate(value);
+      if (date === null) return false;
+      return updateTaskDueDate.run(date, taskId, projectId).changes > 0;
     },
     close: () => database.close(),
   };

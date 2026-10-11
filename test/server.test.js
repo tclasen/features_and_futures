@@ -8,6 +8,94 @@ import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 import { openProjects } from '../projects.js';
 
+test('due dates migrate and preserve filters and task data through validation, restart and restoration', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+      INSERT INTO projects (name) VALUES ('First'), ('Second');
+      INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Saved task', 1, 'High'), (1, 'Other task', 0, 'Normal'), (2, 'Private', 0, 'Normal');
+    `);
+    database.close();
+    server = await start(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const page = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const rows = (html) => [...html.matchAll(/<div data-testid="task-row"[\s\S]*?<\/div>/g)].map((match) => match[0]);
+    const filters = { filter: 'Completed', priorityFilter: 'High' };
+    const filteredPath = '/projects/1?filter=Completed&priorityFilter=High';
+    const summary = await page('/');
+    const initial = await page('/projects/1');
+    for (const row of rows(initial)) {
+      assert.match(row, /<label for="task-due-date-\d+">Task due date<\/label>/);
+      assert.match(row, /name="dueDate" type="text" value=""/);
+      assert.match(row, /<button type="submit">Save due date<\/button>/);
+    }
+    const edit = async (value) => {
+      const response = await post('/projects/1/tasks/1/due-date', { ...filters, dueDate: value });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), filteredPath);
+      return page(filteredPath);
+    };
+    const filteredInitial = await page(filteredPath);
+    let saved = await edit(' \t2000-02-29\n ');
+    assert.equal(saved, filteredInitial.replace('name="dueDate" type="text" value=""', 'name="dueDate" type="text" value="2000-02-29"'));
+    assert.equal(rows(saved).length, 1);
+    assert.match(rows(await page('/projects/1'))[1], /name="dueDate" type="text" value=""/);
+    assert.match(rows(await page('/projects/2'))[0], /name="dueDate" type="text" value=""/);
+    for (const dueDate of ['1900-02-29', '2026-04-31', '0000-01-01', '2026-2-01', '<script>']) {
+      const response = await post('/projects/1/tasks/1/due-date', { ...filters, dueDate });
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.match(html, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.deepEqual(rows(html), rows(saved));
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.match(html, /<option selected>High<\/option>/);
+      assert.equal(await page(filteredPath), saved);
+    }
+    for (const path of ['/projects/2/tasks/1/due-date', '/projects/1/tasks/999/due-date', '/projects/999/tasks/1/due-date']) {
+      assert.equal((await post(path, { dueDate: '2026-01-01' })).status, 404);
+    }
+    assert.equal(await page('/'), summary);
+    await post('/projects/1/tasks/1/rename', { ...filters, title: 'Renamed' });
+    saved = saved.replaceAll('Saved task', 'Renamed');
+    assert.equal(await page(filteredPath), saved);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.equal(await page(filteredPath), saved);
+    await post('/projects/1/archive');
+    const archived = await page(filteredPath);
+    assert.match(archived, /name="dueDate" type="text" value="2000-02-29"[^>]* disabled>/);
+    assert.match(archived, /disabled>Save due date/);
+    assert.equal((await post('/projects/1/tasks/1/due-date', { dueDate: '' })).status, 409);
+    assert.equal(await page(filteredPath), archived);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.equal(await page(filteredPath), archived);
+    await post('/projects/1/restore');
+    assert.equal(await page(filteredPath), saved);
+    assert.equal(await page('/'), summary);
+    assert.equal(await edit(' \n '), saved.replace('value="2000-02-29"', 'value=""'));
+    saved = await page(filteredPath);
+    await post('/projects/1/tasks', { title: 'New task' });
+    assert.match(rows(await page('/projects/1'))[2], /name="dueDate" type="text" value=""/);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.equal(await page(filteredPath), saved);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('priority storage validates values, isolates tasks, and protects archived projects', () => {
   const projects = openProjects(':memory:');
   try {
@@ -184,7 +272,7 @@ test('rename storage rejects invalid and archived changes while preserving proje
       { id: 1, name: 'Renamed', archived: 0, total_count: 1, completed_count: 1 },
     ]);
     assert.deepEqual(projects.listTasks(1).map((task) => ({ ...task })), [
-      { id: 1, title: 'Saved task', completed: 1, priority: 'Normal' },
+      { id: 1, title: 'Saved task', completed: 1, priority: 'Normal', due_date: '' },
     ]);
   } finally {
     projects.close();
@@ -515,8 +603,8 @@ test('task rename storage preserves ownership, order and completion and guards i
     projects.setArchived(1, false);
     assert.equal(projects.renameTask(1, 1, '  Renamed  '), true);
     assert.deepEqual(projects.listTasks(1).map((task) => ({ ...task })), [
-      { id: 1, title: 'Renamed', completed: 1, priority: 'Normal' },
-      { id: 2, title: 'Next', completed: 0, priority: 'Normal' },
+      { id: 1, title: 'Renamed', completed: 1, priority: 'Normal', due_date: '' },
+      { id: 2, title: 'Next', completed: 0, priority: 'Normal', due_date: '' },
     ]);
     assert.deepEqual(projects.listTasks(2), []);
     assert.equal(projects.list()[0].completed_count, 1);

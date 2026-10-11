@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { openProjects } from './projects.js';
 import { projectsPage, projectPage, notFoundPage } from './views.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
+import { normalizeDueDate, INVALID_DUE_DATE_MESSAGE } from './task-dates.js';
 
 const projects = openProjects(process.env.DB_PATH || 'data/workboard.sqlite');
 const stylesheet = readFileSync(new URL('./public/styles.css', import.meta.url));
@@ -136,7 +137,7 @@ const server = createServer(async (request, response) => {
         return redirect(response, projectLocation(project.id, filters));
       }
     }
-    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?$/);
+    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?$/);
     if (request.method === 'POST' && taskMatch &&
         Number.isSafeInteger(Number(taskMatch[1])) &&
         (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
@@ -163,6 +164,15 @@ const server = createServer(async (request, response) => {
               renderProject(project, filters, 'Invalid task priority'));
           }
           if (!projects.setTaskPriority(project.id, Number(taskMatch[2]), priority)) {
+            return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
+          }
+        } else if (taskMatch[3] === 'due-date') {
+          const date = normalizeDueDate(form.get('dueDate') || '');
+          if (date === null) {
+            return send(response, 400, 'text/html; charset=utf-8',
+              renderProject(project, filters, INVALID_DUE_DATE_MESSAGE));
+          }
+          if (!projects.setTaskDueDate(project.id, Number(taskMatch[2]), date)) {
             return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
           }
         } else if (taskMatch[2]) {

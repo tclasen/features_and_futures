@@ -125,6 +125,13 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
             <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
+          <form action="${projectPath}/tasks/${task.id}/due-date" method="post" class="task-due-date">
+            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+            <label for="task-due-date-${task.id}">Task due date</label>
+            <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          </form>
         </div>`).join('') : '<p class="empty">No tasks match these filters.</p>'}
     </section>`);
 }
