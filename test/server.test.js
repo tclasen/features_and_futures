@@ -76,6 +76,7 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     const migratedTasks = await (await fetch(`${base}/projects/1`)).text();
     assert.match(migratedTasks, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     assert.match(migratedTasks, /aria-label="Complete Legacy task" checked/);
+    assert.match(migratedTasks, /id="task-due-date-1" name="dueDate" type="text" value=""/);
     // Remove fixture data so the original creation-order checks remain unchanged.
     await stop();
     const fixture = new DatabaseSync(join(directory, 'db.sqlite'));
@@ -463,6 +464,66 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     assert.match(await tasksPage(), /id="task-priority-8"[^>]*>\s*<option selected>Low<\/option><option>Normal<\/option><option>High<\/option>/);
     await post(defaultPath, { priority: 'Normal' });
     assert.equal(defaultOptions(await tasksPage()), normalOptions);
+
+    // Due dates edit a single calendar-day value without affecting any other data.
+    const duePath = `${detailPath}/tasks/3/due-date`;
+    const dueSelection = { filter: 'Completed', priorityFilter: 'High' };
+    const dueQuery = '?filter=Completed&priorityFilter=High';
+    const beforeDue = await tasksPage(dueQuery);
+    const summaryBeforeDue = await (await fetch(base)).text();
+    const otherBeforeDue = await (await fetch(`${base}/projects/2`)).text();
+    const emptyDateInput = 'id="task-due-date-3" name="dueDate" type="text" value=""';
+    const savedDateInput = 'id="task-due-date-3" name="dueDate" type="text" value="2000-02-29"';
+    assert.ok(beforeDue.includes(emptyDateInput));
+    const dueSaved = await post(duePath, { ...dueSelection, dueDate: '  2000-02-29  ' });
+    assert.equal(dueSaved.status, 303);
+    assert.equal(dueSaved.headers.get('location'), `${detailPath}?filter=Completed&priorityFilter=High`);
+    let savedDue = beforeDue.replace(emptyDateInput, savedDateInput);
+    assert.equal(await tasksPage(dueQuery), savedDue);
+    assert.equal(await (await fetch(base)).text(), summaryBeforeDue);
+    assert.equal(await (await fetch(`${base}/projects/2`)).text(), otherBeforeDue);
+    assert.match(await tasksPage(), /id="task-due-date-8" name="dueDate" type="text" value=""/);
+    for (const dueDate of ['1900-02-29', '2025-04-31', '0000-01-01', '10000-01-01', '2025-1-01', 'tomorrow', '2025-01-01T00:00:00Z']) {
+      const invalid = await post(duePath, { ...dueSelection, dueDate });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assertSelections(html, 'Completed', 'High');
+      assert.ok(html.includes(savedDateInput));
+      assert.equal(await tasksPage(dueQuery), savedDue);
+    }
+    assert.equal((await post('/projects/2/tasks/3/due-date', { dueDate: '2025-01-01' })).status, 404);
+    assert.equal((await post(`${detailPath}/tasks/999999/due-date`, { dueDate: '' })).status, 404);
+    await post(`${detailPath}/tasks/3/rename`, { ...dueSelection, title: 'Dated task' });
+    savedDue = savedDue.replaceAll('High renamed', 'Dated task');
+    assert.equal(await tasksPage(dueQuery), savedDue);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(dueQuery), savedDue);
+    await post(`${detailPath}/archive`, {});
+    const archivedDates = await tasksPage(dueQuery);
+    assert.match(archivedDates, /id="task-due-date-3" name="dueDate" type="text" value="2000-02-29" disabled/);
+    assert.match(archivedDates, /<button type="submit" disabled>Save due date/);
+    assertSelections(archivedDates, 'Completed', 'High');
+    assert.equal((await post(duePath, { dueDate: '' })).status, 403);
+    assert.equal(await tasksPage(dueQuery), archivedDates);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(dueQuery), archivedDates);
+    await post(`${detailPath}/restore`, {});
+    assert.equal(await tasksPage(dueQuery), savedDue);
+    for (const dueDate of ['', ' \t\n ']) {
+      const cleared = await post(duePath, { ...dueSelection, dueDate });
+      assert.equal(cleared.status, 303);
+      assert.equal(cleared.headers.get('location'), `${detailPath}?filter=Completed&priorityFilter=High`);
+      assert.equal(await tasksPage(dueQuery), savedDue.replace(savedDateInput, emptyDateInput));
+      await post(duePath, { ...dueSelection, dueDate: '2000-02-29' });
+    }
+    await post(duePath, { ...dueSelection, dueDate: '' });
+    await stop();
+    await start();
+    assert.equal(await tasksPage(dueQuery), savedDue.replace(savedDateInput, emptyDateInput));
+    assert.equal(await (await fetch(base)).text(), summaryBeforeDue);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
