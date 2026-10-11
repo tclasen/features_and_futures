@@ -1543,3 +1543,119 @@ test('deletion migrates live data, intersects filters, blocks edits, and restore
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('portable export includes ordered live and deleted tasks without changing saved state or filters', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const download = async (id) => {
+      const response = await fetch(app.url + `/projects/${id}/download`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_positions'].map((table) => database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+      } finally { database.close(); }
+    };
+    await post('/projects', { name: '  Source  雪 <b> &  ' });
+    await post('/projects', { name: 'Destination' });
+    await post('/projects', { name: 'Empty' });
+    await post('/projects/1/tasks', { title: '  First  TASK <script>  ' });
+    await post('/projects/1/tasks', { title: 'Second' });
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '0001-01-01' });
+    const notes = ' \r\n  café 雪 😀 <b>literal</b> &\rline\n\t ';
+    await post('/projects/1/tasks/1/notes', { notes });
+    // Returning restores order even when the task's global ID is unchanged.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    await post('/projects/1/tasks/1/delete');
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Third' });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'Source  雪 <b> &', archived: false, defaultPriority: 'Low',
+        tasks: [
+          { title: 'First  TASK <script>', completed: true, priority: 'High', dueDate: '0001-01-01', notes: ' \n  café 雪 😀 <b>literal</b> &\nline\n\t ', deleted: true },
+          { title: 'Second', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+          { title: 'Third', completed: false, priority: 'Low', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    const selectedPath = '/projects/1?' + new URLSearchParams({ filter: 'Deleted', priorityFilter: 'Low', dueFrom: '2024-01-01', dueThrough: '2025-01-01', searchQuery: 'missing' });
+    const selectedPage = await get(selectedPath);
+    assert.match(selectedPage, /<form method="get" action="\/projects\/1\/download">[\s\S]*?<button type="submit">Download project<\/button>/);
+    assert.doesNotMatch(selectedPage, /data-testid="task-row"/);
+    const before = snapshot();
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(await get(selectedPath), selectedPage);
+    assert.equal(snapshot()[1][0].notes, notes);
+    assert.deepEqual(await download(3), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Empty', archived: false, defaultPriority: 'Normal', tasks: [] },
+    });
+    await post('/projects/1/tasks/2/delete');
+    await post('/projects/1/tasks/4/delete');
+    expected.project.tasks.forEach((task) => { task.deleted = true; });
+    await post('/projects/1/archive');
+    expected.project.archived = true;
+    const archivedPage = await get(selectedPath);
+    assert.match(archivedPage, />Download project<\/button>/);
+    assert.deepEqual(await download(1), expected);
+    const archivedState = snapshot();
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), archivedState);
+    assert.equal(await get(selectedPath), archivedPage);
+    assert.equal((await fetch(app.url + '/projects/999/download')).status, 404);
+    assert.equal((await fetch(app.url + '/projects/99999999999999999999/download')).status, 404);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('portable export uses public defaults for older records while preserving their original data', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-export-upgrade-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  const database = new DatabaseSync(dbPath);
+  database.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Legacy  Project');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy  Title', 1), (1, 'Next', 0);`);
+  database.close();
+  let app;
+  try {
+    app = await launch(dbPath);
+    const response = await fetch(app.url + '/projects/1/download');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'Legacy  Project', archived: false, defaultPriority: 'Normal',
+        tasks: [
+          { title: 'Legacy  Title', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+          { title: 'Next', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    });
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -237,6 +237,12 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
       <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   return page(project.name, `<form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
+    <form method="get" action="/projects/${project.id}/download">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priority}">
+      ${rangeFields}
+      <button type="submit">Download project</button>
+    </form>
     ${project.archived ? '<p class="intro">Archived project</p>' : ''}
     <form class="panel rename" method="post" action="/projects/${project.id}/rename">
       <input type="hidden" name="filter" value="${filter}">
@@ -404,6 +410,37 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ status: 'ok' }));
     } else if (req.method === 'GET' && path === '/') {
       html(res, 200, projectsPage('', projectFilter(url.searchParams.get('filter')), searchQuery(url.searchParams)));
+    } else if (req.method === 'GET' && /^\/projects\/\d+\/download$/.test(path)) {
+      const id = Number(path.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project) {
+        html(res, 404, page('Project not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const document = {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_priority,
+          tasks: listTasks.all(id).map((task) => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            // Textarea line breaks are portable LF; the saved text remains untouched.
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted),
+          })),
+        },
+      };
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+        'Cache-Control': 'no-store',
+      });
+      res.end(JSON.stringify(document, null, 2));
     } else if (req.method === 'POST' && path === '/projects') {
       const form = await readForm(req);
       const name = (form.get('name') || '').trim();

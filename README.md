@@ -109,3 +109,12 @@ to return them to their reserved positions. Deleted task editing and movement
 are disabled until restoration. Archived projects disable deletion and restoration
 while keeping filters usable. Deletion persists across restarts; upgrades preserve
 existing tasks as live.
+
+Use `Download project` on any project page to download UTF-8 JSON named
+`workboard-project.json` (format `workboard-project`, version 1). The document
+contains the project's name, archive state and default priority, plus all its
+live and deleted tasks in stored order with title, completion, explicit priority,
+due date, notes and deletion state. Downloads ignore the selected filters and
+search, and leave all saved data and page selections unchanged. Exported notes
+use LF line endings without rewriting the stored notes. Archived and empty
+projects can also be downloaded.
