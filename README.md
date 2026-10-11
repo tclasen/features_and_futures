@@ -24,12 +24,16 @@ Every project page offers Download project, including archived and empty project
 
 On the home page, paste a version-1 portable document into Project JSON, supply an Imported project name, and select Import project. The trimmed override names a new independent project and opens it; the imported archive state, default priority, task order, exact titles, completion, priorities, dates, LF-normalized notes, and deletion flags are retained. Required fields and calendar dates are validated before a single atomic transaction creates any data. Invalid documents show Invalid project JSON; blank overrides show Project name is required. Rejections retain both entered fields and leave existing data unchanged. Extra properties cannot supply application identities. Imported tasks receive their own reserved positions for later moves and returns.
 
+Task directory on the home page opens `/directory`, a read-only cross-project task view. Project scope (Active/Archived), Task filter, Priority filter, inclusive due range, and title-only Directory search intersect without changing saved data. Each opening starts with default filters and empty search/range. Results retain project creation order and saved task order, show original titles, owner names, completion, priority, due dates and literal multiline notes, and offer Open project with default project filters. Invalid ranges preserve the applied range and membership. Projects returns to the home page.
+
 ## Checks
 
 ```sh
 npm test
 node --check server.js
 ```
+
+Directory checks cover ordered original/imported fields, safe literal notes, read-only rows, all filter intersections, title-only normalized search, archived/deleted scopes, inclusive ranges, invalid-range retention, default navigation, unchanged database snapshots, and restart persistence.
 
 Import checks cover required fields, malformed JSON, unsupported format/version, incorrect types, invalid Gregorian dates, invalid later tasks without partial writes, blank overrides, independent identities, portable field preservation, live summaries, restoration order, moves/returns, archived and empty imports, and restart persistence.
 

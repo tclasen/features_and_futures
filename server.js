@@ -73,6 +73,11 @@ const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WH
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listDirectoryTasks = database.prepare(`
+  SELECT t.*, p.name AS project_name FROM projects p
+  JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? ORDER BY p.id, t.position, t.id
+`);
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const nextPosition = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
 const rememberedPosition = database.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?');
@@ -200,6 +205,16 @@ function searchMatches(value, query) {
   return normalize(value).includes(normalize(query));
 }
 
+function taskMatches(task, filter, priority, range) {
+  return searchMatches(task.title, range.search || '')
+    && (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted
+      && (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')))
+    && (priority === 'All' || task.priority === priority)
+    && ((!range.from && !range.through) || (task.due_date
+      && (!range.from || task.due_date >= range.from)
+      && (!range.through || task.due_date <= range.through)));
+}
+
 function searchQuery(params) {
   return (params.get('search') || '').trim();
 }
@@ -268,6 +283,7 @@ function projectList(error = '', filter = 'Active', search = '', importText = ''
     </li>`).join('');
   return page('Projects', `
     <h1>Workboard</h1>
+    <form action="/directory" method="get"><button type="submit">Task directory</button></form>
     <form action="/projects" method="post" class="create-form">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="search" value="${escapeHtml(search)}">
@@ -314,13 +330,7 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
   const eligibleDestinations = destinations.all(project.id);
   const moveDisabled = project.archived || eligibleDestinations.length === 0;
   const rows = listTasks.all(project.id)
-    .filter(task => searchMatches(task.title, search)
-      && (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted
-        && (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')))
-      && (priority === 'All' || task.priority === priority)
-      && ((!range.from && !range.through) || (task.due_date
-        && (!range.from || task.due_date >= range.from)
-        && (!range.through || task.due_date <= range.through))))
+    .filter(task => taskMatches(task, filter, priority, range))
     .map(task => {
       const readOnly = project.archived || task.deleted;
       const taskMoveDisabled = readOnly || moveDisabled;
@@ -437,6 +447,55 @@ ${escapeHtml(task.notes)}</textarea>
     <ul class="projects tasks">${rows}</ul>`);
 }
 
+function directoryPage(scope, filter, priority, range, error = '') {
+  const search = range.search || '';
+  const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+  const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority);
+  const boundaries = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
+  const select = (label, id, name, options, selected) => `
+    <label for="${id}">${label}</label>
+    <select id="${id}" name="${name}" onchange="this.form.requestSubmit()">
+      ${options.map(value => `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('')}
+    </select>`;
+  const rows = listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
+    .filter(task => taskMatches(task, filter, priority, range))
+    .map(task => `
+      <li data-testid="directory-task-row">
+        <span data-testid="directory-task-title">${escapeHtml(task.title)}</span>
+        <span data-testid="directory-project-name">${escapeHtml(task.project_name)}</span>
+        <span data-testid="directory-task-completion">${task.completed ? 'Completed' : 'Open'}</span>
+        <span data-testid="directory-task-priority">${escapeHtml(task.priority)}</span>
+        <span data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</span>
+        <div data-testid="directory-task-notes" style="white-space: pre-wrap">${escapeHtml(task.notes)}</div>
+        <form action="/projects/${task.project_id}" method="get"><button type="submit">Open project</button></form>
+      </li>`).join('');
+  return page('Task directory', `
+    <h1>Task directory</h1>
+    <form action="/" method="get"><button type="submit">Projects</button></form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form action="/directory" method="get" class="filter-form">
+      ${boundaries}${hidden('search', search)}
+      ${select('Project scope', 'project-scope', 'scope', ['Active', 'Archived'], scope)}
+      ${select('Task filter', 'task-filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'], filter)}
+      ${select('Priority filter', 'priority-filter', 'priorityFilter', ['All', ...priorities], priority)}
+    </form>
+    <form action="/directory" method="get" class="filter-form">
+      ${selections}${boundaries}
+      <label for="directory-search">Directory search</label>
+      <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}">
+      <button type="submit">Search directory</button>
+    </form>
+    <form action="/directory/due-range" method="get" class="filter-form">
+      ${selections}${boundaries}${hidden('search', search)}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="from" type="text" value="${escapeHtml(range.from)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="through" type="text" value="${escapeHtml(range.through)}">
+      <button type="submit">Apply due range</button>
+    </form>
+    <ul class="projects tasks">${rows}</ul>`);
+}
+
 function sendHtml(response, status, html) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
   response.end(html);
@@ -453,6 +512,17 @@ const server = http.createServer(async (request, response) => {
       response.end(styles);
     } else if (request.method === 'GET' && url.pathname === '/') {
       sendHtml(response, 200, projectList('', projectFilter(url.searchParams.get('filter')), searchQuery(url.searchParams)));
+    } else if (request.method === 'GET' && ['/directory', '/directory/due-range'].includes(url.pathname)) {
+      const params = url.searchParams;
+      const scope = projectFilter(params.get('scope'));
+      const filter = taskFilter(params.get('filter'));
+      const priority = priorityFilter(params.get('priorityFilter'));
+      const previous = dueRange(params);
+      const range = url.pathname === '/directory/due-range'
+        ? { from: (params.get('from') || '').trim(), through: (params.get('through') || '').trim(), search: previous.search }
+        : previous;
+      const error = rangeError(range);
+      sendHtml(response, error ? 422 : 200, directoryPage(scope, filter, priority, error ? previous : range, error));
     } else if (request.method === 'POST' && url.pathname === '/projects/import') {
       const form = await readForm(request, Infinity);
       const text = form.get('projectJson') || '';
