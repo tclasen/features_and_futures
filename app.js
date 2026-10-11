@@ -338,6 +338,26 @@ async function renderProject(id) {
         drawTasks();
       });
       row.append(dueDateForm, dueDateAlert);
+      const notesForm = element('form');
+      const notesInput = element('textarea', undefined, { 'aria-label': 'Task notes', rows: '3' });
+      notesInput.value = task.notes || '';
+      notesInput.disabled = project.archived;
+      const notesButton = element('button', 'Save notes', { type: 'submit' });
+      notesButton.disabled = project.archived;
+      notesForm.append(notesInput, notesButton);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const notes = notesInput.value;
+        const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ notes }),
+        });
+        if (result.ok) {
+          task.notes = notes;
+          drawTasks();
+        }
+      });
+      row.append(notesForm);
       const destinations = projectChoices.filter(choice => !choice.archived && choice.id !== project.id);
       const moveForm = element('form');
       const destination = element('select', undefined, { 'aria-label': 'Destination project' });
