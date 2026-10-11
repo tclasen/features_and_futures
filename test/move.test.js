@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 
-test('moves append, preserve data and filters, enforce active ownership, and persist', async () => {
+test('moves append on first arrival, restore return order, preserve data and filters, enforce active ownership, and persist', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-move-'));
   let child;
   async function start() {
@@ -69,11 +69,11 @@ test('moves append, preserve data and filters, enforce active ownership, and per
     await post('/projects/2/restore');
     await post('/projects/2/tasks/1/move', { destination: '1' });
     await post('/projects/1/tasks', { title: 'Newest' });
-    assert.deepEqual(rows(await html('/projects/1')), ['Source second', 'Oldest', 'Newest']);
+    assert.deepEqual(rows(await html('/projects/1')), ['Oldest', 'Source second', 'Newest']);
     await post('/projects/2/tasks/2/move', { destination: '1' });
     await stop(); base = await start();
     text = await html('/projects/1');
-    assert.deepEqual(rows(text), ['Source second', 'Oldest', 'Newest', 'Destination first']);
+    assert.deepEqual(rows(text), ['Oldest', 'Source second', 'Newest', 'Destination first']);
     assert.match(text, /aria-label="Complete Oldest" checked/);
     assert.match(text, /name="due_date" type="text" value="2024-02-29"/);
     assert.deepEqual(rows(await html('/projects/2')), []);

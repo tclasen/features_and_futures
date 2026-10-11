@@ -37,6 +37,29 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
 
+// Keep positions even while a task belongs to another project. Seed legacy
+// tasks from their current order without replacing any remembered positions.
+db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
+);
+INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks;`);
+
+function transaction(action) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    action();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 function validDueDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -340,13 +363,19 @@ const server = http.createServer(async (req, res) => {
             projectPage(res, project, filter, 'Choose an active destination project', selectedPriority, dueRange(body));
             return;
           }
-          const result = db.prepare(`UPDATE tasks SET project_id = ?,
-            position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-            WHERE id = ? AND project_id = ?`).run(destination.id, destination.id, taskMatch[2], project.id);
-          if (!result.changes) {
+          const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], project.id);
+          if (!task) {
             sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
             return;
           }
+          transaction(() => {
+            db.prepare(`INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+              VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`)
+              .run(task.id, destination.id, destination.id);
+            db.prepare(`UPDATE tasks SET project_id = ?,
+              position = (SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?)
+              WHERE id = ?`).run(destination.id, task.id, destination.id, task.id);
+          });
         } else if (taskMatch[3] === '/due-date') {
           const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], project.id);
           if (!task) {
@@ -396,9 +425,13 @@ const server = http.createServer(async (req, res) => {
             projectPage(res, project, filter, 'Task title is required', selectedPriority, dueRange(body));
             return;
           }
-          db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-            VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`)
-            .run(project.id, title, project.default_priority, project.id);
+          transaction(() => {
+            const result = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+              VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`)
+              .run(project.id, title, project.default_priority, project.id);
+            db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
+              SELECT id, project_id, position FROM tasks WHERE id = ?`).run(result.lastInsertRowid);
+          });
         }
         res.writeHead(303, { Location: projectLocation(project.id, filter, selectedPriority, dueRange(body)) });
         res.end();
