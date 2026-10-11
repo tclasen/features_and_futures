@@ -411,6 +411,95 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     assert.equal(priorityOptions(rows(await projectHtml())[1]), priorityOptions(rows(mixedPriorities)[1]));
     await post(`${paths[0]}/tasks`, { title: 'New normal task' });
     assert.equal(priorityOptions(rows(await projectHtml())[3]), '<option>Low</option><option selected>Normal</option><option>High</option>');
+    // Combined filters intersect without changing task data or summary counts.
+    await post(priorityPath, { priority: 'High' });
+    const combinedSummary = await (await fetch(baseUrl)).text();
+    function selectedFilter(html, id) {
+      const options = new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)[1];
+      return /<option selected>([^<]+)<\/option>/.exec(options)[1];
+    }
+    function taskTitles(html) {
+      return rows(html).map(row => /<span>([^<]+)<\/span>/.exec(row)[1]);
+    }
+    const expectedTasks = [
+      { title: 'Priority retained', completed: true, priority: 'High' },
+      { title: 'Second &lt;task&gt; &amp; &quot;review&quot;', completed: false, priority: 'Low' },
+      { title: 'After restoration', completed: false, priority: 'Normal' },
+      { title: 'New normal task', completed: false, priority: 'Normal' },
+    ];
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
+        const html = await projectHtml(`${paths[0]}?${new URLSearchParams({ filter, priorityFilter })}`);
+        assert.equal(selectedFilter(html, 'task-filter'), filter);
+        assert.equal(selectedFilter(html, 'priority-filter'), priorityFilter);
+        assert.deepEqual(taskTitles(html), expectedTasks.filter(task =>
+          (filter === 'All' || task.completed === (filter === 'Completed')) &&
+          (priorityFilter === 'All' || task.priority === priorityFilter)).map(task => task.title));
+      }
+    }
+    assert.equal(await (await fetch(baseUrl)).text(), combinedSummary);
+    const combinedUrl = `${paths[0]}?filter=Open&priorityFilter=Low`;
+    const combinedHtml = await projectHtml(combinedUrl);
+    const filterForm = /<form class="filter" method="get"[^>]*>([\s\S]*?)<\/form>/.exec(combinedHtml)[1];
+    assert.match(filterForm, /id="task-filter"[^>]*onchange="this.form.requestSubmit\(\)"/);
+    assert.match(filterForm, /id="priority-filter"[^>]*onchange="this.form.requestSubmit\(\)"/);
+    assert.match(filterForm, /<option>All<\/option><option selected>Low<\/option><option>Normal<\/option><option>High<\/option>/);
+    for (const form of rows(combinedHtml)[0].matchAll(/<form[^>]*>([\s\S]*?)<\/form>/g)) {
+      assert.match(form[1], /name="filter" value="Open"/);
+      assert.match(form[1], /name="priorityFilter" value="Low"/);
+    }
+    const secondRenamePath = secondPriorityPath.replace('/priority', '/rename');
+    const secondCompletionPath = secondPriorityPath.replace('/priority', '/completion');
+    const filters = { filter: 'Open', priorityFilter: 'Low' };
+    const invalidCombinedRename = await post(secondRenamePath, { ...filters, title: '  ' });
+    assert.equal(invalidCombinedRename.status, 422);
+    const invalidCombinedHtml = await invalidCombinedRename.text();
+    assert.match(invalidCombinedHtml, /role="alert">Task title is required/);
+    assert.equal(selectedFilter(invalidCombinedHtml, 'task-filter'), 'Open');
+    assert.equal(selectedFilter(invalidCombinedHtml, 'priority-filter'), 'Low');
+    const combinedRename = await post(secondRenamePath, { ...filters, title: '  Low renamed task  ' });
+    assert.equal(combinedRename.headers.get('location'), combinedUrl);
+    assert.deepEqual(taskTitles(await projectHtml(combinedUrl)), ['Low renamed task']);
+    assert.match(rows(await projectHtml(combinedUrl))[0], /aria-label="Complete Low renamed task"/);
+    assert.equal(await (await fetch(baseUrl)).text(), combinedSummary);
+    const movedPriority = await post(secondPriorityPath, { ...filters, priority: 'High' });
+    assert.equal(movedPriority.headers.get('location'), combinedUrl);
+    assert.equal(rows(await projectHtml(combinedUrl)).length, 0);
+    await post(secondPriorityPath, { ...filters, priority: 'Low' });
+    const movedCompletion = await post(secondCompletionPath, { ...filters, completed: '1' });
+    assert.equal(movedCompletion.headers.get('location'), combinedUrl);
+    assert.equal(rows(await projectHtml(combinedUrl)).length, 0);
+    const completedLowUrl = `${paths[0]}?filter=Completed&priorityFilter=Low`;
+    const savedCombined = await projectHtml(completedLowUrl);
+    assert.deepEqual(taskTitles(savedCombined), ['Low renamed task']);
+    assert.match(await (await fetch(baseUrl)).text(), /data-testid="project-summary">2\/4 completed/);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(completedLowUrl), savedCombined);
+    const defaultFilters = await projectHtml();
+    assert.equal(selectedFilter(defaultFilters, 'task-filter'), 'All');
+    assert.equal(selectedFilter(defaultFilters, 'priority-filter'), 'All');
+    assert.equal(rows(defaultFilters).length, 4);
+    await post(`${paths[0]}/archive`, {});
+    const archivedCombined = await projectHtml(completedLowUrl);
+    assert.deepEqual(taskTitles(archivedCombined), ['Low renamed task']);
+    for (const id of ['task-filter', 'priority-filter']) {
+      assert.doesNotMatch(new RegExp(`<select id="${id}"[^>]*>`).exec(archivedCombined)[0], /disabled/);
+    }
+    assert.match(rows(archivedCombined)[0], /type="checkbox"[^>]* disabled/);
+    assert.match(rows(archivedCombined)[0], /<select id="task-priority-\d+"[^>]* disabled/);
+    assert.match(rows(archivedCombined)[0], /<input id="new-task-title-\d+"[^>]* disabled/);
+    assert.equal(rows(await projectHtml(combinedUrl)).length, 0);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(completedLowUrl), archivedCombined);
+    await post(`${paths[0]}/restore`, {});
+    assert.equal(await projectHtml(completedLowUrl), savedCombined);
+    const uncheckedLow = await post(secondCompletionPath, { filter: 'Completed', priorityFilter: 'Low' });
+    assert.equal(uncheckedLow.headers.get('location'), completedLowUrl);
+    assert.equal(rows(await projectHtml(completedLowUrl)).length, 0);
+    assert.deepEqual(taskTitles(await projectHtml(combinedUrl)), ['Low renamed task']);
+
     assert.equal((await fetch(`${baseUrl}/projects/999999`)).status, 404);
     assert.equal((await post('/projects/999999/rename', { name: 'Missing project' })).status, 404);
     assert.equal((await post('/projects/999999/tasks', { title: 'Missing project' })).status, 404);
