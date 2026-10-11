@@ -94,8 +94,14 @@ test('health, project validation, creation order, routes, and restart persistenc
     for (const path of ['/', `/projects/${first.id}`]) {
       const page = await request(path);
       assert.equal(page.status, 200);
-      assert.match(await page.text(), /<title>Workboard<\/title>/);
+      const html = await page.text();
+      assert.match(html, /<title>Workboard<\/title>/);
+      assert.match(html, /<script type="module" src="\/app.js"><\/script>/);
     }
+    const dateModule = await request('/due-date.js');
+    assert.equal(dateModule.status, 200);
+    assert.match(dateModule.headers.get('content-type'), /text\/javascript/);
+    assert.match(await dateModule.text(), /export function normalizeDueDate/);
     assert.equal((await request('/api/projects/999999')).status, 404);
 
     const tasksPath = `/api/projects/${first.id}/tasks`;

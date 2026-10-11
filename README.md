@@ -14,6 +14,8 @@ Each task row provides New task title and Rename task. Titles are trimmed and re
 
 Each task row also has Task due date and Save due date controls. Save a real Gregorian date in YYYY-MM-DD format (years 0001–9999), or save an empty/whitespace-only value to clear it. Surrounding whitespace is trimmed. Invalid dates display an alert and leave the saved date unchanged. Dates are calendar days without timezone conversion, persist independently across restarts, and survive renaming, archival, and restoration. Saving a date preserves both filters and all other task data. Archived projects disable date editing until restored.
 
+Each project page has Due from and Due through textboxes and Apply due range. Valid, trimmed YYYY-MM-DD boundaries are inclusive and intersect the completion and priority filters. Blank boundaries are unbounded; when either is present, undated tasks are excluded. Invalid dates or reversed boundaries show an alert and preserve the last applied range. Task edits immediately re-evaluate membership; renaming, creation, and default changes preserve all applied filters. Range controls remain usable on archived projects. Opening or reloading a project starts with empty boundaries and All in both task filters. Filtering is local to the page and never changes saved task data or all-task summaries.
+
 The Project filter defaults to Active. Archive projects to move them to Archived, or restore them without losing tasks. Archived project pages are read-only, but task filtering remains available. Each project row summarizes completed tasks out of all tasks.
 
 `GET /health` returns `{"status":"ok"}`.

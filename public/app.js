@@ -1,3 +1,5 @@
+import { normalizeDueDate } from '/due-date.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -166,6 +168,41 @@ async function showTasks(project) {
     priorityFilter.append(option);
   }
   filters.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
+  let appliedFrom = '';
+  let appliedThrough = '';
+  const rangeForm = element('form');
+  const fromLabel = element('label', 'Due from');
+  fromLabel.htmlFor = 'due-from';
+  const fromInput = element('input');
+  fromInput.id = fromLabel.htmlFor;
+  fromInput.type = 'text';
+  const throughLabel = element('label', 'Due through');
+  throughLabel.htmlFor = 'due-through';
+  const throughInput = element('input');
+  throughInput.id = throughLabel.htmlFor;
+  throughInput.type = 'text';
+  const applyRange = element('button', 'Apply due range');
+  applyRange.type = 'submit';
+  rangeForm.append(fromLabel, fromInput, throughLabel, throughInput, applyRange);
+  rangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    app.querySelector('[role="alert"]')?.remove();
+    const from = normalizeDueDate(fromInput.value);
+    const through = normalizeDueDate(throughInput.value);
+    if (from === null || through === null) {
+      showAlert('Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (from && through && from > through) {
+      showAlert('Due from must not be after Due through');
+      return;
+    }
+    appliedFrom = from;
+    appliedThrough = through;
+    fromInput.value = from;
+    throughInput.value = through;
+    renderTasks();
+  });
   const list = element('ul');
   list.className = 'tasks';
 
@@ -173,7 +210,10 @@ async function showTasks(project) {
     const visible = tasks.filter((task) =>
       (filter.value === 'All'
         || (filter.value === 'Completed' ? task.completed : !task.completed))
-      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+      && ((!appliedFrom && !appliedThrough) || (task.dueDate
+        && (!appliedFrom || task.dueDate >= appliedFrom)
+        && (!appliedThrough || task.dueDate <= appliedThrough))));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li');
       row.dataset.testid = 'task-row';
@@ -298,7 +338,7 @@ async function showTasks(project) {
       create.disabled = archived;
     }
   });
-  app.append(form, filters, defaultPriorityControl(project), list);
+  app.append(form, filters, rangeForm, defaultPriorityControl(project), list);
   tasks = await api(endpoint);
   renderTasks();
   create.disabled = archived;
