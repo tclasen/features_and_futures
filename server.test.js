@@ -645,3 +645,102 @@ test('combined filters retain selections through edits, archive, and persistence
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('project defaults migrate, apply only to subsequent tasks, and survive archive and restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  const oldDb = new DatabaseSync(dbPath);
+  oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (name) VALUES ('Existing project');
+    INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Existing high', 1, 'High'), (1, 'Existing normal', 0, 'Normal');`);
+  oldDb.close();
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const selector = (body, id) => body.match(new RegExp('<select id="' + id + '"[^>]*>[\\s\\S]*?</select>'))[0];
+    const rows = (body) => [...body.matchAll(/<div class="task" data-testid="task-row">([\s\S]*?)\n      <\/div>/g)].map((match) => match[1]);
+    const assertDefault = (body, priority) => {
+      const control = selector(body, 'default-task-priority');
+      assert.deepEqual([...control.matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)].map((match) => match[1]), ['Low', 'Normal', 'High']);
+      assert.match(control, new RegExp('<option selected>' + priority + '</option>'));
+      assert.match(body, /<label for="default-task-priority">Default task priority<\/label>/);
+    };
+    await post('/projects', { name: 'Second project' });
+    const other = await get('/projects/2');
+    assertDefault(other, 'Normal');
+    assertDefault(await get('/projects/1'), 'Normal');
+    await post('/projects/1/tasks', { title: 'Initially normal' });
+    assert.match(selector(await get('/projects/1'), 'task-priority-3'), /<option selected>Normal<\/option>/);
+    const selected = { filter: 'Completed', priorityFilter: 'High' };
+    const filteredPath = '/projects/1?filter=Completed&priorityFilter=High';
+    const before = await get(filteredPath);
+    const summary = await get('/');
+    const changed = await post('/projects/1/default-priority', { ...selected, priority: 'Low' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), filteredPath);
+    const after = await get(filteredPath);
+    assertDefault(after, 'Low');
+    assert.deepEqual(rows(after), rows(before));
+    assert.equal(selector(after, 'task-filter'), selector(before, 'task-filter'));
+    assert.equal(selector(after, 'priority-filter'), selector(before, 'priority-filter'));
+    assert.equal(await get('/'), summary);
+    assert.equal(await get('/projects/2'), other);
+    for (const priority of ['', 'Urgent', 'low']) {
+      assert.equal((await post('/projects/1/default-priority', { ...selected, priority })).status, 422);
+      assert.equal(await get(filteredPath), after);
+    }
+    assert.equal((await post('/projects/999/default-priority', { priority: 'High' })).status, 404);
+    await post('/projects/1/tasks', { title: 'Inherited low' });
+    await post('/projects/1/default-priority', { priority: 'High' });
+    await post('/projects/1/tasks', { title: 'Inherited high' });
+    await post('/projects/2/tasks', { title: 'Other normal' });
+    await post('/projects/2/default-priority', { priority: 'Low' });
+    const detail = await get('/projects/1');
+    for (const [id, priority] of [[1, 'High'], [2, 'Normal'], [3, 'Normal'], [4, 'Low'], [5, 'High']]) {
+      assert.match(selector(detail, 'task-priority-' + id), new RegExp('<option selected>' + priority + '</option>'));
+    }
+    assert.match(detail, /aria-label="Complete Existing high" checked/);
+    assert.deepEqual(rows(detail).map((row) => row.match(/<span>([^<]+)<\/span>/)[1]),
+      ['Existing high', 'Existing normal', 'Initially normal', 'Inherited low', 'Inherited high']);
+    assert.match(selector(await get('/projects/2'), 'task-priority-6'), /<option selected>Normal<\/option>/);
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    await post('/projects/1/tasks/4/rename', { title: 'Renamed low' });
+    const saved = await get('/projects/1');
+    assertDefault(saved, 'High');
+    assert.match(selector(saved, 'task-priority-4'), /<option selected>Low<\/option>/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/5 completed/);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), saved);
+    assertDefault(await get('/projects/2'), 'Low');
+    await post('/projects/1/archive');
+    const archived = await get(filteredPath);
+    assertDefault(archived, 'High');
+    assert.match(selector(archived, 'default-task-priority'), /disabled/);
+    assert.doesNotMatch(selector(archived, 'task-filter'), /disabled/);
+    assert.doesNotMatch(selector(archived, 'priority-filter'), /disabled/);
+    const blocked = await post('/projects/1/default-priority', { ...selected, priority: 'Normal' });
+    assert.equal(blocked.status, 409);
+    assert.equal(selector(await blocked.text(), 'priority-filter'), selector(archived, 'priority-filter'));
+    assert.equal(await get(filteredPath), archived);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get(filteredPath), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), saved);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Normal' })).status, 303);
+    await post('/projects/1/tasks', { title: 'Restored normal' });
+    assert.match(selector(await get('/projects/1'), 'task-priority-7'), /<option selected>Normal<\/option>/);
+    assert.match(selector(await get('/projects/1'), 'task-priority-5'), /<option selected>High<\/option>/);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

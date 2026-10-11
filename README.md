@@ -34,7 +34,8 @@ filter membership, and project completion totals. Archived projects disable
 task renaming until restoration. Renamed titles persist across server restarts.
 
 Each task row has a `Task priority` selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Priorities persist independently across
+Existing tasks default to Normal when migrating from databases without priorities.
+Priorities persist independently across
 reloads and restarts, including after renaming, archiving, and restoration.
 Archived projects disable priority edits until restoration.
 
@@ -43,6 +44,12 @@ show tasks matching both selections in creation order. Both filters stay selecte
 through task edits, including when an edited task no longer matches. Filters work
 on archived projects and never change saved data or completion totals. Opening
 a project from the project list starts both filters at All.
+
+Use `Default task priority` (Low, Normal, High) on each project page to choose
+the priority for subsequent tasks. Each project starts at Normal. Changing the
+default preserves existing tasks and both selected filters. Defaults persist
+independently across reloads, restarts, renaming, archiving, and restoration.
+Archived projects show the saved default but disable changes until restoration.
 
 Run the integration checks with:
 
