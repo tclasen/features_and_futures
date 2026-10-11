@@ -242,6 +242,27 @@ async function loadTasks() {
       dueDateAlert.hidden = true;
       await loadTasks();
     });
+    const notesForm = document.createElement('form');
+    notesForm.className = 'task-notes-form';
+    const notesInput = document.createElement('textarea');
+    notesInput.setAttribute('aria-label', 'Task notes');
+    notesInput.value = task.notes || '';
+    notesInput.disabled = currentProjectArchived;
+    const saveNotes = document.createElement('button');
+    saveNotes.type = 'submit';
+    saveNotes.textContent = 'Save notes';
+    saveNotes.disabled = currentProjectArchived;
+    notesForm.append(notesInput, saveNotes);
+    notesForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (currentProjectArchived) return;
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ notes: notesInput.value }),
+      });
+      if (response.ok) await loadTasks();
+    });
     const moveForm = document.createElement('form');
     moveForm.className = 'task-move-form';
     const destination = document.createElement('select');
@@ -270,7 +291,7 @@ async function loadTasks() {
       });
       if (response.ok) await loadTasks();
     });
-    row.append(title, checkbox, priority, renameForm, dueDateForm, moveForm);
+    row.append(title, checkbox, priority, renameForm, dueDateForm, notesForm, moveForm);
     tasksContainer.append(row);
   }
 }

@@ -22,6 +22,7 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT,
+    notes TEXT NOT NULL DEFAULT '',
     sort_order INTEGER NOT NULL DEFAULT 0
   )
   ;
@@ -46,6 +47,9 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 }
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 if (!taskColumns.some((column) => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
@@ -152,7 +156,7 @@ const server = createServer(async (request, response) => {
   }
   const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksPath && request.method === 'GET') {
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(tasksPath[1]));
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(tasksPath[1]));
     return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksPath && request.method === 'POST') {
@@ -221,6 +225,11 @@ const server = createServer(async (request, response) => {
       if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot change due dates' });
       database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, taskId);
       return sendJson(response, 200, { id: taskId, dueDate: dueDate || null });
+    }
+    if (typeof changes.notes === 'string') {
+      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot change task notes' });
+      database.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(changes.notes, taskId);
+      return sendJson(response, 200, { id: taskId, notes: changes.notes });
     }
     if (typeof changes.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
     database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(changes.completed ? 1 : 0, taskId);
