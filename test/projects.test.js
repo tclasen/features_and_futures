@@ -807,12 +807,75 @@ test('task moves append, preserve data and filters, enforce active ownership, an
     server = await start(databasePath);
     assert.deepEqual(titles(await get('/projects/2')), ['Existing', 'Moved', 'New after move']);
     assert.equal((await post('/projects/2/tasks/1/move', { destination: '1' })).status, 303);
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'Moved']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Moved', 'Remaining']);
     // An undated task also keeps its blank date when moved.
     assert.equal((await post('/projects/1/tasks/2/move', { destination: '2' })).status, 303);
     html = await get('/projects/2');
     assert.deepEqual(titles(html), ['Existing', 'New after move', 'Remaining']);
     assert.match(html, /id="task-due-date-2" name="dueDate" type="text" value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('remembered positions migrate, reserve departed slots, and restore reverse-order returns across restarts', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp('data/test-');
+  const databasePath = resolve(directory, 'positions.sqlite');
+  let server;
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL);
+      INSERT INTO projects (name) VALUES ('Original'), ('Destination');
+      INSERT INTO tasks (project_id, title, position) VALUES (1, 'First', 5), (1, 'Middle', 8), (1, 'Last', 12);
+    `);
+    legacy.close();
+    server = await start(databasePath);
+    const get = async id => (await fetch(`${server.url}/projects/${id}`)).text();
+    const post = async (path, values = {}) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+      assert.equal(response.status, 303);
+    };
+    const titles = html => [...html.matchAll(/<li data-testid="task-row">\s*<span>(.*?)<\/span>/g)].map(m => m[1]);
+    const move = (source, task, destination) => post(`/projects/${source}/tasks/${task}/move`, { destination });
+    assert.deepEqual(titles(await get(1)), ['First', 'Middle', 'Last']);
+    await move(1, 1, '2');
+    await move(1, 3, '2');
+    await post('/projects/1/tasks', { title: 'New' });
+    await post('/projects/2/tasks/1/rename', { title: 'Changed' });
+    await post('/projects/2/tasks/1/priority', { priority: 'High' });
+    await post('/projects/2/tasks/1/due-date', { dueDate: '0001-01-01' });
+    await post('/projects/2/tasks/1', { completed: '1' });
+    await post('/projects/1/rename', { name: 'Renamed' });
+    await post('/projects/1/archive');
+    await server.stop();
+    server = await start(databasePath);
+    await post('/projects/1/restore');
+    await move(2, 3, '1');
+    assert.deepEqual(titles(await get(1)), ['Middle', 'Last', 'New']);
+    await move(2, 1, '1');
+    let html = await get(1);
+    assert.deepEqual(titles(html), ['Changed', 'Middle', 'Last', 'New']);
+    assert.match(html, /aria-label="Complete Changed" checked/);
+    assert.match(html, /id="task-priority-1"[\s\S]*?<option selected>High<\/option>/);
+    assert.match(html, /id="task-due-date-1" name="dueDate" type="text" value="0001-01-01"/);
+    // Reverse arrival order also restores remembered destination positions.
+    await post('/projects/2/tasks', { title: 'Destination new' });
+    await move(1, 3, '2');
+    await move(1, 1, '2');
+    assert.deepEqual(titles(await get(2)), ['Changed', 'Last', 'Destination new']);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(titles(await get(2)), ['Changed', 'Last', 'Destination new']);
+    await move(2, 1, '1');
+    await move(2, 3, '1');
+    assert.deepEqual(titles(await get(1)), ['Changed', 'Middle', 'Last', 'New']);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
