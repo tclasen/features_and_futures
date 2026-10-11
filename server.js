@@ -18,6 +18,9 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -48,7 +51,7 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 200, { status: 'ok' });
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
       FROM projects p ORDER BY p.id`).all().map(project => ({
@@ -65,6 +68,21 @@ const server = createServer(async (req, res) => {
       const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(payload.archived ? 1 : 0, Number(projectArchiveRoute[1]));
       if (!result.changes) return sendJson(res, 404, { error: 'Project not found' });
       return sendJson(res, 200, { id: Number(projectArchiveRoute[1]), archived: payload.archived });
+    } catch {
+      return sendJson(res, 400, { error: 'Invalid request' });
+    }
+  }
+  const projectDefaultRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (projectDefaultRoute && req.method === 'PATCH') {
+    try {
+      const priority = (await readJson(req)).priority;
+      if (!['Low', 'Normal', 'High'].includes(priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      const projectId = Number(projectDefaultRoute[1]);
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return sendJson(res, 404, { error: 'Project not found' });
+      if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
+      db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(priority, projectId);
+      return sendJson(res, 200, { id: projectId, defaultPriority: priority });
     } catch {
       return sendJson(res, 400, { error: 'Invalid request' });
     }
@@ -104,14 +122,14 @@ const server = createServer(async (req, res) => {
   if (taskRoute && req.method === 'POST') {
     try {
       const projectId = Number(taskRoute[1]);
-      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!project) return sendJson(res, 404, { error: 'Project not found' });
       if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
       const payload = await readJson(req);
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
     } catch {
       return sendJson(res, 400, { error: 'Invalid request' });
     }
