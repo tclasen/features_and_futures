@@ -29,6 +29,8 @@ let activeProjectArchived = false;
 let appliedDueRange = { from: '', through: '' };
 let appliedProjectSearch = '';
 let appliedTaskSearch = '';
+let projectRenderVersion = 0;
+let taskRenderVersion = 0;
 
 function asciiLower(value) {
   return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
@@ -79,6 +81,9 @@ function projectRow(project) {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ archived: !project.archived }),
       });
+      // Restored projects leave the Archived result set. Switch to Active so
+      // the restored row remains available for the next action in this flow.
+      if (project.archived) projectFilter.value = 'active';
       await renderProjects();
     } catch (error) { showError(error); }
   });
@@ -87,7 +92,9 @@ function projectRow(project) {
 }
 
 async function renderProjects() {
+  const renderVersion = ++projectRenderVersion;
   const projects = await request(`/api/projects?archived=${projectFilter.value === 'archived'}`);
+  if (renderVersion !== projectRenderVersion) return;
   const query = normalizeSearchText(appliedProjectSearch);
   projectContainer.replaceChildren(...projects
     .filter((project) => normalizeSearchText(project.name).includes(query))
@@ -135,10 +142,12 @@ async function renderRoute() {
 
 async function renderTasks() {
   if (!activeProjectId) return;
+  const renderVersion = ++taskRenderVersion;
   const [tasks, activeProjects] = await Promise.all([
     request(`/api/projects/${activeProjectId}/tasks`),
     request('/api/projects?archived=false'),
   ]);
+  if (renderVersion !== taskRenderVersion) return;
   const destinations = activeProjects.filter((project) => String(project.id) !== activeProjectId);
   const visibleTasks = tasks.filter((task) => taskFilter.value === 'Deleted'
     ? Boolean(task.deleted)
