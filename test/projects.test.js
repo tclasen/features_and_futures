@@ -368,3 +368,90 @@ test('project creation, navigation, escaping, and persistence across restarts', 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('priorities migrate, remain independent, preserve task data, and survive archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL
+    );
+    CREATE TABLE tasks (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+      project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    INSERT INTO projects (id, name) VALUES ('owner', 'Owner'), ('other', 'Other');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES ('old', 'owner', 'Existing', 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const path = '/projects/owner';
+    const taskPath = `${path}/tasks/old`;
+    const priorities = (html) => [...html.matchAll(/<select id="task-priority-[^"]+"[^>]*>\s*([\s\S]*?)<\/select>/g)].map((match) => match[1].trim());
+    const normalOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    assert.deepEqual(priorities(await get(path)), [normalOptions]);
+    await post(`${path}/tasks`, { title: 'New task' });
+    await post('/projects/other/tasks', { title: 'Other task' });
+    const before = await get(path);
+    const other = await get('/projects/other');
+    const listing = await get('/');
+    assert.deepEqual(priorities(before), [normalOptions, normalOptions]);
+    assert.equal((before.match(/>Task priority<\/label>/g) ?? []).length, 2);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await post(`${taskPath}/priority`, { priority, filter: 'Completed' });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), `${path}?filter=Completed`);
+      const options = ['Low', 'Normal', 'High'].map((value) => `<option${value === priority ? ' selected' : ''}>${value}</option>`).join('');
+      assert.equal(await get(path), before.replace(normalOptions, options));
+      assert.equal(await get('/projects/other'), other);
+      assert.equal(await get('/'), listing);
+      assert.doesNotMatch(await get(`${path}?filter=Open`), /Existing/);
+      assert.deepEqual(priorities(await get(`${path}?filter=Completed`)), [options]);
+    }
+    const high = await get(path);
+    for (const values of [{}, { priority: 'Urgent' }, { priority: ' High ' }]) {
+      const response = await post(`${taskPath}/priority`, values);
+      assert.equal(response.status, 422);
+      assert.match(await response.text(), /role="alert">Invalid task priority/);
+      assert.equal(await get(path), high);
+    }
+    assert.equal((await post('/projects/other/tasks/old/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post(`${path}/tasks/missing/priority`, { priority: 'Low' })).status, 404);
+    await post(`${taskPath}/rename`, { title: 'Renamed' });
+    const renamed = high.replaceAll('Existing', 'Renamed');
+    assert.equal(await get(path), renamed);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(path), renamed);
+    assert.equal(await get('/'), listing);
+    await post(`${path}/archive`);
+    const archived = await get(path);
+    assert.equal((archived.match(/<select id="task-priority-[^"]+"[^>]* disabled/g) ?? []).length, 2);
+    assert.equal((await post(`${taskPath}/priority`, { priority: 'Low' })).status, 403);
+    assert.equal(await get(path), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(path), archived);
+    await post(`${path}/restore`);
+    assert.equal(await get(path), renamed);
+    assert.equal((await post(`${taskPath}/priority`, { priority: 'Low' })).status, 303);
+    assert.deepEqual(priorities(await get(path)), [
+      '<option selected>Low</option><option>Normal</option><option>High</option>', normalOptions,
+    ]);
+    await post(taskPath, {});
+    assert.deepEqual(priorities(await get(path)), [
+      '<option selected>Low</option><option>Normal</option><option>High</option>', normalOptions,
+    ]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

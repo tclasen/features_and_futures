@@ -28,6 +28,10 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+// Existing tasks retain their data and receive the same default as new tasks.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -39,10 +43,11 @@ const findProject = database.prepare('SELECT id, name, archived FROM projects WH
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY position');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY position');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -150,7 +155,7 @@ const server = http.createServer(async (request, response) => {
       sendHtml(response, project ? 200 : 404, project ? projectPage(project, taskFilter(searchParams.get('filter'))) : renderNotFound());
       return;
     }
-    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(\/rename)?)?$/);
+    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority))?)?$/);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (!project) {
@@ -164,15 +169,24 @@ const server = http.createServer(async (request, response) => {
       const form = await readForm(request);
       const filter = taskFilter(form.get('filter'));
       if (taskMatch[2]) {
-        const isRename = Boolean(taskMatch[3]);
-        const title = (form.get('title') ?? '').trim();
-        if (isRename && !title) {
-          sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
-          return;
+        let result;
+        if (taskMatch[3] === 'rename') {
+          const title = (form.get('title') ?? '').trim();
+          if (!title) {
+            sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          result = renameTask.run(title, project.id, taskMatch[2]);
+        } else if (taskMatch[3] === 'priority') {
+          const priority = form.get('priority');
+          if (!['Low', 'Normal', 'High'].includes(priority)) {
+            sendHtml(response, 422, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
+          result = updateTaskPriority.run(priority, project.id, taskMatch[2]);
+        } else {
+          result = updateTask.run(form.get('completed') === '1' ? 1 : 0, project.id, taskMatch[2]);
         }
-        const result = isRename
-          ? renameTask.run(title, project.id, taskMatch[2])
-          : updateTask.run(form.get('completed') === '1' ? 1 : 0, project.id, taskMatch[2]);
         if (!result.changes) {
           sendHtml(response, 404, renderNotFound());
           return;

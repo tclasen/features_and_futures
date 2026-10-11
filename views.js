@@ -111,6 +111,14 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
           </label>
           <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
         </form>
+        <form class="task-priority" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/priority">
+          <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+          <label for="task-priority-${escapeHtml(task.id)}">Task priority</label>
+          <select id="task-priority-${escapeHtml(task.id)}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${['Low', 'Normal', 'High'].map((option) => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
+          </select>
+          <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save priority</button></noscript>
+        </form>
         <form class="create task-rename" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/rename">
           <input type="hidden" name="filter" value="${escapeHtml(filter)}">
           <label for="new-task-title-${escapeHtml(task.id)}">New task title</label>
