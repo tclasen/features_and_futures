@@ -2,6 +2,7 @@ const listView = document.querySelector('#project-list');
 const detailView = document.querySelector('#project-detail');
 const alert = document.querySelector('#alert');
 let activeProjectId = null;
+let appliedDueRange = { from: '', through: '' };
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
@@ -29,7 +30,13 @@ async function loadTasks() {
   const tasks = await response.json();
   const filter = document.querySelector('#task-filter').value;
   const priorityFilter = document.querySelector('#priority-filter').value;
-  const shown = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === task.completed) && (priorityFilter === 'All' || task.priority === priorityFilter));
+  const { from, through } = appliedDueRange;
+  const shown = tasks.filter(task => {
+    const completionMatches = filter === 'All' || (filter === 'Completed') === task.completed;
+    const priorityMatches = priorityFilter === 'All' || task.priority === priorityFilter;
+    const dateMatches = !from && !through ? true : Boolean(task.due_date) && (!from || task.due_date >= from) && (!through || task.due_date <= through);
+    return completionMatches && priorityMatches && dateMatches;
+  });
   const container = document.querySelector('#tasks'); container.replaceChildren();
   for (const task of shown) {
     const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'project-row';
@@ -126,6 +133,25 @@ document.querySelector('#default-task-priority').addEventListener('change', asyn
 });
 document.querySelector('#task-filter').addEventListener('change', loadTasks);
 document.querySelector('#priority-filter').addEventListener('change', loadTasks);
+document.querySelector('#apply-due-range').addEventListener('click', () => {
+  const from = document.querySelector('#due-from').value.trim();
+  const through = document.querySelector('#due-through').value.trim();
+  const message = document.querySelector('#due-range-alert');
+  const validDate = value => {
+    if (!value) return true;
+    const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+    if (!match) return false;
+    const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+    if (year < 1 || month < 1 || month > 12) return false;
+    const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day >= 1 && day <= days[month - 1];
+  };
+  if (!validDate(from) || !validDate(through)) { message.textContent = 'Due range must use valid YYYY-MM-DD dates'; message.hidden = false; return; }
+  if (from && through && from > through) { message.textContent = 'Due from must not be after Due through'; message.hidden = false; return; }
+  appliedDueRange = { from, through };
+  message.hidden = true;
+  loadTasks();
+});
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
 showPage().catch(() => { alert.textContent = 'Unable to load Workboard'; alert.hidden = false; listView.hidden = false; });
