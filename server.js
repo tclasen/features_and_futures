@@ -62,6 +62,7 @@ db.exec(`
 `);
 const taskPriorities = ['Low', 'Normal', 'High'];
 const taskFilters = ['All', 'Open', 'Completed', 'Deleted'];
+const directoryOrders = ['Original', 'Priority', 'Due date', 'Title'];
 const listProjects = db.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -454,28 +455,50 @@ function directoryState(values) {
     priority: priorityFilter(values.get('priorityFilter')),
     range: dueRange(values),
     query: searchQuery(values, 'directorySearch'),
+    order: directoryOrders.includes(values.get('order')) ? values.get('order') : 'Original',
   };
 }
 
 function directoryPath(state) {
   const params = new URLSearchParams({ scope: state.scope, filter: state.filter,
     priorityFilter: state.priority, dueFrom: state.range.from,
-    dueThrough: state.range.through, directorySearch: state.query });
+    dueThrough: state.range.through, directorySearch: state.query, order: state.order });
   return `/directory?${params}`;
 }
 
 function directoryTasks(state) {
-  return listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+  const tasks = listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
     .filter(task => matchesTask(task, state.filter, state.priority, state.range, state.query));
+  // Stable sorting retains the original project/task order for equal keys.
+  if (state.order === 'Priority') {
+    tasks.sort((a, b) => taskPriorities.indexOf(b.priority) - taskPriorities.indexOf(a.priority));
+  } else if (state.order === 'Due date') {
+    tasks.sort((a, b) => Number(!a.due_date) - Number(!b.due_date) ||
+      compareCodePoints(a.due_date, b.due_date));
+  } else if (state.order === 'Title') {
+    const fold = title => title.replace(/[A-Z]/g, letter => letter.toLowerCase());
+    tasks.sort((a, b) => compareCodePoints(fold(a.title), fold(b.title)));
+  }
+  return tasks;
+}
+
+function compareCodePoints(a, b) {
+  const left = Array.from(a, character => character.codePointAt(0));
+  const right = Array.from(b, character => character.codePointAt(0));
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return left.length - right.length;
 }
 
 function directoryPage(state, error = '', rangeInput = state.range) {
-  const { scope, filter, priority, range, query } = state;
+  const { scope, filter, priority, range, query, order } = state;
   const tasks = directoryTasks(state);
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const selections = `<input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
-    <input type="hidden" name="priorityFilter" value="${priority}">`;
+    <input type="hidden" name="priorityFilter" value="${priority}">
+    <input type="hidden" name="order" value="${order}">`;
   const rangeInputs = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   return page('Task directory', `
@@ -497,6 +520,10 @@ function directoryPage(state, error = '', rangeInput = state.range) {
           ${['All', ...taskPriorities].map(option => `<option${option === priority ? ' selected' : ''}>${option}</option>`).join('')}
         </select>
         ${rangeInputs}${searchField('directorySearch', query)}
+        <label for="directory-order">Directory order</label>
+        <select id="directory-order" name="order" onchange="this.form.requestSubmit()">
+          ${directoryOrders.map(option => `<option${option === order ? ' selected' : ''}>${option}</option>`).join('')}
+        </select>
       </form>
       <form method="get" action="/directory" class="create-form">
         ${selections}${rangeInputs}
