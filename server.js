@@ -90,6 +90,20 @@ const server = createServer(async (req, res) => {
     return result.changes ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Task not found' });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (req.method === 'PATCH' && projectMatch) {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let data;
+    try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (!name) return json(res, 400, { error: 'Project name is required' });
+    const id = Number(projectMatch[1]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id=?').get(id);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 403, { error: 'Project is archived' });
+    db.prepare('UPDATE projects SET name=? WHERE id=?').run(name, id);
+    return json(res, 200, { ok: true, name });
+  }
   if (req.method === 'GET' && projectMatch) {
     const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     return project ? json(res, 200, project) : json(res, 404, { error: 'Project not found' });

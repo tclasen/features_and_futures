@@ -70,6 +70,7 @@ async function render() {
       const project = await response.json();
       document.querySelector('#project-title').textContent = project.name;
       document.querySelector('#archived-label').hidden = !project.archived;
+      document.querySelector('#rename-form').querySelectorAll('input, button').forEach(control => { control.disabled = Boolean(project.archived); });
       document.querySelector('#task-form').querySelectorAll('input, button').forEach(control => { control.disabled = Boolean(project.archived); });
       list.hidden = true;
       detail.hidden = false;
@@ -98,6 +99,21 @@ document.querySelector('#create-form').addEventListener('submit', async event =>
   if (response.ok) {
     input.value = '';
     await loadProjects();
+  }
+});
+document.querySelector('#rename-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#new-project-name');
+  const alert = document.querySelector('#rename-alert');
+  const name = input.value.trim();
+  if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+  alert.hidden = true;
+  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+  if (!match) return;
+  const response = await fetch(`/api/projects/${match[1]}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  if (response.ok) {
+    input.value = '';
+    document.querySelector('#project-title').textContent = name;
   }
 });
 document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
