@@ -14,11 +14,22 @@ database.exec(`
     name TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
+  ;
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
 const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = database.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 const page = `<!doctype html>
 <html lang="en">
@@ -38,6 +49,9 @@ const page = `<!doctype html>
     button { padding: .65rem 1rem; border: 0; border-radius: .35rem; background: #2457c5; color: white; font: inherit; cursor: pointer; }
     button:focus-visible, input:focus-visible { outline: 3px solid #8ab4ff; outline-offset: 2px; }
     [data-testid="project-row"] { justify-content: space-between; padding: 1rem; margin: .5rem 0; background: white; border: 1px solid #dce2ec; border-radius: .4rem; }
+    [data-testid="task-row"] { display: flex; align-items: center; gap: .75rem; padding: 1rem; margin: .5rem 0; background: white; border: 1px solid #dce2ec; border-radius: .4rem; }
+    [data-testid="task-row"] input { flex: initial; min-width: auto; }
+    select { padding: .65rem; border: 1px solid #9aa5b8; border-radius: .35rem; font: inherit; }
     [role="alert"] { color: #a22020; min-height: 1.5em; }
   </style>
 </head>
@@ -70,6 +84,51 @@ const page = `<!doctype html>
       }
     });
   })();
+  (() => {
+    const form = document.querySelector('#task-form');
+    if (!form) return;
+    const input = form.querySelector('#task-title');
+    const alert = document.querySelector('[role="alert"]');
+    const projectId = form.dataset.projectId;
+    const filter = document.querySelector('#task-filter');
+    const applyFilter = () => {
+      for (const row of document.querySelectorAll('[data-testid="task-row"]')) {
+        const completed = row.querySelector('input[type="checkbox"]').checked;
+        row.hidden = filter.value === 'Open' ? completed : filter.value === 'Completed' ? !completed : false;
+      }
+    };
+    filter.addEventListener('change', applyFilter);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const title = input.value.trim();
+      if (!title) { alert.textContent = 'Task title is required'; return; }
+      alert.textContent = '';
+      try {
+        const response = await fetch('/api/projects/' + projectId + '/tasks', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title })
+        });
+        if (!response.ok) throw new Error('Task creation failed');
+        window.location.reload();
+      } catch { alert.textContent = 'Unable to create task'; }
+    });
+    document.querySelectorAll('[data-testid="task-row"] input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.addEventListener('change', async () => {
+        const row = checkbox.closest('[data-testid="task-row"]');
+        try {
+          const response = await fetch('/api/projects/' + projectId + '/tasks/' + row.dataset.taskId, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked })
+          });
+          if (!response.ok) throw new Error('Task update failed');
+          applyFilter();
+        } catch {
+          checkbox.checked = !checkbox.checked;
+          alert.textContent = 'Unable to update task';
+        }
+      });
+    });
+    applyFilter();
+  })();
   </script>
 </body>
 </html>`;
@@ -97,11 +156,22 @@ function renderPage(pathname) {
         <input id="project-name" name="name" type="text"><button type="submit">Create project</button>
       </form><p role="alert" aria-live="polite"></p>${rows}`;
   } else {
-    const id = Number(pathname.match(/^\/projects\/(\d+)/)[1]);
+    const id = Number(pathname.match(/^\/projects\/(\d+)\/?$/)[1]);
     const project = getProject.get(id);
-    content = project
-      ? `<h1>${escapeHtml(project.name)}</h1><button type="button" onclick="window.location.href='/'">Projects</button>`
-      : '<h1>Project not found</h1><button type="button" onclick="window.location.href=\'/\'">Projects</button>';
+    if (project) {
+      const rows = listTasks.all(id).map((task) => `
+        <section data-testid="task-row" data-task-id="${task.id}">
+          <input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}>
+          <span>${escapeHtml(task.title)}</span>
+        </section>`).join('');
+      content = `<h1>${escapeHtml(project.name)}</h1><button type="button" onclick="window.location.href='/'">Projects</button>
+        <form id="task-form" data-project-id="${project.id}"><label for="task-title">Task title</label>
+          <input id="task-title" name="title" type="text"><button type="submit">Create task</button>
+        </form><p role="alert" aria-live="polite"></p>
+        <label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>${rows}`;
+    } else {
+      content = '<h1>Project not found</h1><button type="button" onclick="window.location.href=\'/\'">Projects</button>';
+    }
   }
   return page.replace('__INITIAL_CONTENT__', content);
 }
@@ -138,6 +208,30 @@ const server = createServer(async (request, response) => {
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
     }
+    return;
+  }
+  const taskCollectionMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (request.method === 'POST' && taskCollectionMatch) {
+    try {
+      const projectId = Number(taskCollectionMatch[1]);
+      if (!getProject.get(projectId)) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      const input = await readJson(request);
+      const title = typeof input.title === 'string' ? input.title.trim() : '';
+      if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
+      const result = createTask.run(projectId, title);
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), project_id: projectId, title, completed: 0 });
+    } catch { sendJson(response, 400, { error: 'Invalid request' }); }
+    return;
+  }
+  const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  if (request.method === 'PATCH' && taskMatch) {
+    try {
+      const input = await readJson(request);
+      if (typeof input.completed !== 'boolean') { sendJson(response, 400, { error: 'Invalid completion state' }); return; }
+      const result = updateTask.run(input.completed ? 1 : 0, Number(taskMatch[2]), Number(taskMatch[1]));
+      if (result.changes === 0) { sendJson(response, 404, { error: 'Task not found' }); return; }
+      sendJson(response, 200, { id: Number(taskMatch[2]), completed: input.completed ? 1 : 0 });
+    } catch { sendJson(response, 400, { error: 'Invalid request' }); }
     return;
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
