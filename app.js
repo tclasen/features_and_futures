@@ -9,10 +9,14 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const tasksContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const projectFilter = document.querySelector('#project-filter');
+const archiveNotice = document.querySelector('#archive-notice');
+const createTaskButton = taskForm.querySelector('button');
 let currentProjectId = null;
+let currentProjectArchived = false;
 
 async function loadProjects() {
-  const response = await fetch('/api/projects');
+  const response = await fetch(`/api/projects?filter=${encodeURIComponent(projectFilter.value)}`);
   const projects = await response.json();
   projectsContainer.replaceChildren();
   for (const project of projects) {
@@ -25,9 +29,33 @@ async function loadProjects() {
     open.type = 'button';
     open.textContent = 'Open project';
     open.addEventListener('click', () => navigate(`/projects/${project.id}`));
-    row.append(name, open);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+    row.append(name, summary, open);
+    if (project.archived) {
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.textContent = 'Restore project';
+      restore.addEventListener('click', () => setProjectArchived(project.id, false));
+      row.append(restore);
+    } else {
+      const archive = document.createElement('button');
+      archive.type = 'button';
+      archive.textContent = 'Archive project';
+      archive.addEventListener('click', () => setProjectArchived(project.id, true));
+      row.append(archive);
+    }
     projectsContainer.append(row);
   }
+}
+
+async function setProjectArchived(projectId, archived) {
+  await fetch(`/api/projects/${projectId}`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ archived }),
+  });
+  await loadProjects();
 }
 
 async function showRoute() {
@@ -38,17 +66,19 @@ async function showRoute() {
     await loadProjects();
     return;
   }
-  const response = await fetch('/api/projects');
-  const projects = await response.json();
-  const project = projects.find((item) => String(item.id) === match[1]);
-  if (!project) {
+  const response = await fetch(`/api/projects/${match[1]}`);
+  if (!response.ok) {
     navigate('/');
     return;
   }
+  const project = await response.json();
   document.title = `${project.name} · Workboard`;
   document.querySelector('#project-heading').textContent = project.name;
-  document.title = `${project.name} · Workboard`;
   currentProjectId = project.id;
+  currentProjectArchived = project.archived;
+  archiveNotice.hidden = !currentProjectArchived;
+  createTaskButton.disabled = currentProjectArchived;
+  taskInput.disabled = currentProjectArchived;
   listView.hidden = true;
   detailView.hidden = false;
   await loadTasks();
@@ -70,6 +100,7 @@ async function loadTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
+    checkbox.disabled = currentProjectArchived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await fetch(`/api/tasks/${task.id}`, {
@@ -111,6 +142,7 @@ form.addEventListener('submit', async (event) => {
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (currentProjectArchived) return;
   const title = taskInput.value.trim();
   if (!title) {
     taskAlert.textContent = 'Task title is required';
@@ -129,5 +161,6 @@ taskForm.addEventListener('submit', async (event) => {
   await loadTasks();
 });
 taskFilter.addEventListener('change', loadTasks);
+projectFilter.addEventListener('change', loadProjects);
 window.addEventListener('popstate', showRoute);
 showRoute();
