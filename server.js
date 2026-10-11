@@ -12,7 +12,20 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   )
+  ;
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  )
 `);
+
+async function readBody(request) {
+  let body = '';
+  for await (const chunk of request) body += chunk;
+  return JSON.parse(body);
+}
 
 const assets = new Map([
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./app.js', import.meta.url))]],
@@ -35,11 +48,9 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, projects);
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
-    let body = '';
-    for await (const chunk of request) body += chunk;
     let name;
     try {
-      name = JSON.parse(body).name;
+      name = (await readBody(request)).name;
     } catch {
       return sendJson(response, 400, { error: 'Invalid request body' });
     }
@@ -47,6 +58,38 @@ const server = createServer(async (request, response) => {
     if (!name) return sendJson(response, 400, { error: 'Project name is required' });
     const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
+  }
+  const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksPath && request.method === 'GET') {
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksPath[1]));
+    return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
+  }
+  if (tasksPath && request.method === 'POST') {
+    let title;
+    try {
+      title = (await readBody(request)).title;
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    title = typeof title === 'string' ? title.trim() : '';
+    if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+    const projectId = Number(tasksPath[1]);
+    if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
+    const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+  }
+  const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskPath && request.method === 'PATCH') {
+    let completed;
+    try {
+      completed = (await readBody(request)).completed;
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
+    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(taskPath[1]));
+    if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+    return sendJson(response, 200, { id: Number(taskPath[1]), completed });
   }
   if (request.method === 'GET' && assets.has(url.pathname)) {
     const [contentType, content] = assets.get(url.pathname);
