@@ -66,7 +66,7 @@ const server = http.createServer(async (req, res) => {
     const doc = body?.document;
     const validDate = value => {
       if (value === '') return true;
-      const m = typeof value === 'string' && value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      const m = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!m) return false;
       const y = +m[1], month = +m[2], day = +m[3], leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
       const lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
