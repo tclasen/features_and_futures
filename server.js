@@ -6,10 +6,22 @@ import { dirname, resolve } from 'node:path';
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(resolve(databasePath)), { recursive: true });
 const db = new DatabaseSync(databasePath);
+db.exec('PRAGMA foreign_keys = ON');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+)`);
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const taskData = task => ({ ...task, completed: Boolean(task.completed) });
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -24,25 +36,48 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+async function readJson(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 65536) throw Object.assign(new Error('Request too large'), { status: 413 });
+  }
+  try { return JSON.parse(body); }
+  catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const path = new URL(req.url, 'http://localhost').pathname;
     if (req.method === 'GET' && path === '/health') return sendJson(res, 200, { status: 'ok' });
     if (req.method === 'GET' && path === '/api/projects') return sendJson(res, 200, listProjects.all());
+    const taskMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+    if (taskMatch) {
+      const [, projectId, taskId] = taskMatch;
+      if (!findProject.get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
+      if (req.method === 'GET' && !taskId) return sendJson(res, 200, listTasks.all(projectId).map(taskData));
+      if (req.method === 'POST' && !taskId) {
+        const input = await readJson(req);
+        const title = typeof input?.title === 'string' ? input.title.trim() : '';
+        if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+        const result = createTask.run(projectId, title);
+        return sendJson(res, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
+      }
+      if (req.method === 'PATCH' && taskId) {
+        if (!findTask.get(projectId, taskId)) return sendJson(res, 404, { error: 'Task not found' });
+        const input = await readJson(req);
+        if (typeof input?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion must be a boolean' });
+        updateTask.run(Number(input.completed), projectId, taskId);
+        return sendJson(res, 200, taskData(findTask.get(projectId, taskId)));
+      }
+    }
     const match = path.match(/^\/api\/projects\/(\d+)$/);
     if (req.method === 'GET' && match) {
       const project = findProject.get(match[1]);
       return sendJson(res, project ? 200 : 404, project || { error: 'Project not found' });
     }
     if (req.method === 'POST' && path === '/api/projects') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk;
-        if (Buffer.byteLength(body) > 65536) return sendJson(res, 413, { error: 'Request too large' });
-      }
-      let input;
-      try { input = JSON.parse(body); }
-      catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+      const input = await readJson(req);
       const name = typeof input?.name === 'string' ? input.name.trim() : '';
       if (!name) return sendJson(res, 400, { error: 'Project name is required' });
       const result = createProject.run(name);
@@ -59,6 +94,7 @@ const server = http.createServer(async (req, res) => {
     }
     sendJson(res, 404, { error: 'Not found' });
   } catch (error) {
+    if (error.status) return sendJson(res, error.status, { error: error.message });
     console.error(error);
     sendJson(res, 500, { error: 'Unable to complete request' });
   }
