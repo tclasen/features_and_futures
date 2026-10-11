@@ -7,6 +7,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+function assertDirectorySummary(html, completed, total) {
+  const summaries = [...html.matchAll(/data-testid="directory-summary">([^<]*)<\/p>/g)];
+  assert.deepEqual(summaries.map((match) => match[1]), [`${completed}/${total} completed`]);
+  assert.equal(html.includes('role="status">No matching tasks'), total === 0);
+}
+
 test('directory intersects read-only filters, preserves order and literal fields across restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
   const databasePath = join(directory, 'workboard.sqlite');
@@ -32,6 +38,7 @@ test('directory intersects read-only filters, preserves order and literal fields
       await checkedPost(`/projects/${project}/tasks`, { title });
     }
     await checkedPost('/projects/1/tasks/1', { completed: '1' });
+    await checkedPost('/projects/3/tasks/5', { completed: '1' });
     for (const [project, id] of [[1, 1], [1, 3], [2, 4], [3, 5]]) {
       await checkedPost(`/projects/${project}/tasks/${id}/priority`, { priority: 'High' });
       await checkedPost(`/projects/${project}/tasks/${id}/due-date`, { dueDate: '2028-02-29' });
@@ -54,6 +61,10 @@ test('directory intersects read-only filters, preserves order and literal fields
     const home = await get('/');
     assert.match(home, /action="\/directory"><button type="submit">Task directory/);
     const initial = await get('/directory');
+    assertDirectorySummary(initial, 1, 4);
+    for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+      assertDirectorySummary(await get(path({ order })), 1, 4);
+    }
     assert.deepEqual(titles(initial), ['Plan \t  Release', 'Other', 'Plan release second', 'Imported live']);
     assert.match(initial, /data-testid="directory-project-name">First owner/);
     assert.match(initial, /data-testid="directory-task-completion">Completed/);
@@ -73,6 +84,16 @@ test('directory intersects read-only filters, preserves order and literal fields
     for (const search of ['NotesOnlyMatch', 'First owner', '日本語']) assert.deepEqual(titles(await get(path({ search }))), []);
     const state = { scope: 'Active', filter: 'Completed', priorityFilter: 'High', dueFrom: '2028-02-29', dueThrough: '2028-02-29', search: ' \t pLaN\t  release \n' };
     const filtered = await get(path(state));
+    assertDirectorySummary(filtered, 1, 1);
+    for (const [selection, completed, total] of [
+      [{ ...state, filter: 'Open' }, 0, 1],
+      [{ ...state, filter: 'Deleted' }, 0, 1],
+      [{ ...state, filter: 'Deleted', search: '' }, 1, 2],
+      [{ ...state, scope: 'Archived', filter: 'All' }, 1, 1],
+      [{ ...state, dueFrom: '2028-03-01', dueThrough: '' }, 0, 0],
+      [{ priorityFilter: 'Normal' }, 0, 1],
+      [{ priorityFilter: 'Low' }, 0, 1],
+    ]) assertDirectorySummary(await get(path(selection)), completed, total);
     assert.deepEqual(titles(filtered), ['Plan \t  Release']);
     assert.deepEqual(titles(await get(path({ ...state, filter: 'Open' }))), ['Plan release second']);
     assert.deepEqual(titles(await get(path({ ...state, filter: 'Deleted' }))), ['PLAN release deleted']);
@@ -93,6 +114,7 @@ test('directory intersects read-only filters, preserves order and literal fields
       const response = await post('/directory/due-range', { ...state, rangeFrom: from, rangeThrough: through });
       assert.equal(response.status, 400);
       const html = await response.text();
+      assertDirectorySummary(html, 1, 1);
       assert.ok(html.includes(`role="alert">${message}`));
       assert.deepEqual(titles(html), ['Plan \t  Release']);
       assert.ok(html.includes(`name="rangeFrom" type="text" value="${from}"`));
@@ -102,6 +124,7 @@ test('directory intersects read-only filters, preserves order and literal fields
     const location = applied.headers.get('location');
     assert.equal(new URL(location, server.url).searchParams.get('dueThrough'), '');
     assert.deepEqual(titles(await get(location)), ['Plan \t  Release']);
+    assertDirectorySummary(await get(location), 1, 1);
     assert.equal((await post('/directory')).status, 404);
     assert.deepEqual(snapshot(), before);
     assert.equal(await get('/directory'), initial);
@@ -185,6 +208,7 @@ test('directory bulk completion targets only matching active live tasks and pers
     }
     const emptyState = { ...state, search: 'missing' };
     const empty = await get(path(emptyState));
+    assertDirectorySummary(empty, 0, 0);
     assertButtons(empty, false, false);
     assert.match(empty, /role="status">No matching tasks/);
     for (const action of ['complete', 'reopen']) await post(`/directory/${action}`, emptyState);
@@ -192,6 +216,8 @@ test('directory bulk completion targets only matching active live tasks and pers
     const location = await post('/directory/complete', state);
     assert.deepEqual(Object.fromEntries(new URL(location, server.url).searchParams), state);
     const completedResult = await get(location);
+    assertDirectorySummary(completedResult, 0, 0);
+    assertDirectorySummary(await get(path({ ...state, filter: 'All' })), 4, 4);
     assert.deepEqual(titles(completedResult), []);
     assert.match(completedResult, /role="status">No matching tasks/);
     assertButtons(completedResult, false, false);
@@ -203,6 +229,7 @@ test('directory bulk completion targets only matching active live tasks and pers
     const completedState = { ...state, filter: 'Completed' };
     const completedTitles = ['Plan \t Release first', 'Plan release already', 'PLAN release second', 'Plan release original'];
     assert.deepEqual(titles(await get(path(completedState))), completedTitles);
+    assertDirectorySummary(await get(path(completedState)), 4, 4);
     assert.doesNotMatch(await get(path(completedState)), /No matching tasks/);
     // Repeating an action whose visible set is already completed is harmless.
     await post('/directory/complete', completedState);
@@ -211,9 +238,12 @@ test('directory bulk completion targets only matching active live tasks and pers
     server = await startServer(databasePath);
     assert.deepEqual(snapshot(), expected);
     assert.deepEqual(titles(await get(path(completedState))), completedTitles);
+    assertDirectorySummary(await get(path(completedState)), 4, 4);
     const reopenedLocation = await post('/directory/reopen', completedState);
     assert.deepEqual(Object.fromEntries(new URL(reopenedLocation, server.url).searchParams), completedState);
     const reopenedResult = await get(reopenedLocation);
+    assertDirectorySummary(reopenedResult, 0, 0);
+    assertDirectorySummary(await get(path({ ...state, filter: 'All' })), 0, 4);
     assert.deepEqual(titles(reopenedResult), []);
     assert.match(reopenedResult, /No matching tasks/);
     assertButtons(reopenedResult, false, false);
@@ -289,14 +319,21 @@ test('directory order survives controls and bulk actions without changing stored
       ['Original', original], ['Priority', ['Alpha', 'ALPHA', 'alpha', 'Zeta', 'beta']],
       ['Due date', ['alpha', 'Alpha', 'ALPHA', 'beta', 'Zeta']],
       ['Title', ['Alpha', 'alpha', 'ALPHA', 'beta', 'Zeta']],
-    ]) assert.deepEqual(titles(await get(path({ order }))), expected);
+    ]) {
+      const html = await get(path({ order }));
+      assert.deepEqual(titles(html), expected);
+      assertDirectorySummary(html, 0, 5);
+    }
     assert.deepEqual(titles(await get(path({ order: 'invalid' }))), original);
     for (const order of ['Priority', 'Due date', 'Title']) {
       assert.deepEqual(titles(await get(path({ order, scope: 'Archived' }))), ['Archive a', 'Archive z']);
       assert.deepEqual(titles(await get(path({ order, filter: 'Deleted' }))), ['Deleted a', 'Deleted z']);
+      assertDirectorySummary(await get(path({ order, scope: 'Archived' })), 0, 2);
+      assertDirectorySummary(await get(path({ order, filter: 'Deleted' })), 0, 2);
     }
     const state = { scope: 'Active', filter: 'Open', priorityFilter: 'All', dueFrom: '2027-01-01', dueThrough: '2028-02-29', search: 'alpha', order: 'Due date' };
     const filtered = await get(path(state));
+    assertDirectorySummary(filtered, 0, 3);
     assert.deepEqual(titles(filtered), ['alpha', 'Alpha', 'ALPHA']);
     // All directory forms carry ordering alongside applied filters/search/range.
     for (const form of filtered.matchAll(/<form[^>]*>[\s\S]*?<\/form>/g)) {

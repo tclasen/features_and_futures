@@ -178,3 +178,10 @@ Unicode code point after folding only ASCII uppercase letters. Ties retain the
 original project/task order. This view selection survives filtering, search,
 range validation, and bulk completion actions without writing task positions or
 changing project pages, exports, or remembered return order.
+
+The directory summary shows completed tasks out of all tasks in the current
+resolved result, including retained completion flags in Deleted views and tasks
+in Archived scope. It follows all applied filters, search, due range, and bulk
+actions; changing Directory order leaves the counts unchanged. Empty results
+show `0/0 completed` alongside No matching tasks. Project summaries continue
+to count only their own live tasks.

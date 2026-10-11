@@ -111,6 +111,7 @@ export function taskDirectoryPage(tasks, state, errors = {}) {
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
+  const completedCount = tasks.filter((task) => task.completed).length;
   const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
   const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority) + hidden('order', order);
   const boundaries = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
@@ -148,6 +149,7 @@ export function taskDirectoryPage(tasks, state, errors = {}) {
       <button type="submit"${canComplete ? '' : ' disabled'}>Complete visible tasks</button>
       <button type="submit" formaction="/directory/reopen"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
     </form>
+    <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     ${tasks.length === 0 ? '<p role="status">No matching tasks</p>' : ''}
     <div class="projects">
       ${tasks.map((task) => `<div class="task-row" data-testid="directory-task-row">
