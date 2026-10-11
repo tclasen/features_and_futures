@@ -14,6 +14,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const taskContainer = document.querySelector('#tasks');
 const archivedNotice = document.querySelector('#archived-notice');
 let activeProjectId = null;
@@ -83,6 +84,8 @@ async function renderRoute() {
   renameAlert.hidden = true;
   archivedNotice.hidden = !activeProjectArchived;
   taskForm.querySelector('button').disabled = activeProjectArchived;
+  defaultTaskPriority.value = project.defaultTaskPriority;
+  defaultTaskPriority.disabled = activeProjectArchived;
   listSection.hidden = true;
   detailSection.hidden = false;
   await renderTasks();
@@ -247,6 +250,18 @@ taskForm.addEventListener('submit', async (event) => {
 });
 taskFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
 priorityFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
+defaultTaskPriority.addEventListener('change', async () => {
+  try {
+    await request(`/api/projects/${activeProjectId}/default-task-priority`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ priority: defaultTaskPriority.value }),
+    });
+  } catch (error) {
+    showTaskError(error);
+    renderRoute().catch(showError);
+  }
+});
 projectFilter.addEventListener('change', () => renderProjects().catch(showError));
 window.addEventListener('popstate', () => renderRoute().catch(showError));
 renderRoute().catch(showError);
