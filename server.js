@@ -203,6 +203,45 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const moveTaskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveTaskRoute && request.method === 'PATCH') {
+    try {
+      const sourceId = Number(moveTaskRoute[1]);
+      const taskId = Number(moveTaskRoute[2]);
+      const payload = await readJson(request);
+      const destinationId = Number(payload.destinationProjectId);
+      const source = database.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+      const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+      if (!source || !destination) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      if (source.archived || destination.archived) {
+        send(response, 409, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+        return;
+      }
+      if (sourceId === destinationId) {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Choose another project' }));
+        return;
+      }
+      const move = database.transaction(() => {
+        const task = database.prepare('SELECT title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+        if (!task) return false;
+        database.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES (?, ?, ?, ?, ?)')
+          .run(destinationId, task.title, task.completed, task.priority, task.due_date);
+        database.prepare('DELETE FROM tasks WHERE id = ? AND project_id = ?').run(taskId, sourceId);
+        return true;
+      });
+      if (!move()) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ moved: true }));
+    } catch {
+      send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
+    }
+    return;
+  }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskRoute && request.method === 'PATCH') {
     try {

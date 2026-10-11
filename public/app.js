@@ -359,6 +359,42 @@ async function showProject(projectId) {
         }
       });
       row.append(dueDateForm);
+      const destinations = activeProjects.filter((candidate) => String(candidate.id) !== projectId);
+      const moveForm = element('form', { className: 'task-move-form' });
+      const destinationLabel = element('label', { text: 'Destination project' });
+      const destinationSelect = element('select');
+      destinationSelect.setAttribute('aria-label', 'Destination project');
+      for (const destination of destinations) {
+        const option = element('option', { text: destination.name });
+        option.value = String(destination.id);
+        destinationSelect.append(option);
+      }
+      destinationSelect.disabled = project.archived || destinations.length === 0;
+      destinationLabel.append(destinationSelect);
+      const moveButton = element('button', { text: 'Move task', className: 'secondary-button' });
+      moveButton.type = 'submit';
+      moveButton.disabled = project.archived || destinations.length === 0;
+      moveForm.append(destinationLabel, moveButton);
+      moveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!destinationSelect.value) return;
+        moveButton.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}/move`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destinationSelect.value) }),
+          });
+          if (!response.ok) throw new Error('Could not move task');
+          alert.hidden = true;
+          await loadTasks();
+        } catch {
+          alert.textContent = 'Could not move task';
+          alert.hidden = false;
+          moveButton.disabled = project.archived || destinations.length === 0;
+        }
+      });
+      row.append(moveForm);
       taskList.append(row);
     }
   }
