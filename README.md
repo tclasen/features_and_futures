@@ -24,6 +24,12 @@ blank input clears the saved date; otherwise use a real Gregorian YYYY-MM-DD dat
 (year 0001–9999). Surrounding whitespace is trimmed. Invalid dates show an alert
 without changing saved data. Dates persist without timezone conversion, remain
 independent per task, and cannot be edited while the project is archived.
+Each task row has a Task notes textarea and Save notes button. Notes are optional
+plain text, saved without trimming, including whitespace, line breaks, Unicode and
+literal markup. Empty text clears them. Notes persist and travel with tasks through
+moves and return ordering; they do not participate in search or change other task
+fields or filters. Archived projects display notes but disable editing until restored.
+Existing databases initialize only the new notes field to empty.
 Each task row has a Task priority selector: Low, Normal, or High.
 Each project has a Default task priority selector, initially Normal. Changing it only
 affects tasks created afterward in that project, leaving existing tasks and both filters
@@ -76,4 +82,6 @@ inclusive due ranges, combined membership, invalid-range preservation, edit re-e
 task moves, destination eligibility, persistent per-project return ordering, legacy-order migration, move summaries,
 source-filter preservation, ASCII substring search, search/filter intersections and
 preservation through edits, archive restrictions, and persistence across server restarts.
+Notes tests cover migration, exact text storage and safe rendering, clearing, isolation,
+filter preservation, movement/return ordering, archive restrictions and restart persistence.
 Temporary files are removed afterward.

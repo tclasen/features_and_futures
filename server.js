@@ -27,6 +27,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('BEGIN; ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id; COMMIT;');
 }
@@ -60,7 +63,8 @@ function transaction(action) {
   }
 }
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position ASC, id ASC');
+const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position ASC, id ASC');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
@@ -96,7 +100,7 @@ function page(title, content) {
   main { max-width: 760px; margin: 64px auto; padding: 32px; background: white; border: 1px solid #dce2eb; border-radius: 12px; }
   h1 { margin: 0 0 24px; overflow-wrap: anywhere; }
   label { display: block; font-weight: 600; margin-bottom: 8px; }
-  input { width: 100%; padding: 10px; font: inherit; border: 1px solid #7c899f; border-radius: 6px; }
+  input, textarea { width: 100%; padding: 10px; font: inherit; border: 1px solid #7c899f; border-radius: 6px; }
   button { padding: 10px 16px; font: inherit; font-weight: 600; color: white; background: #2457b8; border: 0; border-radius: 6px; cursor: pointer; }
   button:hover { background: #19448f; }
   button:disabled { opacity: .5; cursor: not-allowed; }
@@ -295,6 +299,13 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
           <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priority}">
+          <label for="task-notes-${task.id}">Task notes</label>
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>${escapeHtml(task.notes).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;')}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+        </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
@@ -437,7 +448,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       sendHtml(res, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), '', priorityFilter(url.searchParams.get('priorityFilter')), dueRange(url.searchParams)));
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move|notes))?)?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const projectId = Number(parts[2]);
       const project = Number.isSafeInteger(projectId) ? getProject.get(projectId) : undefined;
@@ -469,6 +480,8 @@ const server = http.createServer(async (req, res) => {
             rememberPosition.run(taskId, destinationId, destinationId);
             moveTask.run(destinationId, taskId, destinationId, taskId, projectId);
           });
+        } else if (parts[5] === 'notes') {
+          updateNotes.run(form.get('notes') || '', taskId, projectId);
         } else if (parts[5] === 'rename') {
           const title = (form.get('title') || '').trim();
           if (!title) {
