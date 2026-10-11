@@ -41,6 +41,19 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Remember positions even while a task belongs elsewhere. Seed legacy tasks in
+// their current order; restarting must never overwrite an established position.
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -52,7 +65,12 @@ const findProject = database.prepare('SELECT id, name, archived, default_task_pr
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position');
+const listTasks = database.prepare(`
+  SELECT tasks.id, title, completed, priority, due_date
+  FROM tasks JOIN task_project_positions AS ordering
+    ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
+  WHERE tasks.project_id = ? ORDER BY ordering.position
+`);
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, priority) VALUES (?, ?, ?, ?)');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
@@ -60,12 +78,46 @@ const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY position');
-// Moving assigns a fresh ordering position, while preserving the public task ID.
-// A single statement makes ownership and append order change atomically.
-const moveTask = database.prepare(`
-  UPDATE tasks SET project_id = ?, position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks)
-  WHERE project_id = ? AND id = ?
+const updateTaskOwner = database.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ? AND id = ?');
+const rememberTaskPosition = database.prepare(`
+  INSERT INTO task_project_positions (task_id, project_id, position)
+  SELECT ?, ?, COALESCE(MAX(position), 0) + 1
+  FROM task_project_positions WHERE project_id = ?
+  HAVING NOT EXISTS (
+    SELECT 1 FROM task_project_positions WHERE task_id = ? AND project_id = ?
+  )
 `);
+
+function transaction(operation) {
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    const result = operation();
+    database.exec('COMMIT');
+    return result;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function rememberPosition(taskId, projectId) {
+  rememberTaskPosition.run(taskId, projectId, projectId, taskId, projectId);
+}
+
+function createTask(taskId, projectId, title, priority) {
+  transaction(() => {
+    insertTask.run(taskId, projectId, title, priority);
+    rememberPosition(taskId, projectId);
+  });
+}
+
+function moveTask(destinationId, sourceId, taskId) {
+  return transaction(() => {
+    const result = updateTaskOwner.run(destinationId, sourceId, taskId);
+    if (result.changes) rememberPosition(taskId, destinationId);
+    return result;
+  });
+}
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -267,7 +319,7 @@ const server = http.createServer(async (request, response) => {
             sendHtml(response, 422, projectPage(project, filter, 'Choose an active destination project', priority));
             return;
           }
-          result = moveTask.run(destination.id, project.id, taskMatch[2]);
+          result = moveTask(destination.id, project.id, taskMatch[2]);
         } else if (taskMatch[3] === 'rename') {
           const title = (form.get('title') ?? '').trim();
           if (!title) {
@@ -302,7 +354,7 @@ const server = http.createServer(async (request, response) => {
           sendHtml(response, 422, projectPage(project, filter, 'Task title is required', priority));
           return;
         }
-        insertTask.run(randomUUID(), project.id, title, project.default_task_priority);
+        createTask(randomUUID(), project.id, title, project.default_task_priority);
       }
       redirect(response, projectLocation(project, filter, priority));
       return;
