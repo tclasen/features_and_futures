@@ -19,13 +19,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const taskData = task => ({ ...task, completed: Boolean(task.completed) });
 const projectQuery = `SELECT projects.id, projects.name, projects.archived,
   (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total,
@@ -85,6 +90,11 @@ const server = http.createServer(async (req, res) => {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return sendJson(res, 400, { error: 'Task title is required' });
           renameTask.run(title, projectId, taskId);
+        } else if (input && Object.hasOwn(input, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(input.priority)) {
+            return sendJson(res, 400, { error: 'Task priority must be Low, Normal, or High' });
+          }
+          setTaskPriority.run(input.priority, projectId, taskId);
         } else {
           if (typeof input?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion must be a boolean' });
           updateTask.run(Number(input.completed), projectId, taskId);

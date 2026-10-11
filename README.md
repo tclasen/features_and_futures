@@ -32,4 +32,9 @@ order, project ownership, completion, and summary counts, and updates the
 completion checkbox label. Archived projects must be restored before task
 renaming is enabled.
 
+Each task has a Task priority selector with Low, Normal, and High options.
+New and existing tasks default to Normal. Priorities persist independently of
+task titles and completion; archived projects disable priority changes until
+restored.
+
 Run the integration checks with `npm test`.

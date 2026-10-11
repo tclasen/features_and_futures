@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks validate, rename, archive, restore, and survive migration and restarts', async () => {
+test('projects and tasks validate, rename, set priorities, archive, restore, and survive migration and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Seed the previous schema to verify upgrades preserve existing records.
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -61,7 +61,7 @@ test('projects and tasks validate, rename, archive, restore, and survive migrati
     }
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [existing]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/1/tasks`)).json(), [
-      { id: 1, title: 'Existing task', completed: true },
+      { id: 1, title: 'Existing task', completed: true, priority: 'Normal' },
     ]);
     const firstResponse = await create('  First project  ');
     assert.equal(firstResponse.status, 201);
@@ -91,6 +91,9 @@ test('projects and tasks validate, rename, archive, restore, and survive migrati
     const renameTask = (project, task, title) => fetch(`${tasksUrl(project)}/${task.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
+    const setPriority = (project, task, priority) => fetch(`${tasksUrl(project)}/${task.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+    });
     for (const title of ['', ' \n\t ']) {
       const invalid = await createTask(first, title);
       assert.equal(invalid.status, 400);
@@ -102,7 +105,9 @@ test('projects and tasks validate, rename, archive, restore, and survive migrati
     const firstTask = await firstTaskResponse.json();
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.priority, 'Normal');
     const secondTask = await (await createTask(first, 'Second task')).json();
+    assert.equal(secondTask.priority, 'Normal');
     assert.ok(secondTask.id > firstTask.id);
     assert.deepEqual(await listTasks(first), [firstTask, secondTask]);
     assert.deepEqual(await listTasks(second), []);
@@ -114,6 +119,24 @@ test('projects and tasks validate, rename, archive, restore, and survive migrati
     assert.equal((await complete(first, firstTask, 'true')).status, 400);
     assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
     assert.deepEqual(await listTasks(second), [foreignTask]);
+    for (const priority of ['', 'Urgent', 'high', null, 42]) {
+      const invalid = await setPriority(first, firstTask, priority);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
+    }
+    assert.equal((await setPriority(second, firstTask, 'High')).status, 404);
+    assert.equal((await setPriority(first, { id: 999999 }, 'High')).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const updated = await setPriority(first, firstTask, priority);
+      assert.equal(updated.status, 200);
+      firstTask.priority = priority;
+      assert.deepEqual(await updated.json(), { ...firstTask, completed: true });
+      assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
+      assert.deepEqual(await listTasks(second), [foreignTask]);
+      assert.deepEqual(await projectData(first), { ...first, total: 2, completed: 1 });
+    }
+    assert.equal((await setPriority(first, secondTask, 'Low')).status, 200);
+    secondTask.priority = 'Low';
     for (const title of ['', ' \n\t ', null, 42]) {
       const invalid = await renameTask(first, firstTask, title);
       assert.equal(invalid.status, 400);
@@ -164,6 +187,7 @@ test('projects and tasks validate, rename, archive, restore, and survive migrati
     assert.deepEqual(await projectData(first), first);
     assert.equal((await createTask(first, 'Cannot create')).status, 409);
     assert.equal((await complete(first, firstTask, false)).status, 409);
+    assert.equal((await setPriority(first, firstTask, 'Low')).status, 409);
     const archivedTaskRename = await renameTask(first, firstTask, 'Cannot rename task');
     assert.equal(archivedTaskRename.status, 409);
     assert.equal((await archivedTaskRename.json()).error, 'Archived project');
@@ -178,8 +202,13 @@ test('projects and tasks validate, rename, archive, restore, and survive migrati
     assert.equal((await createTask(first, 'Still archived')).status, 409);
     assert.equal((await rename(first, 'Still archived')).status, 409);
     assert.equal((await renameTask(first, secondTask, 'Still archived')).status, 409);
+    assert.equal((await setPriority(first, secondTask, 'High')).status, 409);
     Object.assign(first, { archived: 0 });
     assert.deepEqual(await (await archive(first, false)).json(), first);
+    const restoredPriority = await setPriority(first, secondTask, 'High');
+    assert.equal(restoredPriority.status, 200);
+    secondTask.priority = 'High';
+    assert.deepEqual(await restoredPriority.json(), secondTask);
     const restoredRename = await rename(first, '  Restored project  ');
     assert.equal(restoredRename.status, 200);
     Object.assign(first, { name: 'Restored project' });

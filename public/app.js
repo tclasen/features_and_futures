@@ -84,6 +84,29 @@ async function renderTasks(project) {
         finally { drawTasks(); }
       });
       row.append(checkbox, element('span', task.title));
+      const priorityControls = element('div');
+      const priority = element('select', '', { id: `task-priority-${task.id}` });
+      for (const value of ['Low', 'Normal', 'High']) {
+        priority.append(element('option', value, { value }));
+      }
+      priority.value = task.priority;
+      priority.disabled = Boolean(project.archived);
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        try {
+          Object.assign(task, await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          }));
+          showAlert('');
+        } catch (error) { showAlert(error.message); }
+        finally {
+          priority.value = task.priority;
+          priority.disabled = Boolean(project.archived);
+        }
+      });
+      priorityControls.append(element('label', 'Task priority', { for: priority.id }), priority);
+      row.append(priorityControls);
       const renameForm = element('form', '', { class: 'task-rename-form' });
       const renameInput = element('input', '', { id: `new-task-title-${task.id}`, type: 'text', autocomplete: 'off' });
       const renameButton = element('button', 'Rename task', { type: 'submit' });
