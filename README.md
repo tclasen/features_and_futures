@@ -22,12 +22,16 @@ Live task rows provide Delete task. Deletion retains every saved field, ownershi
 
 Every project page offers Download project, including archived and empty projects. It downloads UTF-8 `workboard-project.json` with format `workboard-project`, version 1, and the project's current name, archive state, default priority, and all owned live/deleted tasks in saved order. Each task exports title, completion, explicit priority, due date, notes, and deletion state. Export ignores display filters, preserves stored data and remembered positions, and normalizes only exported notes line endings to LF.
 
+On the home page, paste a version-1 portable document into Project JSON, supply an Imported project name, and select Import project. The trimmed override names a new independent project and opens it; the imported archive state, default priority, task order, exact titles, completion, priorities, dates, LF-normalized notes, and deletion flags are retained. Required fields and calendar dates are validated before a single atomic transaction creates any data. Invalid documents show Invalid project JSON; blank overrides show Project name is required. Rejections retain both entered fields and leave existing data unchanged. Extra properties cannot supply application identities. Imported tasks receive their own reserved positions for later moves and returns.
+
 ## Checks
 
 ```sh
 npm test
 node --check server.js
 ```
+
+Import checks cover required fields, malformed JSON, unsupported format/version, incorrect types, invalid Gregorian dates, invalid later tasks without partial writes, blank overrides, independent identities, portable field preservation, live summaries, restoration order, moves/returns, archived and empty imports, and restart persistence.
 
 Export checks cover older-record defaults, empty projects, complete portable fields, task isolation, deleted-only archived projects, return ordering, LF notes normalization, unchanged stored data and filter controls, download headers, and restart persistence.
 
