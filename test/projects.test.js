@@ -857,10 +857,10 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     await start();
     assert.equal(await projectHtml(destination), movedDestination);
     assert.equal(await projectHtml(sourceUrl), afterMove);
-    // A second move appends again, and later creations append after moved tasks.
+    // Returning restores the original slot; later creations follow established slots.
     await post(`${destinationPath}/move`, { destinationProject: source.split('/').at(-1) });
     await post(`${source}/tasks`, { title: 'Created after move' });
-    assert.deepEqual(taskTitles(await projectHtml(source)), ['Remaining task', 'Undated move task', 'Older completed dated task', 'Created after move']);
+    assert.deepEqual(taskTitles(await projectHtml(source)), ['Older completed dated task', 'Remaining task', 'Undated move task', 'Created after move']);
     await post(`${blankPath}/move`, { destinationProject: destination.split('/').at(-1) });
     assert.deepEqual(taskTitles(await projectHtml(destination)), ['Destination existing task', 'Undated move task']);
     assert.equal(dueValue(rows(await projectHtml(destination))[1]), '');
@@ -878,6 +878,67 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     assert.doesNotMatch(destinationSelect(rows(await projectHtml(sourceUrl))[0])[0], /disabled/);
     assert.match(rows(await projectHtml(sourceUrl))[0], /aria-label="Complete Older completed dated task" checked/);
     assert.equal(dueValue(rows(await projectHtml(sourceUrl))[0]), '2024-02-29');
+
+    // Return multiple tasks in reverse order across three projects, retaining
+    // edited fields and reserving absent tasks' slots for later returns.
+    const orderA = await newProject('Order A');
+    const orderB = await newProject('Order B');
+    const orderC = await newProject('Order C');
+    const taskId = row => /tasks\/(\d+)\/completion/.exec(row)[1];
+    const ids = {};
+    async function orderedTask(project, title) {
+      assert.equal((await post(`${project}/tasks`, { title })).status, 303);
+      ids[title] = taskId(rows(await projectHtml(project)).at(-1));
+    }
+    async function orderedMove(from, to, title, state = {}) {
+      const result = await post(`${from}/tasks/${ids[title]}/move`, {
+        ...state, destinationProject: to.split('/').at(-1),
+      });
+      assert.equal(result.status, 303);
+      return result;
+    }
+    for (const title of ['A first', 'A middle', 'A last']) await orderedTask(orderA, title);
+    await orderedTask(orderB, 'B first');
+    await orderedMove(orderA, orderB, 'A first');
+    await orderedMove(orderA, orderB, 'A middle');
+    await orderedMove(orderA, orderC, 'A last');
+    await orderedTask(orderA, 'A new');
+    await orderedMove(orderB, orderC, 'A first');
+    await orderedMove(orderB, orderC, 'A middle');
+    // Every established slot in B is empty except B first; new arrivals still
+    // follow those slots rather than reusing the departed tasks' positions.
+    await orderedTask(orderB, 'B new');
+    await orderedMove(orderA, orderB, 'A new');
+    await post(`${orderC}/tasks/${ids['A first']}/rename`, { title: 'Edited first' });
+    await post(`${orderC}/tasks/${ids['A first']}/completion`, { completed: '1' });
+    await post(`${orderC}/tasks/${ids['A first']}/priority`, { priority: 'High' });
+    await post(`${orderC}/tasks/${ids['A first']}/due-date`, { dueDate: '2030-01-02' });
+    await post(`${orderA}/rename`, { name: 'Renamed order A' });
+    await post(`${orderA}/archive`, {});
+    assert.equal((await post(`${orderC}/tasks/${ids['A first']}/move`, {
+      destinationProject: orderA.split('/').at(-1),
+    })).status, 422);
+    await stop();
+    await start();
+    await post(`${orderA}/restore`, {});
+    await orderedMove(orderC, orderB, 'A middle');
+    await orderedMove(orderC, orderB, 'A first');
+    assert.deepEqual(taskTitles(await projectHtml(orderB)), ['B first', 'Edited first', 'A middle', 'B new', 'A new']);
+    await orderedMove(orderC, orderA, 'A last');
+    await orderedMove(orderB, orderA, 'A middle');
+    const retainedMove = await orderedMove(orderB, orderA, 'A first', moveState);
+    assert.equal(retainedMove.headers.get('location'), `${orderB}?${new URLSearchParams(moveState)}`);
+    await orderedMove(orderB, orderA, 'A new');
+    const restoredOrder = await projectHtml(orderA);
+    assert.deepEqual(taskTitles(restoredOrder), ['Edited first', 'A middle', 'A last', 'A new']);
+    assert.match(rows(restoredOrder)[0], /aria-label="Complete Edited first" checked/);
+    assert.equal(priorityOptions(rows(restoredOrder)[0]), highOptions);
+    assert.equal(dueValue(rows(restoredOrder)[0]), '2030-01-02');
+    assert.equal(await summaryFor(orderA), '1/4 completed');
+    assert.equal(await summaryFor(orderB), '0/2 completed');
+    await stop();
+    await start();
+    assert.equal(await projectHtml(orderA), restoredOrder);
 
     // Replace the fixture with a populated Task 005 database to check backfilled priorities.
     await stop();
@@ -930,6 +991,31 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     task007.close();
     await start();
     assert.equal(await projectHtml('/projects/17'), migratedUpdated);
+    // Upgrade a Task 011 database whose current order differs from task IDs.
+    await stop();
+    const task011 = new DatabaseSync(join(directory, 'projects.sqlite'));
+    task011.exec(`
+      DROP TABLE task_project_positions;
+      UPDATE tasks SET position = CASE id WHEN 23 THEN 80 ELSE 20 END;
+      INSERT INTO projects (id, name) VALUES (18, 'Migration destination');
+    `);
+    task011.close();
+    await start();
+    assert.deepEqual(taskTitles(await projectHtml('/projects/17')), ['Existing open task', 'Existing completed task']);
+    for (const id of [24, 23]) {
+      assert.equal((await post(`/projects/17/tasks/${id}/move`, { destinationProject: '18' })).status, 303);
+    }
+    await post('/projects/17/tasks', { title: 'New after migration' });
+    await stop();
+    await start();
+    for (const id of [23, 24]) {
+      assert.equal((await post(`/projects/18/tasks/${id}/move`, { destinationProject: '17' })).status, 303);
+    }
+    const migratedOrder = await projectHtml('/projects/17');
+    assert.deepEqual(taskTitles(migratedOrder), ['Existing open task', 'Existing completed task', 'New after migration']);
+    await stop();
+    await start();
+    assert.equal(await projectHtml('/projects/17'), migratedOrder);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
