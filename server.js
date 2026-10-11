@@ -38,6 +38,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+// Notes are plain text; initialize only the new field on upgrade.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Keep IDs stable while moves append tasks to their destination's local order.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   database.exec('BEGIN; ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id; COMMIT;');
@@ -69,7 +73,7 @@ const updateDefaultPriority = database.prepare('UPDATE projects SET default_prio
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const findTaskOwner = database.prepare('SELECT project_id FROM tasks WHERE id = ?');
 const findTaskPosition = database.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?');
@@ -113,6 +117,7 @@ const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE 
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function taskFilter(value) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
@@ -250,6 +255,16 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
           </div>
         </form>
+        <!-- The extra initial LF is consumed by HTML, preserving leading note newlines. -->
+        <form action="/projects/${project.id}/tasks/${task.id}/notes" method="post">
+          ${filterFields}
+          <label for="task-notes-${task.id}">Task notes</label>
+          <div class="input-group">
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+          </div>
+        </form>
         <form action="/projects/${project.id}/tasks/${task.id}/move" method="post">
           ${filterFields}
           <label for="destination-project-${task.id}">Destination project</label>
@@ -362,12 +377,12 @@ const stylesheet = `
   .create-form, .filter-form { margin-top: 1.5rem; }
   select { padding: .6rem; font: inherit; }
   input[type="checkbox"] { width: 1.25rem; height: 1.25rem; cursor: pointer; }
-  input[type="text"] { flex: 1; min-width: 180px; border: 1px solid #667789; border-radius: 5px; padding: .7rem; font: inherit; }
+  input[type="text"], textarea { flex: 1; min-width: 180px; border: 1px solid #667789; border-radius: 5px; padding: .7rem; font: inherit; }
   button { cursor: pointer; border: 0; border-radius: 5px; background: #225ca0; color: white; padding: .75rem 1rem; font: inherit; }
   button:hover { background: #174579; }
   :focus-visible { outline: 3px solid #e29c26; outline-offset: 3px; }
   ul { list-style: none; padding: 0; margin-top: 2rem; }
-  button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: .55; }
+  button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opacity: .55; }
   li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid #dce3ea; }
   li span { overflow-wrap: anywhere; min-width: 0; }
   li form { flex-shrink: 0; }
@@ -455,7 +470,7 @@ const server = http.createServer(async (request, response) => {
       const filter = archiveMatch[2] === 'archive' ? 'Active' : 'Archived';
       return redirect(response, projectsLocation(filter, (form.get('search') || '').trim()));
     }
-    const match = path.match(/^\/projects\/([1-9]\d*)(?:\/(tasks)(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?)?$/);
+    const match = path.match(/^\/projects\/([1-9]\d*)(?:\/(tasks)(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move|notes))?)?$/);
     if (match) {
       const id = Number(match[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -481,6 +496,8 @@ const server = http.createServer(async (request, response) => {
               return send(response, 400, projectPage(project, filter, 'Destination must be another active project', prioritySelection, range, search));
             }
             result = moveTask(taskId, id, destinationId);
+          } else if (match[4] === 'notes') {
+            result = updateNotes.run(form.get('notes') || '', taskId, id);
           } else if (match[4] === 'rename') {
             const title = (form.get('title') || '').trim();
             if (!title) return send(response, 400, projectPage(project, filter, 'Task title is required', prioritySelection, range, search));
