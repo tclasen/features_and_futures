@@ -35,7 +35,8 @@
     const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const normalizeSearch = value => String(value).replace(/[A-Z]/g, c => c.toLowerCase()).replace(/[ \t]+/g, ' ');
     async function renderList() {
-      app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form><div id="alert" role="alert" hidden></div><label>Project filter<select id="project-filter"><option>Active</option><option>Archived</option></select></label><form id="project-search-form"><label>Project search<input name="query" type="text" autocomplete="off"></label><button type="submit">Search projects</button></form><section id="projects" aria-label="Projects"></section><h2>Import project</h2><form id="import-form"><label>Project JSON<textarea name="json"></textarea></label><label>Imported project name<input name="name" type="text"></label><button type="submit">Import project</button></form><div id="import-alert" role="alert" hidden></div>';
+      app.innerHTML = '<h1>Workboard</h1><button type="button" id="open-directory">Task directory</button><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form><div id="alert" role="alert" hidden></div><label>Project filter<select id="project-filter"><option>Active</option><option>Archived</option></select></label><form id="project-search-form"><label>Project search<input name="query" type="text" autocomplete="off"></label><button type="submit">Search projects</button></form><section id="projects" aria-label="Projects"></section><h2>Import project</h2><form id="import-form"><label>Project JSON<textarea name="json"></textarea></label><label>Imported project name<input name="name" type="text"></label><button type="submit">Import project</button></form><div id="import-alert" role="alert" hidden></div>';
+      document.querySelector('#open-directory').onclick = () => location.href = '/directory';
       const form = document.querySelector('#create-form'), input = form.elements.name, alert = document.querySelector('#alert');
       let appliedQuery = '';
       const searchForm = document.querySelector('#project-search-form');
@@ -169,8 +170,26 @@
       }
       document.querySelector('.back').addEventListener('click', () => { location.href = '/'; });
     }
+    async function renderDirectory() {
+      app.innerHTML = `<button type="button" class="back" onclick="location.href='/'">Projects</button><h1>Task directory</h1><label>Project scope<select id="scope"><option>Active</option><option>Archived</option></select></label><label>Task filter<select id="dir-task-filter"><option>All</option><option>Open</option><option>Completed</option><option>Deleted</option></select></label><label>Priority filter<select id="dir-priority"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label><form id="directory-search"><label>Directory search<input name="query"></label><button>Search directory</button></form><form id="directory-range"><label>Due from<input name="from"></label><label>Due through<input name="through"></label><button>Apply due range</button></form><div id="directory-alert" role="alert" hidden></div><section id="directory-results"></section>`;
+      let query='', from='', through='';
+      const normalize = s => normalizeSearch(s.trim());
+      async function load() {
+        const projects = await fetch('/api/projects?filter='+document.querySelector('#scope').value).then(r=>r.json());
+        const all = await Promise.all(projects.map(async p => (await fetch(`/api/projects/${encodeURIComponent(p.id)}/tasks`).then(r=>r.json())).map(t=>({...t, owner:p}))));
+        const f=document.querySelector('#dir-task-filter').value, pr=document.querySelector('#dir-priority').value, needle=normalize(query);
+        const rows=all.flat().filter(t=>normalize(t.title).includes(needle) && (f==='Deleted'?!!t.deleted:!t.deleted&&(f==='All'||(f==='Completed')===!!t.completed)) && (pr==='All'||t.priority===pr) && ((!from&&!through)|| (t.dueDate&&(!from||t.dueDate>=from)&&(!through||t.dueDate<=through))));
+        document.querySelector('#directory-results').innerHTML=rows.map(t=>`<div data-testid="directory-task-row"><span data-testid="directory-task-title">${escapeHTML(t.title)}</span><span data-testid="directory-project-name">${escapeHTML(t.owner.name)}</span><span data-testid="directory-task-completion">${t.completed?'Completed':'Open'}</span><span data-testid="directory-task-priority">${escapeHTML(t.priority||'Normal')}</span><span data-testid="directory-task-due-date">${escapeHTML(t.dueDate||'')}</span><span data-testid="directory-task-notes">${escapeHTML(t.notes||'')}</span><button type="button" data-owner="${escapeHTML(t.owner.id)}">Open project</button></div>`).join('');
+        document.querySelectorAll('[data-owner]').forEach(b=>b.onclick=()=>location.href='/projects/'+encodeURIComponent(b.dataset.owner));
+      }
+      document.querySelector('#directory-search').onsubmit=e=>{e.preventDefault();query=e.currentTarget.elements.query.value.trim();load();};
+      document.querySelector('#directory-range').onsubmit=e=>{e.preventDefault();const a=e.currentTarget.elements.from.value.trim(),b=e.currentTarget.elements.through.value.trim();const valid=s=>!s||/^\d{4}-\d{2}-\d{2}$/.test(s)&&validCalendar(s); if(!valid(a)||!valid(b)){const x=document.querySelector('#directory-alert');x.textContent='Due range must use valid YYYY-MM-DD dates';x.hidden=false;return;}if(a&&b&&a>b){const x=document.querySelector('#directory-alert');x.textContent='Due from must not be after Due through';x.hidden=false;return;}from=a;through=b;document.querySelector('#directory-alert').hidden=true;load();};
+      for(const id of ['scope','dir-task-filter','dir-priority'])document.querySelector('#'+id).onchange=load;
+      await load();
+    }
+    function validCalendar(s){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);if(!m)return false;const y=+m[1],mo=+m[2],d=+m[3],leap=y%4===0&&(y%100!==0||y%400===0);return y>0&&mo>=1&&mo<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1];}
     const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
-    if (match) renderDetail(decodeURIComponent(match[1])); else renderList();
+    if (location.pathname === '/directory') renderDirectory(); else if (match) renderDetail(decodeURIComponent(match[1])); else renderList();
   </script>
 </body>
 </html>
