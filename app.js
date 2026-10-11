@@ -146,7 +146,31 @@ async function refreshTasks() {
       }
       await refreshTasks();
     });
-    row.append(title, renameForm, checkbox);
+
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority;
+    priority.disabled = activeProjectArchived;
+    priority.addEventListener('change', async () => {
+      const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ priority: priority.value }),
+      });
+      if (!update.ok) {
+        priority.value = task.priority;
+        taskAlert.textContent = 'Unable to update task priority';
+        taskAlert.hidden = false;
+      }
+    });
+
+    row.append(title, renameForm, priority, checkbox);
     taskList.append(row);
   }
 }

@@ -27,6 +27,10 @@ const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const json = (response, status, body) => {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -117,7 +121,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     return json(response, 200, database.prepare(
-      'SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id'
+      'SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id'
     ).all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
 
@@ -163,6 +167,13 @@ const server = createServer(async (request, response) => {
         if (!title) return json(response, 400, { error: 'Task title is required' });
         database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
         return json(response, 200, { id: taskId, projectId, title, completed: Boolean(task.completed) });
+      }
+      if (Object.hasOwn(input, 'priority')) {
+        const priorities = ['Low', 'Normal', 'High'];
+        if (!priorities.includes(input.priority)) return json(response, 400, { error: 'Invalid task priority' });
+        database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?')
+          .run(input.priority, taskId, projectId);
+        return json(response, 200, { id: taskId, projectId, priority: input.priority });
       }
       if (typeof input.completed !== 'boolean') return json(response, 400, { error: 'Completion state is required' });
       database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
