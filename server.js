@@ -21,7 +21,11 @@ db.exec(`PRAGMA foreign_keys = ON;
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -142,6 +146,13 @@ function projectPage(project, filter = 'All', error = '') {
           <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
+        <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${['Low', 'Normal', 'High'].map(option => `<option${option === task.priority ? ' selected' : ''}>${option}</option>`).join('')}
+          </select>
+        </form>
       </div>`).join('') : '<p>No matching tasks.</p>'}</section>`);
 }
 
@@ -218,7 +229,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       sendHtml(res, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
-    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/rename)?)?$/.test(url.pathname)) {
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority))?)?$/.test(url.pathname)) {
       const parts = url.pathname.split('/');
       const projectId = Number(parts[2]);
       const project = Number.isSafeInteger(projectId) ? getProject.get(projectId) : undefined;
@@ -245,6 +256,13 @@ const server = http.createServer(async (req, res) => {
             return;
           }
           renameTask.run(title, taskId, projectId);
+        } else if (parts[5] === 'priority') {
+          const priority = form.get('priority');
+          if (!['Low', 'Normal', 'High'].includes(priority)) {
+            sendHtml(res, 400, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
+          updatePriority.run(priority, taskId, projectId);
         } else {
           updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId);
         }

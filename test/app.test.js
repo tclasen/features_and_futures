@@ -264,6 +264,69 @@ test('task renaming preserves completion, ownership, order and persistence', asy
   }
 });
 
+test('task priorities migrate, remain independent and persist through rename and archive', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'db.sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('One'), ('Two');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing', 1);`);
+    db.close();
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = (path, values = {}) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values)
+    });
+    const priorities = html => [...html.matchAll(/<select id="task-priority-\d+"[^>]*>([\s\S]*?)<\/select>/g)].map(match => match[1].trim());
+    const options = selected => ['Low', 'Normal', 'High'].map(value => `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('');
+    assert.deepEqual(priorities(await get('/projects/1')), [options('Normal')]);
+    await post('/projects/1/tasks', { title: 'New' });
+    await post('/projects/2/tasks', { title: 'Other' });
+    assert.deepEqual(priorities(await get('/projects/1')), [options('Normal'), options('Normal')]);
+    const list = await get('/');
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'High' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/priority', { priority: 'High' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 400);
+    const changed = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(new URL(changed.url).search, '?filter=Completed');
+    assert.match(await changed.text(), /aria-label="Complete Existing" checked/);
+    await post('/projects/1/tasks/2/priority', { priority: 'Low', filter: 'Open' });
+    assert.deepEqual(priorities(await get('/projects/1')), [options('High'), options('Low')]);
+    assert.deepEqual(priorities(await get('/projects/2')), [options('Normal')]);
+    assert.deepEqual(priorities(await get('/projects/1?filter=Open')), [options('Low')]);
+    assert.equal(await get('/'), list);
+    await post('/projects/1/tasks/1/rename', { title: ' Renamed ' });
+    const detail = await get('/projects/1');
+    assert.match(detail, /aria-label="Complete Renamed" checked/);
+    assert.ok(detail.indexOf('Complete Renamed') < detail.indexOf('Complete New'));
+    assert.deepEqual(priorities(detail), [options('High'), options('Low')]);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.equal((archived.match(/<select id="task-priority-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(priorities(await get('/projects/1')), [options('Normal'), options('Low')]);
+    assert.equal(await get('/'), list);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project creation, validation, navigation and restart persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   let server;
