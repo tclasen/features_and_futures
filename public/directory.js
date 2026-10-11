@@ -96,7 +96,11 @@ export async function renderDirectory(app, request, showError) {
       through.value = range.through;
       document.getElementById('error').hidden = true;
       drawTasks();
-    } catch (error) { showError(error.message); }
+    } catch (error) {
+      from.value = range.from;
+      through.value = range.through;
+      showError(error.message);
+    }
   });
   drawTasks();
 }
