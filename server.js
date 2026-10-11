@@ -29,6 +29,7 @@ db.exec(`
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
     notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -48,6 +49,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 }
 if (!taskColumns.some((column) => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
 }
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
@@ -69,8 +73,8 @@ for (const { projectId } of projectsWithoutPositions) {
   for (const { id } of positionTaskIds.all(projectId)) insertPosition.run(id, projectId, position++);
 }
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
-  COUNT(t.id) AS totalCount,
-  COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
+  COUNT(CASE WHEN t.deleted = 0 THEN 1 END) AS totalCount,
+  COALESCE(SUM(CASE WHEN t.deleted = 0 AND t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
@@ -78,7 +82,7 @@ const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
+const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
   FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position, t.created_at, t.rowid`);
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -86,6 +90,7 @@ const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND 
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
+const updateTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?');
 
@@ -223,6 +228,7 @@ async function handle(req, res) {
     catch { return sendJson(res, 400, { error: 'Invalid request body' }); }
     const task = getTask.get(taskId, sourceId);
     if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    if (db.prepare('SELECT deleted FROM tasks WHERE id = ?').get(taskId).deleted) return sendJson(res, 409, { error: 'Deleted tasks cannot be moved' });
     const destinationId = typeof payload?.destinationProjectId === 'string' ? payload.destinationProjectId : '';
     const destination = getProject.get(destinationId);
     if (!destination || destination.archived || destinationId === sourceId) return sendJson(res, 400, { error: 'Invalid destination project' });
@@ -253,6 +259,14 @@ async function handle(req, res) {
     } catch {
       return sendJson(res, 400, { error: 'Invalid request body' });
     }
+    if (typeof payload?.deleted === 'boolean') {
+      const result = updateTaskDeleted.run(payload.deleted ? 1 : 0, taskId, projectId);
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: taskId, deleted: payload.deleted ? 1 : 0 });
+    }
+    const currentTask = db.prepare('SELECT deleted FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+    if (!currentTask) return sendJson(res, 404, { error: 'Task not found' });
+    if (currentTask.deleted) return sendJson(res, 409, { error: 'Deleted tasks cannot be edited' });
     if (typeof payload?.title === 'string') {
       const title = payload.title.trim();
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });

@@ -250,7 +250,7 @@ async function renderProject(id, viewState = {}) {
   filterLabel.htmlFor = 'task-filter';
   const filter = element('select', 'task-filter');
   filter.id = 'task-filter';
-  for (const value of ['All', 'Open', 'Completed']) {
+  for (const value of ['All', 'Open', 'Completed', 'Deleted']) {
     const option = element('option', '', value);
     option.value = value.toLowerCase();
     filter.append(option);
@@ -315,21 +315,25 @@ async function renderProject(id, viewState = {}) {
     const destinations = projects.filter((item) => !item.archived && item.id !== id);
     list.replaceChildren();
     const visible = tasks.filter((task) =>
-      (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed)) &&
+      (filter.value === 'deleted' ? Boolean(task.deleted) : !task.deleted &&
+        (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed))) &&
       (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
       normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch)) &&
       ((!appliedRange.from && !appliedRange.through) || (Boolean(task.dueDate) &&
         (!appliedRange.from || task.dueDate >= appliedRange.from) &&
         (!appliedRange.through || task.dueDate <= appliedRange.through))));
     for (const task of visible) {
+      const deleted = Boolean(task.deleted);
+      const locked = Boolean(project.archived) || deleted;
       const row = element('article', 'task-row');
       row.dataset.testid = 'task-row';
+      if (deleted) row.classList.add('deleted-task');
       row.append(element('span', 'task-title', task.title));
       const checkboxLabel = element('label', 'task-check');
       const checkbox = element('input');
       checkbox.type = 'checkbox';
       checkbox.checked = Boolean(task.completed);
-      checkbox.disabled = Boolean(project.archived);
+      checkbox.disabled = locked;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -354,10 +358,10 @@ async function renderProject(id, viewState = {}) {
       renameInput.value = task.title;
       renameInput.autocomplete = 'off';
       renameInput.setAttribute('aria-label', 'New task title');
-      renameInput.disabled = Boolean(project.archived);
+      renameInput.disabled = locked;
       const renameButton = element('button', 'secondary', 'Rename task');
       renameButton.type = 'submit';
-      renameButton.disabled = Boolean(project.archived);
+      renameButton.disabled = locked;
       renameForm.append(renameInput, renameButton);
       renameForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -389,7 +393,7 @@ async function renderProject(id, viewState = {}) {
         priority.append(option);
       }
       priority.value = task.priority || 'Normal';
-      priority.disabled = Boolean(project.archived);
+      priority.disabled = locked;
       priorityLabel.append(priority);
       priority.addEventListener('change', async () => {
         priority.disabled = true;
@@ -415,10 +419,10 @@ async function renderProject(id, viewState = {}) {
       dueDateInput.value = task.dueDate || '';
       dueDateInput.autocomplete = 'off';
       dueDateInput.setAttribute('aria-label', 'Task due date');
-      dueDateInput.disabled = Boolean(project.archived);
+      dueDateInput.disabled = locked;
       const dueDateButton = element('button', 'secondary', 'Save due date');
       dueDateButton.type = 'submit';
-      dueDateButton.disabled = Boolean(project.archived);
+      dueDateButton.disabled = locked;
       dueDateForm.append(dueDateInput, dueDateButton);
       dueDateForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -441,10 +445,10 @@ async function renderProject(id, viewState = {}) {
       const notesInput = element('textarea');
       notesInput.value = task.notes || '';
       notesInput.setAttribute('aria-label', 'Task notes');
-      notesInput.disabled = Boolean(project.archived);
+      notesInput.disabled = locked;
       const notesButton = element('button', 'secondary', 'Save notes');
       notesButton.type = 'submit';
-      notesButton.disabled = Boolean(project.archived);
+      notesButton.disabled = locked;
       notesForm.append(notesInput, notesButton);
       notesForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -472,8 +476,8 @@ async function renderProject(id, viewState = {}) {
       }
       const moveButton = element('button', 'secondary', 'Move task');
       moveButton.type = 'button';
-      destinationSelect.disabled = Boolean(project.archived) || destinations.length === 0;
-      moveButton.disabled = Boolean(project.archived) || destinations.length === 0;
+      destinationSelect.disabled = locked || destinations.length === 0;
+      moveButton.disabled = locked || destinations.length === 0;
       destinationLabel.append(destinationSelect);
       moveButton.addEventListener('click', async () => {
         moveButton.disabled = true;
@@ -490,6 +494,24 @@ async function renderProject(id, viewState = {}) {
         }
       });
       row.append(destinationLabel, moveButton);
+      const stateButton = element('button', 'secondary', deleted ? 'Restore task' : 'Delete task');
+      stateButton.type = 'button';
+      stateButton.disabled = Boolean(project.archived);
+      stateButton.addEventListener('click', async () => {
+        stateButton.disabled = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ deleted: !deleted }),
+          });
+          await renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+          stateButton.disabled = Boolean(project.archived);
+        }
+      });
+      row.append(stateButton);
       list.append(row);
     }
   }
