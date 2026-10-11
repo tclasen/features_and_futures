@@ -63,3 +63,47 @@ class HarnessExecutionTests(unittest.TestCase):
         files=calls[-1]['files']
         self.assertEqual(json.loads(files['settings.json'])['compaction']['reserveTokens'],16384)
         self.assertEqual(files['treatment.txt'],'')
+
+class PiPromptTransportTests(unittest.TestCase):
+    def test_large_unicode_prompt_preserves_whitespace_and_native_flags(self):
+        import hashlib
+        import tempfile
+        from pathlib import Path
+        from urllib.parse import unquote
+        from orchestrator.adapters import execute_attempt
+        # Below the character threshold but above Linux's UTF8 argv byte limit.
+        prompt='  Ω\n'+('🙂'*40000)+'\t\n '
+        calls=[]
+        def invoke(command,**kwargs):
+            calls.append((command,kwargs))
+            return subprocess.CompletedProcess(command,0,'','')
+        with tempfile.TemporaryDirectory() as directory, patch('orchestrator.adapters.invoke',side_effect=invoke):
+            output=Path(directory)
+            execute_attempt('fixture','pi','gpt-6-luna','lease',1000,prompt,output,
+                treatment='assigned treatment',workdir='/home/agent/work')
+            proof=json.loads((output/'prompt-transport.json').read_text())
+        self.assertEqual(calls[1][1]['stdin'],prompt)
+        command=calls[-1][0]
+        self.assertNotIn(prompt,command)
+        self.assertEqual(command[command.index('fixture')+1],'node')
+        self.assertIn('/usr/local/share/npm-global/bin/pi',command)
+        self.assertIn('--append-system-prompt',command)
+        self.assertIn('--no-session',command)
+        shim=unquote(command[command.index('--import')+1])
+        self.assertIn('process.argv.push(readFileSync(',shim)
+        self.assertEqual(proof['prompt_sha256'],hashlib.sha256(prompt.encode()).hexdigest())
+        self.assertEqual(proof['prompt_bytes'],len(prompt.encode()))
+
+    def test_failed_transfer_does_not_launch_native_or_start_attempt_clock(self):
+        import tempfile
+        from pathlib import Path
+        from orchestrator.adapters import execute_attempt
+        calls=[];started=[]
+        def invoke(command,**kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command,0 if len(calls)==1 else 1,'','PM transfer failure')
+        with tempfile.TemporaryDirectory() as directory,patch('orchestrator.adapters.invoke',side_effect=invoke):
+            with self.assertRaisesRegex(RuntimeError,'Could not prepare exact native prompt file'):
+                execute_attempt('fixture','pi','gpt-6-luna','lease',1000,'x'*130000,Path(directory),on_start=lambda:started.append(True))
+        self.assertEqual(len(calls),2)
+        self.assertEqual(started,[])
