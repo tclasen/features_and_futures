@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { validDueDate, matchesDueRange } from '../public/dates.js';
+import { matchesSearch } from '../public/search.js';
 
 // Minimal DOM harness for exercising the real browser event handlers without dependencies.
 class Element {
@@ -37,6 +38,7 @@ class Element {
     return null;
   }
   set innerHTML(html) {
+    this.children = [];
     const stack = [this];
     for (const token of html.match(/<[^>]+>|[^<]+/g)) {
       if (token.startsWith('</')) { stack.pop(); continue; }
@@ -70,7 +72,7 @@ async function fixture(archived = false, destinations = [
   const project = { id: 1, archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const context = {
-    validDueDate, matchesDueRange,
+    validDueDate, matchesDueRange, matchesSearch,
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     fetch: async (path, options) => {
       if (!options) {
@@ -97,7 +99,7 @@ async function fixture(archived = false, destinations = [
       return { ok: true, json: async () => structuredClone(task) };
     },
   };
-  runInNewContext(source.slice(source.indexOf('\n') + 1, source.lastIndexOf('\nrender().catch')) + '\nthis.renderTasks = renderTasks;', context);
+  runInNewContext(source.slice(0, source.lastIndexOf('\nrender().catch')).replace(/^import .*;\n/gm, '') + '\nthis.renderTasks = renderTasks;', context);
   await context.renderTasks({ ...project });
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
@@ -377,6 +379,144 @@ test('moving retains all filters and removes only the moved source row', async (
   assert.deepEqual(f.titles(), []); // Applied range was retained.
   await applyRange(f, '', '');
   assert.deepEqual(f.titles(), ['Second', 'Third', 'Fourth']);
+});
+
+async function searchTasks(f, query) {
+  f.app.querySelector('#task-search').value = query;
+  await f.app.querySelector('#task-search-form').fire('submit');
+}
+
+test('search uses trimmed substrings and ASCII-only case folding', () => {
+  assert.ok(matchesSearch('One TWO  three', '  tWo  '));
+  assert.ok(matchesSearch('One TWO  three', 'TWO  three'));
+  assert.ok(!matchesSearch('One TWO  three', 'TWO three'));
+  assert.ok(matchesSearch('ÄBC', 'Äbc'));
+  assert.ok(!matchesSearch('ÄBC', 'äbc'));
+  assert.ok(matchesSearch('anything', '   '));
+});
+
+test('task search intersects filters, keeps draft queries unapplied, and resets on reopening', async () => {
+  const f = await fixture();
+  assert.equal(f.app.querySelector('#task-search').value, '');
+  await searchTasks(f, '  IR  ');
+  assert.deepEqual(f.titles(), ['First', 'Third']);
+  await saveDate(f, 0, '2025-01-01');
+  await saveDate(f, 1, '2025-01-02');
+  await applyRange(f, '2025-01-01', '2025-01-02');
+  await choose(f.priority, 'High');
+  await choose(f.completion, 'Completed');
+  assert.deepEqual(f.titles(), ['Third']);
+  f.app.querySelector('#task-search').value = 'Second';
+  await choose(f.completion, 'All');
+  assert.deepEqual(f.titles(), ['First', 'Third']);
+  await searchTasks(f, 'second');
+  assert.deepEqual(f.titles(), []);
+  await searchTasks(f, '');
+  assert.deepEqual(f.titles(), ['First', 'Third']);
+  assert.equal(f.priority.value, 'High');
+  assert.equal(f.app.querySelector('#due-through').value, '2025-01-02');
+  assert.equal((await fixture()).app.querySelector('#task-search').value, '');
+});
+
+test('task search survives edits, creation, default changes, and movement', async () => {
+  const f = await fixture();
+  await searchTasks(f, 'first');
+  await choose(f.priority, 'High');
+  await choose(f.completion, 'Open');
+  await choose(f.app.querySelector('#default-task-priority'), 'High');
+  f.app.querySelector('#task-title').value = 'Unmatched';
+  await f.app.querySelector('form').fire('submit');
+  assert.deepEqual(f.titles(), ['First']);
+  f.app.querySelector('#task-title').value = 'First arrival';
+  await f.app.querySelector('form').fire('submit');
+  assert.deepEqual(f.titles(), ['First', 'First arrival']);
+  await saveDate(f, 0, '2025-01-01');
+  await applyRange(f, '2025-01-01', '');
+  const rename = f.rows()[0].children[2];
+  rename.children[1].value = 'No match';
+  await rename.fire('submit');
+  assert.deepEqual(f.titles(), []);
+  await searchTasks(f, 'no match');
+  const checkbox = f.rows()[0].children[1];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(f.titles(), []);
+  await choose(f.completion, 'Completed');
+  await choose(f.rows()[0].children[3], 'Low');
+  assert.deepEqual(f.titles(), []);
+  await choose(f.priority, 'Low');
+  const move = f.rows()[0].children[5];
+  move.children[0].value = '2';
+  await move.fire('submit');
+  assert.deepEqual(f.titles(), []);
+  assert.equal(f.app.querySelector('#task-search').value, 'no match');
+  assert.equal(f.completion.value, 'Completed');
+  assert.equal(f.priority.value, 'Low');
+  assert.equal(f.app.querySelector('#due-from').value, '2025-01-01');
+});
+
+test('archived task search remains usable and never writes task data', async () => {
+  const f = await fixture(true);
+  assert.ok(!f.app.querySelector('#task-search').disabled);
+  assert.ok(!f.app.querySelector('#task-search-form').querySelector('button').disabled);
+  await searchTasks(f, 'ir');
+  assert.deepEqual(f.titles(), ['First', 'Third']);
+  assert.ok(f.rows().every(row => row.children[1].disabled));
+  await choose(f.completion, 'Completed');
+  assert.deepEqual(f.titles(), ['Third']);
+  await searchTasks(f, '');
+  assert.deepEqual(f.titles(), ['Second', 'Third']);
+  assert.equal(f.requests.length, 0);
+});
+
+test('project search intersects archive filter, preserves summaries and resets on list navigation', async () => {
+  const app = new Element('main');
+  const projects = [
+    { id: 1, name: 'Alpha  ONE', archived: false, completed: 1, total: 3 },
+    { id: 2, name: 'Alpha two', archived: true, completed: 2, total: 2 },
+    { id: 3, name: 'Beta', archived: false, completed: 0, total: 0 },
+  ];
+  const navigations = [];
+  const requests = [];
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const context = {
+    matchesSearch,
+    location: { pathname: '/', assign: path => navigations.push(path) },
+    document: { querySelector: () => app, createElement: tag => new Element(tag) },
+    fetch: async (path, options) => {
+      if (options) {
+        requests.push(options);
+        Object.assign(projects.find(project => project.id === Number(path.split('/').at(-1))), JSON.parse(options.body));
+      }
+      return { ok: true, json: async () => structuredClone(options ? projects.find(project => project.id === Number(path.split('/').at(-1))) : projects) };
+    },
+  };
+  runInNewContext(source.slice(0, source.lastIndexOf('\nrender().catch')).replace(/^import .*;\n/gm, '') + '\nthis.render = render;', context);
+  await context.render();
+  const titles = () => app.querySelector('#project-list').children.map(row => row.children[0].textContent);
+  const search = async query => {
+    app.querySelector('#project-search').value = query;
+    await app.querySelector('#project-search-form').fire('submit');
+  };
+  await search(' ALPHA ');
+  assert.deepEqual(titles(), ['Alpha  ONE']);
+  assert.equal(app.querySelector('#project-list').children[0].children[1].textContent, '1/3 completed');
+  await choose(app.querySelector('#project-filter'), 'Archived');
+  assert.deepEqual(titles(), ['Alpha two']);
+  await app.querySelector('#project-list').children[0].children[3].fire('click');
+  assert.deepEqual(titles(), []);
+  await choose(app.querySelector('#project-filter'), 'Active');
+  assert.deepEqual(titles(), ['Alpha  ONE', 'Alpha two']);
+  await search('alpha one');
+  assert.deepEqual(titles(), []);
+  await search('alpha  one');
+  assert.deepEqual(titles(), ['Alpha  ONE']);
+  await app.querySelector('#project-list').children[0].children[2].fire('click');
+  assert.deepEqual(navigations, ['/projects/1']);
+  assert.equal(requests.length, 1); // Only restoration writes data.
+  await context.render();
+  assert.equal(app.querySelector('#project-search').value, '');
+  assert.deepEqual(titles(), ['Alpha  ONE', 'Alpha two', 'Beta']);
 });
 
 test('move controls disable for archived sources or no active destinations', async () => {

@@ -81,6 +81,7 @@ const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
   ['/dates.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/dates.js', import.meta.url))]],
+  ['/search.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/search.js', import.meta.url))]],
   ['/style.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/style.css', import.meta.url))]],
 ]);
 

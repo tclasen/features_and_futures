@@ -18,7 +18,9 @@ Health: `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, task priority validation and isolation, detail routes, health, database migration, task moves, and persistence across server-process restarts. Dependency-free DOM tests exercise combined filters, task editing, and move event handlers.
+The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, task priority validation and isolation, detail routes, health, database migration, task moves, and persistence across server-process restarts. Dependency-free DOM tests exercise combined filters, project/task search, task editing, and move event handlers.
+
+Project search and Search projects apply a name substring query alongside the active/archived filter. Task search and Search tasks apply a title substring query alongside completion, priority, and due-range filters. Searches ignore ASCII letter case and trim surrounding query whitespace, but keep internal whitespace significant. Blank queries match all rows allowed by the other filters. Applied queries remain through filter changes and edits; reopening a project or returning to Projects starts with an empty query. Search remains usable in archived projects and never changes saved data or summary counts.
 
 The Project filter defaults to Active; choose Archived to open or restore archived projects. Each project row shows completed/total task counts. Archived project pages show tasks and allow filtering, but cannot create tasks, rename tasks, change priorities, or change completion.
 

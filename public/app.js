@@ -1,4 +1,5 @@
 import { validDueDate, matchesDueRange } from './dates.js';
+import { matchesSearch } from './search.js';
 
 const app = document.querySelector('#app');
 
@@ -128,6 +129,11 @@ async function renderTasks(project) {
       <input id="due-through" type="text" autocomplete="off">
       <button type="submit">Apply due range</button>
     </form>
+    <form id="task-search-form">
+      <label for="task-search">Task search</label>
+      <input id="task-search" type="text" autocomplete="off">
+      <button type="submit">Search tasks</button>
+    </form>
     <div id="task-list"></div>
   `;
   const endpoint = `/api/projects/${project.id}/tasks`;
@@ -137,6 +143,13 @@ async function renderTasks(project) {
   const list = section.querySelector('#task-list');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
+  const search = section.querySelector('#task-search');
+  let appliedQuery = '';
+  section.querySelector('#task-search-form').addEventListener('submit', event => {
+    event.preventDefault();
+    appliedQuery = search.value = search.value.trim();
+    drawTasks();
+  });
   const dueFrom = section.querySelector('#due-from');
   const dueThrough = section.querySelector('#due-through');
   // Draft fields may differ from the last successfully applied range.
@@ -183,7 +196,8 @@ async function renderTasks(project) {
       (filter.value === 'All' ||
         (filter.value === 'Completed' ? task.completed : !task.completed)) &&
       (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
-      matchesDueRange(task.due_date, appliedFrom, appliedThrough));
+      matchesDueRange(task.due_date, appliedFrom, appliedThrough) &&
+      matchesSearch(task.title, appliedQuery));
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
@@ -416,14 +430,27 @@ async function render() {
       <option>Active</option>
       <option>Archived</option>
     </select>
+    <form id="project-search-form">
+      <label for="project-search">Project search</label>
+      <input id="project-search" type="text" autocomplete="off">
+      <button type="submit">Search projects</button>
+    </form>
     <section aria-label="Projects" id="project-list"></section>
   `;
   const list = app.querySelector('#project-list');
   let projects = await api('/api/projects');
   const filter = app.querySelector('#project-filter');
+  const search = app.querySelector('#project-search');
+  let appliedQuery = '';
+  app.querySelector('#project-search-form').addEventListener('submit', event => {
+    event.preventDefault();
+    appliedQuery = search.value = search.value.trim();
+    drawProjects();
+  });
   function drawProjects() {
     const archived = filter.value === 'Archived';
-    list.replaceChildren(...projects.filter(project => Boolean(project.archived) === archived)
+    list.replaceChildren(...projects.filter(project => Boolean(project.archived) === archived &&
+      matchesSearch(project.name, appliedQuery))
       .map(project => projectRow(project, saved => {
         projects = projects.map(item => item.id === saved.id ? saved : item);
         drawProjects();
