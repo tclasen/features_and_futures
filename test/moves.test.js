@@ -26,7 +26,7 @@ async function launch(db) {
   };
 }
 
-test('moves append, preserve task data and filters, enforce active ownership, and persist', async () => {
+test('moves append on first arrival, restore previous order, preserve data and filters, and persist', async () => {
   const directory = await mkdtemp(path.resolve('data/moves-test-'));
   const dbPath = path.join(directory, 'db.sqlite');
   // Start with the pre-move schema to exercise ordered migration.
@@ -92,16 +92,16 @@ test('moves append, preserve task data and filters, enforce active ownership, an
     assert.deepEqual(rows(await html('/projects/2')), ['Existing', 'Old', 'Later']);
     await post('/projects/2/restore');
     await move(2, 1, 1);
-    assert.deepEqual(rows(await html('/projects/1')), ['Remaining', 'Old']);
+    assert.deepEqual(rows(await html('/projects/1')), ['Old', 'Remaining']);
     // Move a blank-dated task too; default priority must not replace its Low priority.
     await move(2, 3, 1);
     markup = await html('/projects/1');
-    assert.deepEqual(rows(markup), ['Remaining', 'Old', 'Existing']);
+    assert.deepEqual(rows(markup), ['Old', 'Remaining', 'Existing']);
     assert.match(markup, /<option selected>Low<\/option>/);
     assert.match(markup, /id="task-due-date-3" name="dueDate" type="text" value=""/);
     await server.stop();
     server = await launch(dbPath);
-    assert.deepEqual(rows(await html('/projects/1')), ['Remaining', 'Old', 'Existing']);
+    assert.deepEqual(rows(await html('/projects/1')), ['Old', 'Remaining', 'Existing']);
     assert.deepEqual(rows(await html('/projects/2')), ['Later']);
   } finally {
     if (server) await server.stop();
