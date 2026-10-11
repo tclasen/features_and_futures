@@ -397,6 +397,7 @@ function directoryPage(scope, filter, prioritySelection, range, query, error = '
       <button type="submit" name="completed" value="1"${!editable || !tasks.some(task => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${!editable || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
+    <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
     <section aria-label="Directory tasks">
       ${tasks.length === 0 ? '<p id="directory-empty" role="status">No matching tasks</p>' : ''}
       ${tasks.map(task => `<div class="project" data-testid="directory-task-row">
