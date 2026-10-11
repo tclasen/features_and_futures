@@ -9,8 +9,12 @@ mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 )`);
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -18,9 +22,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
 db.exec('PRAGMA foreign_keys = ON');
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  FROM projects p WHERE p.archived = ? ORDER BY p.id ASC`);
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -69,7 +77,7 @@ const page = `<!doctype html>
       return response.json();
     }
 
-    function renderList(projects) {
+    function renderList(projects, selectedFilter = 'Active') {
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
@@ -94,6 +102,18 @@ const page = `<!doctype html>
       error.id = 'error';
       error.setAttribute('role', 'alert');
       error.hidden = true;
+      const projectFilterLabel = document.createElement('label');
+      projectFilterLabel.htmlFor = 'project-filter';
+      projectFilterLabel.textContent = 'Project filter';
+      const projectFilter = document.createElement('select');
+      projectFilter.id = 'project-filter';
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        projectFilter.append(option);
+      }
+      projectFilter.value = selectedFilter;
       const list = document.createElement('ul');
       list.id = 'projects';
       for (const project of projects) {
@@ -106,9 +126,27 @@ const page = `<!doctype html>
         open.type = 'button';
         open.textContent = 'Open project';
         open.addEventListener('click', () => { location.href = '/projects/' + encodeURIComponent(project.id); });
-        row.append(name, open);
+        const summary = document.createElement('span');
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = project.completedCount + '/' + project.totalCount + ' completed';
+        const actions = document.createElement('div');
+        actions.append(open);
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          await request('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+          const updated = await request('/api/projects?filter=' + selectedFilter.toLowerCase());
+          renderList(updated, selectedFilter);
+        });
+        actions.append(archive);
+        row.append(name, summary, actions);
         list.append(row);
       }
+      projectFilter.addEventListener('change', async () => {
+        const selected = projectFilter.value;
+        renderList(await request('/api/projects?filter=' + selected.toLowerCase()), selected);
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const name = input.value.trim();
@@ -129,7 +167,7 @@ const page = `<!doctype html>
           error.hidden = false;
         }
       });
-      app.append(heading, form, error, list);
+      app.append(heading, form, error, projectFilterLabel, projectFilter, list);
     }
 
     async function renderProject(id) {
@@ -141,6 +179,9 @@ const page = `<!doctype html>
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
+      const archived = document.createElement('p');
+      archived.textContent = 'Archived project';
+      archived.hidden = !project.archived;
       const form = document.createElement('form');
       form.className = 'task-controls';
       form.noValidate = true;
@@ -156,6 +197,7 @@ const page = `<!doctype html>
       const create = document.createElement('button');
       create.type = 'submit';
       create.textContent = 'Create task';
+      create.disabled = Boolean(project.archived);
       form.append(field, create);
       const error = document.createElement('p');
       error.id = 'error';
@@ -187,6 +229,7 @@ const page = `<!doctype html>
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = Boolean(task.completed);
+          checkbox.disabled = Boolean(project.archived);
           checkbox.id = 'task-' + task.id;
           checkbox.setAttribute('aria-label', 'Complete ' + task.title);
           checkbox.addEventListener('change', async () => {
@@ -225,7 +268,7 @@ const page = `<!doctype html>
         }
       });
       drawTasks();
-      app.append(back, heading, form, error, filterLabel, filter, tasksList);
+      app.append(back, heading, archived, form, error, filterLabel, filter, tasksList);
     }
 
     if (escPath) {
@@ -251,13 +294,33 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    sendJson(response, 200, listProjects.all());
+    const filter = url.searchParams.get('filter') === 'archived' ? 1 : 0;
+    sendJson(response, 200, listProjects.all(filter).map(project => ({ ...project, archived: Boolean(project.archived) })));
     return;
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
     const project = findProject.get(Number(projectMatch[1]));
-    sendJson(response, project ? 200 : 404, project || { error: 'Project not found' });
+    sendJson(response, project ? 200 : 404, project ? { ...project, archived: Boolean(project.archived) } : { error: 'Project not found' });
+    return;
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (request.method === 'PATCH' && archiveMatch) {
+    try {
+      const projectId = Number(archiveMatch[1]);
+      const data = await readBody(request);
+      if (typeof data.archived !== 'boolean') {
+        sendJson(response, 400, { error: 'Archive state is required' });
+        return;
+      }
+      const project = findProject.get(projectId);
+      if (!project) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      setArchived.run(data.archived ? 1 : 0, projectId);
+      sendJson(response, 200, { ...project, archived: data.archived });
+    } catch { sendJson(response, 400, { error: 'Invalid request' }); }
     return;
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
