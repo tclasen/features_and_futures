@@ -1,3 +1,5 @@
+import { validDueDate, matchesDueRange } from './dates.js';
+
 const app = document.querySelector('#app');
 
 async function api(path, options) {
@@ -119,6 +121,13 @@ async function renderTasks(project) {
       <option>Normal</option>
       <option>High</option>
     </select>
+    <form id="due-range-form">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <div id="task-list"></div>
   `;
   app.append(section);
@@ -127,6 +136,26 @@ async function renderTasks(project) {
   const list = section.querySelector('#task-list');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
+  const dueFrom = section.querySelector('#due-from');
+  const dueThrough = section.querySelector('#due-through');
+  // Draft fields may differ from the last successfully applied range.
+  let appliedFrom = '';
+  let appliedThrough = '';
+  section.querySelector('#due-range-form').addEventListener('submit', event => {
+    event.preventDefault();
+    app.querySelector('[role="alert"]')?.remove();
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if ((from && !validDueDate(from)) || (through && !validDueDate(through))) {
+      return showError('Due range must use valid YYYY-MM-DD dates');
+    }
+    if (from && through && from > through) {
+      return showError('Due from must not be after Due through');
+    }
+    appliedFrom = dueFrom.value = from;
+    appliedThrough = dueThrough.value = through;
+    drawTasks();
+  });
   const defaultPriority = section.querySelector('#default-task-priority');
   defaultPriority.value = project.default_priority;
   defaultPriority.disabled = Boolean(project.archived);
@@ -152,7 +181,8 @@ async function renderTasks(project) {
     const visible = tasks.filter(task =>
       (filter.value === 'All' ||
         (filter.value === 'Completed' ? task.completed : !task.completed)) &&
-      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+      matchesDueRange(task.due_date, appliedFrom, appliedThrough));
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';

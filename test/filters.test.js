@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
+import { validDueDate, matchesDueRange } from '../public/dates.js';
 
 // Minimal DOM harness for exercising the real browser event handlers without dependencies.
 class Element {
@@ -14,7 +15,11 @@ class Element {
     this.textContent = '';
     this._value = undefined;
   }
-  append(...children) { this.children.push(...children); }
+  append(...children) {
+    for (const child of children) child.parent = this;
+    this.children.push(...children);
+  }
+  remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(name, handler) { this.listeners[name] = handler; }
@@ -24,7 +29,8 @@ class Element {
   set value(value) { this._value = value; }
   querySelector(selector) {
     for (const child of this.children) {
-      if (selector.startsWith('#') ? child.id === selector.slice(1) : child.tag === selector) return child;
+      if (selector === '[role="alert"]' ? child.attributes.role === 'alert' :
+        selector.startsWith('#') ? child.id === selector.slice(1) : child.tag === selector) return child;
       const nested = child.querySelector(selector);
       if (nested) return nested;
     }
@@ -59,6 +65,7 @@ async function fixture(archived = false) {
   const project = { id: 1, archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const context = {
+    validDueDate, matchesDueRange,
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     fetch: async (path, options) => {
       if (!options) return { ok: true, json: async () => structuredClone(tasks) };
@@ -77,7 +84,7 @@ async function fixture(archived = false) {
       return { ok: true, json: async () => structuredClone(task) };
     },
   };
-  runInNewContext(source.slice(0, source.lastIndexOf('\nrender().catch')) + '\nthis.renderTasks = renderTasks;', context);
+  runInNewContext(source.slice(source.indexOf('\n') + 1, source.lastIndexOf('\nrender().catch')) + '\nthis.renderTasks = renderTasks;', context);
   await context.renderTasks({ ...project });
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
@@ -208,4 +215,107 @@ test('default priority changes preserve both filters and existing rows', async (
   const archived = await fixture(true);
   assert.equal(archived.app.querySelector('#default-task-priority').disabled, true);
   assert.equal(archived.app.querySelector('#default-task-priority').value, 'Normal');
+});
+
+async function applyRange(f, from, through) {
+  f.app.querySelector('#due-from').value = from;
+  f.app.querySelector('#due-through').value = through;
+  await f.app.querySelector('#due-range-form').fire('submit');
+}
+
+async function saveDate(f, rowIndex, date) {
+  const form = f.rows()[rowIndex].children[4];
+  form.children[1].value = date;
+  await form.fire('submit');
+}
+
+test('inclusive ranges intersect both filters, preserve applied boundaries, and reset on reopening', async () => {
+  const f = await fixture();
+  assert.equal(f.app.querySelector('#due-from').value, '');
+  assert.equal(f.app.querySelector('#due-through').value, '');
+  await saveDate(f, 0, '2024-02-28');
+  await saveDate(f, 1, '2024-02-29');
+  await saveDate(f, 2, '2024-03-01');
+  const saved = structuredClone(f.tasks);
+  await applyRange(f, ' 2024-02-29 ', ' 2024-03-01 ');
+  assert.deepEqual(f.titles(), ['Second', 'Third']);
+  assert.equal(f.app.querySelector('#due-from').value, '2024-02-29');
+  await choose(f.priority, 'High');
+  await choose(f.completion, 'Completed');
+  assert.deepEqual(f.titles(), ['Third']);
+  await choose(f.completion, 'Open');
+  assert.deepEqual(f.titles(), []);
+  await choose(f.priority, 'All');
+  await choose(f.completion, 'All');
+  await applyRange(f, '', '2024-02-29');
+  assert.deepEqual(f.titles(), ['First', 'Second']);
+  await applyRange(f, '2024-02-29', '');
+  assert.deepEqual(f.titles(), ['Second', 'Third']);
+  await applyRange(f, '2024-02-29', '2024-02-29');
+  assert.deepEqual(f.titles(), ['Second']);
+  for (const value of ['2023-02-29', '1900-02-29', '0000-01-01', '10000-01-01', '2024-04-31', '2024-2-29']) {
+    await applyRange(f, value, '');
+    assert.match(f.app.querySelector('[role="alert"]').textContent, /Due range must use valid YYYY-MM-DD dates/);
+    assert.deepEqual(f.titles(), ['Second']);
+  }
+  await applyRange(f, '2024-03-01', '2024-02-29');
+  assert.match(f.app.querySelector('[role="alert"]').textContent, /Due from must not be after Due through/);
+  await choose(f.completion, 'Completed');
+  assert.deepEqual(f.titles(), ['Second']);
+  assert.deepEqual(f.tasks, saved);
+  await applyRange(f, '  ', ' ');
+  await choose(f.completion, 'All');
+  assert.deepEqual(f.titles(), ['First', 'Second', 'Third', 'Fourth']);
+  const reopened = await fixture();
+  assert.equal(reopened.app.querySelector('#due-from').value, '');
+  assert.equal(reopened.app.querySelector('#due-through').value, '');
+});
+
+test('task edits and creation retain all three filters and immediately re-evaluate membership', async () => {
+  const f = await fixture();
+  await saveDate(f, 0, '2000-02-29');
+  await saveDate(f, 2, '2000-02-29');
+  await choose(f.priority, 'High');
+  await choose(f.completion, 'Open');
+  await applyRange(f, '2000-02-29', '2000-02-29');
+  const rename = f.rows()[0].children[2];
+  rename.children[1].value = 'Renamed';
+  await rename.fire('submit');
+  assert.deepEqual(f.titles(), ['Renamed']);
+  await choose(f.app.querySelector('#default-task-priority'), 'High');
+  f.app.querySelector('#task-title').value = 'Undated';
+  await f.app.querySelector('form').fire('submit');
+  assert.deepEqual(f.titles(), ['Renamed']);
+  await choose(f.rows()[0].children[3], 'Low');
+  assert.deepEqual(f.titles(), []);
+  await choose(f.priority, 'Low');
+  const checkbox = f.rows()[0].children[1];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(f.titles(), []);
+  await choose(f.completion, 'Completed');
+  assert.deepEqual(f.titles(), ['Renamed']);
+  await saveDate(f, 0, '2000-03-01');
+  assert.deepEqual(f.titles(), []);
+  assert.equal(f.priority.value, 'Low');
+  assert.equal(f.completion.value, 'Completed');
+  await applyRange(f, '', '');
+  assert.deepEqual(f.titles(), ['Renamed']);
+  await saveDate(f, 0, '2000-02-29');
+  await applyRange(f, '2000-02-29', '');
+  await saveDate(f, 0, '');
+  assert.deepEqual(f.titles(), []);
+});
+
+test('archived projects can apply ranges without enabling edits or writing data', async () => {
+  const f = await fixture(true);
+  assert.ok(!f.app.querySelector('#due-from').disabled);
+  assert.ok(!f.app.querySelector('#due-through').disabled);
+  assert.ok(!f.app.querySelector('#due-range-form').querySelector('button').disabled);
+  await applyRange(f, '0001-01-01', '9999-12-31');
+  assert.deepEqual(f.titles(), []);
+  await applyRange(f, '', '');
+  assert.equal(f.rows().length, 4);
+  assert.ok(f.rows().every(row => row.children[4].children[1].disabled));
+  assert.equal(f.requests.length, 0);
 });
