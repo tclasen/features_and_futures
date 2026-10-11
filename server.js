@@ -14,12 +14,9 @@ database.exec(`CREATE TABLE IF NOT EXISTS projects (
 if (!database.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
-  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
-  GROUP BY p.id ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +28,10 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  GROUP BY p.id ORDER BY p.id`);
 const root = path.dirname(new URL(import.meta.url).pathname);
 const send = (res, status, body, contentType = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'content-type': contentType });
@@ -44,6 +45,21 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, JSON.stringify(listProjects.all()));
+  }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (renameRoute && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const name = String(JSON.parse(body).name ?? '').trim();
+      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+      const id = Number(renameRoute[1]);
+      const project = getProject.get(id);
+      if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+      renameProject.run(name, id);
+      return send(res, 200, JSON.stringify(getProject.get(id)));
+    } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (archiveRoute && req.method === 'PATCH') {
