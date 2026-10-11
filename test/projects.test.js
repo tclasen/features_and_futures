@@ -41,6 +41,104 @@ async function startServer(dbPath) {
   };
 }
 
+test('task priorities migrate, remain independent, and persist through renaming, restarts and restoration', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'priority-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO projects (name) VALUES ('First'), ('Second');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing task', 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const rows = page => [...page.matchAll(/<div data-testid="task-row"[\s\S]*?<\/div>/g)].map(match => match[0]);
+    const prioritySelect = row => /<select id="task-priority-\d+"[\s\S]*?<\/select>/.exec(row)[0];
+    const assertPriority = (row, priority, disabled = false) => {
+      assert.match(row, /<label for="task-priority-\d+">Task priority<\/label>/);
+      const select = prioritySelect(row);
+      assert.deepEqual([...select.matchAll(/<option( selected)?>([^<]+)<\/option>/g)].map(match => match[2]), ['Low', 'Normal', 'High']);
+      assert.deepEqual([...select.matchAll(/<option selected>([^<]+)<\/option>/g)].map(match => match[1]), [priority]);
+      assert.equal(select.includes(' disabled'), disabled);
+      assert.match(select, /onchange="this.form.requestSubmit\(\)"/);
+    };
+    await post('/projects/1/tasks', { title: 'New task' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    const original = await html('/projects/1');
+    rows(original).forEach(row => assertPriority(row, 'Normal'));
+    const otherProject = await html('/projects/2');
+    assertPriority(rows(otherProject)[0], 'Normal');
+    const summary = await html('/');
+    const updated = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(updated.status, 303);
+    assert.equal(updated.headers.get('location'), '/projects/1?filter=Completed');
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    let tasks = rows(await html('/projects/1'));
+    assertPriority(tasks[0], 'High');
+    assertPriority(tasks[1], 'Low');
+    assert.match(tasks[0], /<span>Existing task<\/span>/);
+    assert.match(tasks[0], /aria-label="Complete Existing task" checked/);
+    assert.doesNotMatch(tasks[1], / checked/);
+    assert.equal(await html('/projects/2'), otherProject);
+    assert.equal(await html('/'), summary);
+    assert.deepEqual(rows(await html('/projects/1?filter=Completed')), [tasks[0].replaceAll('name="filter" value="All"', 'name="filter" value="Completed"')]);
+    assert.deepEqual(rows(await html('/projects/1?filter=Open')), [tasks[1].replaceAll('name="filter" value="All"', 'name="filter" value="Open"')]);
+    const beforeInvalid = await html('/projects/1');
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post('/projects/1/tasks/1/priority', { priority })).status, 400);
+    }
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal(await html('/projects/1'), beforeInvalid);
+    assert.equal(await html('/projects/2'), otherProject);
+    await post('/projects/1/tasks/1/rename', { title: '  Renamed task  ' });
+    tasks = rows(await html('/projects/1'));
+    assertPriority(tasks[0], 'High');
+    assert.match(tasks[0], /aria-label="Complete Renamed task" checked/);
+    const saved = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), saved);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    tasks = rows(archived);
+    assertPriority(tasks[0], 'High', true);
+    assertPriority(tasks[1], 'Low', true);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), saved);
+    assert.equal(await html('/'), summary);
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    const restored = await html('/projects/1');
+    assertPriority(rows(restored)[0], 'Normal');
+    assertPriority(rows(restored)[1], 'Low');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), restored);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task renaming preserves ownership, order, completion and filters across restarts and restoration', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data', 'task-rename-test-'));
