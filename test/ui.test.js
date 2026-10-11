@@ -918,6 +918,33 @@ for (const archived of [false, true]) {
   });
 }
 
+for (const archived of [false, true]) {
+  test(`project download is available independently of filters (${archived ? 'archived' : 'active'})`, async () => {
+    const projects = [{ id: 1, name: 'Export', archived, defaultTaskPriority: 'Normal' }];
+    const tasks = [{ id: 1, title: 'Saved', completed: true, priority: 'High', dueDate: '2028-02-29', notes: '雪', deleted: true }];
+    const { app, writes } = searchPage('/projects/1', projects, tasks);
+    await new Promise((resolve) => setImmediate(resolve));
+    const download = app.querySelector('a');
+    assert.equal(download.textContent, 'Download project');
+    assert.equal(download.href, '/api/projects/1/export');
+    assert.equal(download.download, 'workboard-project.json');
+    assert.ok(!download.disabled);
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    filters.children[1].value = 'Deleted';
+    await filters.children[1].fire('change');
+    filters.children[3].value = 'High';
+    await filters.children[3].fire('change');
+    const range = formWithLabel(app, 'Due from');
+    range.children[1].value = range.children[3].value = '2028-02-29';
+    await range.fire('submit');
+    await applySearch(formWithLabel(app, 'Task search'), 'no match');
+    assert.equal(app.querySelector('ul').children.length, 0);
+    assert.equal(app.querySelector('a'), download);
+    assert.ok(!download.disabled);
+    assert.equal(writes.length, 0);
+  });
+}
+
 const formWithLabel = (app, label) => app.children.find((node) => node.children[0]?.textContent === label);
 async function applySearch(form, query) {
   form.children[1].value = query;

@@ -520,6 +520,10 @@ async function showProject(id) {
     const heading = element('h1', project.name);
     app.prepend(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
+    const download = element('a', 'Download project');
+    download.href = `/api/projects/${project.id}/export`;
+    download.download = 'workboard-project.json';
+    app.append(download);
     showRenameForm(project, heading);
     await showTasks(project);
   } catch (error) {

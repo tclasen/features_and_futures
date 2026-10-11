@@ -53,9 +53,18 @@ test('legacy project databases migrate without losing IDs or tasks', async () =>
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/tasks`)).json(), [
       { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
     ]);
+    const portable = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'Legacy', archived: false, defaultPriority: 'Normal',
+        tasks: [{ title: 'Saved task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false }],
+      },
+    };
+    assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/export`)).json(), portable);
     await server.stop();
     server = await start(databasePath);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);
+    assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/export`)).json(), portable);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
@@ -669,6 +678,80 @@ test('notes preserve exact text, task data, remembered positions and restart per
     await server.stop();
     server = await start(databasePath);
     assert.deepEqual(await (await request(path)).json(), [expected, next]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('portable export includes current live/deleted state in remembered order without mutation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method, body) => fetch(`${server.url}/api/projects${path}`, method ? {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    } : undefined);
+    const project = await (await request('', 'POST', { name: '  MiXeD  雪 <name>  ' })).json();
+    const other = await (await request('', 'POST', { name: 'Other' })).json();
+    const empty = await (await request('', 'POST', { name: 'Empty' })).json();
+    const path = `/${project.id}`;
+    const first = await (await request(`${path}/tasks`, 'POST', { title: '  First\t  TITLE  ' })).json();
+    const second = await (await request(`${path}/tasks`, 'POST', { title: 'Second' })).json();
+    await request(`/${other.id}/tasks`, 'POST', { title: 'Never export me' });
+    const patch = (body, owner = project.id) => request(`/${owner}/tasks/${first.id}`, 'PATCH', body);
+    const notes = '  雪 🚀\r\n\r\n\t<script>literal & markup</script>\rLast  ';
+    for (const changes of [{ completed: true }, { priority: 'High' }, { dueDate: '0001-01-01' }, { notes }]) {
+      await patch(changes);
+    }
+    await patch({ destinationProjectId: other.id });
+    await patch({ title: 'Current  TITLE' }, other.id);
+    await patch({ destinationProjectId: project.id }, other.id);
+    await patch({ deleted: true });
+    await request(path, 'PATCH', { defaultTaskPriority: 'Low' });
+    await request(path, 'PATCH', { archived: true });
+    const snapshot = async () => ({
+      projects: await (await request('')).json(),
+      tasks: await (await request(`${path}/tasks`)).json(),
+      otherTasks: await (await request(`/${other.id}/tasks`)).json(),
+    });
+    const before = await snapshot();
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: project.name, archived: true, defaultPriority: 'Low',
+        tasks: [
+          { title: 'Current  TITLE', completed: true, priority: 'High', dueDate: '0001-01-01', notes: notes.replace(/\r\n?/g, '\n'), deleted: true },
+          { title: second.title, completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    const checkExport = async () => {
+      const response = await request(`${path}/export`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      assert.deepEqual(await response.json(), expected);
+      assert.deepEqual(await snapshot(), before);
+      assert.equal((await snapshot()).tasks[0].notes, notes);
+    };
+    await checkExport();
+    await server.stop();
+    server = await start(databasePath);
+    await checkExport();
+    // Projects with only deleted tasks and empty projects remain downloadable.
+    await request(path, 'PATCH', { archived: false });
+    await request(`${path}/tasks/${second.id}`, 'PATCH', { deleted: true });
+    expected.project.archived = false;
+    expected.project.tasks[1].deleted = true;
+    assert.deepEqual(await (await request(`${path}/export`)).json(), expected);
+    assert.deepEqual(await (await request(`/${empty.id}/export`)).json(), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Empty', archived: false, defaultPriority: 'Normal', tasks: [] },
+    });
+    assert.equal((await request('/999999/export')).status, 404);
+    assert.equal((await request(`${path}/export`, 'POST', {})).status, 404);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

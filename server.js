@@ -127,6 +127,28 @@ function taskJson(task) {
   return { ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) };
 }
 
+// Portable current state only: IDs and remembered movement positions stay private.
+function portableProject(project) {
+  return {
+    format: 'workboard-project',
+    version: 1,
+    project: {
+      name: project.name,
+      archived: Boolean(project.archived),
+      defaultPriority: project.defaultTaskPriority,
+      tasks: listTasks.all(project.id).map((task) => ({
+        title: task.title,
+        completed: Boolean(task.completed),
+        priority: task.priority,
+        dueDate: task.dueDate,
+        // Textarea line breaks are LF in the portable representation, not storage.
+        notes: task.notes.replace(/\r\n?/g, '\n'),
+        deleted: Boolean(task.deleted),
+      })),
+    },
+  };
+}
+
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
@@ -171,6 +193,13 @@ const server = createServer(async (request, response) => {
         const result = insertProject.run(name);
         return json(response, 201, projectJson(getProject.get(Number(result.lastInsertRowid))));
       }
+    }
+    const exportMatch = path.match(/^\/api\/projects\/(\d+)\/export$/);
+    if (request.method === 'GET' && exportMatch) {
+      const project = getProject.get(Number(exportMatch[1]));
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      response.setHeader('Content-Disposition', 'attachment; filename="workboard-project.json"');
+      return json(response, 200, portableProject(project));
     }
     const taskMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (taskMatch) {
