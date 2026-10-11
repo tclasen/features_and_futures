@@ -18,6 +18,8 @@ Project search and Task search match trimmed queries by substring, ignoring ASCI
 
 Each task row has a Task notes textarea and Save notes button. Notes are optional plain text, saved without trimming, including whitespace, line breaks, Unicode and literal markup. They persist and travel with tasks through moves and remembered returns without changing other task data. Saving retains all filters and the title-only search query; notes never add search matches. Archived notes remain visible with editing disabled. Existing databases gain empty notes without changing prior data.
 
+Live task rows provide Delete task. Deletion preserves all fields and remembered positions but removes the task from All, Open, Completed and completion summaries. The fourth Task filter option, Deleted, shows deleted tasks intersecting priority, due range and title search. Deleted fields and move controls are read-only; Restore task returns a task to its reserved position with its saved fields unchanged. Both actions preserve current filters and are disabled in archived projects. Deletion persists across restarts; upgrades initialize existing tasks as live.
+
 Run the integration tests (using temporary databases outside the repository):
 
 ```sh
