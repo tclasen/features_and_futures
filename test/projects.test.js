@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-test('projects validate, retain creation order, and survive server restarts', async () => {
+test('projects and tasks validate, remain isolated, and survive server restarts', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
   let child;
@@ -42,6 +42,21 @@ test('projects validate, retain creation order, and survive server restarts', as
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
     });
   }
+  async function createTask(projectId, title) {
+    return fetch(`${base}/api/projects/${projectId}/tasks`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    });
+  }
+  async function completeTask(projectId, taskId, completed) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
+    });
+  }
+  async function tasks(projectId) {
+    const response = await fetch(`${base}/api/projects/${projectId}/tasks`);
+    assert.equal(response.status, 200);
+    return response.json();
+  }
   try {
     await start();
     const health = await fetch(`${base}/health`);
@@ -67,10 +82,46 @@ test('projects validate, retain creation order, and survive server restarts', as
       assert.equal((await fetch(`${base}${path}`)).status, 200);
     }
     assert.equal((await fetch(`${base}/api/projects/999999`)).status, 404);
+    assert.deepEqual(await tasks(first.id), []);
+    for (const blank of ['', '   ', '\t\n']) {
+      const response = await createTask(first.id, blank);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    assert.deepEqual(await tasks(first.id), []);
+    const taskResponse = await createTask(first.id, '  First task  ');
+    assert.equal(taskResponse.status, 201);
+    const firstTask = await taskResponse.json();
+    assert.equal(firstTask.title, 'First task');
+    assert.equal(firstTask.completed, false);
+    const secondTask = await (await createTask(first.id, '<Task & two>')).json();
+    const otherTask = await (await createTask(second.id, 'Other project task')).json();
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
+    assert.equal((await completeTask(second.id, firstTask.id, true)).status, 404);
+    assert.equal((await createTask(999999, 'Missing project')).status, 404);
+    assert.equal((await completeTask(first.id, firstTask.id, 'true')).status, 400);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    const completedResponse = await completeTask(first.id, firstTask.id, true);
+    assert.equal(completedResponse.status, 200);
+    const completedTask = { ...firstTask, completed: true };
+    assert.deepEqual(await completedResponse.json(), completedTask);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}`)).json(), second);
+    assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
+    assert.equal((await completeTask(first.id, firstTask.id, false)).status, 200);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    const thirdTask = await (await createTask(first.id, 'After restart')).json();
+    assert.notEqual(thirdTask.id, firstTask.id);
+    assert.notEqual(thirdTask.id, secondTask.id);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask, thirdTask]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

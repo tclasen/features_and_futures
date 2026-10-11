@@ -29,6 +29,87 @@ function projectRow(project) {
   return row;
 }
 
+async function renderTasks(projectId) {
+  const form = element('form');
+  const input = element('input', '', { id: 'task-title', type: 'text', autocomplete: 'off' });
+  const create = element('button', 'Create task', { type: 'submit' });
+  const fields = element('div', '', { class: 'fields' });
+  fields.append(input, create);
+  const alert = element('p', '', { role: 'alert', hidden: '' });
+  form.append(element('label', 'Task title', { for: 'task-title' }), fields, alert);
+  const filter = element('select', '', { id: 'task-filter' });
+  for (const value of ['All', 'Open', 'Completed']) {
+    filter.append(element('option', value, { value }));
+  }
+  const filters = element('div', '', { class: 'task-filters' });
+  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter);
+  const list = element('section', '', { 'aria-label': 'Tasks', class: 'projects' });
+  app.append(form, filters, list);
+  const path = `/api/projects/${projectId}/tasks`;
+  const tasks = await api(path);
+
+  function showError(error) {
+    alert.textContent = error.message;
+    alert.hidden = false;
+  }
+
+  function showTasks() {
+    list.replaceChildren();
+    for (const task of tasks) {
+      if (filter.value === 'Open' && task.completed) continue;
+      if (filter.value === 'Completed' && !task.completed) continue;
+      const row = element('div', '', { 'data-testid': 'task-row', class: 'task-row' });
+      const checkbox = element('input', '', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
+      checkbox.checked = task.completed;
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        alert.hidden = true;
+        try {
+          const updated = await api(`${path}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          task.completed = updated.completed;
+          showTasks();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          showError(error);
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+      row.append(checkbox, element('span', task.title, { class: 'task-title' }));
+      list.append(row);
+    }
+  }
+
+  filter.addEventListener('change', showTasks);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    const title = input.value.trim();
+    if (!title) {
+      showError(new Error('Task title is required'));
+      input.focus();
+      return;
+    }
+    create.disabled = true;
+    try {
+      tasks.push(await api(path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      }));
+      showTasks();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(error);
+    } finally {
+      create.disabled = false;
+    }
+  });
+  showTasks();
+}
+
 async function render() {
   const match = window.location.pathname.match(/^\/projects\/(\d+)$/);
   app.replaceChildren();
@@ -37,6 +118,7 @@ async function render() {
     const project = await api(`/api/projects/${match[1]}`);
     app.append(element('h1', project.name));
     document.title = `${project.name} · Workboard`;
+    await renderTasks(project.id);
     return;
   }
   app.append(element('h1', 'Workboard'), element('p', 'A home for your projects.', { class: 'subtitle' }));
