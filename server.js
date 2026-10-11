@@ -47,6 +47,9 @@ if (!taskColumns.some(column => column.name === 'priority')) {
 if (!taskColumns.some(column => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some(column => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!taskColumns.some(column => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
   const projectIds = database.prepare('SELECT DISTINCT project_id FROM tasks').all();
@@ -68,12 +71,12 @@ const getProject = database.prepare('SELECT id, name, archived, default_priority
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
 const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) SELECT p.id, ?, p.default_priority, COALESCE((SELECT MAX(sort_order) + 1 FROM task_project_positions WHERE project_id = p.id), 0) FROM projects p WHERE p.id = ? AND p.archived = 0");
 const getTaskPosition = database.prepare('SELECT sort_order AS sortOrder FROM tasks WHERE id = ?');
 const rememberTaskPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
 const updateProjectDefaultPriority = database.prepare("UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0");
-const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
   AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
 const renameTask = database.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
@@ -81,6 +84,8 @@ const renameTask = database.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND
 const updateTaskPriority = database.prepare(`UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?
   AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
 const updateTaskDueDate = database.prepare(`UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
+  AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
+const updateTaskNotes = database.prepare(`UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?
   AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
 const findTaskPosition = database.prepare('SELECT sort_order AS sortOrder FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 const nextProjectPosition = database.prepare('SELECT COALESCE(MAX(sort_order) + 1, 0) AS sortOrder FROM task_project_positions WHERE project_id = ?');
@@ -110,6 +115,7 @@ const page = `<!doctype html>
     .task-title { flex: 1; overflow-wrap: anywhere; }
     .task-row input[type="checkbox"] { flex: none; }
     .task-row input[type="text"] { flex: 1; min-width: 4rem; }
+    .task-row textarea { flex: 1; min-width: 8rem; min-height: 3rem; font: inherit; }
   </style>
 </head>
 <body>
@@ -339,6 +345,18 @@ const page = `<!doctype html>
             alert.hidden = true;
             await refresh();
           });
+          const notesInput = element('textarea', undefined, { 'aria-label': 'Task notes' });
+          notesInput.value = task.notes || '';
+          const saveNotes = element('button', 'Save notes', { type: 'button', 'aria-label': 'Save notes' });
+          if (project.archived) { notesInput.disabled = true; saveNotes.disabled = true; }
+          saveNotes.addEventListener('click', async () => {
+            const notesResponse = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notesInput.value })
+            });
+            if (!notesResponse.ok) { alert.textContent = 'Could not save notes'; alert.hidden = false; return; }
+            alert.hidden = true;
+            await refresh();
+          });
           const destination = element('select', undefined, { 'aria-label': 'Destination project' });
           for (const candidate of destinationProjects) destination.append(element('option', candidate.name, { value: candidate.id }));
           const moveButton = element('button', 'Move task', { type: 'button' });
@@ -352,7 +370,7 @@ const page = `<!doctype html>
             alert.hidden = true;
             await refresh();
           });
-          row.append(checkbox, title, priority, renameInput, renameButton, dueDateInput, saveDueDate, destination, moveButton);
+          row.append(checkbox, title, priority, renameInput, renameButton, dueDateInput, saveDueDate, notesInput, saveNotes, destination, moveButton);
           list.append(row);
         }
       }
@@ -583,6 +601,18 @@ const server = createServer(async (request, response) => {
         const project = getProject.get(projectId);
         const task = getTask.get(taskId, projectId);
         sendJson(response, !project || !task ? 404 : 409, { error: !project || !task ? 'Task not found' : 'Archived projects cannot update task due dates' });
+        return;
+      }
+      sendJson(response, 200, getTask.get(taskId, projectId));
+      return;
+    }
+    if (Object.hasOwn(body || {}, 'notes')) {
+      if (typeof body.notes !== 'string') { sendJson(response, 400, { error: 'Notes must be text' }); return; }
+      const result = updateTaskNotes.run(body.notes, taskId, projectId, projectId);
+      if (!result.changes) {
+        const project = getProject.get(projectId);
+        const task = getTask.get(taskId, projectId);
+        sendJson(response, !project || !task ? 404 : 409, { error: !project || !task ? 'Task not found' : 'Archived projects cannot update task notes' });
         return;
       }
       sendJson(response, 200, getTask.get(taskId, projectId));
