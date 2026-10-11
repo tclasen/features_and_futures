@@ -62,6 +62,20 @@ async function render() {
         if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
         const row = element('div', { 'data-testid': 'task-row', class: 'project-row' });
         row.append(element('span', {}, task.title));
+        const renameInput = element('input', { type: 'text', 'aria-label': 'New task title', value: task.title });
+        const renameButton = element('button', { type: 'button' }, 'Rename task');
+        const renameAlert = element('span', { role: 'alert', hidden: '' });
+        renameInput.disabled = Boolean(project.archived);
+        renameButton.disabled = Boolean(project.archived);
+        renameButton.addEventListener('click', async () => {
+          const title = renameInput.value.trim();
+          if (!title) { renameAlert.textContent = 'Task title is required'; renameAlert.hidden = false; renameInput.focus(); return; }
+          try {
+            await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+            await refresh();
+          } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
+        });
+        row.append(renameInput, renameButton, renameAlert);
         const checkbox = element('input', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = Boolean(task.completed);
         checkbox.disabled = Boolean(project.archived);

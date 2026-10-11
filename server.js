@@ -31,6 +31,7 @@ const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, complet
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
 const setTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -113,12 +114,17 @@ const server = http.createServer(async (req, res) => {
       for await (const chunk of req) raw += chunk;
       let payload;
       try { payload = JSON.parse(raw); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
-      if (typeof payload?.completed !== 'boolean') return send(400, JSON.stringify({ error: 'Invalid completion state' }));
       const task = getTask.get(taskMatch[1]);
       if (!task) return send(404, JSON.stringify({ error: 'Task not found' }));
       if (getProject.get(task.projectId).archived) return send(409, JSON.stringify({ error: 'Archived project cannot be changed' }));
-      setTaskCompletion.run(payload.completed ? 1 : 0, task.id);
-      return send(200, JSON.stringify({ ...task, completed: payload.completed ? 1 : 0 }));
+      if (typeof payload?.completed === 'boolean') {
+        setTaskCompletion.run(payload.completed ? 1 : 0, task.id);
+        return send(200, JSON.stringify({ ...task, completed: payload.completed ? 1 : 0 }));
+      }
+      const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+      if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+      renameTask.run(title, task.id);
+      return send(200, JSON.stringify({ ...task, title }));
     }
     const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
     if (req.method === 'GET' && projectMatch) {
