@@ -279,6 +279,69 @@ test('task renaming preserves completion, order, ownership, filters and persiste
   }
 });
 
+test('priorities migrate, remain independent, preserve task data, and survive archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priorities-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('First'), ('Second');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Original', 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = (path) => fetch(`${server.url}${path}`).then(response => response.text());
+    const selected = content => [...content.matchAll(/<option selected>(Low|Normal|High)<\/option>/g)].map(match => match[1]);
+    assert.deepEqual(selected(await get('/projects/1')), ['Normal']);
+    await post('/projects/1/tasks', { title: 'Other' });
+    await post('/projects/2/tasks', { title: 'Separate' });
+    let content = await get('/projects/1');
+    assert.deepEqual(selected(content), ['Normal', 'Normal']);
+    assert.match(content, /<label for="task-priority-1">Task priority<\/label>/);
+    assert.match(content, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    const response = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/999/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 400);
+    await post('/projects/1/tasks/1/rename', { title: '  Renamed  ' });
+    content = await get('/projects/1');
+    assert.deepEqual(selected(content), ['High', 'Low']);
+    assert.ok(content.indexOf('<span>Renamed</span>') < content.indexOf('<span>Other</span>'));
+    assert.match(content, /aria-label="Complete Renamed" checked/);
+    assert.deepEqual(selected(await get('/projects/1?filter=Completed')), ['High']);
+    assert.deepEqual(selected(await get('/projects/1?filter=Open')), ['Low']);
+    assert.deepEqual(selected(await get('/projects/2')), ['Normal']);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), content);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.match(archived, /id="task-priority-1" name="priority" disabled/);
+    assert.match(archived, /id="task-priority-2" name="priority" disabled/);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), content);
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    assert.deepEqual(selected(await get('/projects/1')), ['Normal', 'Low']);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, navigate, escape names, and persist in creation order', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const dbPath = join(directory, 'projects.sqlite');
