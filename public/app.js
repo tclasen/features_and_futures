@@ -50,6 +50,45 @@ function projectRow(project, onUpdate) {
   return row;
 }
 
+function renderRename(project, heading) {
+  const form = document.createElement('form');
+  form.innerHTML = `
+    <label for="new-project-name">New project name</label>
+    <div class="create-controls">
+      <input id="new-project-name" type="text" autocomplete="off">
+      <button type="submit">Rename project</button>
+    </div>
+  `;
+  app.append(form);
+  const input = form.querySelector('input');
+  const submit = form.querySelector('button');
+  input.disabled = submit.disabled = Boolean(project.archived);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    app.querySelector('[role="alert"]')?.remove();
+    const name = input.value.trim();
+    if (!name) return showError('Project name is required');
+    submit.disabled = true;
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      project.name = saved.name;
+      heading.textContent = saved.name;
+      document.title = `${saved.name} — Workboard`;
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = Boolean(project.archived);
+    }
+  });
+}
+
 async function renderTasks(project) {
   const section = document.createElement('section');
   section.setAttribute('aria-label', 'Tasks');
@@ -159,6 +198,7 @@ async function render() {
       notice.textContent = 'Archived project';
       app.append(notice);
     }
+    renderRename(project, heading);
     await renderTasks(project);
     return;
   }

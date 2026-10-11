@@ -8,7 +8,7 @@ A project and task application using Node.js 22.22.1, built-in HTTP and SQLite, 
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port `8080` and database `data/workboard.sqlite`. Keep the database file to preserve projects, tasks, completion state, and archive state across restarts. Existing databases migrate automatically.
+Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port `8080` and database `data/workboard.sqlite`. Keep the database file to preserve projects, tasks, completion state, project names, and archive state across restarts. Existing databases migrate automatically.
 
 Health: `GET /health` returns `{"status":"ok"}`.
 
@@ -18,8 +18,10 @@ Health: `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore protections, detail routes, health, database migration, and persistence across server-process restarts.
+The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, detail routes, health, database migration, and persistence across server-process restarts.
 
 The Project filter defaults to Active; choose Archived to open or restore archived projects. Each project row shows completed/total task counts. Archived project pages show tasks and allow filtering, but cannot create tasks or change completion.
+
+Use New project name and Rename project on an active project page to change its name without changing its URL, order, or tasks. Archived projects cannot be renamed until restored.
 
 On an active project page, create tasks, toggle their completion checkboxes, and choose All, Open, or Completed in the Task filter. The filter defaults to All on page load.

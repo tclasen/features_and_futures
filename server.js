@@ -33,6 +33,7 @@ const listProjects = db.prepare(`${projectSelect} ORDER BY p.id`);
 const getProject = db.prepare(`${projectSelect} WHERE p.id = ?`);
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
@@ -74,10 +75,18 @@ const server = http.createServer(async (request, response) => {
       return json(response, project ? 200 : 404, project || { error: 'Project not found' });
     }
     if (request.method === 'PATCH' && projectMatch) {
-      if (!getProject.get(projectMatch[1])) return json(response, 404, { error: 'Project not found' });
+      const project = getProject.get(projectMatch[1]);
+      if (!project) return json(response, 404, { error: 'Project not found' });
       const input = await readInput(request);
-      if (typeof input?.archived !== 'boolean') return json(response, 400, { error: 'Archived must be a boolean' });
-      updateProject.run(Number(input.archived), projectMatch[1]);
+      if (input && Object.hasOwn(input, 'name')) {
+        if (project.archived) return json(response, 409, { error: 'Archived project' });
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return json(response, 400, { error: 'Project name is required' });
+        renameProject.run(name, project.id);
+      } else {
+        if (typeof input?.archived !== 'boolean') return json(response, 400, { error: 'Archived must be a boolean' });
+        updateProject.run(Number(input.archived), project.id);
+      }
       return json(response, 200, getProject.get(projectMatch[1]));
     }
     const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
