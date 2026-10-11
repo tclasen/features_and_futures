@@ -10,7 +10,9 @@
     h1 { margin-bottom: 1.5rem; }
     form, .project-row { display: flex; align-items: center; gap: .75rem; }
     form { margin-bottom: 1rem; }
-    input { flex: 1; min-width: 0; padding: .65rem; font: inherit; border: 1px solid #9ba9b7; border-radius: 4px; }
+    input, select { flex: 1; min-width: 0; padding: .65rem; font: inherit; border: 1px solid #9ba9b7; border-radius: 4px; }
+    .task-row { display: flex; align-items: center; gap: .75rem; margin: .6rem 0; padding: 1rem; background: white; border: 1px solid #d6dfe7; border-radius: 5px; }
+    .task-row input { flex: initial; }
     button { padding: .65rem 1rem; font: inherit; border: 0; border-radius: 4px; color: white; background: #145c91; cursor: pointer; }
     button:hover { background: #0d456f; }
     .project-row { justify-content: space-between; margin: .6rem 0; padding: 1rem; background: white; border: 1px solid #d6dfe7; border-radius: 5px; }
@@ -80,6 +82,49 @@
       element('h1', project.name, app);
       const back = element('button', 'Projects', app);
       back.addEventListener('click', () => { location.href = '/'; });
+      const form = element('form', undefined, app);
+      const input = element('input', undefined, form);
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Task title');
+      const submit = element('button', 'Create task', form);
+      submit.type = 'submit';
+      const alert = element('p', undefined, app);
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      const filterLabel = element('label', 'Task filter', app);
+      const filter = element('select', undefined, filterLabel);
+      filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) element('option', value, filter);
+      const list = element('section', undefined, app);
+      const renderTasks = async () => {
+        list.replaceChildren();
+        const tasks = await request(`/api/projects/${id}/tasks`);
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          const row = element('div', undefined, list);
+          row.dataset.testid = 'task-row';
+          row.className = 'task-row';
+          element('span', task.title, row);
+          const checkbox = element('input', undefined, row);
+          checkbox.type = 'checkbox';
+          checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            await request(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            await renderTasks();
+          });
+        }
+      };
+      filter.addEventListener('change', renderTasks);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const result = await request(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: input.value }) });
+        if (result.error) { alert.textContent = result.error; alert.hidden = false; return; }
+        input.value = '';
+        alert.hidden = true;
+        await renderTasks();
+      });
+      await renderTasks();
     }
 
     const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
