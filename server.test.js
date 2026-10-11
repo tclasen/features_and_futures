@@ -84,3 +84,76 @@ test('project validation, creation order, navigation, and restart persistence', 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, stay in their project, filter, toggle, and survive restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const initial = await get('/projects/1');
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option>\s*<option>Open<\/option>\s*<option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const response = await post('/projects/1/tasks', { title });
+      assert.equal(response.status, 422);
+      const body = await response.text();
+      assert.match(body, /role="alert">Task title is required/);
+      assert.doesNotMatch(body, /data-testid="task-row"/);
+    }
+    assert.equal((await post('/projects/1/tasks', { title: '  First task  ' })).status, 303);
+    await post('/projects/1/tasks', { title: 'Second <task> & "title"' });
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    const listing = await get('/projects/1');
+    assert.equal((listing.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(listing, /aria-label="Complete First task"/);
+    assert.match(listing, /aria-label="Complete Second &lt;task&gt; &amp; &quot;title&quot;"/);
+    assert.match(listing, /<span>First task<\/span>/);
+    assert.ok(listing.indexOf('<span>First task') < listing.indexOf('<span>Second &lt;task&gt;'));
+    assert.doesNotMatch(listing, / checked/);
+    assert.doesNotMatch(listing, /Other project task/);
+    assert.doesNotMatch(await get('/projects/2'), /Complete First task|Complete Second/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /data-testid="task-row"/);
+    const complete = await post('/projects/1/tasks/1', { completed: '1', filter: 'Open' });
+    assert.equal(complete.status, 303);
+    assert.equal(complete.headers.get('location'), '/projects/1?filter=Open');
+    assert.match(await get('/projects/1'), /aria-label="Complete First task" checked/);
+    const open = await get('/projects/1?filter=Open');
+    assert.match(open, /<option selected>Open<\/option>/);
+    assert.doesNotMatch(open, /Complete First task/);
+    assert.match(open, /Complete Second/);
+    const completed = await get('/projects/1?filter=Completed');
+    assert.match(completed, /<option selected>Completed<\/option>/);
+    assert.match(completed, /Complete First task/);
+    assert.doesNotMatch(completed, /Complete Second/);
+    assert.equal((await post('/projects/2/tasks/1', { completed: '0' })).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Missing' })).status, 404);
+    const saved = await get('/projects/1');
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), saved);
+    assert.equal(await get('/projects/1?filter=Open'), open);
+    assert.equal(await get('/projects/1?filter=Completed'), completed);
+    assert.match(await get('/projects/2'), /Complete Other project task/);
+    assert.equal((await post('/projects/1/tasks/1', {})).status, 303);
+    assert.doesNotMatch(await get('/projects/1'), / checked/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /data-testid="task-row"/);
+    const reopened = await get('/projects/1');
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), reopened);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
