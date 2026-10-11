@@ -29,6 +29,8 @@
       return response.json();
     }
 
+    const asciiLower = value => value.replace(/[A-Z]/g, character => character.toLowerCase());
+
     function element(tag, text, parent) {
       const node = document.createElement(tag);
       if (text !== undefined) node.textContent = text;
@@ -52,6 +54,13 @@
       const alert = element('p', undefined, app);
       alert.setAttribute('role', 'alert');
       alert.hidden = true;
+      const searchForm = element('form', undefined, app);
+      const searchInput = element('input', undefined, searchForm);
+      searchInput.type = 'text';
+      searchInput.setAttribute('aria-label', 'Project search');
+      const searchButton = element('button', 'Search projects', searchForm);
+      searchButton.type = 'submit';
+      let appliedSearch = '';
       const list = element('section', undefined, app);
       form.addEventListener('submit', async event => {
         event.preventDefault();
@@ -62,16 +71,21 @@
         if (result.error) { alert.textContent = result.error; alert.hidden = false; return; }
         input.value = '';
         alert.hidden = true;
-        await renderRows(list, filter.value);
+        await renderRows(list, filter.value, appliedSearch);
       });
-      filter.addEventListener('change', () => renderRows(list, filter.value));
-      await renderRows(list, filter.value);
+      searchForm.addEventListener('submit', event => {
+        event.preventDefault();
+        appliedSearch = searchInput.value.trim();
+        renderRows(list, filter.value, appliedSearch);
+      });
+      filter.addEventListener('change', () => renderRows(list, filter.value, appliedSearch));
+      await renderRows(list, filter.value, appliedSearch);
     }
 
-    async function renderRows(list, filter) {
+    async function renderRows(list, filter, search = '') {
       list.replaceChildren();
       const projects = await request(`/api/projects?filter=${filter}`);
-      for (const project of projects) {
+      for (const project of projects.filter(item => asciiLower(item.name).includes(asciiLower(search)))) {
         const row = element('div', undefined, list);
         row.dataset.testid = 'project-row';
         element('span', project.name, row);
@@ -84,7 +98,7 @@
         archive.type = 'button';
         archive.addEventListener('click', async () => {
           await request(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
-          await renderRows(list, filter);
+          await renderRows(list, filter, search);
         });
       }
     }
@@ -148,6 +162,13 @@
       const priorityFilter = element('select', undefined, priorityFilterLabel);
       priorityFilter.setAttribute('aria-label', 'Priority filter');
       for (const value of ['All', 'Low', 'Normal', 'High']) element('option', value, priorityFilter);
+      const taskSearchForm = element('form', undefined, app);
+      const taskSearchInput = element('input', undefined, taskSearchForm);
+      taskSearchInput.type = 'text';
+      taskSearchInput.setAttribute('aria-label', 'Task search');
+      const taskSearchButton = element('button', 'Search tasks', taskSearchForm);
+      taskSearchButton.type = 'submit';
+      let appliedTaskSearch = '';
       const rangeForm = element('form', undefined, app);
       const fromInput = element('input', undefined, rangeForm);
       fromInput.type = 'text';
@@ -169,6 +190,7 @@
         if (renderVersion !== taskRenderVersion) return;
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          if (!asciiLower(task.title).includes(asciiLower(appliedTaskSearch))) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
           if ((appliedFrom || appliedThrough) && (!task.dueDate || (appliedFrom && task.dueDate < appliedFrom) || (appliedThrough && task.dueDate > appliedThrough))) continue;
           const row = element('div', undefined, list);
@@ -248,6 +270,11 @@
           });
         }
       };
+      taskSearchForm.addEventListener('submit', event => {
+        event.preventDefault();
+        appliedTaskSearch = taskSearchInput.value.trim();
+        renderTasks();
+      });
       filter.addEventListener('change', renderTasks);
       priorityFilter.addEventListener('change', renderTasks);
       rangeForm.addEventListener('submit', event => {
