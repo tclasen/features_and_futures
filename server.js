@@ -24,6 +24,13 @@ database.exec(`
     due_date TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0
   )
+  ;
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  )
 `);
 // Upgrade databases created by earlier task checkpoints.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
@@ -47,6 +54,10 @@ if (!taskColumns.some((column) => column.name === 'sort_order')) {
     WHERE earlier.project_id = task.project_id AND earlier.id <= task.id
   )`);
 }
+// Remember each task's position in every project it has occupied. Seed current
+// memberships so introducing this feature never changes existing task order.
+database.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort_order)
+  SELECT id, project_id, sort_order FROM tasks`);
 
 function isValidDueDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -156,9 +167,11 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksPath[1]);
     const project = database.prepare('SELECT id, default_task_priority AS defaultTaskPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
     const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.defaultTaskPriority, nextOrder);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultTaskPriority, dueDate: null });
+    const taskId = Number(result.lastInsertRowid);
+    database.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(taskId, projectId, nextOrder);
+    return sendJson(response, 201, { id: taskId, projectId, title, completed: false, priority: project.defaultTaskPriority, dueDate: null });
   }
   const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskPath && request.method === 'PATCH') {
@@ -180,9 +193,14 @@ const server = createServer(async (request, response) => {
       if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot move tasks' });
       const destination = database.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
       if (!destination || destinationId === task.projectId) return sendJson(response, 400, { error: 'Invalid destination project' });
-      const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
-      database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
-      return sendJson(response, 200, { id: taskId, projectId: destinationId });
+      let position = database.prepare('SELECT sort_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+      if (!position) {
+        const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value;
+        database.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(taskId, destinationId, nextOrder);
+        position = { sort_order: nextOrder };
+      }
+      database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, position.sort_order, taskId);
+      return sendJson(response, 200, { id: taskId, projectId: destinationId, sortOrder: position.sort_order });
     }
     if (typeof changes.title === 'string') {
       const title = changes.title.trim();
