@@ -559,6 +559,7 @@ async function showProjects() {
   app.append(searchForm);
   const projectList = element('section', { className: 'project-list' });
   app.append(projectList);
+  let projectRenderVersion = 0;
 
   const form = element('form');
   const label = element('label', { text: 'Project name' });
@@ -654,8 +655,12 @@ async function showProjects() {
   app.append(directoryButton);
 
   async function renderProjects() {
-    const projects = await loadProjects(filter.value);
+    const renderVersion = ++projectRenderVersion;
+    const selectedFilter = filter.value;
+    const projects = await loadProjects(selectedFilter);
+    if (renderVersion !== projectRenderVersion) return;
     projectList.replaceChildren();
+    const rows = document.createDocumentFragment();
     for (const project of projects.filter((item) => matchesSearch(item.name, appliedProjectSearch))) {
       const row = element('div', { className: 'project-row', testId: 'project-row' });
       const details = element('div', { className: 'project-details' });
@@ -689,8 +694,9 @@ async function showProjects() {
       });
       actions.append(open, stateButton);
       row.append(details, actions);
-      projectList.append(row);
+      rows.append(row);
     }
+    projectList.append(rows);
   }
   filter.addEventListener('change', () => { renderProjects().catch(() => { alert.textContent = 'Could not load projects'; alert.hidden = false; }); });
   await renderProjects();
