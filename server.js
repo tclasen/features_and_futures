@@ -41,6 +41,21 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
 database.exec('PRAGMA foreign_keys = ON');
+// Remember each task's position in every project it has visited. The current
+// task row keeps its identity while moving, so this history remains attached.
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id,
+      ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY id) - 1
+    FROM tasks;
+`);
 
 const page = await readFile(new URL('./public/index.html', import.meta.url));
 const styles = await readFile(new URL('./public/styles.css', import.meta.url));
@@ -168,7 +183,10 @@ const server = createServer(async (request, response) => {
   const tasksRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksRoute && request.method === 'GET') {
     const tasks = database.prepare(
-      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id'
+      `SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
+        t.due_date AS dueDate
+       FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+       WHERE t.project_id = ? ORDER BY p.position`
     ).all(Number(tasksRoute[1])).map((task) => ({ ...task, completed: Boolean(task.completed) }));
     send(response, 200, 'application/json; charset=utf-8', JSON.stringify(tasks));
     return;
@@ -193,7 +211,17 @@ const server = createServer(async (request, response) => {
         return;
       }
       const defaultPriority = database.prepare('SELECT default_task_priority FROM projects WHERE id = ?').get(projectId).default_task_priority;
-      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
+      database.exec('BEGIN IMMEDIATE');
+      let result;
+      try {
+        const position = database.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM task_project_positions WHERE project_id = ?').get(projectId).nextPosition;
+        result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
+        database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, position);
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
       send(response, 201, 'application/json; charset=utf-8', JSON.stringify({
         id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: defaultPriority,
       }));
@@ -224,19 +252,24 @@ const server = createServer(async (request, response) => {
         send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Choose another project' }));
         return;
       }
-      // DatabaseSync does not expose a transaction wrapper. Keep the copy and
-      // delete atomic with explicit SQLite transaction statements.
+      // Keep the destination position and current-project update atomic.
       database.exec('BEGIN IMMEDIATE');
       try {
-        const task = database.prepare('SELECT title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+        const task = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
         if (!task) {
           database.exec('ROLLBACK');
           send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
           return;
         }
-        database.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES (?, ?, ?, ?, ?)')
-          .run(destinationId, task.title, task.completed, task.priority, task.due_date);
-        database.prepare('DELETE FROM tasks WHERE id = ? AND project_id = ?').run(taskId, sourceId);
+        const priorPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+        const destinationPosition = priorPosition?.position ?? database.prepare(
+          'SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM task_project_positions WHERE project_id = ?'
+        ).get(destinationId).nextPosition;
+        if (!priorPosition) {
+          database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)')
+            .run(taskId, destinationId, destinationPosition);
+        }
+        database.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?').run(destinationId, taskId, sourceId);
         database.exec('COMMIT');
       } catch (error) {
         database.exec('ROLLBACK');
