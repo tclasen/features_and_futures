@@ -20,6 +20,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 
 const page = `<!doctype html>
 <html lang="en">
@@ -178,6 +179,17 @@ const page = `<!doctype html>
             await refreshTasks();
           });
           const title = document.createElement('span'); title.textContent = task.title;
+          const dueLabel = document.createElement('label'); dueLabel.textContent = 'Task due date';
+          const dueInput = document.createElement('input'); dueInput.type = 'text'; dueInput.setAttribute('aria-label', 'Task due date'); dueInput.value = task.due_date || '';
+          dueInput.disabled = project.archived;
+          const dueButton = document.createElement('button'); dueButton.type = 'button'; dueButton.textContent = 'Save due date'; dueButton.disabled = project.archived;
+          const dueAlert = document.createElement('span'); dueAlert.setAttribute('role', 'alert'); dueAlert.hidden = true;
+          dueButton.addEventListener('click', async () => {
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date: dueInput.value }) });
+            if (!update.ok) { dueAlert.textContent = 'Due date must be a valid YYYY-MM-DD date'; dueAlert.hidden = false; return; }
+            await refreshTasks();
+          });
+          dueLabel.append(dueInput);
           const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority');
           for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; priority.append(option); }
           priority.value = task.priority;
@@ -199,7 +211,7 @@ const page = `<!doctype html>
             if (!update.ok) { renameAlert.textContent = 'Could not rename task'; renameAlert.hidden = false; return; }
             await refreshTasks();
           });
-          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert); list.append(row);
+          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert, dueLabel, dueButton, dueAlert); list.append(row);
         }
       }
       filter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
@@ -299,7 +311,7 @@ const server = http.createServer(async (req, res) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && req.method === 'GET') {
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(tasksMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
-    const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1]);
+    const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1]);
     return sendJson(res, 200, tasks.map((task) => ({ ...task, id: String(task.id), completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
@@ -319,7 +331,26 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJson(req);
       let result;
-      if (typeof body.completed === 'boolean') {
+      if (Object.hasOwn(body, 'due_date')) {
+        if (typeof body.due_date !== 'string') return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const value = body.due_date.trim();
+        let canonical = null;
+        if (value) {
+          const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!match) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+          const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+          const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+          if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          canonical = value;
+        }
+        result = db.prepare(`UPDATE tasks SET due_date = ? WHERE id = ?
+          AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND projects.archived = 0)`).run(canonical, taskMatch[1]);
+        if (!result.changes) {
+          const task = db.prepare('SELECT projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(taskMatch[1]);
+          return task ? sendJson(res, 409, { error: 'Archived projects cannot change task due dates' }) : sendJson(res, 404, { error: 'Task not found' });
+        }
+      } else if (typeof body.completed === 'boolean') {
         result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
       } else if (typeof body.priority === 'string') {
         if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
