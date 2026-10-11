@@ -34,13 +34,14 @@ class Node {
   }
 }
 
-async function projectPage(archived = false, defaultPriority = 'Normal', dates, otherProjects = []) {
+async function projectPage(archived = false, defaultPriority = 'Normal', dates, otherProjects = [], notes = {}) {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
-    { id: index * 2 + 1, title: `${priority} open`, priority, completed: false, due_date: '' },
-    { id: index * 2 + 2, title: `${priority} completed`, priority, completed: true, due_date: '2026-10-11' },
+    { id: index * 2 + 1, title: `${priority} open`, priority, completed: false, due_date: '', notes: '' },
+    { id: index * 2 + 2, title: `${priority} completed`, priority, completed: true, due_date: '2026-10-11', notes: '' },
   ]);
   if (dates) tasks.forEach((task, index) => { task.due_date = dates[index]; });
+  tasks.forEach(task => { task.notes = notes[task.id] ?? ''; });
   const mutations = [];
   const project = { id: 1, name: 'Example', archived: Number(archived), default_priority: defaultPriority, total: 6, completed: 3 };
   const document = {
@@ -68,7 +69,7 @@ async function projectPage(archived = false, defaultPriority = 'Normal', dates, 
         data = task;
       } else if (options?.method === 'POST') {
         assert.equal(archived, false);
-        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: project.default_priority, due_date: '' };
+        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: project.default_priority, due_date: '', notes: '' };
         tasks.push(data);
       } else if (path === '/api/projects') {
         data = [project, ...otherProjects];
@@ -94,6 +95,67 @@ async function projectPage(archived = false, defaultPriority = 'Normal', dates, 
   };
   return { app, project, tasks, mutations, byId, rows, titles, change };
 }
+
+test('notes save exact plain text, retain every filter, and never add search matches', async () => {
+  const page = await projectPage();
+  assert.equal(page.byId('task-notes-6').tag, 'textarea');
+  assert.equal(page.byId('task-notes-6').value, '');
+  assert.equal(page.app.find(node => node.attributes.for === 'task-notes-6').textContent, 'Task notes');
+  await page.change('task-filter', 'Completed');
+  await page.change('priority-filter', 'High');
+  const range = page.app.find(node => node.attributes.class === 'due-range-form');
+  page.byId('due-from').value = '2026-10-01';
+  page.byId('due-through').value = '2026-10-31';
+  await range.fire('submit');
+  const search = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-search'));
+  page.byId('task-search').value = 'HIGH';
+  await search.fire('submit');
+  const originalTasks = structuredClone(page.tasks);
+  const originalProject = structuredClone(page.project);
+  for (const notes of ['  First line\n\n雪 😀 <script>literal</script>\n  ', ' \n\t ', '']) {
+    const form = page.rows()[0].find(node => node.attributes.class === 'task-notes-form');
+    assert.equal(form.find(node => node.tag === 'button').textContent, 'Save notes');
+    page.byId('task-notes-6').value = notes;
+    await form.fire('submit');
+    originalTasks[5].notes = notes;
+    assert.deepEqual(page.tasks, originalTasks);
+    assert.deepEqual(page.project, originalProject);
+    assert.equal(page.byId('task-notes-6').value, notes);
+    assert.deepEqual(page.titles(), ['High completed']);
+    assert.equal(page.byId('task-filter').value, 'Completed');
+    assert.equal(page.byId('priority-filter').value, 'High');
+    assert.equal(page.byId('due-from').value, '2026-10-01');
+    assert.equal(page.byId('due-through').value, '2026-10-31');
+    assert.equal(page.byId('task-search').value, 'HIGH');
+  }
+  page.byId('task-notes-6').value = 'Unique notes-only phrase';
+  await page.rows()[0].find(node => node.attributes.class === 'task-notes-form').fire('submit');
+  page.byId('task-search').value = 'notes-only';
+  await search.fire('submit');
+  assert.deepEqual(page.titles(), []);
+  page.byId('task-search').value = '';
+  await search.fire('submit');
+  assert.deepEqual(page.titles(), ['High completed']);
+  assert.equal(page.byId('task-notes-6').value, 'Unique notes-only phrase');
+});
+
+test('archived notes remain readable and disabled; restoration enables both controls', async () => {
+  const notes = { 1: '  Saved\n雪 <b>literal</b>  ' };
+  const page = await projectPage(true, 'Normal', undefined, [], notes);
+  await page.change('task-filter', 'Open');
+  const input = page.byId('task-notes-1');
+  const form = page.rows()[0].find(node => node.attributes.class === 'task-notes-form');
+  assert.equal(input.value, page.tasks[0].notes);
+  assert.equal(input.disabled, true);
+  assert.equal(form.find(node => node.tag === 'button').disabled, true);
+  await form.fire('submit');
+  assert.deepEqual(page.mutations, []);
+  const restored = await projectPage(false, 'Normal', undefined, [], notes);
+  assert.equal(restored.byId('task-notes-1').value, notes[1]);
+  assert.equal(restored.byId('task-notes-1').disabled, false);
+  assert.equal(restored.rows()[0].find(node => node.attributes.class === 'task-notes-form')
+    .find(node => node.tag === 'button').disabled, false);
+});
 
 test('both task filters intersect in creation order and remain independent on active and archived pages', async () => {
   for (const archived of [false, true]) {

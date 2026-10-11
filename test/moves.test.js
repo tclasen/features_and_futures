@@ -71,6 +71,10 @@ test(`Task ${legacyVersion} migration: moves remember order, preserve data and s
     assert.deepEqual((await tasks(1)).map(task => task.id), [1, 2]);
     const [dated, undated] = await tasks(1);
     const [destinationTask] = await tasks(2);
+    assert.equal(dated.notes, '');
+    assert.equal(undated.notes, '');
+    dated.notes = '  Move with me\n雪 <b>literal</b>\n  ';
+    assert.equal((await call('/api/projects/1/tasks/1', 'PATCH', { notes: dated.notes })).status, 200);
     await call('/api/projects/2', 'PATCH', { default_priority: 'Low' });
     for (const invalid of [1, 0, -1, null, '2', 1.5]) {
       assert.equal((await move(1, 1, invalid)).status, 400);
@@ -131,6 +135,8 @@ test(`Task ${legacyVersion} migration: moves remember order, preserve data and s
     await call('/api/projects/2/tasks/1', 'PATCH', { priority: 'Low' });
     await call('/api/projects/2/tasks/1', 'PATCH', { due_date: '9999-12-31' });
     Object.assign(dated, { completed: false, priority: 'Low', due_date: '9999-12-31' });
+    dated.notes = 'Current notes\n\n 😀 <script>literal markup</script>  ';
+    assert.equal((await call('/api/projects/2/tasks/1', 'PATCH', { notes: dated.notes })).status, 200);
     await stop();
     await start();
     await move(2, 1, 1);

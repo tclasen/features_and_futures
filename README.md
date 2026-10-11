@@ -89,3 +89,11 @@ rows. Search also works in archived projects without enabling task edits.
 Opening either page starts with an empty search query; returning through
 Projects resets project search. Searches leave saved data and summary counts
 unchanged.
+
+Every task row provides Task notes and Save notes. Notes are optional multiline
+plain text: saving preserves spaces, line breaks, Unicode, and literal markup;
+saving empty text clears them. Notes persist through restarts, renames, moves,
+and return-order restoration. They do not participate in search or affect
+filters or completion summaries. Archived projects show notes with editing
+disabled; restoration enables editing again. Existing databases initialize
+only the new notes field to empty while retaining prior task data.

@@ -204,6 +204,28 @@ async function renderTasks(project) {
         finally { dueButton.disabled = Boolean(project.archived); }
       });
       row.append(dueForm);
+      const notesForm = element('form', '', { class: 'task-notes-form' });
+      const notesInput = element('textarea', '', { id: `task-notes-${task.id}`, rows: '4' });
+      notesInput.value = task.notes;
+      const notesButton = element('button', 'Save notes', { type: 'submit' });
+      notesInput.disabled = Boolean(project.archived);
+      notesButton.disabled = Boolean(project.archived);
+      notesForm.append(element('label', 'Task notes', { for: notesInput.id }), notesInput, notesButton);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        notesButton.disabled = true;
+        try {
+          Object.assign(task, await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          }));
+          showAlert('');
+          drawTasks();
+        } catch (error) { showAlert(error.message); }
+        finally { notesButton.disabled = Boolean(project.archived); }
+      });
+      row.append(notesForm);
       const moveForm = element('form', '', { class: 'task-move-form' });
       const destination = element('select', '', { id: `destination-project-${task.id}` });
       for (const target of destinations) {
