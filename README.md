@@ -56,6 +56,14 @@ preserve the saved date. Due dates persist without timezone conversion and leave
 other task data and filters unchanged. Archived projects disable due-date edits
 until restored.
 
+Each task row has a multiline Task notes field and Save notes button. Notes save
+as plain text, preserving whitespace, line breaks, Unicode, and literal markup.
+Empty text clears notes. Notes persist across restarts and travel with tasks
+through moves and remembered return positions. Saving notes retains all filters
+and search selections; searches still match only project names and task titles.
+Archived projects show saved notes with editing disabled until restored. Existing
+databases gain empty notes without changing other task data.
+
 Use Due from, Due through, and Apply due range to filter by inclusive calendar
 boundaries. Leave either boundary blank for no limit on that side. With both
 blank, all dates and undated tasks match; with either boundary set, undated tasks
@@ -109,4 +117,6 @@ task moves with first-arrival and remembered return ordering, migration of
 existing order, destination eligibility, filter retention and
 data preservation, project/task search matching and filter intersections, query
 retention through edits and errors, navigation resets, and persistence after
-server restarts.
+server restarts. Notes checks cover migration, exact text and safe rendering,
+filter retention, ownership protection, movement and return order, archival,
+restoration, clearing, and restart persistence.

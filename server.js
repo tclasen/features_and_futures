@@ -31,6 +31,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec(`BEGIN;
     ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
@@ -60,7 +63,7 @@ const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setDefaultTaskPriority = db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const listDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const rememberCreatedTask = db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
@@ -75,6 +78,7 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function transaction(action) {
   db.exec('BEGIN IMMEDIATE');
@@ -135,7 +139,8 @@ function page(title, content) {
     h2 { margin-top: 40px; font-size: 1.25rem; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
     .create { display: flex; gap: 12px; flex-wrap: wrap; }
-    input[type="text"], select { flex: 1; min-width: 180px; padding: 12px; border: 1px solid #8491a6; border-radius: 6px; font: inherit; }
+    input[type="text"], select, textarea { flex: 1; min-width: 180px; padding: 12px; border: 1px solid #8491a6; border-radius: 6px; font: inherit; }
+    textarea { width: 100%; resize: vertical; }
     .task-completion { display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 400; min-width: 0; }
     .task-completion input { width: 20px; height: 20px; flex-shrink: 0; }
     li .task-form { flex-shrink: 1; min-width: 0; }
@@ -363,6 +368,13 @@ function projectPage(project, filter = 'All', priority = 'All', error = '', rang
         <div class="create"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
       </form>
+      <form class="task-form" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+        ${filterFields}
+        <label for="task-notes-${task.id}">Task notes</label>
+        <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+      </form>
       <form class="task-form" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
         ${filterFields}
         <label for="destination-project-${task.id}">Destination project</label>
@@ -409,7 +421,7 @@ const server = http.createServer(async (request, response) => {
       }
       createProject.run(name);
       redirect(response, projectsLocation(projectFilter(form.get('filter')), readSearch(form)));
-    } else if (/^\/projects\/\d+(?:\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?|\/archive|\/restore|\/rename|\/default-priority|\/due-range)?$/.test(url.pathname)) {
+    } else if (/^\/projects\/\d+(?:\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|notes|move))?)?|\/archive|\/restore|\/rename|\/default-priority|\/due-range)?$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (!project) {
@@ -512,6 +524,8 @@ const server = http.createServer(async (request, response) => {
               return;
             }
             if (Number.isSafeInteger(taskId)) result = setTaskDueDate.run(dueDate, taskId, project.id);
+          } else if (parts[5] === 'notes') {
+            if (Number.isSafeInteger(taskId)) result = setTaskNotes.run(form.get('notes') || '', taskId, project.id);
           } else if (parts[5] === 'priority') {
             const taskPriority = form.get('priority');
             if (!taskPriorities.includes(taskPriority)) {
