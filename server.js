@@ -29,6 +29,19 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+
+function validDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 const escape = (value) => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[char]);
@@ -103,7 +116,7 @@ function projectLocation(id, filter, priority) {
 }
 
 function projectPage(res, project, filter = 'All', error = '', priority = 'All') {
-  const tasks = db.prepare(`SELECT id, title, completed, priority FROM tasks WHERE project_id = ?
+  const tasks = db.prepare(`SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ?
     ${filter === 'All' ? '' : 'AND completed = ?'}
     ${priority === 'All' ? '' : 'AND priority = ?'} ORDER BY id`)
     .all(project.id, ...(filter === 'All' ? [] : [filter === 'Completed' ? 1 : 0]),
@@ -159,7 +172,13 @@ ${['All', 'Low', 'Normal', 'High'].map(option => `<option${priority === option ?
 <label for="task-priority-${task.id}">Task priority</label>
 <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
 ${['Low', 'Normal', 'High'].map(option => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
-</select></form></div>`).join('')}
+</select></form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+<input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
+<label for="task-due-date-${task.id}">Task due date</label>
+<div class="create"><input id="task-due-date-${task.id}" name="due_date" type="text" value="${escape(task.due_date)}"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
+</form></div>`).join('')}
 ${tasks.length ? '' : '<p>No tasks to show.</p>'}</section>`));
 }
 
@@ -252,7 +271,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/(?:rename|priority))?)?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/(?:rename|priority|due-date))?)?$/.exec(url.pathname);
     if (req.method === 'POST' && taskMatch) {
       const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(taskMatch[1]);
       if (project) {
@@ -263,7 +282,19 @@ const server = http.createServer(async (req, res) => {
         const body = await formBody(req);
         const filter = taskFilter(body.get('filter'));
         const selectedPriority = priorityFilter(body.get('priorityFilter'));
-        if (taskMatch[3] === '/priority') {
+        if (taskMatch[3] === '/due-date') {
+          const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], project.id);
+          if (!task) {
+            sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+            return;
+          }
+          const dueDate = (body.get('due_date') || '').trim();
+          if (dueDate && !validDueDate(dueDate)) {
+            projectPage(res, project, filter, 'Due date must be a valid YYYY-MM-DD date', selectedPriority);
+            return;
+          }
+          db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate, task.id, project.id);
+        } else if (taskMatch[3] === '/priority') {
           const priority = body.get('priority');
           if (!['Low', 'Normal', 'High'].includes(priority)) {
             sendHtml(res, 400, page('Invalid priority', '<p role="alert">Invalid task priority</p>'));
