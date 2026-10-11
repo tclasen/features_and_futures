@@ -34,6 +34,7 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -104,6 +105,31 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && projectMatch) {
     const project = getProject.get(Number(projectMatch[1]));
     sendJson(response, project ? 200 : 404, project ?? { error: 'Project not found' });
+    return;
+  }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/name$/);
+  if (request.method === 'PATCH' && renameMatch) {
+    try {
+      const projectId = Number(renameMatch[1]);
+      const { name } = await readBody(request);
+      const project = getProject.get(projectId);
+      if (!project) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      if (typeof name !== 'string' || !name.trim()) {
+        sendJson(response, 400, { error: 'Project name is required' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+        return;
+      }
+      renameProject.run(name.trim(), projectId);
+      sendJson(response, 200, getProject.get(projectId));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
     return;
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);

@@ -6,6 +6,9 @@ const form = document.querySelector('#create-project-form');
 const nameInput = document.querySelector('#project-name');
 const alertMessage = document.querySelector('#form-alert');
 const detailTitle = document.querySelector('#detail-title');
+const renameForm = document.querySelector('#rename-project-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameAlert = document.querySelector('#rename-alert');
 const taskForm = document.querySelector('#create-task-form');
 const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
@@ -68,6 +71,10 @@ async function renderRoute() {
   activeProjectId = match[1];
   activeProjectArchived = Boolean(project.archived);
   detailTitle.textContent = project.name;
+  renameInput.value = '';
+  renameInput.disabled = activeProjectArchived;
+  renameForm.querySelector('button').disabled = activeProjectArchived;
+  renameAlert.hidden = true;
   archivedNotice.hidden = !activeProjectArchived;
   taskForm.querySelector('button').disabled = activeProjectArchived;
   listSection.hidden = true;
@@ -146,6 +153,28 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = renameInput.value.trim();
+  if (!name) {
+    renameAlert.textContent = 'Project name is required';
+    renameAlert.hidden = false;
+    return;
+  }
+  renameAlert.hidden = true;
+  try {
+    const project = await request(`/api/projects/${activeProjectId}/name`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    detailTitle.textContent = project.name;
+    renameInput.value = '';
+  } catch (error) {
+    renameAlert.textContent = error.message;
+    renameAlert.hidden = false;
+  }
+});
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const title = taskInput.value.trim();
