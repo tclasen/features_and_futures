@@ -219,15 +219,27 @@ export function createWorkboardServer(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
-  // IDs encode the original creation order. Moves need an independent position
-  // so a task can append to a new project while retaining its identity.
+  // Older databases ordered by ID; Task 011 used a current-position column.
+  // Retain that legacy column only to seed remembered positions below.
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
     database.exec(`BEGIN;
       ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
       UPDATE tasks SET position = id;
       COMMIT;`);
   }
-  database.exec('CREATE INDEX IF NOT EXISTS tasks_project_position ON tasks(project_id, position, id)');
+  // Remember positions even while tasks belong elsewhere. Seed the current
+  // order on upgrade; earlier project memberships cannot be reconstructed.
+  database.exec(`BEGIN;
+    CREATE TABLE IF NOT EXISTS task_project_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL,
+      PRIMARY KEY (task_id, project_id)
+    );
+    CREATE INDEX IF NOT EXISTS task_positions_project ON task_project_positions(project_id, position);
+    INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+      SELECT id, project_id, position FROM tasks;
+    COMMIT;`);
   const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
   const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -238,16 +250,43 @@ export function createWorkboardServer(databasePath) {
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date FROM tasks
-    WHERE project_id = ? AND (? IS NULL OR completed = ?)
+  const listTasks = database.prepare(`SELECT tasks.id, title, completed, priority, due_date FROM tasks
+    JOIN task_project_positions AS positions ON positions.task_id = tasks.id AND positions.project_id = tasks.project_id
+    WHERE tasks.project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?)
       AND (? = '' OR due_date >= ?)
-      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY position, id`);
-  const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-  const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
-    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-    WHERE id = ? AND project_id = ?`);
+      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY positions.position, tasks.id`);
+  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const rememberPosition = database.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?)
+    FROM tasks WHERE id = ? AND project_id = ?`);
+  const updateTaskProject = database.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?');
+
+  function transaction(operation) {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      database.exec('COMMIT');
+      return result;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  function createTask(projectId, title, priority) {
+    transaction(() => {
+      const result = insertTask.run(projectId, title, priority);
+      rememberPosition.run(projectId, projectId, result.lastInsertRowid, projectId);
+    });
+  }
+
+  function moveTask(taskId, sourceId, destinationId) {
+    return transaction(() => {
+      rememberPosition.run(destinationId, destinationId, taskId, sourceId);
+      return updateTaskProject.run(destinationId, taskId, sourceId);
+    });
+  }
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -347,7 +386,7 @@ export function createWorkboardServer(databasePath) {
                 if (!destination || destination.archived || destinationId === id) {
                   return send(400, renderProjectPage(project, filters, 'Destination project must be another active project'));
                 }
-                result = moveTask.run(destinationId, destinationId, taskId, id);
+                result = moveTask(taskId, id, destinationId);
               } else if (match[3] === 'rename') {
                 const title = (form.get('title') ?? '').trim();
                 if (!title) return send(400, renderProjectPage(project, filters, 'Task title is required'));
@@ -371,7 +410,7 @@ export function createWorkboardServer(databasePath) {
             } else {
               const title = (form.get('title') ?? '').trim();
               if (!title) return send(400, renderProjectPage(project, filters, 'Task title is required'));
-              insertTask.run(id, title, project.default_priority, id);
+              createTask(id, title, project.default_priority);
             }
             response.writeHead(303, { Location: projectPath(id, filters) });
             return response.end();

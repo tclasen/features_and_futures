@@ -68,8 +68,14 @@ are page state in the URL, preserved on reload; reopening from the project list
 starts with empty boundaries.
 Each task can move to another active project through Destination project and
 Move task. Destinations use current project names in project creation order.
-Moves retain task identity, title, completion, priority, and due date, appending
-at the destination without applying its default priority. The source stays open
+Moves retain task identity, title, completion, priority, and due date without
+applying the destination's default priority. First arrivals append after all
+positions established in that project, including positions of tasks currently
+elsewhere. Returning tasks regain their remembered position in that project;
+each project's positions are saved independently. The source stays open
 with all filters intact, and both summaries reflect current ownership. Ordering
 and ownership persist across restarts. Archived projects cannot send or receive
 tasks; move controls also disable when there are no eligible destinations.
+Upgrading preserves each project's current task order and starts remembering
+positions from that point onward. Historical memberships before the upgrade
+cannot be reconstructed.
