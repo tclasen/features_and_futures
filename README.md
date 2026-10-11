@@ -67,10 +67,14 @@ boundaries empty. Filters never change saved tasks or completion summaries.
 
 Each task row has Destination project and Move task controls. Destinations are
 other active projects, using their current names in project creation order.
-Moving appends the task to the destination and preserves its identity, title,
+Moving to a project for the first time appends the task after all positions
+already established there. Returning to a previous project restores the task's
+remembered position relative to that project's other tasks, even when multiple
+tasks return in a different order. Moves preserve the current identity, title,
 completion, priority, and due date. The source page stays open with its filters
 and applied range retained; both project summaries reflect the move. New tasks
-append after existing and moved tasks. Moves persist across restarts. Archived
+append after all established positions, including temporarily absent tasks.
+Remembered positions and moves persist across restarts. Archived
 projects cannot send or receive tasks. Move controls are disabled in archived
 projects and when no eligible destination exists.
 
@@ -88,5 +92,6 @@ priority defaults and independence, project default migration and inheritance,
 combined completion and priority filtering,
 due-date calendar validation and clearing, selection preservation through edits
 and validation, inclusive due-range intersections and invalid-range preservation,
-task moves with append ordering, destination eligibility, filter retention and
+task moves with first-arrival and remembered return ordering, migration of
+existing order, destination eligibility, filter retention and
 data preservation, and persistence after server restarts.
