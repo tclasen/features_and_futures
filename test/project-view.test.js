@@ -70,7 +70,7 @@ const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf
 const settled = () => new Promise(resolve => setImmediate(resolve));
 
 async function browser(storage, projects, pending = {}) {
-  const tasks = pending.tasks || [{ id: 1, title: 'Saved task', completed: true }];
+  const tasks = pending.tasks || [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];
   const app = new Element('main', true);
   const location = { pathname: '/' };
   const document = {
@@ -160,6 +160,8 @@ test('Archived filter survives reload and opening a read-only project then retur
   assert.equal(rows(app)[0].querySelector('input').disabled, true);
   assert.equal(rows(app)[0].querySelector('form').querySelector('input').disabled, true);
   assert.equal(rows(app)[0].querySelector('form').querySelector('button').disabled, true);
+  assert.equal(rows(app)[0].querySelector('select').disabled, true);
+  assert.equal(rows(app)[0].querySelector('select').value, 'Normal');
   await app.querySelector('#projects').emit('click');
   await settled();
   assert.equal(app.querySelector('select').value, 'Archived');
@@ -176,6 +178,8 @@ test('Archived filter survives reload and opening a read-only project then retur
   assert.equal(rows(app)[0].querySelector('input').checked, true);
   assert.equal(rows(app)[0].querySelector('form').querySelector('input').disabled, false);
   assert.equal(rows(app)[0].querySelector('form').querySelector('button').disabled, false);
+  assert.equal(rows(app)[0].querySelector('select').disabled, false);
+  assert.equal(rows(app)[0].querySelector('select').value, 'Normal');
   await app.querySelector('#projects').emit('click');
   await settled();
   assert.equal(app.querySelector('select').value, 'Active');
@@ -250,4 +254,59 @@ test('task rename validates, preserves ordering and filter membership, and updat
   assert.deepEqual(rows(app).map(row => row.children[0].textContent), ['Completed renamed', 'Open renamed']);
   assert.equal(rows(app)[0].querySelector('input').checked, true);
   assert.equal(rows(app)[1].querySelector('input').checked, false);
+});
+
+test('priority options persist through filtering, renaming, reload, and archive/restore', async () => {
+  const projects = [{ ...project(), total_count: 2 }];
+  const pending = { tasks: [
+    { id: 1, title: 'Completed task', completed: true, priority: 'Normal' },
+    { id: 2, title: 'Open task', completed: false, priority: 'Normal' },
+  ] };
+  const storage = new Map();
+  let app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  let priority = rows(app)[0].querySelector('select');
+  assert.equal(priority.attributes['aria-label'], 'Task priority');
+  assert.deepEqual(priority.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(priority.value, 'Normal');
+  priority.value = 'High';
+  await priority.emit('change');
+  assert.equal(rows(app)[0].querySelector('select').value, 'High');
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app)[1].querySelector('select').value, 'Normal');
+  await filter(app, 'Completed');
+  assert.equal(rows(app).length, 1);
+  assert.equal(rows(app)[0].querySelector('select').value, 'High');
+  const rename = rows(app)[0].querySelector('form');
+  rename.querySelector('input').value = 'Renamed completed task';
+  await rename.emit('submit');
+  assert.equal(rows(app)[0].querySelector('select').value, 'High');
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  await filter(app, 'Open');
+  priority = rows(app)[0].querySelector('select');
+  priority.value = 'Low';
+  await priority.emit('change');
+  assert.equal(rows(app).length, 1);
+  assert.equal(rows(app)[0].children[0].textContent, 'Open task');
+  assert.equal(rows(app)[0].querySelector('input').checked, false);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  assert.ok(control(rows(app)[0], '1/2 completed'));
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  for (const row of rows(app)) assert.equal(row.querySelector('select').disabled, true);
+  assert.deepEqual(rows(app).map(row => row.querySelector('select').value), ['High', 'Low']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent), ['Renamed completed task', 'Open task']);
+  assert.deepEqual(rows(app).map(row => row.querySelector('select').value), ['High', 'Low']);
+  for (const row of rows(app)) assert.equal(row.querySelector('select').disabled, false);
 });

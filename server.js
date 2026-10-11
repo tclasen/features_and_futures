@@ -23,6 +23,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 );
 CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id, id)`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const projectQuery = `SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total_count,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed_count
@@ -32,11 +35,12 @@ const getProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const projectValue = project => ({ ...project, archived: Boolean(project.archived) });
-const listTasks = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = db.prepare('SELECT id, project_id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const taskValue = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(join(root, 'public', 'index.html'))]],
@@ -120,6 +124,13 @@ const server = http.createServer(async (req, res) => {
         if (!getTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
         const input = await readInput(req);
         if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
+        if (input && Object.hasOwn(input, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(input.priority)) {
+            return json(res, 400, { error: 'Priority must be Low, Normal, or High' });
+          }
+          updatePriority.run(input.priority, projectId, taskId);
+          return json(res, 200, taskValue(getTask.get(projectId, taskId)));
+        }
         if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(res, 400, { error: 'Task title is required' });

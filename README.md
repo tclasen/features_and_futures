@@ -1,5 +1,10 @@
 # Workboard
 
+Each task has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Changes persist across reloads and
+server restarts, and preserve task titles, completion, ownership, order, and
+completion summaries. Archived projects disable priority edits until restored.
+
 Each task row provides New task title and Rename task. Titles are trimmed;
 blank titles show an alert. Renaming preserves the task's project, order and
 completion state, and persists across restarts. Archived projects disable task
@@ -46,3 +51,5 @@ It also checks rename validation, identity and task preservation, archived renam
 protection, and renaming again after restoration.
 Browser-script regression tests use a DOM adapter to check filter retention,
 archived-page controls, and switching filters during archive/restore requests.
+Priority checks cover option order, defaults, independent updates, validation,
+rename and filter preservation, migration, restart persistence, and archive/restore.
