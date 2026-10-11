@@ -21,8 +21,8 @@ export function openProjects(databasePath) {
   }
   const tasks = createTaskStore(database);
   const projectFields = `SELECT id, name, archived, default_task_priority,
-    (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total_count,
-    (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed_count
+    (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND deleted = 0) AS total_count,
+    (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND deleted = 0 AND completed = 1) AS completed_count
     FROM projects`;
   const list = database.prepare(`${projectFields} ORDER BY id`);
   const get = database.prepare(`${projectFields} WHERE id = ?`);

@@ -41,10 +41,10 @@ test('notes migration preserves all existing fields and remembered project posit
     }
     store = openProjects(path);
     const source = [
-      { id: 20, title: 'First  TITLE', completed: true, priority: 'High', due_date: '0004-02-29', notes: '' },
-      { id: 10, title: 'Second', completed: false, priority: 'Low', due_date: '', notes: '' },
+      { id: 20, title: 'First  TITLE', completed: true, priority: 'High', due_date: '0004-02-29', notes: '', deleted: false },
+      { id: 10, title: 'Second', completed: false, priority: 'Low', due_date: '', notes: '', deleted: false },
     ];
-    const elsewhere = { id: 30, title: 'Elsewhere', completed: true, priority: 'Normal', due_date: '9999-12-31', notes: '' };
+    const elsewhere = { id: 30, title: 'Elsewhere', completed: true, priority: 'Normal', due_date: '9999-12-31', notes: '', deleted: false };
     assert.deepEqual(store.tasks.list(1), source);
     assert.deepEqual(store.tasks.list(2), [elsewhere]);
     assert.deepEqual(store.list(), [
@@ -149,8 +149,8 @@ test('project default migration preserves Task 007 priorities, identities, and s
       { id: 10, name: 'Archived project', archived: true, default_task_priority: 'Normal', total_count: 1, completed_count: 1 },
     ];
     const tasks = [
-      { id: 30, title: 'High completed', completed: true, priority: 'High', due_date: '', notes: '' },
-      { id: 31, title: 'Low open', completed: false, priority: 'Low', due_date: '', notes: '' },
+      { id: 30, title: 'High completed', completed: true, priority: 'High', due_date: '', notes: '', deleted: false },
+      { id: 31, title: 'Low open', completed: false, priority: 'Low', due_date: '', notes: '', deleted: false },
     ];
     assert.deepEqual(store.list(), projects);
     assert.deepEqual(store.tasks.list(9), tasks);
@@ -163,7 +163,7 @@ test('project default migration preserves Task 007 priorities, identities, and s
     store = openProjects(path);
     assert.deepEqual(store.list(), projects);
     assert.deepEqual(store.tasks.list(9), tasks);
-    assert.deepEqual(store.tasks.list(10), [{ id: 32, title: 'Archived task', completed: true, priority: 'High', due_date: '', notes: '' }]);
+    assert.deepEqual(store.tasks.list(10), [{ id: 32, title: 'Archived task', completed: true, priority: 'High', due_date: '', notes: '', deleted: false }]);
   } finally {
     store?.close();
     await rm(directory, { recursive: true, force: true });
@@ -272,8 +272,8 @@ test('priority migration defaults legacy tasks to Normal and preserves saved dat
     }
     store = openProjects(path);
     const expectedTasks = [
-      { id: 21, title: 'Renamed completed task', completed: true, priority: 'Normal', due_date: '', notes: '' },
-      { id: 22, title: 'Open task', completed: false, priority: 'Normal', due_date: '', notes: '' },
+      { id: 21, title: 'Renamed completed task', completed: true, priority: 'Normal', due_date: '', notes: '', deleted: false },
+      { id: 22, title: 'Open task', completed: false, priority: 'Normal', due_date: '', notes: '', deleted: false },
     ];
     const expectedProject = { id: 7, name: 'Legacy project', archived: true, default_task_priority: 'Normal', total_count: 2, completed_count: 1 };
     assert.deepEqual(store.tasks.list(7), expectedTasks);

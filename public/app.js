@@ -88,6 +88,7 @@ async function renderTasks(project) {
         <option value="all">All</option>
         <option value="open">Open</option>
         <option value="completed">Completed</option>
+        <option value="deleted">Deleted</option>
       </select>
     </div>
     <div class="task-filter">
@@ -161,6 +162,7 @@ async function renderTasks(project) {
   function displayTasks() {
     list.replaceChildren();
     for (const task of filterTasks(tasks, filter.value, priorityFilter.value, dueRange, searchQuery)) {
+      const cannotEdit = project.archived || task.deleted;
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
       row.className = 'task-row';
@@ -169,7 +171,7 @@ async function renderTasks(project) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
-      checkbox.disabled = project.archived;
+      checkbox.disabled = cannotEdit;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -186,7 +188,7 @@ async function renderTasks(project) {
           checkbox.checked = task.completed;
           showError(alert, error.message);
         } finally {
-          checkbox.disabled = project.archived;
+          checkbox.disabled = cannotEdit;
         }
       });
       const renameForm = document.createElement('form');
@@ -199,18 +201,18 @@ async function renderTasks(project) {
       renameInput.type = 'text';
       renameInput.autocomplete = 'off';
       renameInput.value = task.title;
-      renameInput.disabled = project.archived;
+      renameInput.disabled = cannotEdit;
       const renameButton = document.createElement('button');
       renameButton.type = 'submit';
       renameButton.textContent = 'Rename task';
-      renameButton.disabled = project.archived;
+      renameButton.disabled = cannotEdit;
       const renameControls = document.createElement('div');
       renameControls.className = 'create-controls';
       renameControls.append(renameInput, renameButton);
       renameForm.append(renameLabel, renameControls);
       renameForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        if (project.archived) return;
+        if (cannotEdit) return;
         alert.hidden = true;
         if (!renameInput.value.trim()) {
           showError(alert, 'Task title is required');
@@ -228,7 +230,7 @@ async function renderTasks(project) {
         } catch (error) {
           showError(alert, error.message);
         } finally {
-          renameButton.disabled = project.archived;
+          renameButton.disabled = cannotEdit;
         }
       });
       const priorityControls = document.createElement('div');
@@ -244,7 +246,7 @@ async function renderTasks(project) {
         prioritySelect.append(option);
       }
       prioritySelect.value = task.priority;
-      prioritySelect.disabled = project.archived;
+      prioritySelect.disabled = cannotEdit;
       prioritySelect.addEventListener('change', async () => {
         prioritySelect.disabled = true;
         alert.hidden = true;
@@ -260,7 +262,7 @@ async function renderTasks(project) {
           prioritySelect.value = task.priority;
           showError(alert, error.message);
         } finally {
-          prioritySelect.disabled = project.archived;
+          prioritySelect.disabled = cannotEdit;
         }
       });
       priorityControls.append(priorityLabel, prioritySelect);
@@ -274,18 +276,18 @@ async function renderTasks(project) {
       dueDateInput.type = 'text';
       dueDateInput.placeholder = 'YYYY-MM-DD';
       dueDateInput.value = task.due_date;
-      dueDateInput.disabled = project.archived;
+      dueDateInput.disabled = cannotEdit;
       const dueDateButton = document.createElement('button');
       dueDateButton.type = 'submit';
       dueDateButton.textContent = 'Save due date';
-      dueDateButton.disabled = project.archived;
+      dueDateButton.disabled = cannotEdit;
       const dueDateControls = document.createElement('div');
       dueDateControls.className = 'create-controls';
       dueDateControls.append(dueDateInput, dueDateButton);
       dueDateForm.append(dueDateLabel, dueDateControls);
       dueDateForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        if (project.archived) return;
+        if (cannotEdit) return;
         alert.hidden = true;
         dueDateButton.disabled = true;
         try {
@@ -299,7 +301,7 @@ async function renderTasks(project) {
         } catch (error) {
           showError(alert, error.message);
         } finally {
-          dueDateButton.disabled = project.archived;
+          dueDateButton.disabled = cannotEdit;
         }
       });
       const notesForm = document.createElement('form');
@@ -311,15 +313,15 @@ async function renderTasks(project) {
       notesInput.id = notesLabel.htmlFor;
       notesInput.rows = 4;
       notesInput.value = task.notes;
-      notesInput.disabled = project.archived;
+      notesInput.disabled = cannotEdit;
       const notesButton = document.createElement('button');
       notesButton.type = 'submit';
       notesButton.textContent = 'Save notes';
-      notesButton.disabled = project.archived;
+      notesButton.disabled = cannotEdit;
       notesForm.append(notesLabel, notesInput, notesButton);
       notesForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        if (project.archived) return;
+        if (cannotEdit) return;
         alert.hidden = true;
         notesButton.disabled = true;
         try {
@@ -333,7 +335,7 @@ async function renderTasks(project) {
         } catch (error) {
           showError(alert, error.message);
         } finally {
-          notesButton.disabled = project.archived;
+          notesButton.disabled = cannotEdit;
         }
       });
       const moveForm = document.createElement('form');
@@ -349,7 +351,7 @@ async function renderTasks(project) {
         option.textContent = destination.name;
         destinationSelect.append(option);
       }
-      const cannotMove = project.archived || destinations.length === 0;
+      const cannotMove = cannotEdit || destinations.length === 0;
       destinationSelect.disabled = cannotMove;
       const moveButton = document.createElement('button');
       moveButton.type = 'submit';
@@ -380,7 +382,28 @@ async function renderTasks(project) {
           destinationSelect.disabled = cannotMove;
         }
       });
-      row.append(title, checkbox, priorityControls, renameForm, dueDateForm, notesForm, moveForm);
+      const deletionButton = document.createElement('button');
+      deletionButton.type = 'button';
+      deletionButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+      deletionButton.disabled = project.archived;
+      deletionButton.addEventListener('click', async () => {
+        if (project.archived) return;
+        alert.hidden = true;
+        deletionButton.disabled = true;
+        try {
+          Object.assign(task, await request(`${endpoint}/${task.id}/deleted`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deleted: !task.deleted }),
+          }));
+          displayTasks();
+        } catch (error) {
+          showError(alert, error.message);
+        } finally {
+          deletionButton.disabled = project.archived;
+        }
+      });
+      row.append(title, checkbox, priorityControls, renameForm, dueDateForm, notesForm, moveForm, deletionButton);
       list.append(row);
     }
   }

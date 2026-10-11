@@ -52,7 +52,7 @@ const server = createServer(async (request, response) => {
       }
       return json(response, 201, projects.create(body.name));
     }
-    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/(?:title|priority|due-date|notes|move))?)?$/);
+    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/(?:title|priority|due-date|notes|move|deleted))?)?$/);
     if (tasksMatch) {
       const [, projectId, taskId, fieldPath] = tasksMatch;
       const project = projects.get(projectId);
@@ -72,6 +72,10 @@ const server = createServer(async (request, response) => {
       }
       if (taskId && request.method === 'PATCH') {
         const body = await readJson(request);
+        if (fieldPath === '/deleted') {
+          const task = projects.tasks.setDeleted(projectId, taskId, body?.deleted);
+          return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
+        }
         if (fieldPath === '/move') {
           return json(response, 200, projects.tasks.move(projectId, taskId, body?.destination_project_id));
         }

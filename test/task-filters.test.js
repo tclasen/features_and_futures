@@ -60,6 +60,26 @@ const datedTasks = tasks.map((task, index) => ({
   due_date: ['', '0001-01-01', '2024-02-29', '2024-02-29', '2025-01-01', '9999-12-31'][index],
 }));
 
+test('Deleted intersects priority, range, and title search while live filters exclude deleted tasks', () => {
+  const saved = datedTasks.map((task) => ({ ...task, deleted: task.id % 2 === 0, notes: 'Not a title match' }));
+  const original = structuredClone(saved);
+  const ids = (completion, priority = 'all', range, query) => filterTasks(saved, completion, priority, range, query).map((task) => task.id);
+  assert.deepEqual(ids('all'), [1, 3, 5]);
+  assert.deepEqual(ids('open'), [1, 3, 5]);
+  assert.deepEqual(ids('completed'), []);
+  assert.deepEqual(ids('deleted'), [2, 4, 6]);
+  assert.deepEqual(ids('deleted', 'High'), [4]);
+  assert.deepEqual(ids('deleted', 'Normal'), [6]);
+  assert.deepEqual(ids('deleted', 'all', normalizeDueRange('', '2024-02-29')), [2, 4]);
+  const range = normalizeDueRange('2024-02-29', '2024-02-29');
+  assert.deepEqual(ids('deleted', 'High', range, 'four'), [4]);
+  assert.deepEqual(ids('deleted', 'High', range, 'not a title match'), []);
+  assert.deepEqual(saved, original);
+  saved[3].deleted = false;
+  assert.deepEqual(ids('deleted', 'High', range, 'four'), []);
+  assert.deepEqual(ids('completed', 'High', range, 'four'), [4]);
+});
+
 test('inclusive and unbounded ranges intersect every completion and priority combination', () => {
   const original = structuredClone(datedTasks);
   const ranges = [

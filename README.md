@@ -6,7 +6,7 @@ Requires Node.js 22.22.1. No package installation is needed.
 npm start
 ```
 
-The server binds to `0.0.0.0` on `PORT` (default `8080`). Set `DB_PATH` to the SQLite file to use (default `./data/workboard.sqlite`). Its parent directory is created automatically. Keep this file across server restarts to preserve projects, tasks, completion state, priorities, due dates, notes, project defaults, and archive state. Existing databases are migrated automatically.
+The server binds to `0.0.0.0` on `PORT` (default `8080`). Set `DB_PATH` to the SQLite file to use (default `./data/workboard.sqlite`). Its parent directory is created automatically. Keep this file across server restarts to preserve projects, tasks, completion state, priorities, due dates, notes, project defaults, deletion state, and archive state. Existing databases are migrated automatically.
 
 ```sh
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
@@ -15,11 +15,11 @@ npm test
 
 `GET /health` returns `{"status":"ok"}`. The browser provides project creation at `/` and individual project pages at `/projects/<id>`.
 
-Project pages support task creation, saved completion checkboxes, and All/Open/Completed filters. Tasks belong only to their project; filters default to All on each page load.
+Project pages support task creation, saved completion checkboxes, and All/Open/Completed/Deleted filters. Tasks belong only to their project; filters default to All on each page load.
 
 The Priority filter offers All, Low, Normal, and High. Tasks must match both filters and stay in creation order. Each filter keeps its selection when the other changes or a task is edited. Completion and priority edits immediately update matching rows. Both filters work in archived projects; filtering never changes saved data or completion summaries.
 
-The project list defaults to Active and can show Archived projects. Archive and restore preserve all tasks. Archived project pages allow viewing and filtering tasks while task creation and completion controls are disabled; the server also rejects these changes. Each project row shows completed/total counts across all its tasks.
+The project list defaults to Active and can show Archived projects. Archive and restore preserve all tasks. Archived project pages allow viewing and filtering tasks while task creation and completion controls are disabled; the server also rejects these changes. Each project row shows completed/total counts across all its live tasks.
 
 Active project pages allow renaming with a trimmed, nonempty name. Names persist without changing project URLs, list order, tasks, or summaries. Archived projects cannot be renamed until restored; both the browser controls and server enforce this restriction.
 
@@ -38,3 +38,5 @@ Each task row provides Destination project and Move task. Destinations are other
 Project search and Search projects apply a substring query alongside the Active/Archived filter. Task search and Search tasks intersect completion, priority, and the applied due range. Queries trim surrounding whitespace and ignore ASCII letter case. For matching only, runs of ASCII spaces and horizontal tabs in both queries and saved names/titles become one space; other internal whitespace and non-ASCII case remain significant. Original saved names and titles retain their spacing and case for display and persistence. Search affects visibility only, preserving saved data, summaries, and order. Edits immediately re-evaluate the applied query without resetting other filters; archived pages still allow searching. Each page opening starts with an empty query, including returning through Projects.
 
 Each task row provides a multiline Task notes textarea and Save notes. Notes start empty and save as plain text without trimming, including whitespace, line breaks, Unicode, and literal markup. Empty text clears notes. Notes persist through restarts, edits, moves, and return-order restoration without changing other task data, summaries, or applied filters. Search continues to match only names and titles. Archived projects display saved notes with both notes controls disabled and reject notes updates until restored. Database upgrades initialize only the new notes field as empty.
+
+Live task rows provide Delete task. Deletion preserves every saved field, ownership, and remembered position while excluding the task from All/Open/Completed and project summaries. The Deleted filter intersects priority, due range, and title search; deleted rows show disabled editing and move controls. Restore task in an active project returns the task to its reserved position without changing fields or resetting filters. Archived projects allow reading deleted tasks but disable deletion and restoration. Deletion persists across restarts; upgrades initialize existing tasks as live.

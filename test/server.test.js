@@ -539,6 +539,63 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     await start();
     assert.deepEqual(await listTasks(first.id), [{ ...renamedWithNotes, notes: '' }, ...notesBefore.slice(1)]);
     assert.deepEqual(await getProject(first.id), summaryBeforeNotes);
+
+    async function setDeleted(projectId, taskId, deleted) {
+      return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}/deleted`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleted }),
+      });
+    }
+    const beforeDeletion = await listTasks(first.id);
+    const deletedTask = { ...beforeDeletion[0], deleted: true };
+    const deleteResponse = await setDeleted(first.id, deletedTask.id, true);
+    assert.equal(deleteResponse.status, 200);
+    assert.deepEqual(await deleteResponse.json(), deletedTask);
+    assert.deepEqual(await listTasks(first.id), [deletedTask, ...beforeDeletion.slice(1)]);
+    assert.deepEqual(await getProject(first.id), {
+      ...summaryBeforeNotes,
+      total_count: summaryBeforeNotes.total_count - 1,
+      completed_count: summaryBeforeNotes.completed_count - Number(deletedTask.completed),
+    });
+    for (const response of [
+      await setCompleted(first.id, deletedTask.id, false),
+      await renameTask(first.id, deletedTask.id, 'Blocked rename'),
+      await setPriority(first.id, deletedTask.id, 'Low'),
+      await setDueDate(first.id, deletedTask.id, ''),
+      await setNotes(first.id, deletedTask.id, 'Blocked notes'),
+      await moveTask(first.id, deletedTask.id, second.id),
+    ]) {
+      assert.equal(response.status, 409);
+      assert.deepEqual(await response.json(), { error: 'Deleted task must be restored before editing' });
+    }
+    for (const invalid of [null, 0, 'true', {}, []]) {
+      assert.equal((await setDeleted(first.id, deletedTask.id, invalid)).status, 400);
+    }
+    assert.equal((await setDeleted(second.id, deletedTask.id, false)).status, 404);
+    assert.equal((await setDeleted(first.id, 999999, true)).status, 404);
+    assert.equal((await setDeleted(999999, deletedTask.id, true)).status, 404);
+    await setArchived(first.id, true);
+    assert.equal((await setDeleted(first.id, deletedTask.id, false)).status, 409);
+    assert.equal((await setDeleted(first.id, beforeDeletion[1].id, true)).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(first.id), [deletedTask, ...beforeDeletion.slice(1)]);
+    await setArchived(first.id, false);
+    const createdWhileDeleted = await (await createTask(first.id, 'Created after deletion')).json();
+    const restoreResponse = await setDeleted(first.id, deletedTask.id, false);
+    assert.equal(restoreResponse.status, 200);
+    assert.deepEqual(await restoreResponse.json(), beforeDeletion[0]);
+    assert.deepEqual(await listTasks(first.id), [...beforeDeletion, createdWhileDeleted]);
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(first.id), [...beforeDeletion, createdWhileDeleted]);
+    assert.equal((await getProject(first.id)).total_count, summaryBeforeNotes.total_count + 1);
+    assert.equal((await getProject(first.id)).completed_count, summaryBeforeNotes.completed_count);
+    // A restored task can move again using its earlier reserved return position.
+    await moveTask(first.id, deletedTask.id, second.id);
+    await moveTask(second.id, deletedTask.id, first.id);
+    assert.deepEqual(await listTasks(first.id), [...beforeDeletion, createdWhileDeleted]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

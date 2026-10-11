@@ -17,9 +17,13 @@ export function normalizeDueRange(from, through) {
 // Filtering only changes visibility; saved tasks retain their original order and data.
 export function filterTasks(tasks, completionFilter, priorityFilter, dueRange = { from: '', through: '' }, query = '') {
   return tasks.filter((task) => {
-    const matchesCompletion = completionFilter === 'all'
-      || (completionFilter === 'completed' && task.completed)
-      || (completionFilter === 'open' && !task.completed);
+    const matchesCompletion = completionFilter === 'deleted'
+      ? Boolean(task.deleted)
+      : !task.deleted && (
+        completionFilter === 'all'
+        || (completionFilter === 'completed' && task.completed)
+        || (completionFilter === 'open' && !task.completed)
+      );
     const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
     // Canonical YYYY-MM-DD strings sort in calendar order across years 0001–9999.
     const matchesDueRange = (!dueRange.from && !dueRange.through)
