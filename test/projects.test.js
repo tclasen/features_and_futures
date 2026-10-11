@@ -61,7 +61,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     }
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [existing]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/1/tasks`)).json(), [
-      { id: 1, title: 'Existing task', completed: true, priority: 'Normal' },
+      { id: 1, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
     ]);
     const firstResponse = await create('  First project  ');
     assert.equal(firstResponse.status, 201);
@@ -97,6 +97,9 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     const setPriority = (project, task, priority) => fetch(`${tasksUrl(project)}/${task.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
     });
+    const setDueDate = (project, task, due_date) => fetch(`${tasksUrl(project)}/${task.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date }),
+    });
     for (const title of ['', ' \n\t ']) {
       const invalid = await createTask(first, title);
       assert.equal(invalid.status, 400);
@@ -109,6 +112,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
     assert.equal(firstTask.priority, 'Normal');
+    assert.equal(firstTask.due_date, '');
     const secondTask = await (await createTask(first, 'Second task')).json();
     assert.equal(secondTask.priority, 'Normal');
     assert.ok(secondTask.id > firstTask.id);
@@ -157,6 +161,29 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     }
     assert.equal((await setPriority(first, secondTask, 'Low')).status, 200);
     secondTask.priority = 'Low';
+    for (const date of ['0001-01-01', '0096-02-29', '2000-02-29', '2024-02-29', '9999-12-31', '  2026-10-11 \n ']) {
+      const response = await setDueDate(first, firstTask, date);
+      assert.equal(response.status, 200, date);
+      firstTask.due_date = date.trim();
+      assert.deepEqual(await response.json(), { ...firstTask, completed: true });
+      assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
+      assert.deepEqual(await listTasks(second), [foreignTask]);
+      assert.deepEqual(await projectData(first), { ...first, total: 2, completed: 1 });
+    }
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01', '24-01-01', '2024-01-01T00:00:00Z', 'hello', null, 20240101]) {
+      const response = await setDueDate(first, firstTask, date);
+      assert.equal(response.status, 400, String(date));
+      assert.equal((await response.json()).error, 'Due date must be a valid YYYY-MM-DD date');
+      assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
+    }
+    assert.equal((await setDueDate(second, firstTask, '2024-01-01')).status, 404);
+    assert.equal((await setDueDate(first, { id: 999999 }, '')).status, 404);
+    for (const date of ['2024-12-31', '', '2024-12-31', ' \n\t ']) {
+      const response = await setDueDate(first, secondTask, date);
+      assert.equal(response.status, 200);
+      secondTask.due_date = date.trim();
+      assert.deepEqual(await response.json(), secondTask);
+    }
     for (const title of ['', ' \n\t ', null, 42]) {
       const invalid = await renameTask(first, firstTask, title);
       assert.equal(invalid.status, 400);
@@ -210,6 +237,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.equal((await createTask(first, 'Cannot create')).status, 409);
     assert.equal((await complete(first, firstTask, false)).status, 409);
     assert.equal((await setPriority(first, firstTask, 'Low')).status, 409);
+    assert.equal((await setDueDate(first, firstTask, '')).status, 409);
     const archivedTaskRename = await renameTask(first, firstTask, 'Cannot rename task');
     assert.equal(archivedTaskRename.status, 409);
     assert.equal((await archivedTaskRename.json()).error, 'Archived project');
@@ -226,8 +254,13 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.equal((await rename(first, 'Still archived')).status, 409);
     assert.equal((await renameTask(first, secondTask, 'Still archived')).status, 409);
     assert.equal((await setPriority(first, secondTask, 'High')).status, 409);
+    assert.equal((await setDueDate(first, firstTask, '2024-01-01')).status, 409);
     Object.assign(first, { archived: 0 });
     assert.deepEqual(await (await archive(first, false)).json(), first);
+    const restoredDate = await setDueDate(first, secondTask, ' 0004-02-29 ');
+    assert.equal(restoredDate.status, 200);
+    secondTask.due_date = '0004-02-29';
+    assert.deepEqual(await restoredDate.json(), secondTask);
     const restoredPriority = await setPriority(first, secondTask, 'High');
     assert.equal(restoredPriority.status, 200);
     secondTask.priority = 'High';

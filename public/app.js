@@ -133,6 +133,30 @@ async function renderTasks(project) {
         finally { renameButton.disabled = Boolean(project.archived); }
       });
       row.append(renameForm);
+      const dueForm = element('form', '', { class: 'task-due-form' });
+      const dueInput = element('input', '', { id: `task-due-date-${task.id}`, type: 'text', autocomplete: 'off' });
+      dueInput.value = task.due_date;
+      const dueButton = element('button', 'Save due date', { type: 'submit' });
+      dueInput.disabled = Boolean(project.archived);
+      dueButton.disabled = Boolean(project.archived);
+      const dueControls = element('div', '', { class: 'controls' });
+      dueControls.append(dueInput, dueButton);
+      dueForm.append(element('label', 'Task due date', { for: dueInput.id }), dueControls);
+      dueForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        dueButton.disabled = true;
+        try {
+          Object.assign(task, await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueInput.value.trim() }),
+          }));
+          dueInput.value = task.due_date;
+          showAlert('');
+        } catch (error) { showAlert(error.message); }
+        finally { dueButton.disabled = Boolean(project.archived); }
+      });
+      row.append(dueForm);
       list.append(row);
     }
   }

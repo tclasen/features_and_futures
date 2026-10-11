@@ -48,4 +48,11 @@ options, initially Normal. Changes apply only to subsequently created tasks in
 that project and preserve both task filters. Defaults persist across restarts,
 renaming, archival, and restoration; archived projects disable the selector.
 
-Run the integration checks with `npm test`.
+Each task has an optional Task due date textbox and Save due date button. Dates
+must be real Gregorian calendar dates in YYYY-MM-DD format, with years 0001
+through 9999. Surrounding whitespace is trimmed, and an empty value clears the
+date. Invalid values show an alert and leave the saved date unchanged. Dates
+persist across restarts and renaming without changing task filters or other
+task data. Archived projects disable both due-date controls until restored.
+
+Run the integration and UI checks with `npm test`.

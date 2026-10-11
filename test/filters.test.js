@@ -37,8 +37,8 @@ class Node {
 async function projectPage(archived = false, defaultPriority = 'Normal') {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
-    { id: index * 2 + 1, title: `${priority} open`, priority, completed: false },
-    { id: index * 2 + 2, title: `${priority} completed`, priority, completed: true },
+    { id: index * 2 + 1, title: `${priority} open`, priority, completed: false, due_date: '' },
+    { id: index * 2 + 2, title: `${priority} completed`, priority, completed: true, due_date: '2026-10-11' },
   ]);
   const mutations = [];
   const project = { id: 1, name: 'Example', archived: Number(archived), default_priority: defaultPriority, total: 6, completed: 3 };
@@ -56,12 +56,15 @@ async function projectPage(archived = false, defaultPriority = 'Normal') {
         assert.equal(archived, false);
         const task = path === '/api/projects/1' ? project : tasks.find(task => task.id === Number(path.split('/').at(-1)));
         const changes = JSON.parse(options.body);
+        if (changes.due_date === 'invalid date') {
+          return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+        }
         mutations.push(changes);
         Object.assign(task, changes);
         data = task;
       } else if (options?.method === 'POST') {
         assert.equal(archived, false);
-        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: project.default_priority };
+        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: project.default_priority, due_date: '' };
         tasks.push(data);
       } else if (path.endsWith('/tasks')) {
         data = tasks;
@@ -114,6 +117,10 @@ test('both task filters intersect in creation order and remain independent on ac
           const rename = row.find(node => node.tag === 'form');
           assert.equal(rename.find(node => node.tag === 'input').disabled, archived);
           assert.equal(rename.find(node => node.tag === 'button').disabled, archived);
+          const dueInput = row.find(node => node.id?.startsWith('task-due-date-'));
+          assert.equal(dueInput.disabled, archived);
+          assert.equal(dueInput.value, page.tasks.find(task => `task-due-date-${task.id}` === dueInput.id).due_date);
+          assert.equal(row.find(node => node.textContent === 'Save due date').disabled, archived);
         }
       }
       assert.equal(page.byId('priority-filter').value, 'High');
@@ -197,4 +204,41 @@ test('default changes preserve both filters and existing tasks, and new tasks in
   const archived = await projectPage(true, 'High');
   assert.equal(archived.byId('default-task-priority').disabled, true);
   assert.equal(archived.byId('default-task-priority').value, 'High');
+});
+
+test('due-date saves, errors, clearing, and renaming preserve both filters and task data', async () => {
+  const page = await projectPage();
+  await page.change('task-filter', 'Completed');
+  await page.change('priority-filter', 'High');
+  const original = structuredClone(page.tasks);
+  const input = page.byId('task-due-date-6');
+  assert.equal(input.attributes.type, 'text');
+  assert.equal(page.app.find(node => node.attributes.for === input.id).textContent, 'Task due date');
+  assert.equal(input.value, '2026-10-11');
+  const form = page.rows()[0].find(node => node.attributes.class === 'task-due-form');
+  input.value = '  0001-01-01  ';
+  await form.fire('submit');
+  assert.equal(input.value, '0001-01-01');
+  original[5].due_date = '0001-01-01';
+  assert.deepEqual(page.tasks, original);
+  input.value = 'invalid date';
+  await form.fire('submit');
+  assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.deepEqual(page.tasks, original);
+  assert.equal(page.rows()[0].find(node => node.textContent === 'Save due date').disabled, false);
+  page.byId('new-task-title-6').value = 'Renamed dated task';
+  await page.rows()[0].find(node => node.attributes.class === 'task-rename-form').fire('submit');
+  assert.equal(page.byId('task-due-date-6').value, '0001-01-01');
+  original[5].title = 'Renamed dated task';
+  assert.deepEqual(page.tasks, original);
+  page.byId('task-due-date-6').value = ' \n\t ';
+  await page.rows()[0].find(node => node.attributes.class === 'task-due-form').fire('submit');
+  assert.equal(page.byId('task-due-date-6').value, '');
+  original[5].due_date = '';
+  assert.deepEqual(page.tasks, original);
+  assert.equal(page.byId('task-filter').value, 'Completed');
+  assert.equal(page.byId('priority-filter').value, 'High');
+  assert.deepEqual(page.titles(), ['Renamed dated task']);
+  assert.equal(page.project.total, 6);
+  assert.equal(page.project.completed, 3);
 });
