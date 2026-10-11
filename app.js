@@ -148,6 +148,7 @@ async function loadTasks(projectId, archived = false) {
   const destinations = destinationResponse.ok ? await destinationResponse.json() : [];
   taskContainer.replaceChildren();
   for (const task of tasks) {
+    if (taskFilter.value === 'deleted' ? !task.deleted : task.deleted) continue;
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
     if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
@@ -164,11 +165,11 @@ async function loadTasks(projectId, archived = false) {
     renameInput.type = 'text';
     renameInput.value = task.title;
     renameInput.setAttribute('aria-label', 'New task title');
-    renameInput.disabled = archived;
+    renameInput.disabled = archived || Boolean(task.deleted);
     const renameButton = document.createElement('button');
     renameButton.type = 'button';
     renameButton.textContent = 'Rename task';
-    renameButton.disabled = archived;
+    renameButton.disabled = archived || Boolean(task.deleted);
     renameButton.addEventListener('click', async () => {
       const newTitle = renameInput.value.trim();
       if (!newTitle) {
@@ -195,7 +196,7 @@ async function loadTasks(projectId, archived = false) {
       priority.append(option);
     }
     priority.value = task.priority || 'Normal';
-    priority.disabled = archived;
+    priority.disabled = archived || Boolean(task.deleted);
     priority.addEventListener('change', async () => {
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
@@ -207,11 +208,11 @@ async function loadTasks(projectId, archived = false) {
     dueDate.type = 'text';
     dueDate.value = task.dueDate || '';
     dueDate.setAttribute('aria-label', 'Task due date');
-    dueDate.disabled = archived;
+    dueDate.disabled = archived || Boolean(task.deleted);
     const saveDueDate = document.createElement('button');
     saveDueDate.type = 'button';
     saveDueDate.textContent = 'Save due date';
-    saveDueDate.disabled = archived;
+    saveDueDate.disabled = archived || Boolean(task.deleted);
     saveDueDate.addEventListener('click', async () => {
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
@@ -231,11 +232,11 @@ async function loadTasks(projectId, archived = false) {
     const notes = document.createElement('textarea');
     notes.value = task.notes || '';
     notes.setAttribute('aria-label', 'Task notes');
-    notes.disabled = archived;
+    notes.disabled = archived || Boolean(task.deleted);
     const saveNotes = document.createElement('button');
     saveNotes.type = 'button';
     saveNotes.textContent = 'Save notes';
-    saveNotes.disabled = archived;
+    saveNotes.disabled = archived || Boolean(task.deleted);
     saveNotes.addEventListener('click', async () => {
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
@@ -255,7 +256,7 @@ async function loadTasks(projectId, archived = false) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(task.completed);
-    checkbox.disabled = archived;
+    checkbox.disabled = archived || Boolean(task.deleted);
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await fetch(`/api/tasks/${task.id}`, {
@@ -274,11 +275,11 @@ async function loadTasks(projectId, archived = false) {
       option.textContent = item.name;
       destination.append(option);
     }
-    destination.disabled = archived || eligible.length === 0;
+    destination.disabled = archived || Boolean(task.deleted) || eligible.length === 0;
     const move = document.createElement('button');
     move.type = 'button';
     move.textContent = 'Move task';
-    move.disabled = archived || eligible.length === 0;
+    move.disabled = archived || Boolean(task.deleted) || eligible.length === 0;
     move.addEventListener('click', async () => {
       const moved = await fetch(`/api/tasks/${task.id}/move`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -286,7 +287,18 @@ async function loadTasks(projectId, archived = false) {
       });
       if (moved.ok) await loadTasks(projectId, archived);
     });
-    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, move, label);
+    const deleteRestore = document.createElement('button');
+    deleteRestore.type = 'button';
+    deleteRestore.textContent = task.deleted ? 'Restore task' : 'Delete task';
+    deleteRestore.disabled = archived;
+    deleteRestore.addEventListener('click', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ deleted: !task.deleted }),
+      });
+      if (response.ok) await loadTasks(projectId, archived);
+    });
+    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, move, label, deleteRestore);
     taskContainer.append(row);
   }
 }
