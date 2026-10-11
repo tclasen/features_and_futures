@@ -25,6 +25,7 @@
     .task-row input { flex: none; width: 18px; height: 18px; }
     .task-row .task-name { min-width: 80px; flex: 1; overflow-wrap: anywhere; }
     .task-row input[type="text"] { width: 130px; padding: 8px 10px; }
+    .task-row textarea { min-width: 120px; flex: 1; min-height: 64px; padding: 8px 10px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; }
     .task-row select { padding: 8px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
     .task-row button { padding: 8px 10px; }
     #project-view form { margin-top: 22px; }
@@ -158,7 +159,7 @@
             (selectedPriority === 'All' || task.priority === selectedPriority) &&
             normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskSearch)) &&
             (!hasDueRange || (task.due_date && (!appliedDueFrom || task.due_date >= appliedDueFrom) && (!appliedDueThrough || task.due_date <= appliedDueThrough))));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button></div>`).join('');
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><textarea data-task-notes-id="${task.id}" aria-label="Task notes" ${project.archived ? 'disabled' : ''}>${escapeText(task.notes || '')}</textarea><button type="button" data-save-notes-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save notes</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button></div>`).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -237,6 +238,26 @@
           renderTasks();
         });
         list.addEventListener('click', async (event) => {
+          const notesButton = event.target.closest('button[data-save-notes-task-id]');
+          if (notesButton) {
+            const taskId = Number(notesButton.dataset.saveNotesTaskId);
+            const textarea = list.querySelector(`textarea[data-task-notes-id="${taskId}"]`);
+            const result = await fetch(`/api/tasks/${taskId}/notes`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ notes: textarea.value })
+            });
+            const message = app.querySelector('#task-message');
+            if (!result.ok) {
+              message.textContent = (await result.json()).error || 'Could not save notes';
+              return;
+            }
+            const saved = await result.json();
+            const task = tasks.find((item) => item.id === taskId);
+            if (task) task.notes = saved.notes;
+            message.textContent = '';
+            renderTasks();
+            return;
+          }
           const moveButton = event.target.closest('button[data-move-task-id]');
           if (moveButton) {
             const taskId = Number(moveButton.dataset.moveTaskId);

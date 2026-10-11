@@ -41,6 +41,9 @@ if (!taskColumns.some((column) => column.name === 'position')) {
   database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET position = id');
 }
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Keep an ordering slot for every project a task has belonged to. The current
 // tasks.position remains the fast path for listing the task's present project.
 database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -140,7 +143,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const tasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId);
+    const tasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId);
     return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && request.method === 'POST') {
@@ -203,6 +206,22 @@ const server = createServer(async (request, response) => {
     }
     database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, taskId);
     return sendJson(response, 200, { id: taskId, due_date: dueDate });
+  }
+  const notesMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/notes$/);
+  if (notesMatch && request.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    let payload;
+    try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
+    if (typeof payload.notes !== 'string') return sendJson(response, 400, { error: 'Notes must be text' });
+    const taskId = Number(notesMatch[1]);
+    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
+      return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+    }
+    database.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(payload.notes, taskId);
+    return sendJson(response, 200, { id: taskId, notes: payload.notes });
   }
   const priorityMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/priority$/);
   if (priorityMatch && request.method === 'PATCH') {
