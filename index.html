@@ -92,6 +92,10 @@
           const filter = element('select', undefined, { 'aria-label': 'Task filter' });
           for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
           filterLabel.append(filter);
+          const priorityFilterLabel = element('label', 'Priority filter');
+          const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
+          for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
+          priorityFilterLabel.append(priorityFilter);
           const list = element('section', undefined, { 'aria-label': 'Tasks' });
           form.addEventListener('submit', async event => {
             event.preventDefault();
@@ -108,12 +112,13 @@
             if (response.ok) {
               input.value = '';
               alert.hidden = true;
-              await loadTasks(project.id, list, filter.value);
+              await loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived);
             }
           });
-          filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, project.archived));
-          app.append(renameForm, form, alert, filterLabel, list);
-          await loadTasks(project.id, list, filter.value, project.archived);
+          filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived));
+          priorityFilter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived));
+          app.append(renameForm, form, alert, filterLabel, priorityFilterLabel, list);
+          await loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived);
         } else app.append(element('h1', 'Project not found'));
         return;
       }
@@ -209,9 +214,12 @@
       }
       for (const obsolete of rows.values()) obsolete.remove();
     }
-    async function loadTasks(projectId, list, filter, archived = false) {
+    async function loadTasks(projectId, list, filter, priorityFilter, archived = false) {
       const tasks = await fetch(`/api/projects/${projectId}/tasks`).then(response => response.json());
-      const visibleTasks = tasks.filter(task => filter === 'All' || (filter === 'Open' ? !task.completed : task.completed));
+      const visibleTasks = tasks.filter(task =>
+        (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
+        (priorityFilter === 'All' || task.priority === priorityFilter)
+      );
       list.replaceChildren(...visibleTasks.map(task => {
         const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
         const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
@@ -221,7 +229,7 @@
           await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
           });
-          await loadTasks(projectId, list, filter, archived);
+          await loadTasks(projectId, list, filter, priorityFilter, archived);
         });
         const title = element('span', task.title, { class: 'task-title' });
         const priority = element('select', undefined, { 'aria-label': 'Task priority' });
@@ -234,7 +242,10 @@
             body: JSON.stringify({ priority: priority.value })
           });
           if (!response.ok) priority.value = task.priority || 'Normal';
-          else task.priority = priority.value;
+          else {
+            task.priority = priority.value;
+            await loadTasks(projectId, list, filter, priorityFilter, archived);
+          }
         });
         const renameForm = element('form', undefined, { class: 'task-rename-form' });
         const renameInput = element('input', undefined, {
@@ -260,7 +271,7 @@
           });
           if (response.ok) {
             alert.hidden = true;
-            await loadTasks(projectId, list, filter, archived);
+            await loadTasks(projectId, list, filter, priorityFilter, archived);
           }
         });
         row.append(checkbox, title, priority, renameForm);
