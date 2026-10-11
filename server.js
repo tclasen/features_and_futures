@@ -61,11 +61,15 @@ const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE i
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
+const insertImportedProject = database.prepare('INSERT INTO projects (id, name, archived, default_task_priority) VALUES (?, ?, ?, ?)');
 const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, priority) VALUES (?, ?, ?, ?)');
+const insertImportedTask = database.prepare(`INSERT INTO tasks
+  (id, project_id, title, completed, priority, due_date, notes, deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -99,19 +103,35 @@ function json(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-async function readJson(request) {
-  let body = '';
+async function readJson(request, maximumBytes = 65536) {
+  const chunks = [];
+  let bytes = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 65536) {
+    chunks.push(chunk);
+    bytes += chunk.length;
+    if (bytes > maximumBytes) {
       throw Object.assign(new Error('Request is too large'), { status: 413 });
     }
   }
   try {
-    return JSON.parse(body);
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch {
     throw Object.assign(new Error('Invalid JSON'), { status: 400 });
   }
+}
+
+function validProjectDocument(document) {
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const nonblank = value => typeof value === 'string' && Boolean(value.trim());
+  const priority = value => ['Low', 'Normal', 'High'].includes(value);
+  if (!object(document) || document.format !== 'workboard-project' || document.version !== 1) return false;
+  const project = document.project;
+  return object(project) && nonblank(project.name)
+    && typeof project.archived === 'boolean' && priority(project.defaultPriority)
+    && Array.isArray(project.tasks) && project.tasks.every(task =>
+      object(task) && nonblank(task.title) && typeof task.completed === 'boolean'
+      && priority(task.priority) && typeof task.dueDate === 'string' && validDueDate(task.dueDate)
+      && typeof task.notes === 'string' && typeof task.deleted === 'boolean');
 }
 
 function taskResult(task) {
@@ -130,6 +150,36 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && path === '/api/projects') {
       return json(response, 200, listProjects.all().map(projectResult));
+    }
+    if (request.method === 'POST' && path === '/api/projects/import') {
+      let input;
+      try {
+        input = await readJson(request, Infinity);
+      } catch {
+        return json(response, 400, { error: 'Invalid project JSON' });
+      }
+      const name = typeof input?.name === 'string' ? input.name.trim() : '';
+      if (!name) return json(response, 400, { error: 'Project name is required' });
+      let document;
+      try {
+        if (typeof input.document !== 'string') throw new Error('Expected JSON text');
+        document = JSON.parse(input.document);
+      } catch {
+        return json(response, 400, { error: 'Invalid project JSON' });
+      }
+      if (!validProjectDocument(document)) return json(response, 400, { error: 'Invalid project JSON' });
+      const projectId = randomUUID();
+      transaction(() => {
+        const project = document.project;
+        insertImportedProject.run(projectId, name, Number(project.archived), project.defaultPriority);
+        for (const task of project.tasks) {
+          const taskId = randomUUID();
+          insertImportedTask.run(taskId, projectId, task.title, Number(task.completed), task.priority,
+            task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted));
+          rememberTaskPosition.run(taskId, projectId, projectId);
+        }
+      });
+      return json(response, 201, projectResult(findProject.get(projectId)));
     }
     if (request.method === 'POST' && path === '/api/projects') {
       const input = await readJson(request);

@@ -4,6 +4,10 @@ const projectsView = document.querySelector('#projects-view');
 const projectView = document.querySelector('#project-view');
 const form = document.querySelector('#project-form');
 const input = document.querySelector('#project-name');
+const importForm = document.querySelector('#import-form');
+const projectJson = document.querySelector('#project-json');
+const importedProjectName = document.querySelector('#imported-project-name');
+const importAlert = document.querySelector('#import-alert');
 const alert = document.querySelector('#alert');
 const list = document.querySelector('#project-list');
 const projectFilter = document.querySelector('#project-filter');
@@ -86,6 +90,33 @@ function showAlert(message) {
   alert.textContent = message;
   alert.hidden = !message;
 }
+
+importForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const name = importedProjectName.value.trim();
+  importAlert.textContent = '';
+  importAlert.hidden = true;
+  if (!name) {
+    importAlert.textContent = 'Project name is required';
+    importAlert.hidden = false;
+    return;
+  }
+  const button = importForm.querySelector('button');
+  button.disabled = true;
+  try {
+    const project = await request('/api/projects/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, document: projectJson.value }),
+    });
+    window.location.href = `/projects/${encodeURIComponent(project.id)}`;
+  } catch (error) {
+    importAlert.textContent = error.message;
+    importAlert.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+});
 
 function addProject(project) {
   const row = document.createElement('div');

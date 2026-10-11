@@ -30,6 +30,67 @@ class Element {
   async dispatch(name) { await this.listeners[name]({ preventDefault() {} }); }
 }
 
+test('project import keeps rejected drafts, validates the override, and opens only a successful new project', async () => {
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  for (const selector of ['#project-form', '#task-form', '#rename-form', '#import-form']) {
+    element(selector).button = new Element();
+  }
+  element('#project-filter').value = 'active';
+  const writes = [];
+  const location = { pathname: '/' };
+  let accepted = false;
+  await runInNewContext(await appSource(), {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location },
+    fetch: async (path, options) => {
+      if (!options) return { ok: true, json: async () => [
+        { id: 'original', name: 'Original', archived: false, completed: 0, total: 0 },
+      ] };
+      writes.push({ path, input: JSON.parse(options.body) });
+      return { ok: accepted, json: async () => accepted
+        ? { id: 'new-independent-id', name: 'Copy' } : { error: 'Invalid project JSON' } };
+    },
+  });
+  const form = element('#import-form');
+  const json = element('#project-json');
+  const name = element('#imported-project-name');
+  const alert = element('#import-alert');
+  json.value = '  {broken JSON\n  ';
+  name.value = ' \t ';
+  await form.dispatch('submit');
+  assert.equal(alert.textContent, 'Project name is required');
+  assert.equal(alert.hidden, false);
+  assert.equal(writes.length, 0);
+  assert.equal(name.value, ' \t ');
+  name.value = '  Copy  ';
+  await form.dispatch('submit');
+  assert.deepEqual(writes, [{ path: '/api/projects/import', input: { name: 'Copy', document: json.value } }]);
+  assert.equal(alert.textContent, 'Invalid project JSON');
+  assert.equal(alert.hidden, false);
+  assert.equal(json.value, '  {broken JSON\n  ');
+  assert.equal(name.value, '  Copy  ');
+  assert.equal(form.button.disabled, false);
+  assert.equal(location.href, undefined);
+  assert.equal(element('#project-list').children.length, 1);
+  assert.equal(element('#project-list').children[0].children[0].textContent, 'Original');
+  accepted = true;
+  json.value = '{"format":"workboard-project"}';
+  await form.dispatch('submit');
+  assert.equal(location.href, '/projects/new-independent-id');
+  assert.equal(alert.hidden, true);
+  assert.equal(form.button.disabled, false);
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label for="project-json">Project JSON<\/label>\s*<textarea id="project-json"/);
+  assert.match(html, /<label for="imported-project-name">Imported project name<\/label>/);
+  assert.match(html, /<input id="imported-project-name" type="text"/);
+  assert.match(html, /<button type="submit">Import project<\/button>/);
+  assert.match(html, /<p id="import-alert" role="alert" hidden>/);
+});
+
 async function searchApp(pathname, projects, tasks = []) {
   const elements = new Map();
   const element = selector => {

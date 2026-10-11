@@ -6,6 +6,21 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+function portableProject() {
+  return {
+    format: 'workboard-project', version: 1,
+    project: {
+      name: '  Original  name  ', archived: false, defaultPriority: 'High',
+      tasks: [
+        { title: '  First  task\t日本語  ', completed: true, priority: 'Low',
+          dueDate: '2000-02-29', notes: '  <b>literal</b>\r\nUnicode café\r尾  ', deleted: false },
+        { title: 'Deleted task', completed: true, priority: 'Normal',
+          dueDate: '', notes: '', deleted: true },
+      ],
+    },
+  };
+}
+
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: databasePath },
@@ -39,6 +54,192 @@ async function start(databasePath) {
     await exited;
   } };
 }
+
+test('project import validates every required field atomically and retains original data', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'import-validation-'));
+  const server = await start(resolve(directory, 'workboard.sqlite'));
+  try {
+    const get = async path => (await fetch(server.url + path)).json();
+    const post = async (path, body) => fetch(server.url + path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const original = await (await post('/api/projects', { name: 'Keep original' })).json();
+    const taskPath = `/api/projects/${original.id}/tasks`;
+    await post(taskPath, { title: 'Keep task' });
+    const projectsBefore = await get('/api/projects');
+    const tasksBefore = await get(taskPath);
+    const invalid = ['{bad', 'null', '[]', '{}'];
+    const add = mutate => {
+      const document = portableProject();
+      mutate(document);
+      invalid.push(JSON.stringify(document));
+    };
+    for (const key of ['format', 'version', 'project']) add(doc => { delete doc[key]; });
+    for (const value of ['other', 1, null]) add(doc => { doc.format = value; });
+    for (const value of ['1', true, 0, 2, 1.5, null]) add(doc => { doc.version = value; });
+    for (const value of [null, [], 'project']) add(doc => { doc.project = value; });
+    for (const key of ['name', 'archived', 'defaultPriority', 'tasks']) add(doc => { delete doc.project[key]; });
+    for (const value of ['', ' \t\n ', 3, null]) add(doc => { doc.project.name = value; });
+    for (const value of [0, 'false', null]) add(doc => { doc.project.archived = value; });
+    for (const value of ['high', '', null, 1]) add(doc => { doc.project.defaultPriority = value; });
+    for (const value of [null, {}, 'tasks']) add(doc => { doc.project.tasks = value; });
+    // Mutate the later task: an earlier valid task must never be partly imported.
+    for (const key of ['title', 'completed', 'priority', 'dueDate', 'notes', 'deleted']) {
+      add(doc => { delete doc.project.tasks[1][key]; });
+    }
+    for (const value of [null, [], 'task']) add(doc => { doc.project.tasks[1] = value; });
+    for (const value of ['', ' \t\n ', 3, null]) add(doc => { doc.project.tasks[1].title = value; });
+    for (const key of ['completed', 'deleted']) {
+      for (const value of [0, 1, 'true', null]) add(doc => { doc.project.tasks[1][key] = value; });
+    }
+    for (const value of ['normal', '', null, 1]) add(doc => { doc.project.tasks[1].priority = value; });
+    for (const value of [null, 2, {}, []]) add(doc => { doc.project.tasks[1].notes = value; });
+    for (const value of [null, 2, ' ', ' 2024-02-29 ', '0000-01-01', '10000-01-01',
+      '1900-02-29', '2100-02-29', '2023-02-29', '2024-04-31', '2024-00-01',
+      '2024-13-01', '2024-01-00', '2024-01-32', '2024-2-29', '2024-02-29T00:00:00Z']) {
+      add(doc => { doc.project.tasks[1].dueDate = value; });
+    }
+    for (const document of invalid) {
+      const response = await post('/api/projects/import', { name: 'Copy', document });
+      assert.equal(response.status, 400, document);
+      assert.deepEqual(await response.json(), { error: 'Invalid project JSON' });
+      assert.deepEqual(await get('/api/projects'), projectsBefore);
+      assert.deepEqual(await get(taskPath), tasksBefore);
+    }
+    for (const name of ['', ' \t\n ']) {
+      for (const document of [JSON.stringify(portableProject()), 'invalid']) {
+        const response = await post('/api/projects/import', { name, document });
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      }
+    }
+    for (const document of [undefined, null, portableProject()]) {
+      const response = await post('/api/projects/import', { name: 'Copy', document });
+      assert.deepEqual(await response.json(), { error: 'Invalid project JSON' });
+    }
+    const malformed = await fetch(server.url + '/api/projects/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
+    });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { error: 'Invalid project JSON' });
+    assert.deepEqual(await get('/api/projects'), projectsBefore);
+    assert.deepEqual(await get(taskPath), tasksBefore);
+  } finally {
+    await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('imports create independent persistent projects with exact fields, order, archive and deletion rules', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'import-persistence-'));
+  const databasePath = resolve(directory, 'workboard.sqlite');
+  let server = await start(databasePath);
+  try {
+    const get = async path => (await fetch(server.url + path)).json();
+    const write = async (path, body, method = 'POST') => fetch(server.url + path, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const importProject = async (document, name) => {
+      const response = await write('/api/projects/import', { name, document: JSON.stringify(document) });
+      assert.equal(response.status, 201);
+      return response.json();
+    };
+    const original = await (await write('/api/projects', { name: 'Original' })).json();
+    const originalTasks = `/api/projects/${original.id}/tasks`;
+    const originalTask = await (await write(originalTasks, { title: 'Original task' })).json();
+    const document = portableProject();
+    // Unknown properties, including internal identities and ordering, have no authority.
+    document.project.id = original.id;
+    document.project.position = 1;
+    document.project.tasks[0].id = originalTask.id;
+    document.project.tasks[0].project_id = original.id;
+    document.project.tasks[0].position = 999;
+    document.project.tasks.push({ title: 'Last', completed: false, priority: 'High',
+      dueDate: '9999-12-31', notes: '日本語🙂'.repeat(10000), deleted: false });
+    const copy = await importProject(document, '  Imported  copy  ');
+    const copyPath = `/api/projects/${copy.id}`;
+    const copyTasks = `${copyPath}/tasks`;
+    assert.notEqual(copy.id, original.id);
+    assert.equal(copy.name, 'Imported  copy');
+    assert.equal(copy.default_task_priority, 'High');
+    assert.equal(copy.total, 2);
+    assert.equal(copy.completed, 1);
+    const importedTasks = await get(copyTasks);
+    assert.equal(new Set(importedTasks.map(task => task.id)).size, 3);
+    assert.ok(importedTasks.every(task => task.id !== originalTask.id));
+    const expected = { format: 'workboard-project', version: 1, project: {
+      name: copy.name, archived: false, defaultPriority: 'High',
+      tasks: document.project.tasks.map(({ title, completed, priority, dueDate, notes, deleted }) =>
+        ({ title, completed, priority, dueDate, notes: notes.replace(/\r\n?/g, '\n'), deleted })),
+    } };
+    assert.deepEqual(await get(`${copyPath}/export`), expected);
+    const archivedDocument = structuredClone(expected);
+    archivedDocument.project.archived = true;
+    const archived = await importProject(archivedDocument, 'Archived copy');
+    const archivedPath = `/api/projects/${archived.id}`;
+    const archivedTasks = await get(`${archivedPath}/tasks`);
+    assert.equal((await write(`${archivedPath}/tasks/${archivedTasks[1].id}`, { deleted: false }, 'PATCH')).status, 409);
+    assert.equal((await write(`${archivedPath}/tasks`, { title: 'Blocked' })).status, 409);
+    const emptyDocument = portableProject();
+    emptyDocument.project.tasks = [];
+    const empty = await importProject(emptyDocument, 'Empty copy');
+    assert.equal(empty.total, 0);
+    assert.deepEqual(await get(`/api/projects/${empty.id}/tasks`), []);
+    const deletedDocument = portableProject();
+    deletedDocument.project.tasks.forEach(task => { task.deleted = true; });
+    const deletedOnly = await importProject(deletedDocument, 'Only deleted');
+    assert.equal(deletedOnly.total, 0);
+    assert.equal(deletedOnly.completed, 0);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await get(copyTasks), importedTasks);
+    assert.deepEqual(await get(copyPath), copy);
+    assert.deepEqual(await get(`${archivedPath}/tasks`), archivedTasks);
+    assert.deepEqual(await get(`${copyPath}/export`), expected);
+    const update = async (path, body) => {
+      const response = await write(path, body, 'PATCH');
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    const deletedTaskPath = `${copyTasks}/${importedTasks[1].id}`;
+    assert.equal((await write(deletedTaskPath, { destination_project_id: original.id }, 'PATCH')).status, 409);
+    await update(copyPath, { default_task_priority: 'Low' });
+    await write(copyTasks, { title: 'New after reserved positions' });
+    await update(deletedTaskPath, { deleted: false });
+    let current = await get(copyTasks);
+    assert.deepEqual(current.slice(0, 3).map(task => task.id), importedTasks.map(task => task.id));
+    assert.deepEqual(current[1], { ...importedTasks[1], deleted: false });
+    assert.equal((await get(copyPath)).completed, 2);
+    assert.equal((await get(copyPath)).total, 4);
+    // Imported positions participate in ordinary moves and reverse-order returns.
+    for (const task of importedTasks.slice(0, 2)) {
+      await update(`${copyTasks}/${task.id}`, { destination_project_id: original.id });
+    }
+    for (const task of importedTasks.slice(0, 2).reverse()) {
+      await update(`${originalTasks}/${task.id}`, { destination_project_id: copy.id });
+    }
+    current = await get(copyTasks);
+    assert.deepEqual(current.slice(0, 3).map(task => task.id), importedTasks.map(task => task.id));
+    await update(`${copyTasks}/${importedTasks[0].id}`, { title: 'Changed copy only' });
+    await update(archivedPath, { archived: false });
+    await update(`${archivedPath}/tasks/${archivedTasks[1].id}`, { deleted: false });
+    assert.deepEqual(await get(originalTasks), [originalTask]);
+    assert.deepEqual(await get(`/api/projects/${original.id}`), { ...original, total: 1 });
+    assert.equal((await get(`${archivedPath}/tasks`))[0].title, importedTasks[0].title);
+    await server.stop();
+    server = await start(databasePath);
+    current[0].title = 'Changed copy only';
+    assert.deepEqual(await get(copyTasks), current);
+    assert.equal((await get(archivedPath)).archived, false);
+    assert.equal((await get(`${archivedPath}/tasks`))[1].deleted, false);
+    assert.deepEqual(await get(originalTasks), [originalTask]);
+  } finally {
+    await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('projects and tasks validate, stay isolated, and survive a restart', async () => {
   await mkdir('data', { recursive: true });

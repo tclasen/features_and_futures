@@ -157,3 +157,16 @@ Export does not modify data, remembered positions, or the current view. Checks c
 older database defaults, empty projects, task ownership and return order, deleted
 and archived tasks, Unicode and literal markup, response download headers, unchanged
 stored data, and restart persistence.
+
+The home page provides Project JSON, Imported project name, and Import project.
+Import validates the complete version 1 document and a trimmed nonblank override
+name before inserting a new independent project and opening its detail page.
+Invalid documents show `Invalid project JSON`; blank overrides show
+`Project name is required`. Rejections retain both input fields and change no data.
+Imported tasks preserve their exact titles, completion, explicit priorities, dates,
+notes with LF line endings, deletion status, and supplied order. Archive state and
+the project default are preserved. Internal identities are generated anew; extra
+document properties cannot overwrite existing projects or task positions.
+Checks cover every required field and type, invalid later tasks and calendar dates,
+large Unicode notes, independent copies, deleted/archived restrictions, remembered
+positions after moves and returns, and persistence across server restarts.
