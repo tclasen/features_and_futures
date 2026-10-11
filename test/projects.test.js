@@ -33,6 +33,68 @@ async function launch(databasePath) {
   };
 }
 
+test('priorities migrate, persist independently, and respect ownership and archives', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp('data/priority-test-');
+  const databasePath = path.resolve(directory, 'projects.sqlite');
+  const oldDb = new DatabaseSync(databasePath);
+  oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (name) VALUES ('One'), ('Two');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing', 1);`);
+  oldDb.close();
+  let server;
+  try {
+    server = await launch(databasePath);
+    const post = (route, values = {}) => fetch(server.url + route, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async (route) => (await fetch(server.url + route)).text();
+    const priorityOptions = (markup, id) => markup.match(new RegExp(`<select id="task-priority-${id}"[^>]*>([\\s\\S]*?)</select>`))[1].trim();
+    const normal = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    assert.equal(priorityOptions(await html('/projects/1'), 1), normal);
+    await post('/projects/1/tasks', { title: 'New' });
+    await post('/projects/2/tasks', { title: 'Other' });
+    assert.equal(priorityOptions(await html('/projects/1'), 2), normal);
+    const summary = await html('/');
+    const changed = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), '/projects/1?filter=Completed');
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 400);
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed' });
+    const detail = await html('/projects/1');
+    assert.equal(priorityOptions(detail, 1), '<option>Low</option><option>Normal</option><option selected>High</option>');
+    assert.equal(priorityOptions(detail, 2), '<option selected>Low</option><option>Normal</option><option>High</option>');
+    assert.equal(priorityOptions(await html('/projects/2'), 3), normal);
+    assert.match(detail, /aria-label="Complete Renamed" checked/);
+    assert.ok(detail.indexOf('Complete Renamed') < detail.indexOf('Complete New'));
+    assert.ok(!(await html('/projects/1?filter=Open')).includes('Complete Renamed'));
+    assert.ok(!(await html('/projects/1?filter=Completed')).includes('Complete New'));
+    assert.equal(await html('/'), summary);
+    await server.stop();
+    server = await launch(databasePath);
+    assert.equal(await html('/projects/1'), detail);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assert.equal((archived.match(/id="task-priority-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Low' })).status, 403);
+    await server.stop();
+    server = await launch(databasePath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), detail);
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    assert.equal(priorityOptions(await html('/projects/1'), 1), normal);
+    assert.equal(await html('/'), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task renaming preserves completion, order, ownership, filters, and persistence', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp('data/task-rename-test-');
