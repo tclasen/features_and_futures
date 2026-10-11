@@ -104,13 +104,18 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
+    const query = (url.searchParams.get('search') || '').trim();
+    const normalizeSearchText = (value) => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
+    const normalizedQuery = normalizeSearchText(query);
     const projects = database.prepare(`
       SELECT p.id, p.name, p.archived,
         COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS totalCount,
         COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
-    `).all(archived).map((project) => ({ ...project, archived: Boolean(project.archived) }));
+    `).all(archived)
+      .filter((project) => normalizeSearchText(project.name).includes(normalizedQuery))
+      .map((project) => ({ ...project, archived: Boolean(project.archived) }));
     return sendJson(response, 200, projects);
   }
   if (request.method === 'GET' && url.pathname === '/api/directory') {

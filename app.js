@@ -46,11 +46,10 @@ function normalizeSearchText(value) {
 }
 
 async function loadProjects() {
-  const response = await fetch(`/api/projects?filter=${encodeURIComponent(projectFilter.value)}`);
+  const response = await fetch(`/api/projects?filter=${encodeURIComponent(projectFilter.value)}&search=${encodeURIComponent(appliedProjectQuery)}`);
   const projects = await response.json();
   projectsContainer.replaceChildren();
   for (const project of projects) {
-    if (!normalizeSearchText(project.name).includes(normalizeSearchText(appliedProjectQuery))) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
