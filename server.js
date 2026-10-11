@@ -13,6 +13,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
 
 function send(res, status, body, contentType = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'content-type': contentType, 'cache-control': 'no-store' });
@@ -42,6 +49,31 @@ const server = createServer(async (req, res) => {
     return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), name }));
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch) {
+    const projectId = Number(tasksMatch[1]);
+    const exists = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    if (!exists) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    if (req.method === 'GET') {
+      const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC').all(projectId);
+      return send(res, 200, JSON.stringify(tasks.map((task) => ({ ...task, completed: Boolean(task.completed) }))));
+    }
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return send(res, 201, JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
+    }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (req.method === 'PATCH' && taskMatch) {
+    const body = await readBody(req);
+    if (typeof body?.completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
+    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, Number(taskMatch[1]));
+    if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+    return send(res, 200, JSON.stringify({ ok: true }));
+  }
   if (req.method === 'GET' && projectMatch) {
     const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
