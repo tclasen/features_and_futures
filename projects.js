@@ -33,14 +33,38 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
-  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
-    // Existing IDs already represent each project's creation order.
-    database.exec(`
-      BEGIN;
-      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
-      UPDATE tasks SET position = id;
-      COMMIT;
-    `);
+  // Legacy databases used tasks.position, or task IDs before movement existed.
+  // Seed only current memberships; earlier moves cannot be reconstructed.
+  const hasLegacyPosition = database.prepare('PRAGMA table_info(tasks)').all()
+    .some((column) => column.name === 'position');
+  database.exec(`
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS task_project_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL,
+      PRIMARY KEY (task_id, project_id),
+      UNIQUE (project_id, position)
+    );
+    INSERT INTO task_project_positions (task_id, project_id, position)
+      SELECT id, project_id, ${hasLegacyPosition ? 'position' : 'id'} FROM tasks
+      WHERE NOT EXISTS (
+        SELECT 1 FROM task_project_positions
+        WHERE task_id = tasks.id AND project_id = tasks.project_id
+      );
+    COMMIT;
+  `);
+
+  function transaction(operation) {
+    database.exec('BEGIN');
+    try {
+      const result = operation();
+      database.exec('COMMIT');
+      return result;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
   }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
@@ -54,17 +78,22 @@ export function openProjects(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
-    SELECT id, title, completed, priority, due_date FROM tasks
-    WHERE project_id = ? AND (? IS NULL OR completed = ?)
+    SELECT tasks.id, title, completed, priority, due_date FROM tasks
+    JOIN task_project_positions AS ordering
+      ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
+    WHERE tasks.project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?)
       AND (? = '' OR due_date >= ?)
-      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY position, id
+      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY ordering.position, tasks.id
   `);
   const insertTask = database.prepare(`
-    INSERT INTO tasks (project_id, title, priority, position)
-    SELECT id, ?, default_task_priority,
-      (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = projects.id)
-    FROM projects WHERE id = ? AND archived = 0
+    INSERT INTO tasks (project_id, title, priority)
+    SELECT id, ?, default_task_priority FROM projects WHERE id = ? AND archived = 0
+  `);
+  const rememberPosition = database.prepare(`
+    INSERT INTO task_project_positions (task_id, project_id, position)
+    VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1
+      FROM task_project_positions WHERE project_id = ?))
   `);
   const updateTask = database.prepare(`
     UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
@@ -82,13 +111,17 @@ export function openProjects(databasePath) {
     UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
-  const moveTask = database.prepare(`
-    UPDATE tasks SET project_id = ?,
-      position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-    WHERE id = ? AND project_id = ? AND project_id != ?
-      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
-      AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)
+  const eligibleMove = database.prepare(`
+    SELECT tasks.id FROM tasks
+    JOIN projects AS source ON source.id = tasks.project_id
+    JOIN projects AS destination ON destination.id = ?
+    WHERE tasks.id = ? AND tasks.project_id = ? AND source.id != destination.id
+      AND source.archived = 0 AND destination.archived = 0
   `);
+  const findPosition = database.prepare(`
+    SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?
+  `);
+  const moveTask = database.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
 
   return {
     list: (filter = 'Active') => list.all(filter === 'Archived' ? 1 : 0),
@@ -121,7 +154,12 @@ export function openProjects(databasePath) {
     createTask(projectId, title) {
       const trimmedTitle = title.trim();
       if (!trimmedTitle) return false;
-      return insertTask.run(trimmedTitle, projectId).changes > 0;
+      return transaction(() => {
+        const inserted = insertTask.run(trimmedTitle, projectId);
+        if (!inserted.changes) return false;
+        rememberPosition.run(inserted.lastInsertRowid, projectId, projectId);
+        return true;
+      });
     },
     setTaskCompleted(projectId, taskId, completed) {
       return updateTask.run(completed ? 1 : 0, taskId, projectId).changes > 0;
@@ -142,8 +180,14 @@ export function openProjects(databasePath) {
     },
     moveTask(projectId, taskId, destinationId) {
       if (!Number.isSafeInteger(destinationId) || destinationId < 1) return false;
-      return moveTask.run(destinationId, destinationId, taskId, projectId,
-        destinationId, destinationId).changes > 0;
+      return transaction(() => {
+        if (!eligibleMove.get(destinationId, taskId, projectId)) return false;
+        if (!findPosition.get(taskId, destinationId)) {
+          rememberPosition.run(taskId, destinationId, destinationId);
+        }
+        moveTask.run(destinationId, taskId);
+        return true;
+      });
     },
     close: () => database.close(),
   };

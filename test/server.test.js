@@ -1093,7 +1093,7 @@ test('applied due ranges survive all edits and validation, reset on reopening an
   }
 });
 
-test('task moves migrate order, append on every move and creation, preserve data and reject ineligible projects', async () => {
+test('task moves migrate order, remember return positions, preserve data and reject ineligible projects', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-migration-'));
   const databasePath = join(directory, 'workboard.sqlite');
   let projects;
@@ -1132,7 +1132,7 @@ test('task moves migrate order, append on every move and creation, preserve data
     assert.deepEqual(projects.listTasks(2).map((task) => task.id), [2, 1, 4]);
     assert.equal(projects.listTasks(2)[2].priority, 'Low');
     assert.equal(projects.moveTask(2, 1, 1), true);
-    assert.deepEqual(projects.listTasks(1).map((task) => task.id), [3, 1]);
+    assert.deepEqual(projects.listTasks(1).map((task) => task.id), [1, 3]);
     assert.equal(projects.moveTask(1, 3, 2), true);
     assert.deepEqual(projects.listTasks(2).map((task) => task.id), [2, 4, 3]);
     assert.equal(projects.listTasks(2)[2].due_date, '');
@@ -1142,8 +1142,8 @@ test('task moves migrate order, append on every move and creation, preserve data
     assert.deepEqual(projects.listTasks(1), [saved]);
     assert.deepEqual(projects.listTasks(2).map((task) => task.id), [2, 4, 3]);
     assert.equal(projects.moveTask(1, 1, 2), true);
-    assert.deepEqual(projects.listTasks(2).map((task) => task.id), [2, 4, 3, 1]);
-    assert.deepEqual(projects.listTasks(2)[3], saved);
+    assert.deepEqual(projects.listTasks(2).map((task) => task.id), [2, 1, 4, 3]);
+    assert.deepEqual(projects.listTasks(2)[1], saved);
   } finally {
     if (projects) projects.close();
     await rm(directory, { recursive: true, force: true });
@@ -1222,13 +1222,13 @@ test('move controls list eligible names, retain source filters, update summaries
     await post('/projects/2/restore');
     assertDestinations(await page('/projects/2'), [['1', 'Source']]);
     assert.equal((await post('/projects/2/tasks/1/move', { destination: '1' })).status, 303);
-    assert.deepEqual(titles(await page(filteredPath)), ['Remain', 'Move me']);
+    assert.deepEqual(titles(await page(filteredPath)), ['Move me', 'Remain']);
     assert.deepEqual(titles(await page('/projects/2')), ['Destination existing']);
     // Moving a blank-dated task must preserve the blank date and its Low priority.
     await post('/projects/2/tasks/2/move', { destination: '1' });
     const allSource = await page('/projects/1');
-    assert.deepEqual(titles(allSource), ['Remain', 'Move me', 'Destination existing']);
-    assert.deepEqual(titles(await page(filteredPath)), ['Remain', 'Move me']);
+    assert.deepEqual(titles(allSource), ['Move me', 'Remain', 'Destination existing']);
+    assert.deepEqual(titles(await page(filteredPath)), ['Move me', 'Remain']);
     assert.match(allSource, /name="dueDate" type="text" value=""/);
     assert.match(allSource, /<option selected>Low/);
     await server.stop();

@@ -71,11 +71,15 @@ the URL and all editing forms, including validation errors, and remains usable
 in archived projects. Opening a project from the list starts with empty boundaries.
 
 Each task row offers a Destination project selection containing only other active
-projects in project creation order, using their current names. Move task appends
-the task to its destination while preserving its ID, title, completion, priority
-and due date. The source page stays open with all filters retained, and both
-project summaries reflect the new ownership. Moving again appends it again;
-subsequent new tasks follow the destination's existing tasks. SQLite migrates
-existing task order into a saved per-project position. Moves update ownership and
-position atomically. Archived sources and destinations are rejected by the server.
-Move controls are disabled for archived sources or when no destination is eligible.
+projects in project creation order, using their current names. Moving to a new
+project appends after all positions established there, including positions of
+tasks currently away. Returning restores the task's remembered position in that
+project. Each task keeps a separate position for every project it has belonged to;
+returning tasks in any order restores their relative order. Movement preserves
+current ID, title, completion, priority and due date, rather than older field values.
+The source page stays open with all filters retained, and both project summaries
+reflect the new ownership. SQLite migrates existing current task order into the
+position history; ownership and new positions are saved atomically and survive
+restarts, project renaming, archive and restore. Archived sources and destinations
+are rejected by the server. Move controls are disabled for archived sources or
+when no destination is eligible.
