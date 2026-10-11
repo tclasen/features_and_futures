@@ -32,8 +32,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, html, 'text/html; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
-    return send(res, 200, db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(filter));
+    const filter = url.searchParams.get('filter');
+    const query = `SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
+    if (filter === 'All') return send(res, 200, db.prepare(`${query} GROUP BY p.id ORDER BY p.id`).all());
+    return send(res, 200, db.prepare(`${query} WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(filter === 'Archived' ? 1 : 0));
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
