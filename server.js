@@ -29,6 +29,14 @@ try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch (error
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+);
+INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, sort_order FROM tasks;`);
 
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -101,7 +109,9 @@ const server = http.createServer(async (req, res) => {
       if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       const title = String(JSON.parse(raw).title ?? '').trim();
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1))').run(tasksMatch[1], title, project.default_priority, tasksMatch[1]);
+      const position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(tasksMatch[1]).value;
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(tasksMatch[1], title, project.default_priority, position);
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), tasksMatch[1], position);
       return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: 0, priority: project.default_priority }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -115,8 +125,13 @@ const server = http.createServer(async (req, res) => {
         const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(payload.destinationProject);
         const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').get(taskMatch[1]);
         if (!destination || !task) return send(404, JSON.stringify({ error: 'Not found' }));
-        const next = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destination.id).value;
-        db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destination.id, next, taskMatch[1]);
+        const taskId = Number(taskMatch[1]);
+        let position = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destination.id)?.position;
+        if (position === undefined) {
+          position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destination.id).value;
+          db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destination.id, position);
+        }
+        db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destination.id, position, taskId);
         return send(200, JSON.stringify({ ok: true }));
       }
       if (Object.hasOwn(payload, 'dueDate')) {
