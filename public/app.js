@@ -12,6 +12,53 @@ function showError(container, message) {
   container.hidden = false;
 }
 
+function renderRename(project) {
+  const section = document.createElement('section');
+  section.setAttribute('aria-label', 'Rename project');
+  section.innerHTML = `
+    <form>
+      <label for="new-project-name">New project name</label>
+      <div class="create-controls">
+        <input id="new-project-name" type="text" autocomplete="off">
+        <button type="submit">Rename project</button>
+      </div>
+    </form>
+    <p role="alert" hidden></p>
+  `;
+  const form = section.querySelector('form');
+  const input = form.querySelector('input');
+  const button = form.querySelector('button');
+  const alert = section.querySelector('[role="alert"]');
+  input.value = project.name;
+  input.disabled = project.archived;
+  button.disabled = project.archived;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (project.archived) return;
+    alert.hidden = true;
+    if (!input.value.trim()) {
+      showError(alert, 'Project name is required');
+      return;
+    }
+    button.disabled = true;
+    try {
+      Object.assign(project, await request(`/api/projects/${project.id}/name`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: input.value }),
+      }));
+      app.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} — Workboard`;
+      input.value = project.name;
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      button.disabled = project.archived;
+    }
+  });
+  app.append(section);
+}
+
 async function renderTasks(project) {
   const section = document.createElement('section');
   section.setAttribute('aria-label', 'Tasks');
@@ -131,6 +178,7 @@ async function render() {
         notice.textContent = 'Archived project';
         app.append(notice);
       }
+      renderRename(project);
       await renderTasks(project);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';

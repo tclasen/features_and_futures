@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 
-test('projects, tasks, archive state, and summaries persist across server restarts', async () => {
+test('projects, tasks, renames, archive state, and summaries persist across server restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const socket = createServer();
   socket.listen(0, '127.0.0.1');
@@ -91,6 +91,14 @@ test('projects, tasks, archive state, and summaries persist across server restar
     return (await fetch(`${base}/api/projects/${projectId}`)).json();
   }
 
+  async function rename(projectId, name) {
+    return fetch(`${base}/api/projects/${projectId}/name`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+  }
+
   try {
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
@@ -155,6 +163,19 @@ test('projects, tasks, archive state, and summaries persist across server restar
     const firstWithTasks = { ...first, total_count: 2, completed_count: 1 };
     const secondWithTasks = { ...second, total_count: 1 };
     assert.deepEqual(await getProject(first.id), firstWithTasks);
+    for (const name of ['', ' \t\n ', null, 123]) {
+      const response = await rename(first.id, name);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      assert.deepEqual(await getProject(first.id), firstWithTasks);
+    }
+    assert.equal((await rename(999999, 'Missing project')).status, 404);
+    const renamedResponse = await rename(first.id, '  Renamed <project> & team  ');
+    assert.equal(renamedResponse.status, 200);
+    firstWithTasks.name = 'Renamed <project> & team';
+    assert.deepEqual(await renamedResponse.json(), firstWithTasks);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, secondWithTasks]);
+    assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
     for (const archived of [null, 1, 'true']) {
       assert.equal((await setArchived(first.id, archived)).status, 400);
     }
@@ -162,6 +183,10 @@ test('projects, tasks, archive state, and summaries persist across server restar
     assert.deepEqual(await (await setArchived(first.id, true)).json(), { ...firstWithTasks, archived: true });
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await setCompleted(first.id, firstTask.id, false)).status, 409);
+    const archivedRename = await rename(first.id, 'Blocked rename');
+    assert.equal(archivedRename.status, 409);
+    assert.deepEqual(await archivedRename.json(), { error: 'Archived project cannot be changed' });
+    assert.deepEqual(await getProject(first.id), { ...firstWithTasks, archived: true });
     assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
     await stop();
     await start();
@@ -171,6 +196,10 @@ test('projects, tasks, archive state, and summaries persist across server restar
     assert.deepEqual(await listTasks(second.id), [otherTask]);
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.deepEqual(await (await setArchived(first.id, false)).json(), firstWithTasks);
+    const restoredRename = await rename(first.id, '  Restored project  ');
+    assert.equal(restoredRename.status, 200);
+    firstWithTasks.name = 'Restored project';
+    assert.deepEqual(await restoredRename.json(), firstWithTasks);
     assert.deepEqual(await (await setCompleted(first.id, firstTask.id, false)).json(), firstTask);
     await stop();
     await start();

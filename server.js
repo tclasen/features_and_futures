@@ -76,6 +76,12 @@ const server = createServer(async (request, response) => {
         return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
       }
     }
+    const renameMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/name$/);
+    if (request.method === 'PATCH' && renameMatch) {
+      const body = await readJson(request);
+      const project = projects.rename(renameMatch[1], body?.name);
+      return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
+    }
     const projectMatch = path.match(/^\/api\/projects\/([1-9]\d*)$/);
     if (request.method === 'PATCH' && projectMatch) {
       const body = await readJson(request);

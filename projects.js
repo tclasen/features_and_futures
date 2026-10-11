@@ -25,6 +25,7 @@ export function openProjects(databasePath) {
   const get = database.prepare(`${projectFields} WHERE id = ?`);
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const projectValue = (row) => row ? { ...row, archived: Boolean(row.archived) } : undefined;
 
   return {
@@ -39,6 +40,23 @@ export function openProjects(databasePath) {
     setArchived(id, archived) {
       if (typeof archived !== 'boolean') throw new Error('Archive state must be a boolean');
       updateArchive.run(Number(archived), id);
+      return projectValue(get.get(id));
+    },
+    rename(id, name) {
+      const trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) {
+        const error = new Error('Project name is required');
+        error.status = 400;
+        throw error;
+      }
+      const project = get.get(id);
+      if (!project) return undefined;
+      if (project.archived) {
+        const error = new Error('Archived project cannot be changed');
+        error.status = 409;
+        throw error;
+      }
+      updateName.run(trimmedName, id);
       return projectValue(get.get(id));
     },
     close: () => database.close(),
