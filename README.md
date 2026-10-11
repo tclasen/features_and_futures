@@ -93,3 +93,11 @@ Blank queries match all rows allowed by the other filters.
 Task edits and moves retain the applied search and filters. Searches work on
 archived projects and do not change stored data or all-task summaries. Opening
 a project from the list, or returning via `Projects`, starts with an empty query.
+
+Each task row has a multiline `Task notes` textarea and `Save notes` button.
+Notes are saved as plain text, preserving whitespace, line breaks, Unicode and
+literal markup. Empty text clears notes. Existing and new tasks start with empty
+notes. Notes persist across reloads, restarts, renaming, moves and remembered
+return positions, without changing other task data or the selected filters.
+Searches continue to match only project names and task titles. Archived projects
+display saved notes with editing disabled until restoration.

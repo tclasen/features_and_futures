@@ -7,6 +7,110 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('notes migrate without changing existing data and survive edits, moves, archives, and restarts', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  const oldDb = new DatabaseSync(dbPath);
+  oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+    CREATE TABLE task_positions (task_id INTEGER NOT NULL REFERENCES tasks(id), project_id INTEGER NOT NULL REFERENCES projects(id), position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id));
+    INSERT INTO projects (name, default_priority) VALUES ('Source', 'Low'), ('Destination', 'High');
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, position) VALUES
+      (1, 'Matching title', 1, 'High', '2024-02-29', 10), (1, 'Other title', 0, 'Low', '', 20);
+    INSERT INTO task_positions VALUES (1, 1, 10), (2, 1, 20);`);
+  const originalTasks = oldDb.prepare('SELECT * FROM tasks ORDER BY id').all().map((row) => ({ ...row }));
+  const originalPositions = oldDb.prepare('SELECT * FROM task_positions ORDER BY task_id, project_id').all();
+  oldDb.close();
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const savedRows = () => {
+      const savedDb = new DatabaseSync(dbPath);
+      try { return savedDb.prepare('SELECT * FROM tasks ORDER BY id').all(); }
+      finally { savedDb.close(); }
+    };
+    const titles = (body) => [...body.matchAll(/<span>([^<]*)<\/span>/g)].map((match) => match[1]);
+    const notesControl = (body, id) => body.match(new RegExp('<textarea id="task-notes-' + id + '"[^>]*>[\\s\\S]*?</textarea>'))[0];
+    assert.deepEqual(savedRows().map(({ notes, ...row }) => row), originalTasks);
+    assert.deepEqual(savedRows().map((row) => row.notes), ['', '']);
+    assert.match(await get('/projects/1'), /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(notesControl(await get('/projects/1'), 1), />\n<\/textarea>/);
+    const summary = await get('/');
+    const selected = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', searchQuery: 'matching' };
+    const selectedPath = '/projects/1?' + new URLSearchParams(selected);
+    const notes = '\n  Leading and trailing  \n雪 😀 café\n</textarea><script>alert("literal")</script> & <b>text</b>\n\t ';
+    const response = await post('/projects/1/tasks/1/notes', { ...selected, notes });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), selectedPath);
+    assert.equal(savedRows()[0].notes, notes);
+    assert.deepEqual(savedRows().map(({ notes, ...row }) => row), originalTasks);
+    const filtered = await get(selectedPath);
+    assert.deepEqual(titles(filtered), ['Matching title']);
+    assert.match(notesControl(filtered, 1), />\n\n  Leading and trailing  \n雪 😀 café/);
+    assert.match(notesControl(filtered, 1), /&lt;\/textarea&gt;&lt;script&gt;alert\(&quot;literal&quot;\)&lt;\/script&gt;/);
+    assert.doesNotMatch(filtered, /<script>/);
+    assert.equal(await get('/'), summary);
+    // Notes never participate in title searches.
+    assert.deepEqual(titles(await get('/projects/1?searchQuery=caf%C3%A9')), []);
+    await post('/projects/1/tasks/2/notes', { notes: 'Matching title' });
+    assert.deepEqual(titles(await get('/projects/1?searchQuery=matching')), ['Matching title']);
+    for (const path of ['/projects/2/tasks/1/notes', '/projects/1/tasks/999/notes', '/projects/999/tasks/1/notes']) {
+      assert.equal((await post(path, { notes: 'Wrong owner' })).status, 404);
+    }
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed title' });
+    await post('/projects/1/rename', { name: 'Renamed source' });
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '' });
+    await post('/projects/1/tasks/1', {});
+    assert.equal(savedRows()[0].notes, notes);
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.match(notesControl(await get('/projects/2'), 1), /雪 😀 café/);
+    const updatedNotes = '  Edited while away\n\n終  ';
+    await post('/projects/2/tasks/1/notes', { notes: updatedNotes });
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(savedRows()[0].notes, updatedNotes);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(titles(await get('/projects/1')), ['Renamed title', 'Other title']);
+    assert.equal(savedRows()[0].notes, updatedNotes);
+    const savedDb = new DatabaseSync(dbPath);
+    try {
+      assert.deepEqual(savedDb.prepare('SELECT * FROM task_positions WHERE project_id = 1 ORDER BY task_id, project_id').all(), originalPositions);
+    } finally { savedDb.close(); }
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.match(notesControl(archived, 1), / disabled>/);
+    assert.match(archived, /disabled>Save notes/);
+    assert.equal((await post('/projects/1/tasks/1/notes', { notes: 'Blocked' })).status, 409);
+    assert.equal(savedRows()[0].notes, updatedNotes);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(notesControl(await get('/projects/1'), 1), / disabled/);
+    await post('/projects/1/tasks/1/notes', { notes: ' \t\n ' });
+    assert.equal(savedRows()[0].notes, ' \t\n ');
+    await post('/projects/1/tasks/1/notes', { notes: '' });
+    assert.equal(savedRows()[0].notes, '');
+    assert.equal(savedRows()[1].notes, 'Matching title');
+    await post('/projects/1/tasks', { title: 'New task' });
+    assert.equal(savedRows()[2].notes, '');
+    const finalPage = await get('/projects/1');
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), finalPage);
+    assert.equal((await fetch(app.url + '/health')).status, 200);
+    assert.deepEqual(await (await fetch(app.url + '/health')).json(), { status: 'ok' });
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('per-project positions migrate and restore reverse returns after edits, new arrivals, archive, and restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-return-order-'));
   const dbPath = join(dir, 'workboard.sqlite');
