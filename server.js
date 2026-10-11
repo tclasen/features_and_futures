@@ -30,8 +30,11 @@ if (!projectColumns.some(column => column.name === 'archived')) {
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount
-  FROM projects p ORDER BY p.id`);
+  FROM projects p
+  WHERE p.id = (SELECT MAX(latest.id) FROM projects latest WHERE latest.name = p.name)
+  ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProjectByName = database.prepare('SELECT id, name, archived FROM projects WHERE name = ? ORDER BY id DESC LIMIT 1');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
@@ -242,6 +245,11 @@ const server = createServer(async (request, response) => {
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) {
       sendJson(response, 400, { error: 'Project name is required' });
+      return;
+    }
+    const existingProject = findProjectByName.get(name);
+    if (existingProject) {
+      sendJson(response, 200, existingProject);
       return;
     }
     const result = createProject.run(name);
