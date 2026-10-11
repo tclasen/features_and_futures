@@ -132,6 +132,35 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         if 'suite_files' in task:
             for name in ('round.json','requirements.md'):shutil.copy2(source/'tasks'/task['task_id']/name,target/name)
             shutil.copytree(source/'tasks'/task['task_id']/'suite',target/'suite')
+    if selected == 'research-v014' and not confirmation and not recovery:
+        # Install the preregistered observer while this fresh preparation is
+        # unstarted, before hashing its manifest. Original source runs stay intact.
+        changes = []
+        for stage, target in ((1, run/'definitions/project/acceptance'),
+                              (5, run/'tasks/task-005/suite')):
+            draft = ROOT/'experiments/instruction-effects/revisions/research-v014'/f'decisions/frozen-prefix-drafts/task-{stage:03d}/suite'
+            before, after = file_hashes(target), file_hashes(draft)
+            if before.keys() != after.keys() or [k for k in before if before[k] != after[k]] != ['workboard.spec.mjs']:
+                raise InfrastructureError('Prospective restore observer changes unexpected suite files')
+            expected = (target/'workboard.spec.mjs').read_text()
+            for title in ('Archive lifecycle', 'Archive tasks'):
+                line = "    await projectRow(page, '" + title + "').getByRole('button', { name: 'Restore project', exact: true }).click();"
+                if expected.count(line) != 1:
+                    raise InfrastructureError('Prospective restore observer source boundary changed')
+                expected = expected.replace(line, line + "\n    await expect(projectRow(page, '" + title + "').getByRole('button', { name: 'Restore project', exact: true })).toHaveCount(0);")
+            if (draft/'workboard.spec.mjs').read_text() != expected:
+                raise InfrastructureError('Prospective restore observer changes more than two readiness waits')
+            shutil.copy2(draft/'workboard.spec.mjs', target/'workboard.spec.mjs')
+            if stage == 5:
+                record_path = target.parent/'round.json'
+                record = json.loads(record_path.read_text())
+                record['suite_files'], record['suite_hash'] = after, digest_json(after)
+                write_json(record_path, record)
+            changes.append({'stage':stage,'before':before,'after':after})
+        write_json(run/'preflight/preparation/prospective-observer-adoption.json',
+                   {'verified':True,'utc':timestamp(),'revision':selected,
+                    'changes':changes,'original_source_run_unchanged':True,
+                    'scope':'Two restore readiness waits only; installed before fresh manifest freeze. Public packets, builder source and instruction profiles unchanged.'})
     sibling=BUILDERS_ROOT/run_id
     sibling.mkdir()
     seed=sibling/'starter'
