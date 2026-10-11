@@ -7,6 +7,59 @@ import { join } from 'node:path';
 import { openProjects } from '../projects.js';
 import { createTaskStore } from '../tasks.js';
 
+test('move ordering migrates legacy ID order and survives repeated moves and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-migration-'));
+  const path = join(directory, 'existing.sqlite');
+  let store;
+  try {
+    const previousDatabase = new DatabaseSync(path);
+    try {
+      previousDatabase.exec(`
+        CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id),
+          title TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0,
+          priority TEXT NOT NULL DEFAULT 'Normal',
+          due_date TEXT NOT NULL DEFAULT ''
+        );
+        INSERT INTO projects (id, name) VALUES (1, 'Source'), (2, 'Destination');
+        INSERT INTO tasks (id, project_id, title, completed, priority, due_date) VALUES
+          (10, 1, 'First', 1, 'High', '0004-02-29'),
+          (20, 2, 'Destination first', 0, 'Low', ''),
+          (30, 1, 'Second', 0, 'Normal', '9999-12-31');
+      `);
+    } finally {
+      previousDatabase.close();
+    }
+    store = openProjects(path);
+    const originalSource = store.tasks.list(1);
+    const originalDestination = store.tasks.list(2);
+    assert.deepEqual(originalSource.map((task) => task.id), [10, 30]);
+    store.tasks.move(1, 10, 2);
+    assert.deepEqual(store.tasks.list(1), [originalSource[1]]);
+    assert.deepEqual(store.tasks.list(2), [...originalDestination, originalSource[0]]);
+    store.close();
+    store = openProjects(path);
+    assert.deepEqual(store.tasks.list(2), [...originalDestination, originalSource[0]]);
+    // A migrated older task appends even when its ID is smaller than every destination task.
+    store.tasks.move(2, 10, 1);
+    assert.deepEqual(store.tasks.list(1), [originalSource[1], originalSource[0]]);
+    const newTask = store.tasks.create(1, 'After moved task');
+    assert.deepEqual(store.tasks.list(1), [originalSource[1], originalSource[0], newTask]);
+    store.close();
+    store = openProjects(path);
+    assert.deepEqual(store.tasks.list(1), [originalSource[1], originalSource[0], newTask]);
+    assert.deepEqual(store.tasks.list(2), originalDestination);
+    assert.equal(store.get(1).completed_count, 1);
+    assert.equal(store.get(1).total_count, 3);
+  } finally {
+    store?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project default migration preserves Task 007 priorities, identities, and summaries', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-default-migration-'));
   const path = join(directory, 'existing.sqlite');

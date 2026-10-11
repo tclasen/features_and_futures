@@ -97,6 +97,14 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     });
   }
 
+  async function moveTask(projectId, taskId, destinationProjectId) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}/move`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destination_project_id: destinationProjectId }),
+    });
+  }
+
   async function listTasks(projectId) {
     const response = await fetch(`${base}/api/projects/${projectId}/tasks`);
     assert.equal(response.status, 200);
@@ -409,6 +417,61 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     await stop();
     await start();
     assert.deepEqual(await listTasks(first.id), [savedDateTask, ...beforeDateTasks.slice(1)]);
+    // Moves preserve identity and fields, append to destination order, and update both summaries.
+    await setDueDate(first.id, savedDateTask.id, '2028-02-29');
+    savedDateTask.due_date = '2028-02-29';
+    await setDefaultPriority(second.id, 'Low');
+    const sourceBeforeMove = await listTasks(first.id);
+    const destinationBeforeMove = await listTasks(second.id);
+    const sourceSummary = await getProject(first.id);
+    const destinationSummary = await getProject(second.id);
+    const moveResponse = await moveTask(first.id, savedDateTask.id, second.id);
+    assert.equal(moveResponse.status, 200);
+    assert.deepEqual(await moveResponse.json(), savedDateTask);
+    assert.deepEqual(await listTasks(first.id), sourceBeforeMove.slice(1));
+    assert.deepEqual(await listTasks(second.id), [...destinationBeforeMove, savedDateTask]);
+    assert.deepEqual(await getProject(first.id), {
+      ...sourceSummary, completed_count: sourceSummary.completed_count - 1, total_count: sourceSummary.total_count - 1,
+    });
+    assert.deepEqual(await getProject(second.id), {
+      ...destinationSummary, completed_count: destinationSummary.completed_count + 1, total_count: destinationSummary.total_count + 1,
+    });
+    const sourceAfterMove = await listTasks(first.id);
+    const destinationAfterMove = await listTasks(second.id);
+    for (const invalidId of [null, '2', 0, -1, 1.5, {}, [], Number.MAX_SAFE_INTEGER + 1]) {
+      assert.equal((await moveTask(second.id, savedDateTask.id, invalidId)).status, 400);
+    }
+    assert.equal((await moveTask(second.id, savedDateTask.id, second.id)).status, 400);
+    assert.equal((await moveTask(second.id, savedDateTask.id, 999999)).status, 404);
+    assert.equal((await moveTask(999999, savedDateTask.id, first.id)).status, 404);
+    assert.equal((await moveTask(first.id, savedDateTask.id, second.id)).status, 404);
+    assert.equal((await moveTask(second.id, 999999, first.id)).status, 404);
+    await setArchived(first.id, true);
+    assert.equal((await moveTask(second.id, savedDateTask.id, first.id)).status, 409);
+    await setArchived(first.id, false);
+    await setArchived(second.id, true);
+    assert.equal((await moveTask(second.id, savedDateTask.id, first.id)).status, 409);
+    assert.deepEqual(await listTasks(first.id), sourceAfterMove);
+    assert.deepEqual(await listTasks(second.id), destinationAfterMove);
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(first.id), sourceAfterMove);
+    assert.deepEqual(await listTasks(second.id), destinationAfterMove);
+    await setArchived(second.id, false);
+    const appended = await (await createTask(second.id, 'Created after move')).json();
+    assert.equal(appended.priority, 'Low');
+    assert.deepEqual(await listTasks(second.id), [...destinationAfterMove, appended]);
+    assert.equal((await moveTask(second.id, savedDateTask.id, first.id)).status, 200);
+    assert.deepEqual(await listTasks(first.id), [...sourceAfterMove, savedDateTask]);
+    // Empty dates are preserved too, and moving to an empty project is supported.
+    const blankDateTask = sourceAfterMove[0];
+    assert.equal(blankDateTask.due_date, '');
+    assert.equal((await moveTask(first.id, blankDateTask.id, third.id)).status, 200);
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(third.id), [blankDateTask]);
+    assert.deepEqual(await listTasks(first.id), [...sourceAfterMove.slice(1), savedDateTask]);
+    assert.deepEqual(await listTasks(second.id), [...destinationBeforeMove, appended]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
