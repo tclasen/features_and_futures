@@ -86,7 +86,7 @@ async function showRoute() {
     return showRoute();
   }
   const project = await response.json();
-  document.querySelector('#download-project').href = `/api/projects/${project.id}/export`;
+  document.querySelector('#download-project').dataset.exportUrl = `/api/projects/${project.id}/export`;
   appliedDueRange = { from: '', through: '' };
   dueFromInput.value = '';
   dueThroughInput.value = '';
@@ -404,6 +404,14 @@ document.querySelector('#back-button').addEventListener('click', () => {
   projectSearchInput.value = '';
   history.pushState({}, '', '/');
   showRoute();
+});
+document.querySelector('#download-project').addEventListener('click', (event) => {
+  const link = document.createElement('a');
+  link.href = event.currentTarget.dataset.exportUrl;
+  link.download = 'workboard-project.json';
+  document.body.append(link);
+  link.click();
+  link.remove();
 });
 window.addEventListener('popstate', showRoute);
 showRoute();
