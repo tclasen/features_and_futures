@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workboard</title>
+<style>
+:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f4f6fb}*{box-sizing:border-box}body{margin:0;min-height:100vh}.shell{max-width:800px;margin:0 auto;padding:56px 24px}h1{font-size:2rem;margin:0 0 28px}.form{display:flex;gap:12px;margin-bottom:24px}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #cbd3e1;border-radius:8px;font:inherit;background:white}button{border:0;border-radius:8px;padding:11px 16px;background:#315fe8;color:white;font:600 1rem inherit;cursor:pointer}button:hover{background:#244cc5}.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;margin:10px 0;background:white;border:1px solid #e0e5ee;border-radius:10px}.row-name{font-weight:600;overflow-wrap:anywhere}.back{margin-bottom:24px} [role=alert]{color:#b42318;margin:0 0 16px}
+</style>
+</head>
+<body>
+<main class="shell" id="app"></main>
+<script type="module">
+const app = document.querySelector('#app');
+const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function render() {
+  const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+  if (match) {
+    let project;
+    try { const response = await fetch('/api/projects/' + encodeURIComponent(decodeURIComponent(match[1]))); if (!response.ok) throw new Error(); project = await response.json(); }
+    catch { app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>'; app.querySelector('button').onclick = () => { location.href = '/'; }; return; }
+    app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+    app.querySelector('button').onclick = () => { location.href = '/'; };
+    return;
+  }
+  const projects = await (await fetch('/api/projects')).json();
+  app.innerHTML = `<h1>Workboard</h1><form class="form"><input aria-label="Project name" name="name" type="text"><button type="submit">Create project</button></form><div class="alert-slot" aria-live="polite"></div><section aria-label="Projects">${projects.map(p => `<div class="row" data-testid="project-row"><span class="row-name">${escapeHtml(p.name)}</span><button type="button" data-id="${escapeHtml(p.id)}">Open project</button></div>`).join('')}</section>`;
+  app.querySelectorAll('[data-id]').forEach(button => button.addEventListener('click', () => { location.href = '/projects/' + encodeURIComponent(button.dataset.id); }));
+  app.querySelector('form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const name = new FormData(event.currentTarget).get('name').trim();
+    if (!name) { app.querySelector('.alert-slot').innerHTML = '<p role="alert">Project name is required</p>'; return; }
+    const response = await fetch('/api/projects', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({name}) });
+    if (response.ok) render();
+  });
+}
+render();
+</script>
+</body>
+</html>
