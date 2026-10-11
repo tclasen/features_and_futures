@@ -80,13 +80,13 @@ test('moves append, preserve task data and source filters, reject archived desti
     await post('/projects/2/restore');
     assert.deepEqual(titles(await get('/projects/2')), ['Destination first', 'Old task']);
     await move(2, 1, '1');
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'Old task']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Old task', 'Remaining']);
     await post('/projects/1/tasks', { title: 'After move' });
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'Old task', 'After move']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Old task', 'Remaining', 'After move']);
     // Blank dates and inherited priorities also survive moving.
     await move(2, 3, '1');
     const source = await get('/projects/1');
-    assert.deepEqual(titles(source), ['Remaining', 'Old task', 'After move', 'Destination first']);
+    assert.deepEqual(titles(source), ['Old task', 'Remaining', 'After move', 'Destination first']);
     assert.match(source, /id="task-due-date-3"[^>]*value=""/);
     assert.match(source, /<option selected>Low<\/option>/);
     await post('/projects/3/restore');
@@ -94,7 +94,7 @@ test('moves append, preserve task data and source filters, reject archived desti
     assert.match(options, /value="2">Renamed destination[\s\S]*value="3">Archived/);
     await stop();
     await start();
-    assert.deepEqual(titles(await get('/projects/1')), ['Remaining', 'Old task', 'After move', 'Destination first']);
+    assert.deepEqual(titles(await get('/projects/1')), ['Old task', 'Remaining', 'After move', 'Destination first']);
     assert.deepEqual(titles(await get('/projects/2')), []);
   } finally {
     if (child) await stop();
