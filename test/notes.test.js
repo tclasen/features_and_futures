@@ -25,7 +25,7 @@ test('notes upgrade, preserve literal multiline text and task data, travel with 
       PRIMARY KEY (task_id, project_id));
     INSERT INTO task_positions VALUES (1, 1, 4), (1, 2, 7), (2, 1, 5);
   `);
-  const before = { ...legacy.prepare('SELECT * FROM tasks WHERE id = 1').get() };
+  const before = { ...legacy.prepare('SELECT * FROM tasks WHERE id = 1').get(), deleted: 0 };
   legacy.close();
   const listener = net.createServer().listen(0, '127.0.0.1');
   await once(listener, 'listening');
