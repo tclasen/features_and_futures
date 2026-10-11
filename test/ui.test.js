@@ -732,9 +732,10 @@ test('renaming validates, updates the heading, and preserves the route and task 
 function searchPage(pathname, projects, tasks = []) {
   const app = new Node('main');
   const writes = [];
+  const navigations = [];
   runInNewContext(source, {
     document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
-    location: { pathname, assign() {} },
+    location: { pathname, assign(path) { navigations.push(path); } },
     async fetch(path, options) {
       let data;
       if (!options) data = path === '/api/projects' ? projects
@@ -758,7 +759,7 @@ function searchPage(pathname, projects, tasks = []) {
       return { ok: true, json: async () => data };
     },
   });
-  return { app, writes };
+  return { app, writes, navigations };
 }
 
 for (const kind of ['project', 'task']) {
@@ -922,12 +923,11 @@ for (const archived of [false, true]) {
   test(`project download is available independently of filters (${archived ? 'archived' : 'active'})`, async () => {
     const projects = [{ id: 1, name: 'Export', archived, defaultTaskPriority: 'Normal' }];
     const tasks = [{ id: 1, title: 'Saved', completed: true, priority: 'High', dueDate: '2028-02-29', notes: '雪', deleted: true }];
-    const { app, writes } = searchPage('/projects/1', projects, tasks);
+    const { app, writes, navigations } = searchPage('/projects/1', projects, tasks);
     await new Promise((resolve) => setImmediate(resolve));
-    const download = app.querySelector('a');
-    assert.equal(download.textContent, 'Download project');
-    assert.equal(download.href, '/api/projects/1/export');
-    assert.equal(download.download, 'workboard-project.json');
+    const download = app.children.find((node) => node.tag === 'button' && node.textContent === 'Download project');
+    assert.ok(download);
+    assert.equal(download.type, 'button');
     assert.ok(!download.disabled);
     const filters = app.children.find((node) => node.className === 'task-filter');
     filters.children[1].value = 'Deleted';
@@ -939,8 +939,15 @@ for (const archived of [false, true]) {
     await range.fire('submit');
     await applySearch(formWithLabel(app, 'Task search'), 'no match');
     assert.equal(app.querySelector('ul').children.length, 0);
-    assert.equal(app.querySelector('a'), download);
+    await download.fire('click');
+    assert.deepEqual(navigations, ['/api/projects/1/export']);
+    assert.ok(app.children.includes(download));
     assert.ok(!download.disabled);
+    assert.equal(filters.children[1].value, 'Deleted');
+    assert.equal(filters.children[3].value, 'High');
+    assert.equal(range.children[1].value, '2028-02-29');
+    assert.equal(range.children[3].value, '2028-02-29');
+    assert.equal(formWithLabel(app, 'Task search').children[1].value, 'no match');
     assert.equal(writes.length, 0);
   });
 }
