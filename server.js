@@ -44,6 +44,7 @@ const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?')
 const setTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -124,6 +125,21 @@ const server = http.createServer(async (req, res) => {
       task.priority = project.defaultPriority;
       insertTask.run(task.id, task.projectId, task.title, Date.now(), task.priority);
       return send(201, JSON.stringify(task));
+    }
+    const moveMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/move$/);
+    if (req.method === 'POST' && moveMatch) {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      let payload;
+      try { payload = JSON.parse(raw); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+      const task = getTask.get(moveMatch[1]);
+      if (!task) return send(404, JSON.stringify({ error: 'Task not found' }));
+      const source = getProject.get(task.projectId);
+      const destination = getProject.get(payload?.destinationProjectId);
+      if (source.archived || !destination || destination.archived || destination.id === source.id) return send(400, JSON.stringify({ error: 'Invalid destination project' }));
+      const nextOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destination.id).value;
+      moveTask.run(destination.id, nextOrder, task.id);
+      return send(200, JSON.stringify({ ...task, projectId: destination.id }));
     }
     const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
     if (req.method === 'PATCH' && taskMatch) {

@@ -85,6 +85,8 @@ async function render() {
     };
     dueFrom.addEventListener('input', saveViewState);
     dueThrough.addEventListener('input', saveViewState);
+    const destinations = await request('/api/projects?archived=false');
+    const eligibleDestinations = destinations.filter(item => item.id !== project.id);
     const tasks = element('section', { 'aria-label': 'Tasks' });
     app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter,
       dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rangeAlert, tasks);
@@ -144,7 +146,20 @@ async function render() {
           await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
           await refresh();
         });
-        row.append(checkbox); tasks.append(row);
+        row.append(checkbox);
+        const destination = element('select', { 'aria-label': 'Destination project' });
+        for (const item of eligibleDestinations) destination.append(element('option', { value: item.id }, item.name));
+        const moveButton = element('button', { type: 'button' }, 'Move task');
+        destination.disabled = Boolean(project.archived) || eligibleDestinations.length === 0;
+        moveButton.disabled = Boolean(project.archived) || eligibleDestinations.length === 0;
+        moveButton.addEventListener('click', async () => {
+          try {
+            await request(`/api/tasks/${encodeURIComponent(task.id)}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: destination.value }) });
+            await refresh();
+          } catch (error) { moveAlert.textContent = error.message; moveAlert.hidden = false; }
+        });
+        const moveAlert = element('span', { role: 'alert', hidden: '' });
+        row.append(destination, moveButton, moveAlert); tasks.append(row);
       }
     };
     const validCalendarDate = value => {
