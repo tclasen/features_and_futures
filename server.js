@@ -29,6 +29,7 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -89,6 +90,23 @@ const server = createServer(async (request, response) => {
     if (typeof data.completed !== 'boolean') return send(response, 400, { error: 'Invalid completion state' });
     updateTask.run(data.completed ? 1 : 0, taskId, projectId);
     return send(response, 200, { ok: true });
+  }
+  const taskRenameRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/rename$/);
+  if (taskRenameRoute && request.method === 'PATCH') {
+    const projectId = decodeURIComponent(taskRenameRoute[1]);
+    const taskId = decodeURIComponent(taskRenameRoute[2]);
+    const project = findProject.get(projectId);
+    if (!project) return send(response, 404, { error: 'Project not found' });
+    if (project.archived) return send(response, 403, { error: 'Archived project' });
+    if (!findTask.get(taskId, projectId)) return send(response, 404, { error: 'Task not found' });
+    let input = '';
+    for await (const chunk of request) input += chunk;
+    let data;
+    try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    const title = typeof data.title === 'string' ? data.title.trim() : '';
+    if (!title) return send(response, 400, { error: 'Task title is required' });
+    updateTaskTitle.run(title, taskId, projectId);
+    return send(response, 200, { id: taskId, projectId, title });
   }
   const renameRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/rename$/);
   if (renameRoute && request.method === 'PATCH') {

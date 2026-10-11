@@ -17,6 +17,8 @@
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin: 10px 0; background: white; border: 1px solid #e1e6ed; border-radius: 8px; }
     .project-name { font-weight: 600; overflow-wrap: anywhere; }
     .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 10px 0; background: white; border: 1px solid #e1e6ed; border-radius: 8px; }
+    .task-row form { margin: 0; flex: 1; }
+    .task-row form label { min-width: 120px; }
     .task-row label { display: flex; align-items: center; gap: 10px; font-weight: 400; }
     .task-row input { width: auto; }
     [role="alert"] { color: #b42318; margin: 0 0 16px; }
@@ -68,9 +70,19 @@
           const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(r => r.json());
           const filter = document.querySelector('#task-filter').value;
           const visible = tasks.filter(task => filter === 'All' || (filter === 'Completed') === Boolean(task.completed));
-          document.querySelector('#tasks').innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><label><input type="checkbox" aria-label="Complete ${escapeHTML(task.title)}" data-task-id="${escapeHTML(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}>${escapeHTML(task.title)}</label></div>`).join('');
-          document.querySelectorAll('#tasks input').forEach(box => box.addEventListener('change', async () => {
+          document.querySelector('#tasks').innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><label><input type="checkbox" aria-label="Complete ${escapeHTML(task.title)}" data-task-id="${escapeHTML(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}>${escapeHTML(task.title)}</label><form data-rename-task="${escapeHTML(task.id)}"><label>New task title<input name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form></div>`).join('');
+          document.querySelectorAll('#tasks input[type="checkbox"]').forEach(box => box.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.taskId)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ completed: box.checked }) });
+            await loadTasks();
+          }));
+          document.querySelectorAll('[data-rename-task]').forEach(form => form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const input = form.elements.title;
+            const title = input.value.trim();
+            if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+            const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(form.dataset.renameTask)}/rename`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ title }) });
+            if (!result.ok) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+            alert.hidden = true;
             await loadTasks();
           }));
         }
