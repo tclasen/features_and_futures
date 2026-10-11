@@ -26,6 +26,7 @@ const listProjects = db.prepare(`${projectQuery} ORDER BY p.id ASC`);
 const findProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -75,6 +76,13 @@ const server = http.createServer(async (request, response) => {
       const projectId = projectMatch[1];
       if (!findProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
       const input = await readJSON(request);
+      if (Object.hasOwn(input || {}, 'name')) {
+        if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return json(response, 400, { error: 'Project name is required' });
+        renameProject.run(name, projectId);
+        return json(response, 200, findProject.get(projectId));
+      }
       if (typeof input?.archived !== 'boolean') return json(response, 400, { error: 'Archive state must be a boolean' });
       updateProject.run(Number(input.archived), projectId);
       return json(response, 200, findProject.get(projectId));

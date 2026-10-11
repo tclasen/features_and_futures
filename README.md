@@ -13,3 +13,10 @@ Create projects on the home page and open a project to create tasks. Task titles
 are trimmed, tasks start open, and the Task filter shows All, Open, or Completed
 tasks in creation order. Completion changes and project ownership are stored in
 the configured SQLite file and survive restarts.
+
+Projects can be archived and restored from the project list, which shows each
+project's completion summary. Archived projects keep their tasks and allow
+filtering, but task creation, completion changes, and renaming are disabled.
+Use New project name and Rename project on an active project page to rename it.
+Names are trimmed and required; renaming preserves the URL, creation order,
+tasks, and completion summary and persists across restarts.

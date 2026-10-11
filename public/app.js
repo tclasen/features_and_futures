@@ -55,7 +55,14 @@ async function renderProject(projectId) {
   let tasks = await request(`/api/projects/${projectId}/tasks`);
   app.innerHTML = `
     <button type="button" id="back">Projects</button><h1></h1>
-    <form>
+    <form id="rename-form">
+      <label for="new-project-name">New project name</label>
+      <div class="form-controls">
+        <input id="new-project-name" name="name" type="text" autocomplete="off">
+        <button type="submit">Rename project</button>
+      </div>
+    </form>
+    <form id="task-form">
       <label for="task-title">Task title</label>
       <div class="form-controls">
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -73,13 +80,38 @@ async function renderProject(projectId) {
     <p id="empty">No tasks to show.</p>
     <ul id="tasks"></ul>`;
   app.querySelector('h1').textContent = project.name;
+  const renameForm = document.getElementById('rename-form');
+  const renameInput = document.getElementById('new-project-name');
+  renameInput.value = project.name;
   if (project.archived) {
     const notice = document.createElement('p');
     notice.textContent = 'Archived project';
     app.querySelector('h1').after(notice);
-    app.querySelector('form button').disabled = true;
+    document.querySelector('#task-form button').disabled = true;
+    renameInput.disabled = true;
+    renameForm.querySelector('button').disabled = true;
   }
   document.title = `${project.name} · Workboard`;
+  renameForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    const name = renameInput.value.trim();
+    if (!name) { showError('Project name is required'); renameInput.focus(); return; }
+    const button = renameForm.querySelector('button');
+    button.disabled = true;
+    document.getElementById('error').hidden = true;
+    try {
+      const saved = await request(`/api/projects/${projectId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      project.name = saved.name;
+      app.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      renameInput.value = project.name;
+    } catch (error) { showError(error.message); }
+    finally { button.disabled = false; }
+  });
   document.getElementById('back').addEventListener('click', () => location.assign('/'));
   const filter = document.getElementById('task-filter');
   const list = document.getElementById('tasks');
@@ -118,7 +150,7 @@ async function renderProject(projectId) {
   }
   filter.addEventListener('change', drawTasks);
   drawTasks();
-  app.querySelector('form').addEventListener('submit', async event => {
+  document.getElementById('task-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (project.archived) return;
     const input = document.getElementById('task-title');
