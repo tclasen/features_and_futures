@@ -13,6 +13,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -41,6 +48,36 @@ const server = createServer(async (req, res) => {
       if (!name) return sendJson(res, 400, { error: 'Project name is required' });
       const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
       return sendJson(res, 201, { id: Number(result.lastInsertRowid), name });
+    } catch {
+      return sendJson(res, 400, { error: 'Invalid request' });
+    }
+  }
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (taskRoute && req.method === 'GET') {
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1]));
+    return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
+  }
+  if (taskRoute && req.method === 'POST') {
+    try {
+      const projectId = Number(taskRoute[1]);
+      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
+      const payload = await readJson(req);
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    } catch {
+      return sendJson(res, 400, { error: 'Invalid request' });
+    }
+  }
+  const taskUpdate = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskUpdate && req.method === 'PATCH') {
+    try {
+      const payload = await readJson(req);
+      if (typeof payload.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, Number(taskUpdate[1]));
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: Number(taskUpdate[1]), completed: payload.completed });
     } catch {
       return sendJson(res, 400, { error: 'Invalid request' });
     }
