@@ -52,12 +52,39 @@
         if (project) {
           app.append(element('h1', project.name));
           if (project.archived) app.append(element('p', 'Archived project'));
+          const renameForm = element('form');
+          const renameInput = element('input', undefined, {
+            type: 'text', 'aria-label': 'New project name', autocomplete: 'off'
+          });
+          const renameButton = element('button', 'Rename project', { type: 'submit' });
+          renameInput.disabled = project.archived;
+          renameButton.disabled = project.archived;
+          renameForm.append(renameInput, renameButton);
           const form = element('form');
           const input = element('input', undefined, { type: 'text', 'aria-label': 'Task title', autocomplete: 'off' });
           const submit = element('button', 'Create task', { type: 'submit' });
           submit.disabled = project.archived;
           form.append(input, submit);
           const alert = element('p', undefined, { role: 'alert', hidden: '' });
+          renameForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const name = renameInput.value.trim();
+            if (!name) {
+              alert.textContent = 'Project name is required';
+              alert.hidden = false;
+              renameInput.focus();
+              return;
+            }
+            const response = await fetch(`/api/projects/${project.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name })
+            });
+            if (response.ok) {
+              app.querySelector('h1').textContent = name;
+              renameInput.value = '';
+              alert.hidden = true;
+            }
+          });
           const filterLabel = element('label', 'Task filter');
           const filter = element('select', undefined, { 'aria-label': 'Task filter' });
           for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
@@ -82,7 +109,7 @@
             }
           });
           filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, project.archived));
-          app.append(form, alert, filterLabel, list);
+          app.append(renameForm, form, alert, filterLabel, list);
           await loadTasks(project.id, list, filter.value, project.archived);
         } else app.append(element('h1', 'Project not found'));
         return;

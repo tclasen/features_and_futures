@@ -64,6 +64,22 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 400, { error: 'Invalid request' });
     }
   }
+  const projectRenameRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectRenameRoute && req.method === 'PATCH') {
+    try {
+      const projectId = Number(projectRenameRoute[1]);
+      const payload = await readJson(req);
+      const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+      if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+      const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return sendJson(res, 404, { error: 'Project not found' });
+      if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be renamed' });
+      db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+      return sendJson(res, 200, { id: projectId, name });
+    } catch {
+      return sendJson(res, 400, { error: 'Invalid request' });
+    }
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
       const payload = await readJson(req);
