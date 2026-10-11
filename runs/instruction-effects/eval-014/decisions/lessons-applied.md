@@ -65,3 +65,5 @@ L062 concurrent retirement observation race resolved: freeze terminal receipt sn
 L062 focused034 source-bound verification passes: three four-case positive render variants and23exact selected genuine faults, complete file/input binding, zero skips/flakes. Remaining035–039 and broader/native gates pending. Evidence: `research-v014/preflight/future034-focused-check-1791744549252/independently-verified.json`.
 
 L062 focused035 source-bound verification passes: three five-case positive render runs and fourteen exact selected genuine faults, complete file/input binding, zero skips/flakes. Remaining036–039 and broader/native readiness pending. Evidence: `research-v014/preflight/future035-focused-check-1791745189176/independently-verified.json`.
+
+L065 observed: task025/b004/attempt002 fails before inference with oversized Pi prompt argument; provider-incident gate rejects empty receipts. Coordinator92124terminal1 retained with original source/timing, nine025deployments accepted. Exact pinned harness prompt transport verification required before repair/resume; no native receipt fabricated. Evidence: `preflight/launch-incidents/task025-b004-attempt002/observed.json`.
