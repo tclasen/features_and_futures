@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const projectFilter = document.querySelector('#project-filter');
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
@@ -16,6 +17,8 @@ async function loadProjects() {
   const projects = await response.json();
   projectContainer.replaceChildren();
   for (const project of projects) {
+    if (projectFilter.value === 'active' && project.archived) continue;
+    if (projectFilter.value === 'archived' && !project.archived) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -28,7 +31,17 @@ async function loadProjects() {
       history.pushState({}, '', `/projects/${project.id}`);
       showRoute();
     });
-    row.append(name, open);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+    const archive = document.createElement('button');
+    archive.type = 'button';
+    archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+    archive.addEventListener('click', async () => {
+      await fetch(`/api/projects/${project.id}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+      await loadProjects();
+    });
+    row.append(name, summary, open, archive);
     projectContainer.append(row);
   }
 }
@@ -48,12 +61,15 @@ async function showRoute() {
   }
   const project = await response.json();
   document.querySelector('#detail-name').textContent = project.name;
+  document.querySelector('#archived-notice').hidden = !project.archived;
+  taskForm.querySelector('button[type="submit"]').disabled = project.archived;
+  taskInput.disabled = project.archived;
   detailView.hidden = false;
   listView.hidden = true;
-  await loadTasks(Number(match[1]));
+  await loadTasks(Number(match[1]), project.archived);
 }
 
-async function loadTasks(projectId) {
+async function loadTasks(projectId, archived = false) {
   const response = await fetch(`/api/projects/${projectId}/tasks`);
   if (!response.ok) return;
   const tasks = await response.json();
@@ -71,6 +87,7 @@ async function loadTasks(projectId) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(task.completed);
+    checkbox.disabled = archived;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await fetch(`/api/tasks/${task.id}`, {
@@ -107,8 +124,9 @@ taskForm.addEventListener('submit', async (event) => {
 });
 taskFilter.addEventListener('change', () => {
   const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
-  if (projectId) loadTasks(Number(projectId));
+  if (projectId) fetch(`/api/projects/${projectId}`).then((response) => response.json()).then((project) => loadTasks(Number(projectId), project.archived));
 });
+projectFilter.addEventListener('change', loadProjects);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
