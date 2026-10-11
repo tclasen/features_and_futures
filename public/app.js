@@ -22,7 +22,7 @@ async function render() {
     let project;
     try { project = await request(`/api/projects/${encodeURIComponent(match[1])}`); } catch { project = null; }
     const back = element('button', { type: 'button' }, 'Projects');
-    back.addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+    back.addEventListener('click', () => { projectViewState.delete(match[1]); history.pushState({}, '', '/'); render(); });
     app.append(back);
     if (!project) { app.append(element('p', { role: 'alert' }, 'Project not found')); return; }
     app.append(element('h1', {}, project.name));
@@ -210,7 +210,7 @@ async function render() {
       row.append(element('span', {}, project.name));
       row.append(element('span', { 'data-testid': 'project-summary' }, `${project.completedCount}/${project.totalCount} completed`));
       const open = element('button', { type: 'button' }, 'Open project');
-      open.addEventListener('click', () => { history.pushState({}, '', `/projects/${encodeURIComponent(project.id)}`); render(); });
+      open.addEventListener('click', () => { projectViewState.delete(String(project.id)); history.pushState({}, '', `/projects/${encodeURIComponent(project.id)}`); render(); });
       const action = element('button', { type: 'button' }, project.archived ? 'Restore project' : 'Archive project');
       action.addEventListener('click', async () => {
         await request(`/api/projects/${encodeURIComponent(project.id)}/archive`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
@@ -223,5 +223,5 @@ async function render() {
   await renderProjects();
 }
 
-window.addEventListener('popstate', render);
+window.addEventListener('popstate', () => { projectViewState.clear(); render(); });
 render().catch(error => app.replaceChildren(element('p', { role: 'alert' }, error.message)));
