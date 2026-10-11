@@ -793,6 +793,56 @@ for (const kind of ['project', 'task']) {
   });
 }
 
+for (const archived of [false, true]) {
+  test(`multiline notes are plain text and preserve all filters (${archived ? 'archived' : 'active'})`, async () => {
+    const project = { id: 1, name: 'Project', archived, defaultTaskPriority: 'Normal' };
+    const task = { id: 1, title: 'Matching title', completed: true, priority: 'High', dueDate: '2028-02-29', notes: '' };
+    const { app, writes } = searchPage('/projects/1', [project], [task]);
+    await new Promise((resolve) => setImmediate(resolve));
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    filters.children[1].value = 'Completed';
+    await filters.children[1].fire('change');
+    filters.children[3].value = 'High';
+    await filters.children[3].fire('change');
+    const range = formWithLabel(app, 'Due from');
+    range.children[1].value = range.children[3].value = '2028-02-29';
+    await range.fire('submit');
+    const search = formWithLabel(app, 'Task search');
+    await applySearch(search, 'MATCHING');
+    const notesForm = () => app.querySelector('ul').children[0].children.find((node) => node.children[0]?.textContent === 'Task notes');
+    assert.equal(notesForm().children[0].htmlFor, notesForm().children[1].id);
+    assert.equal(notesForm().children[1].tag, 'textarea');
+    assert.equal(notesForm().children[1].value, '');
+    assert.equal(notesForm().children[2].textContent, 'Save notes');
+    assert.equal(notesForm().children[1].disabled, archived);
+    assert.equal(notesForm().children[2].disabled, archived);
+    const text = '  Unicode 雪\n\n<script>notes-only</script>\n trailing  ';
+    notesForm().children[1].value = text;
+    await notesForm().fire('submit');
+    if (archived) {
+      assert.equal(writes.length, 0);
+      assert.equal(task.notes, '');
+      return;
+    }
+    assert.equal(task.notes, text);
+    assert.equal(notesForm().children[1].value, text);
+    assert.equal(notesForm().children[1].children.length, 0);
+    assert.deepEqual(writes, [{ path: '/api/projects/1/tasks/1', notes: text }]);
+    assert.equal(filters.children[1].value, 'Completed');
+    assert.equal(filters.children[3].value, 'High');
+    assert.equal(range.children[1].value, '2028-02-29');
+    assert.equal(range.children[3].value, '2028-02-29');
+    assert.equal(search.children[1].value, 'MATCHING');
+    await applySearch(search, 'notes-only');
+    assert.equal(app.querySelector('ul').children.length, 0);
+    await applySearch(search, 'matching');
+    notesForm().children[1].value = '';
+    await notesForm().fire('submit');
+    assert.equal(notesForm().children[1].value, '');
+    assert.deepEqual(task, { id: 1, title: 'Matching title', completed: true, priority: 'High', dueDate: '2028-02-29', notes: '' });
+  });
+}
+
 const formWithLabel = (app, label) => app.children.find((node) => node.children[0]?.textContent === label);
 async function applySearch(form, query) {
   form.children[1].value = query;

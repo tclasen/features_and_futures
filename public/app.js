@@ -260,6 +260,8 @@ async function showTasks(project) {
         priority.disabled = true;
         dueDateInput.disabled = true;
         dueDateButton.disabled = true;
+        notesInput.disabled = true;
+        notesButton.disabled = true;
         destination.disabled = true;
         moveButton.disabled = true;
         app.querySelector('[role="alert"]')?.remove();
@@ -359,7 +361,25 @@ async function showTasks(project) {
         if (moveButton.disabled) return;
         await saveTask({ destinationProjectId: Number(destination.value) });
       });
-      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority, dueDateForm, moveForm);
+      const notesForm = element('form');
+      const notesLabel = element('label', 'Task notes');
+      notesLabel.htmlFor = `task-notes-${task.id}`;
+      const notesInput = element('textarea');
+      notesInput.id = notesLabel.htmlFor;
+      notesInput.name = 'notes';
+      notesInput.rows = 4;
+      notesInput.value = task.notes || '';
+      notesInput.disabled = archived || saving.has(task.id);
+      const notesButton = element('button', 'Save notes');
+      notesButton.type = 'submit';
+      notesButton.disabled = archived || saving.has(task.id);
+      notesForm.append(notesLabel, notesInput, notesButton);
+      notesForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (archived || saving.has(task.id)) return;
+        await saveTask({ notes: notesInput.value });
+      });
+      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority, dueDateForm, moveForm, notesForm);
       return row;
     }));
   }

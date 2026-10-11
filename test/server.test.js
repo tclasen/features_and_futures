@@ -51,7 +51,7 @@ test('legacy project databases migrate without losing IDs or tasks', async () =>
     const expected = [{ id: 17, name: 'Legacy', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 }];
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/tasks`)).json(), [
-      { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '' },
+      { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '', notes: '' },
     ]);
     await server.stop();
     server = await start(databasePath);
@@ -552,6 +552,62 @@ test('moves preserve task data, first-arrival order, summaries and ownership acr
     server = await start(databasePath);
     assert.deepEqual(await request(`${sourcePath}/tasks`), [saved, newest]);
     assert.deepEqual(await request(`${destinationPath}/tasks`), [existing, remaining]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('notes preserve exact text, task data, remembered positions and restart persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method, body) => fetch(`${server.url}/api/projects${path}`, method ? {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    } : undefined);
+    const source = await (await request('', 'POST', { name: 'Source' })).json();
+    const destination = await (await request('', 'POST', { name: 'Destination' })).json();
+    const path = `/${source.id}/tasks`;
+    const task = await (await request(path, 'POST', { title: 'Title' })).json();
+    const next = await (await request(path, 'POST', { title: 'Next' })).json();
+    assert.equal(task.notes, '');
+    const patch = (changes, projectId = source.id) => request(`/${projectId}/tasks/${task.id}`, 'PATCH', changes);
+    await patch({ completed: true });
+    await patch({ priority: 'High' });
+    await patch({ dueDate: '2028-02-29' });
+    const notes = '  First line\n\n\tUnicode: 雪 🚀\n<script>literal & markup</script>  ';
+    let expected = { ...task, completed: true, priority: 'High', dueDate: '2028-02-29', notes };
+    assert.deepEqual(await (await patch({ notes })).json(), expected);
+    for (const invalid of [null, 42, {}, []]) {
+      assert.equal((await patch({ notes: invalid })).status, 400);
+    }
+    assert.equal((await patch({ notes }, destination.id)).status, 404);
+    assert.deepEqual(await (await request(path)).json(), [expected, next]);
+    expected = { ...expected, title: 'Renamed' };
+    assert.deepEqual(await (await patch({ title: ' Renamed ' })).json(), expected);
+    assert.deepEqual(await (await patch({ destinationProjectId: destination.id })).json(), expected);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(`/${destination.id}/tasks`)).json(), [expected]);
+    assert.deepEqual(await (await patch({ destinationProjectId: source.id }, destination.id)).json(), expected);
+    assert.deepEqual(await (await request(path)).json(), [expected, next]);
+    const summary = await (await request(`/${source.id}`)).json();
+    await request(`/${source.id}`, 'PATCH', { archived: true });
+    assert.equal((await patch({ notes: '' })).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [expected, next]);
+    await request(`/${source.id}`, 'PATCH', { archived: false });
+    for (const value of [' \t\n ', '']) {
+      expected = { ...expected, notes: value };
+      assert.deepEqual(await (await patch({ notes: value })).json(), expected);
+    }
+    assert.deepEqual(await (await request(`/${source.id}`)).json(), summary);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [expected, next]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
