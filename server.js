@@ -37,6 +37,16 @@ try { database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch 
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
 database.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort_order)
+    SELECT id, project_id, sort_order FROM tasks;
+`);
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
@@ -48,8 +58,12 @@ const findProject = database.prepare(`SELECT p.id, p.name, p.archived, p.default
   FROM projects p WHERE p.id = ?`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
-const moveTask = database.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM task_project_positions WHERE project_id = ?), 0))');
+const createTaskPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
+const positionForProject = database.prepare('SELECT sort_order AS sortOrder FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextProjectPosition = database.prepare('SELECT COALESCE(MAX(sort_order) + 1, 0) AS sortOrder FROM task_project_positions WHERE project_id = ?');
+const rememberTaskPosition = database.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = database.prepare("UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?");
@@ -144,7 +158,10 @@ const server = createServer(async (request, response) => {
       const title = body.title.trim();
       const priority = findProject.get(projectId).defaultTaskPriority;
       const result = createTask.run(projectId, title, priority, projectId);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority });
+      const taskId = Number(result.lastInsertRowid);
+      const sortOrder = database.prepare('SELECT sort_order AS sortOrder FROM tasks WHERE id = ?').get(taskId).sortOrder;
+      createTaskPosition.run(taskId, projectId, sortOrder);
+      return sendJson(response, 201, { id: taskId, projectId, title, completed: false, priority });
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
@@ -160,7 +177,12 @@ const server = createServer(async (request, response) => {
     if (!source || source.archived || !destination || destination.archived || sourceId === destinationId) {
       return sendJson(response, 400, { error: 'Invalid destination project' });
     }
-    const result = moveTask.run(destinationId, destinationId, taskId, sourceId);
+    const sourceTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!sourceTask) return sendJson(response, 404, { error: 'Task not found' });
+    const existingPosition = positionForProject.get(taskId, destinationId);
+    const destinationPosition = existingPosition?.sortOrder ?? nextProjectPosition.get(destinationId).sortOrder;
+    rememberTaskPosition.run(taskId, destinationId, destinationPosition);
+    const result = moveTask.run(destinationId, destinationPosition, taskId, sourceId);
     return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found' });
   }
   if (request.method === 'PATCH' && taskMatch) {
