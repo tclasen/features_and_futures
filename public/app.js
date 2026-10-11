@@ -102,6 +102,19 @@ async function render() {
           } catch (error) { priority.value = task.priority || 'Normal'; }
         });
         row.append(priority);
+        const dueDate = element('input', { type: 'text', 'aria-label': 'Task due date', value: task.dueDate || '' });
+        const saveDueDate = element('button', { type: 'button', 'aria-label': 'Save due date' }, 'Save due date');
+        const dueDateAlert = element('span', { role: 'alert', hidden: '' });
+        dueDate.disabled = Boolean(project.archived);
+        saveDueDate.disabled = Boolean(project.archived);
+        saveDueDate.addEventListener('click', async () => {
+          try {
+            await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: dueDate.value }) });
+            dueDateAlert.hidden = true;
+            await refresh();
+          } catch (error) { dueDateAlert.textContent = error.message; dueDateAlert.hidden = false; }
+        });
+        row.append(dueDate, saveDueDate, dueDateAlert);
         const checkbox = element('input', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = Boolean(task.completed);
         checkbox.disabled = Boolean(project.archived);

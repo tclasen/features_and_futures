@@ -33,13 +33,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
+const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -134,6 +138,13 @@ const server = http.createServer(async (req, res) => {
         setTaskCompletion.run(payload.completed ? 1 : 0, task.id);
         return send(200, JSON.stringify({ ...task, completed: payload.completed ? 1 : 0 }));
       }
+      if (Object.hasOwn(payload ?? {}, 'dueDate')) {
+        if (typeof payload.dueDate !== 'string') return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+        const dueDate = payload.dueDate.trim();
+        if (dueDate && !isValidDueDate(dueDate)) return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+        setTaskDueDate.run(dueDate || null, task.id);
+        return send(200, JSON.stringify({ ...task, dueDate: dueDate || null }));
+      }
       if (['Low', 'Normal', 'High'].includes(payload?.priority)) {
         setTaskPriority.run(payload.priority, task.id);
         return send(200, JSON.stringify({ ...task, priority: payload.priority }));
@@ -157,6 +168,16 @@ const server = http.createServer(async (req, res) => {
     return send(500, JSON.stringify({ error: 'Internal server error' }));
   }
 });
+
+function isValidDueDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 const port = Number.parseInt(process.env.PORT || '8080', 10);
 server.listen(port, '0.0.0.0', () => console.log(`Workboard listening on ${port}`));
