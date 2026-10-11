@@ -123,6 +123,34 @@ const server = http.createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && pathname === '/health') return json(response, 200, { status: 'ok' });
     if (request.method === 'GET' && pathname === '/api/projects') return json(response, 200, listProjects.all());
+    const exportMatch = pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+    if (request.method === 'GET' && exportMatch) {
+      const project = findProject.get(exportMatch[1]);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      const document = {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_priority,
+          tasks: listTasks.all(project.id).map(task => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            // Textarea line breaks are portable LF; leave the stored notes intact.
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted),
+          })),
+        },
+      };
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      });
+      return response.end(JSON.stringify(document, null, 2));
+    }
     const projectMatch = pathname.match(/^\/api\/projects\/(\d+)$/);
     if (request.method === 'GET' && projectMatch) {
       const project = findProject.get(projectMatch[1]);

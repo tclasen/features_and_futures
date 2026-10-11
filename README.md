@@ -85,3 +85,10 @@ Restore task returns a task to its reserved position; tasks created later remain
 after it. Deleted task fields and move controls are read-only until restoration.
 Archived projects also disable deletion and restoration. Deletion state persists
 across restarts; existing databases initialize all earlier tasks as live.
+
+Download project on any project page exports UTF-8 JSON as workboard-project.json.
+The version 1 workboard-project document contains the current project name,
+archive state and default priority, plus every live and deleted task in stored
+order with its title, completion, priority, due date, notes and deletion state.
+Export ignores page filters and normalizes only notes line endings to LF in the
+download; saved data and remembered return positions remain unchanged.

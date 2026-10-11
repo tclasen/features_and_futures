@@ -59,6 +59,7 @@ async function renderProject(projectId) {
     !candidate.archived && candidate.id !== project.id);
   app.innerHTML = `
     <button type="button" id="back">Projects</button><h1></h1>
+    <button type="button" id="download-project">Download project</button>
     <form id="rename-form">
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
@@ -114,6 +115,14 @@ async function renderProject(projectId) {
     <p id="empty">No tasks to show.</p>
     <ul id="tasks"></ul>`;
   app.querySelector('h1').textContent = project.name;
+  document.getElementById('download-project').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.href = `/api/projects/${projectId}/export`;
+    link.download = 'workboard-project.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+  });
   const renameForm = document.getElementById('rename-form');
   const renameInput = document.getElementById('new-project-name');
   renameInput.value = project.name;
