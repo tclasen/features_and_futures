@@ -18,6 +18,10 @@ function element(tag, attributes = {}, text = '') {
 
 async function render() {
   app.replaceChildren();
+  if (window.location.pathname === '/directory') {
+    renderDirectory();
+    return;
+  }
   const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
   if (match) {
     let project;
@@ -234,6 +238,9 @@ async function render() {
     await refresh(); return;
   }
   app.append(element('h1', {}, 'Workboard'));
+  const directoryButton = element('button', { type: 'button' }, 'Task directory');
+  directoryButton.addEventListener('click', () => { history.pushState({}, '', '/directory'); render(); });
+  app.append(directoryButton);
   const form = element('form');
   const label = element('label', { for: 'project-name' }, 'Project name');
   const input = element('input', { id: 'project-name', name: 'name', type: 'text' });
@@ -300,6 +307,61 @@ async function render() {
   projectSearchButton.addEventListener('click', () => { projectQuery = projectSearchInput.value.trim(); renderProjects(); });
   filter.addEventListener('change', renderProjects);
   await renderProjects();
+}
+
+async function renderDirectory() {
+  app.append(element('h1', {}, 'Task directory'));
+  const back = element('button', { type: 'button' }, 'Projects');
+  back.addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+  app.append(back);
+  const scope = element('select', { 'aria-label': 'Project scope' });
+  for (const value of ['Active', 'Archived']) scope.append(element('option', { value }, value));
+  const taskFilter = element('select', { 'aria-label': 'Task filter' });
+  for (const value of ['All', 'Open', 'Completed', 'Deleted']) taskFilter.append(element('option', { value }, value));
+  const priorityFilter = element('select', { 'aria-label': 'Priority filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', { value }, value));
+  const search = element('input', { type: 'text', 'aria-label': 'Directory search' });
+  const searchButton = element('button', { type: 'button' }, 'Search directory');
+  const from = element('input', { type: 'text', 'aria-label': 'Due from' });
+  const through = element('input', { type: 'text', 'aria-label': 'Due through' });
+  const apply = element('button', { type: 'button' }, 'Apply due range');
+  const alert = element('p', { role: 'alert', hidden: '' });
+  const rows = element('section', { 'aria-label': 'Directory results' });
+  app.append(scope, taskFilter, priorityFilter, search, searchButton, from, through, apply, alert, rows);
+  let query = '', appliedFrom = '', appliedThrough = '';
+  const renderRows = async () => {
+    const data = await request('/api/directory');
+    rows.replaceChildren();
+    for (const task of data) {
+      if ((scope.value === 'Archived') !== Boolean(task.archived)) continue;
+      if (taskFilter.value === 'Deleted' ? !task.deleted : Boolean(task.deleted)) continue;
+      if ((taskFilter.value === 'Open' && task.completed) || (taskFilter.value === 'Completed' && !task.completed)) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if (!normalizeSearch(task.title).includes(normalizeSearch(query))) continue;
+      if ((appliedFrom || appliedThrough) && (!task.dueDate || (appliedFrom && task.dueDate < appliedFrom) || (appliedThrough && task.dueDate > appliedThrough))) continue;
+      const row = element('div', { 'data-testid': 'directory-task-row' });
+      row.append(element('span', { 'data-testid': 'directory-task-title' }, task.title));
+      row.append(element('span', { 'data-testid': 'directory-project-name' }, task.projectName));
+      row.append(element('span', { 'data-testid': 'directory-task-completion' }, task.completed ? 'Completed' : 'Open'));
+      row.append(element('span', { 'data-testid': 'directory-task-priority' }, task.priority || 'Normal'));
+      row.append(element('span', { 'data-testid': 'directory-task-due-date' }, task.dueDate || ''));
+      row.append(element('span', { 'data-testid': 'directory-task-notes' }, task.notes || ''));
+      const open = element('button', { type: 'button' }, 'Open project');
+      open.addEventListener('click', () => { projectViewState.delete(String(task.projectId)); history.pushState({}, '', `/projects/${encodeURIComponent(task.projectId)}`); render(); });
+      row.append(open); rows.append(row);
+    }
+  };
+  const refresh = () => renderRows();
+  for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', refresh);
+  searchButton.addEventListener('click', () => { query = search.value.trim(); refresh(); });
+  apply.addEventListener('click', () => {
+    const valid = value => !value || /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.test(value) && Number(value.slice(0, 4)) > 0 && (() => { const [y,m,d] = value.split('-').map(Number); return m >= 1 && m <= 12 && d >= 1 && d <= [31, y%4===0&&(y%100!==0||y%400===0)?29:28,31,30,31,30,31,31,30,31,30,31][m-1]; })();
+    const f = from.value.trim(), t = through.value.trim();
+    if (!valid(f) || !valid(t)) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return; }
+    if (f && t && f > t) { alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return; }
+    appliedFrom = f; appliedThrough = t; alert.hidden = true; refresh();
+  });
+  await renderRows();
 }
 
 window.addEventListener('popstate', () => { projectViewState.clear(); render(); });

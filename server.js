@@ -94,6 +94,14 @@ const server = http.createServer(async (req, res) => {
   };
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(200, JSON.stringify({ status: 'ok' }));
+    if (req.method === 'GET' && url.pathname === '/api/directory') {
+      const rows = db.prepare(`SELECT p.id AS projectId, p.name AS projectName, p.archived,
+        t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+        FROM projects p JOIN task_project_positions pos ON pos.project_id = p.id
+        JOIN tasks t ON t.id = pos.task_id AND t.project_id = p.id
+        ORDER BY p.created_at, p.rowid, pos.position`).all();
+      return send(200, JSON.stringify(rows));
+    }
     if (req.method === 'GET' && url.pathname === '/api/projects') {
       const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
       return send(200, JSON.stringify(listProjects.all(archived)));
@@ -290,7 +298,7 @@ const server = http.createServer(async (req, res) => {
       const project = getProject.get(projectMatch[1]);
       return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Project not found' }));
     }
-    if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/[^/]+\/?$/.test(url.pathname))) return send(200, indexHtml, 'text/html; charset=utf-8');
+    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/[^/]+\/?$/.test(url.pathname))) return send(200, indexHtml, 'text/html; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/app.js') return send(200, appJs, 'text/javascript; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/style.css') return send(200, appCss, 'text/css; charset=utf-8');
     return send(404, JSON.stringify({ error: 'Not found' }));
