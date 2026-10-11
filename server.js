@@ -43,7 +43,8 @@ const page = `<!doctype html>
 </head>
 <body>
   <main id="app"></main>
-  <script type="module">
+  <script>
+  (() => {
     const app = document.querySelector('#app');
 
     function element(tag, text, attributes = {}) {
@@ -119,8 +120,9 @@ const page = `<!doctype html>
     }
 
     const match = window.location.pathname.match(/^\/projects\/(\d+)\/?$/);
-    if (match) await showProject(match[1]);
-    else await showProjects();
+    if (match) showProject(match[1]);
+    else showProjects();
+  })();
   </script>
 </body>
 </html>`;
