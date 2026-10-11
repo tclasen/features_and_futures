@@ -51,6 +51,16 @@ const server = http.createServer(async (req, res) => {
     if (!project) return json(404, { error: 'Not found' });
     return json(200, { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority, tasks: exportTasks.all(id).map(t => ({ title: t.title, completed: Boolean(t.completed), priority: t.priority || 'Normal', dueDate: t.dueDate || '', notes: String(t.notes || '').replace(/\r\n?/g, '\n'), deleted: Boolean(t.deleted) })) } });
   }
+  if (req.method === 'POST' && url.pathname === '/api/directory/bulk') {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    if (typeof body.completed !== 'boolean' || !Array.isArray(body.ids)) return json(400, { error: 'Invalid request' });
+    const update = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0 AND EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.archived = 0)');
+    db.exec('BEGIN');
+    try { for (const id of body.ids) update.run(body.completed ? 1 : 0, String(id)); db.exec('COMMIT'); }
+    catch (error) { db.exec('ROLLBACK'); throw error; }
+    return json(200, { status: 'ok' });
+  }
   if (req.method === 'GET' && url.pathname === '/api/directory') {
     const rows = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, COALESCE(t.due_date,'') AS dueDate, COALESCE(t.notes,'') AS notes, t.deleted, p.id AS projectId, p.name AS projectName, p.archived FROM projects p JOIN tasks t ON t.project_id=p.id JOIN task_project_positions pos ON pos.task_id=t.id AND pos.project_id=p.id ORDER BY p.created_at,p.rowid,pos.position,t.created_at,t.rowid`).all();
     return json(200, rows.map(t => ({...t, completed:Boolean(t.completed), deleted:Boolean(t.deleted), archived:Boolean(t.archived)})));
