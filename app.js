@@ -151,6 +151,21 @@ async function renderProject(id) {
   for (const value of ['All', 'Low', 'Normal', 'High']) {
     priorityFilter.append(element('option', value, { value }));
   }
+  const defaultPriority = element('select', undefined, { 'aria-label': 'Default task priority' });
+  for (const value of ['Low', 'Normal', 'High']) {
+    defaultPriority.append(element('option', value, { value }));
+  }
+  defaultPriority.value = project.defaultTaskPriority || 'Normal';
+  defaultPriority.disabled = project.archived;
+  defaultPriority.addEventListener('change', async () => {
+    const previousPriority = project.defaultTaskPriority || 'Normal';
+    const result = await fetch(`/api/projects/${id}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ defaultTaskPriority: defaultPriority.value }),
+    });
+    if (result.ok) project.defaultTaskPriority = defaultPriority.value;
+    else defaultPriority.value = previousPriority;
+  });
   const tasks = element('section', undefined, { 'aria-label': 'Tasks' });
   tasks.className = 'task-list';
   let taskData = [];
@@ -254,7 +269,7 @@ async function renderProject(id) {
   const taskResponse = await fetch(`/api/projects/${id}/tasks`);
   if (taskResponse.ok) taskData = await taskResponse.json();
   drawTasks();
-  view.append(back, renameForm, renameAlert, form, alert, filter, priorityFilter, tasks);
+  view.append(back, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, tasks);
   app.replaceChildren(view);
 }
 
