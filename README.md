@@ -11,7 +11,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Visit http://localhost:8080. Defaults are port 8080 and `data/workboard.sqlite`.
 The server binds to `0.0.0.0`. The configured SQLite file preserves projects,
 tasks, completion state, renamed project and task titles, task priorities, per-project
-new-task priority defaults, optional task due dates, task ownership and remembered order in each visited project,
+new-task priority defaults, optional task due dates, multiline plain-text notes, task ownership and remembered order in each visited project,
 and project archive state across restarts. `GET /health` returns `{"status":"ok"}`.
 
 ## Verify
@@ -33,5 +33,6 @@ first-arrival append ordering, restored per-project return positions (including 
 preserved task data, destination eligibility, archive protection, project and task substring
 search with ASCII-only case folding and space/tab-run normalization (without changing saved text),
 search/filter intersections and retention through edits,
-empty search on reopening, and persistence across server restarts. Test databases are
+empty search on reopening, notes migration and exact text preservation, notes movement and archive restrictions,
+and persistence across server restarts. Test databases are
 created beneath `data/` and removed afterward.

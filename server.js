@@ -38,6 +38,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Notes are plain text; upgrading initializes only this new field.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Preserve existing creation order, then append new and moved tasks per project.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
@@ -67,7 +71,7 @@ function transaction(action) {
     throw error;
   }
 }
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
 const updateTaskLocation = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 function moveTask(destinationId, taskId, sourceId) {
@@ -80,6 +84,7 @@ function moveTask(destinationId, taskId, sourceId) {
     updateTaskLocation.run(destinationId, position, taskId, sourceId);
   });
 }
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
@@ -137,6 +142,7 @@ function page(title, content) {
   .task-row { padding: 16px 0; border-top: 1px solid #d8e0e9; overflow-wrap: anywhere; }
   .task-row label { display: flex; gap: 12px; align-items: center; font-weight: 400; }
   .task-row input { width: auto; }
+  textarea { width: 100%; min-height: 100px; padding: 10px; font: inherit; border: 1px solid #687a90; border-radius: 5px; }
   input { width: 100%; padding: 10px; font: inherit; border: 1px solid #687a90; border-radius: 5px; }
   button { padding: 10px 16px; font: inherit; color: white; background: #2459a6; border: 0; border-radius: 5px; cursor: pointer; }
   button:hover { background: #194580; }
@@ -281,6 +287,14 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
           ${dueDateError === task.id ? `<div id="due-date-error-${task.id}" role="alert">Due date must be a valid YYYY-MM-DD date</div>` : ''}
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
+        <form class="create" action="/projects/${project.id}/tasks/${task.id}/notes" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priority}">
+          <label for="task-notes-${task.id}">Task notes</label>
+          <textarea id="task-notes-${task.id}" name="notes"${project.archived ? ' disabled' : ''}>
+${escape(task.notes)}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+        </form>
         <form action="/projects/${project.id}/tasks/${task.id}/move" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
@@ -406,6 +420,17 @@ const server = http.createServer(async (request, response) => {
         return sendHtml(response, 400, page('Invalid destination', '<h1>Invalid destination project</h1>'));
       }
       moveTask(destination.id, task.id, project.id);
+      response.writeHead(303, { Location: projectLocation(project.id, taskFilter(form.get('filter')), priorityFilter(form.get('priorityFilter')), readRange(form)) });
+      return response.end();
+    }
+    const notesMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/notes$/);
+    if (request.method === 'POST' && notesMatch) {
+      const form = await readForm(request);
+      const project = getProject.get(notesMatch[1]);
+      const task = project && getTask.get(notesMatch[2], project.id);
+      if (!task) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
+      if (project.archived) return sendHtml(response, 403, page('Archived project', '<h1>Archived project</h1><p>Restore the project to change its tasks.</p>'));
+      setTaskNotes.run(form.get('notes') ?? '', task.id, project.id);
       response.writeHead(303, { Location: projectLocation(project.id, taskFilter(form.get('filter')), priorityFilter(form.get('priorityFilter')), readRange(form)) });
       return response.end();
     }
