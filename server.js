@@ -120,16 +120,28 @@ const server = createServer(async (request, response) => {
   }
   const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskPath && request.method === 'PATCH') {
-    let completed;
+    let changes;
     try {
-      completed = (await readBody(request)).completed;
+      changes = await readBody(request);
     } catch {
       return sendJson(response, 400, { error: 'Invalid request body' });
     }
-    if (typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
-    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, Number(taskPath[1]));
-    if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
-    return sendJson(response, 200, { id: Number(taskPath[1]), completed });
+    const taskId = Number(taskPath[1]);
+    const task = database.prepare(`
+      SELECT tasks.id, tasks.project_id AS projectId, tasks.completed, projects.archived
+      FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?
+    `).get(taskId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (typeof changes.title === 'string') {
+      const title = changes.title.trim();
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot rename tasks' });
+      database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
+      return sendJson(response, 200, { id: taskId, title, completed: Boolean(task.completed) });
+    }
+    if (typeof changes.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
+    database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(changes.completed ? 1 : 0, taskId);
+    return sendJson(response, 200, { id: taskId, completed: changes.completed });
   }
   if (request.method === 'GET' && assets.has(url.pathname)) {
     const [contentType, content] = assets.get(url.pathname);

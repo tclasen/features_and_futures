@@ -116,7 +116,38 @@ async function loadTasks() {
       });
       await loadTasks();
     });
-    row.append(title, checkbox);
+    const renameForm = document.createElement('form');
+    renameForm.className = 'task-rename-form';
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.disabled = currentProjectArchived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = currentProjectArchived;
+    const renameAlert = document.createElement('span');
+    renameAlert.setAttribute('role', 'alert');
+    renameAlert.hidden = true;
+    renameForm.append(renameInput, renameButton, renameAlert);
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (currentProjectArchived) return;
+      const newTitle = renameInput.value.trim();
+      if (!newTitle) {
+        renameAlert.textContent = 'Task title is required';
+        renameAlert.hidden = false;
+        return;
+      }
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (response.ok) await loadTasks();
+    });
+    row.append(title, checkbox, renameForm);
     tasksContainer.append(row);
   }
 }
