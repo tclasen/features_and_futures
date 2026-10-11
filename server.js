@@ -113,9 +113,10 @@ const server = http.createServer(async (req, res) => {
       if (project.archived) return send(res, 409, { error: 'Archived projects cannot be changed' });
       const title = String((await readBody(req)).title ?? '').trim();
       if (!title) return send(res, 400, { error: 'Task title is required' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position)+1 FROM tasks WHERE project_id=?),0))').run(projectId, title, project.default_priority, projectId);
+      const position = db.prepare('SELECT COALESCE(MAX(position)+1,0) position FROM task_project_positions WHERE project_id=?').get(projectId).position;
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, position);
       const taskId = Number(result.lastInsertRowid);
-      db.prepare('INSERT INTO task_project_positions(task_id,project_id,position) SELECT ?,?,position FROM tasks WHERE id=?').run(taskId, projectId, taskId);
+      db.prepare('INSERT INTO task_project_positions(task_id,project_id,position) VALUES (?,?,?)').run(taskId, projectId, position);
       return send(res, 201, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE id = ?').get(taskId));
     } catch { return send(res, 400, { error: 'Invalid request' }); }
   }
