@@ -18,6 +18,9 @@ db.exec(`PRAGMA foreign_keys = ON;
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const projectQuery = `SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
@@ -27,11 +30,12 @@ const findProject = db.prepare(`${projectQuery} WHERE p.id = ?`);
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
-const findTask = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const findTask = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const taskJSON = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -108,6 +112,13 @@ const server = http.createServer(async (request, response) => {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJSON(request);
         if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
+        if (Object.hasOwn(input || {}, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(input.priority)) {
+            return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+          }
+          prioritizeTask.run(input.priority, projectId, taskId);
+          return json(response, 200, taskJSON(findTask.get(projectId, taskId)));
+        }
         if (Object.hasOwn(input || {}, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });

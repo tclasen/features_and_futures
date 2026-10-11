@@ -178,7 +178,37 @@ async function renderProject(projectId) {
         } catch (error) { showError(error.message); }
         finally { button.disabled = Boolean(project.archived); }
       });
-      row.append(title, checkbox, rename);
+      const priorityControl = document.createElement('div');
+      const priorityLabel = document.createElement('label');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      priorityLabel.textContent = 'Task priority';
+      const priority = document.createElement('select');
+      priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = Boolean(project.archived);
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        document.getElementById('error').hidden = true;
+        try {
+          const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          tasks = tasks.map(current => current.id === saved.id ? saved : current);
+          drawTasks();
+        } catch (error) {
+          priority.value = task.priority;
+          showError(error.message);
+        } finally { priority.disabled = Boolean(project.archived); }
+      });
+      priorityControl.append(priorityLabel, priority);
+      row.append(title, checkbox, priorityControl, rename);
       return row;
     }));
     document.getElementById('empty').hidden = visible.length > 0;

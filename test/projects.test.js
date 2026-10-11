@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, ownership, completion, rename, archive, summaries, and restart persistence', async () => {
+test('projects and tasks: validation, ownership, completion, rename, priority, archive, summaries, and restart persistence', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
   // Start with the previous schema to exercise the archive-column migration.
@@ -53,6 +53,9 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
   const renameTask = (projectId, taskId, title) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
   });
+  const prioritizeTask = (projectId, taskId, priority) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+  });
   const tasks = async projectId => (await get(`/api/projects/${projectId}/tasks`)).json();
   const archiveProject = (projectId, archived) => fetch(`${origin}/api/projects/${projectId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -99,7 +102,9 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     let firstTask = await taskResponse.json();
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.priority, 'Normal');
     const secondTask = await (await createTask(first.id, 'Second task')).json();
+    assert.equal(secondTask.priority, 'Normal');
     assert.ok(secondTask.id > firstTask.id);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     assert.deepEqual(await tasks(second.id), []);
@@ -118,6 +123,20 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1 });
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    for (const priority of ['', 'high', 'Urgent', null, 1]) {
+      assert.equal((await prioritizeTask(first.id, firstTask.id, priority)).status, 400);
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    }
+    assert.equal((await prioritizeTask(second.id, firstTask.id, 'High')).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await prioritizeTask(first.id, firstTask.id, priority);
+      assert.equal(response.status, 200);
+      firstTask.priority = priority;
+      assert.deepEqual(await response.json(), firstTask);
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+      assert.deepEqual(await tasks(second.id), [otherTask]);
+      assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    }
     for (const title of ['', ' \t\n ', null, 123]) {
       const invalid = await renameTask(first.id, firstTask.id, title);
       assert.equal(invalid.status, 400);
@@ -163,6 +182,7 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
     assert.equal((await renameTask(first.id, firstTask.id, 'Blocked task rename')).status, 409);
+    assert.equal((await prioritizeTask(first.id, firstTask.id, 'Low')).status, 409);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     await start();
@@ -174,6 +194,7 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.equal((await createTask(first.id, 'Still blocked after restart')).status, 409);
     assert.equal((await renameProject(first.id, 'Still blocked rename')).status, 409);
     assert.equal((await renameTask(first.id, firstTask.id, 'Still blocked task rename')).status, 409);
+    assert.equal((await prioritizeTask(first.id, firstTask.id, 'Normal')).status, 409);
     const restoredResponse = await archiveProject(first.id, false);
     assert.equal(restoredResponse.status, 200);
     first.archived = 0;
@@ -186,6 +207,10 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.equal(restoredTaskRename.status, 200);
     firstTask.title = 'Restored task';
     assert.deepEqual(await restoredTaskRename.json(), firstTask);
+    const restoredPriority = await prioritizeTask(first.id, secondTask.id, 'Low');
+    assert.equal(restoredPriority.status, 200);
+    secondTask.priority = 'Low';
+    assert.deepEqual(await restoredPriority.json(), secondTask);
     const openTaskRename = await renameTask(first.id, secondTask.id, '  Renamed open task  ');
     assert.equal(openTaskRename.status, 200);
     secondTask.title = 'Renamed open task';
@@ -202,6 +227,7 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     const thirdTask = await (await createTask(first.id, 'Third task')).json();
+    assert.equal(thirdTask.priority, 'Normal');
     assert.ok(thirdTask.id > otherTask.id);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask, thirdTask]);
     const third = await (await create('Third project')).json();
@@ -243,8 +269,8 @@ test('migration preserves existing project IDs, tasks, and completion state', as
       { id: 42, name: 'Existing project', archived: 0, total: 2, completed: 1 },
     ]);
     assert.deepEqual(await (await fetch(`${origin}/api/projects/42/tasks`)).json(), [
-      { id: 71, title: 'Existing completed task', completed: true },
-      { id: 72, title: 'Existing open task', completed: false },
+      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal' },
+      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal' },
     ]);
   } finally {
     if (child.exitCode === null) {
