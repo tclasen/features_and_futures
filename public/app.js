@@ -331,16 +331,18 @@ async function renderDirectory() {
   const completeVisible = element('button', { type: 'button' }, 'Complete visible tasks');
   const reopenVisible = element('button', { type: 'button' }, 'Reopen visible tasks');
   const summary = element('p', { 'data-testid': 'directory-summary' }, '0/0 completed');
+  const owners = element('section', { 'aria-label': 'Directory project summaries' });
   const emptyMessage = element('p', {}, 'No matching tasks');
   emptyMessage.hidden = true;
   const rows = element('section', { 'aria-label': 'Directory results' });
-  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, summary, emptyMessage, rows);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, summary, owners, emptyMessage, rows);
   let query = '', appliedFrom = '', appliedThrough = '';
   let matchingTasks = [];
   const renderRows = async () => {
     emptyMessage.hidden = true;
     const data = await request('/api/directory');
     rows.replaceChildren();
+    owners.replaceChildren();
     matchingTasks = [];
     for (const task of data) {
       if ((scope.value === 'Archived') !== Boolean(task.archived)) continue;
@@ -380,6 +382,24 @@ async function renderDirectory() {
     }
     const completedCount = matchingTasks.filter(task => Boolean(task.completed)).length;
     summary.textContent = `${completedCount}/${matchingTasks.length} completed`;
+    const ownerGroups = new Map();
+    for (const task of matchingTasks) {
+      if (!ownerGroups.has(task.projectId)) ownerGroups.set(task.projectId, { name: task.projectName, tasks: [] });
+      ownerGroups.get(task.projectId).tasks.push(task);
+    }
+    const projectOrder = new Map();
+    for (const task of data) if (!projectOrder.has(task.projectId)) projectOrder.set(task.projectId, projectOrder.size);
+    const orderedOwners = [...ownerGroups].sort(([left], [right]) => projectOrder.get(left) - projectOrder.get(right));
+    for (const [projectId, group] of orderedOwners) {
+      const ownerRow = element('div', { 'data-testid': 'directory-owner-row' });
+      ownerRow.append(element('span', { 'data-testid': 'directory-owner-name' }, group.name));
+      const ownerCompleted = group.tasks.filter(task => Boolean(task.completed)).length;
+      ownerRow.append(element('span', { 'data-testid': 'directory-owner-summary' }, `${ownerCompleted}/${group.tasks.length} completed`));
+      const openProject = element('button', { type: 'button' }, 'Open project');
+      openProject.addEventListener('click', () => { projectViewState.delete(String(projectId)); history.pushState({}, '', `/projects/${encodeURIComponent(projectId)}`); render(); });
+      ownerRow.append(openProject);
+      owners.append(ownerRow);
+    }
     emptyMessage.hidden = matchingTasks.length !== 0;
     const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted' ? matchingTasks.filter(task => !task.deleted) : [];
     const openTasks = eligible.filter(task => !task.completed);
