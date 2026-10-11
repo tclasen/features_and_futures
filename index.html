@@ -25,6 +25,7 @@
     .task-row input { flex: none; width: 18px; height: 18px; }
     .task-row .task-name { min-width: 80px; flex: 1; overflow-wrap: anywhere; }
     .task-row input[type="text"] { width: 130px; padding: 8px 10px; }
+    .task-row select { padding: 8px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
     .task-row button { padding: 8px 10px; }
     #project-view form { margin-top: 22px; }
     #rename-project { margin-top: 12px; }
@@ -125,7 +126,7 @@
         const renderTasks = () => {
           const mode = filter.value;
           const visible = tasks.filter((task) => mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -150,6 +151,19 @@
         });
         filter.addEventListener('change', renderTasks);
         list.addEventListener('change', async (event) => {
+          const prioritySelect = event.target.closest('select[data-priority-task-id]');
+          if (prioritySelect) {
+            const result = await fetch(`/api/tasks/${prioritySelect.dataset.priorityTaskId}/priority`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: prioritySelect.value })
+            });
+            if (result.ok) {
+              const task = tasks.find((item) => item.id === Number(prioritySelect.dataset.priorityTaskId));
+              if (task) task.priority = prioritySelect.value;
+            } else {
+              await loadTasks();
+            }
+            return;
+          }
           const renameInput = event.target.closest('input[data-rename-task-id]');
           if (renameInput) return;
           const checkbox = event.target.closest('input[data-task-id]');

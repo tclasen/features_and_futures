@@ -26,6 +26,11 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Existing databases from earlier checkpoints gain the default priority safely.
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const sendJson = (response, status, value) => {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -98,7 +103,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const tasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+    const tasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
     return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksMatch && request.method === 'POST') {
@@ -115,9 +120,26 @@ const server = createServer(async (request, response) => {
     const title = typeof payload.title === 'string' ? payload.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
     const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const priorityMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/priority$/);
+  if (priorityMatch && request.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    let payload;
+    try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
+    const priorities = ['Low', 'Normal', 'High'];
+    if (!priorities.includes(payload.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+    const taskId = Number(priorityMatch[1]);
+    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
+      return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+    }
+    database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(payload.priority, taskId);
+    return sendJson(response, 200, { id: taskId, priority: payload.priority });
+  }
   const renameTaskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
   if (renameTaskMatch && request.method === 'PATCH') {
     let body = '';
