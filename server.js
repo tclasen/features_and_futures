@@ -118,6 +118,10 @@ const page = `<!doctype html>
       return response.json();
     }
 
+    function asciiLower(value) {
+      return value.replace(/[A-Z]/g, letter => String.fromCharCode(letter.charCodeAt(0) + 32));
+    }
+
     function renderList(projects, selectedFilter = 'Active') {
       app.replaceChildren();
       const heading = document.createElement('h1');
@@ -155,11 +159,25 @@ const page = `<!doctype html>
         projectFilter.append(option);
       }
       projectFilter.value = selectedFilter;
+      const searchField = document.createElement('div');
+      searchField.className = 'field';
+      const searchLabel = document.createElement('label');
+      searchLabel.htmlFor = 'project-search';
+      searchLabel.textContent = 'Project search';
+      const searchInput = document.createElement('input');
+      searchInput.id = 'project-search';
+      searchInput.type = 'text';
+      const searchButton = document.createElement('button');
+      searchButton.type = 'button';
+      searchButton.textContent = 'Search projects';
+      searchField.append(searchLabel, searchInput);
+      let appliedSearch = '';
       const list = document.createElement('ul');
       list.id = 'projects';
       function drawProjects(items) {
         list.replaceChildren();
-        for (const project of items) {
+        const query = asciiLower(appliedSearch);
+        for (const project of items.filter(item => asciiLower(item.name).includes(query))) {
           const row = document.createElement('li');
           row.dataset.testid = 'project-row';
           const name = document.createElement('span');
@@ -192,6 +210,10 @@ const page = `<!doctype html>
         const selected = projectFilter.value;
         drawProjects(await request('/api/projects?filter=' + selected.toLowerCase()));
       });
+      searchButton.addEventListener('click', async () => {
+        appliedSearch = searchInput.value.trim();
+        drawProjects(await request('/api/projects?filter=' + projectFilter.value.toLowerCase()));
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const name = input.value.trim();
@@ -212,7 +234,7 @@ const page = `<!doctype html>
           error.hidden = false;
         }
       });
-      app.append(heading, form, error, projectFilterLabel, projectFilter, list);
+      app.append(heading, form, error, projectFilterLabel, projectFilter, searchField, searchButton, list);
     }
 
     async function renderProject(id) {
@@ -326,6 +348,19 @@ const page = `<!doctype html>
         option.textContent = value;
         priorityFilter.append(option);
       }
+      const taskSearchField = document.createElement('div');
+      taskSearchField.className = 'field';
+      const taskSearchLabel = document.createElement('label');
+      taskSearchLabel.htmlFor = 'task-search';
+      taskSearchLabel.textContent = 'Task search';
+      const taskSearchInput = document.createElement('input');
+      taskSearchInput.id = 'task-search';
+      taskSearchInput.type = 'text';
+      const taskSearchButton = document.createElement('button');
+      taskSearchButton.type = 'button';
+      taskSearchButton.textContent = 'Search tasks';
+      taskSearchField.append(taskSearchLabel, taskSearchInput);
+      let appliedTaskSearch = '';
       const dueRange = document.createElement('div');
       dueRange.className = 'task-controls';
       const dueFromField = document.createElement('div');
@@ -369,6 +404,7 @@ const page = `<!doctype html>
           (!appliedFrom && !appliedThrough || Boolean(task.dueDate)) &&
           (!appliedFrom || task.dueDate >= appliedFrom) &&
           (!appliedThrough || task.dueDate <= appliedThrough)
+          && asciiLower(task.title).includes(asciiLower(appliedTaskSearch))
         );
         for (const task of visible) {
           const row = document.createElement('li');
@@ -489,6 +525,11 @@ const page = `<!doctype html>
       }
       filter.addEventListener('change', drawTasks);
       priorityFilter.addEventListener('change', drawTasks);
+      taskSearchButton.addEventListener('click', () => {
+        appliedTaskSearch = taskSearchInput.value.trim();
+        error.hidden = true;
+        drawTasks();
+      });
       function validDate(value) {
         const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
         if (!match) return false;
@@ -536,7 +577,7 @@ const page = `<!doctype html>
         }
       });
       drawTasks();
-      app.append(back, heading, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, dueRange, tasksList);
+      app.append(back, heading, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, taskSearchField, taskSearchButton, dueRange, tasksList);
     }
 
     if (escPath) {
