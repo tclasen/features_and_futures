@@ -37,3 +37,10 @@ subsequent new tasks. Projects initially default to Normal. Changing the default
 preserves existing tasks and both filter selections. Defaults are independent
 per project, persist across restarts, renaming, archive and restore, and cannot
 be edited while the project is archived.
+
+Each task has an optional Task due date, saved with Save due date. Dates must be
+real Gregorian calendar dates in YYYY-MM-DD format (years 0001–9999). Surrounding
+whitespace is trimmed; an empty value clears the date. Invalid dates show an
+alert and leave saved data unchanged. Dates persist across restarts and task
+renames without changing filters or summaries. Archived projects disable date
+editing; restoration preserves dates and enables editing again.

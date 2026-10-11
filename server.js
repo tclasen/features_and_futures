@@ -2,6 +2,7 @@ import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { normalizeDueDate } from './due-date.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -24,6 +25,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
@@ -34,12 +38,13 @@ const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
-const findTask = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const findTask = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const setDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const taskJSON = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
@@ -125,6 +130,12 @@ const server = http.createServer(async (request, response) => {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJSON(request);
         if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project' });
+        if (Object.hasOwn(input || {}, 'due_date')) {
+          const date = normalizeDueDate(input.due_date);
+          if (date === null) return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          setDueDate.run(date, projectId, taskId);
+          return json(response, 200, taskJSON(findTask.get(projectId, taskId)));
+        }
         if (Object.hasOwn(input || {}, 'priority')) {
           if (!['Low', 'Normal', 'High'].includes(input.priority)) {
             return json(response, 400, { error: 'Priority must be Low, Normal, or High' });

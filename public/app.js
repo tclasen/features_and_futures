@@ -242,7 +242,41 @@ async function renderProject(projectId) {
         } finally { priority.disabled = Boolean(project.archived); }
       });
       priorityControl.append(priorityLabel, priority);
-      row.append(title, checkbox, priorityControl, rename);
+      const dueDateForm = document.createElement('form');
+      dueDateForm.className = 'task-due-date';
+      const dueDateLabel = document.createElement('label');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      dueDateLabel.textContent = 'Task due date';
+      const dueDateInput = document.createElement('input');
+      dueDateInput.id = dueDateLabel.htmlFor;
+      dueDateInput.type = 'text';
+      dueDateInput.placeholder = 'YYYY-MM-DD';
+      dueDateInput.value = task.due_date;
+      dueDateInput.disabled = Boolean(project.archived);
+      const saveDate = document.createElement('button');
+      saveDate.type = 'submit';
+      saveDate.textContent = 'Save due date';
+      saveDate.disabled = Boolean(project.archived);
+      const dateControls = document.createElement('div');
+      dateControls.className = 'form-controls';
+      dateControls.append(dueDateInput, saveDate);
+      dueDateForm.append(dueDateLabel, dateControls);
+      dueDateForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        saveDate.disabled = true;
+        document.getElementById('error').hidden = true;
+        try {
+          const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueDateInput.value }),
+          });
+          tasks = tasks.map(current => current.id === saved.id ? saved : current);
+          drawTasks();
+        } catch (error) { showError(error.message); }
+        finally { saveDate.disabled = Boolean(project.archived); }
+      });
+      row.append(title, checkbox, priorityControl, rename, dueDateForm);
       return row;
     }));
     document.getElementById('empty').hidden = visible.length > 0;

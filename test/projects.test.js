@@ -56,6 +56,9 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
   const prioritizeTask = (projectId, taskId, priority) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
   });
+  const saveDueDate = (projectId, taskId, due_date) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date }),
+  });
   const tasks = async projectId => (await get(`/api/projects/${projectId}/tasks`)).json();
   const archiveProject = (projectId, archived) => fetch(`${origin}/api/projects/${projectId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -107,6 +110,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
     assert.equal(firstTask.priority, 'Normal');
+    assert.equal(firstTask.due_date, '');
     const secondTask = await (await createTask(first.id, 'Second task')).json();
     assert.equal(secondTask.priority, 'Normal');
     assert.ok(secondTask.id > firstTask.id);
@@ -126,6 +130,20 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1 });
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    // Date edits preserve ownership, order, completion, priority, and summaries.
+    assert.equal((await saveDueDate(second.id, firstTask.id, '2024-02-29')).status, 404);
+    const dated = await saveDueDate(first.id, firstTask.id, ' \t2024-02-29\n ');
+    assert.equal(dated.status, 200);
+    firstTask.due_date = '2024-02-29';
+    assert.deepEqual(await dated.json(), firstTask);
+    for (const invalid of ['2025-02-29', '1900-02-29', '2026-04-31', '0000-01-01', '2026-1-01', null]) {
+      const response = await saveDueDate(first.id, firstTask.id, invalid);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    }
+    assert.deepEqual(await tasks(second.id), [otherTask]);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     for (const priority of ['', 'high', 'Urgent', null, 1]) {
       assert.equal((await prioritizeTask(first.id, firstTask.id, priority)).status, 400);
@@ -187,6 +205,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
     assert.equal((await renameTask(first.id, firstTask.id, 'Blocked task rename')).status, 409);
     assert.equal((await prioritizeTask(first.id, firstTask.id, 'Low')).status, 409);
+    assert.equal((await saveDueDate(first.id, firstTask.id, '')).status, 409);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     await start();
@@ -199,6 +218,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.equal((await renameProject(first.id, 'Still blocked rename')).status, 409);
     assert.equal((await renameTask(first.id, firstTask.id, 'Still blocked task rename')).status, 409);
     assert.equal((await prioritizeTask(first.id, firstTask.id, 'Normal')).status, 409);
+    assert.equal((await saveDueDate(first.id, firstTask.id, '9999-12-31')).status, 409);
     const restoredResponse = await archiveProject(first.id, false);
     assert.equal(restoredResponse.status, 200);
     first.archived = 0;
@@ -295,6 +315,19 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.deepEqual(await tasks(first.id), savedTasks);
     const afterRestart = await (await createTask(first.id, 'After restart')).json();
     assert.equal(afterRestart.priority, 'Low');
+    assert.equal(afterRestart.due_date, '');
+    // Restoration permits clearing; clearing and independent dates survive restart.
+    assert.equal((await saveDueDate(first.id, firstTask.id, ' \t\n ')).status, 200);
+    firstTask.due_date = '';
+    assert.equal((await saveDueDate(first.id, secondTask.id, '0001-01-01')).status, 200);
+    secondTask.due_date = '0001-01-01';
+    savedTasks.push(afterRestart);
+    first.total++;
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), savedTasks);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited]);
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
@@ -332,8 +365,8 @@ test('migration preserves existing project IDs, tasks, and completion state', as
       { id: 42, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 2, completed: 1 },
     ]);
     assert.deepEqual(await (await fetch(`${origin}/api/projects/42/tasks`)).json(), [
-      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal' },
-      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal' },
+      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal', due_date: '' },
+      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal', due_date: '' },
     ]);
   } finally {
     if (child.exitCode === null) {
