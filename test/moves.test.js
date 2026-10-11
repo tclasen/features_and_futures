@@ -7,10 +7,11 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('moves append, preserve task data and summaries, reject archived projects, and persist after restart', async () => {
+for (const legacyVersion of [10, 11]) {
+test(`Task ${legacyVersion} migration: moves remember order, preserve data and summaries, reject archives, and persist`, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const database = join(directory, 'workboard.sqlite');
-  // Task 010 schema: migration must retain the existing project task order.
+  // Both pre-movement and movement schemas retain their existing task order.
   const legacy = new DatabaseSync(database);
   legacy.exec(`CREATE TABLE projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
@@ -26,6 +27,9 @@ test('moves append, preserve task data and summaries, reject archived projects, 
     (1, 'Early dated task', 1, 'High', '0001-01-01'),
     (1, 'Undated task', 0, 'Low', ''),
     (2, 'Destination task', 0, 'Normal', '2024-02-29');`);
+  if (legacyVersion === 11) {
+    legacy.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id * 10;');
+  }
   legacy.close();
   let child;
   let base;
@@ -101,10 +105,10 @@ test('moves append, preserve task data and summaries, reject archived projects, 
     assert.deepEqual(await tasks(1), []);
     await move(2, 1, 3);
     await move(3, 1, 2);
-    assert.deepEqual(await tasks(2), [destinationTask, added, undated, dated]);
+    assert.deepEqual(await tasks(2), [destinationTask, dated, added, undated]);
     await call('/api/projects/2/tasks/1', 'PATCH', { title: 'Renamed after moving' });
     dated.title = 'Renamed after moving';
-    assert.deepEqual(await tasks(2), [destinationTask, added, undated, dated]);
+    assert.deepEqual(await tasks(2), [destinationTask, dated, added, undated]);
     await archive(2, true);
     await stop();
     await start();
@@ -114,8 +118,45 @@ test('moves append, preserve task data and summaries, reject archived projects, 
     assert.deepEqual(await move(2, 1, 1), { status: 200, data: dated });
     assert.deepEqual(await tasks(1), [dated]);
     assert.deepEqual(await tasks(2), [destinationTask, added, undated]);
+    // Return in reverse order: each project's remembered positions are independent.
+    await move(1, 1, 2);
+    await move(2, 2, 1);
+    assert.deepEqual(await tasks(1), [undated]);
+    // New positions follow even the currently absent tasks' established positions.
+    const sourceAdded = (await call('/api/projects/1/tasks', 'POST', { title: 'Later source task' })).data;
+    const arrival = (await call('/api/projects/3/tasks', 'POST', { title: 'First arrival' })).data;
+    await move(3, arrival.id, 1);
+    await call('/api/projects/1', 'PATCH', { name: 'Renamed source' });
+    await call('/api/projects/2/tasks/1', 'PATCH', { completed: false });
+    await call('/api/projects/2/tasks/1', 'PATCH', { priority: 'Low' });
+    await call('/api/projects/2/tasks/1', 'PATCH', { due_date: '9999-12-31' });
+    Object.assign(dated, { completed: false, priority: 'Low', due_date: '9999-12-31' });
+    await stop();
+    await start();
+    await move(2, 1, 1);
+    assert.deepEqual(await tasks(1), [dated, undated, sourceAdded, arrival]);
+    assert.deepEqual(await tasks(2), [destinationTask, added]);
+    assert.deepEqual([(await project(1)).completed, (await project(1)).total], [0, 4]);
+    // Several returns in opposite order must restore the same relative order.
+    await move(1, 1, 2);
+    await move(1, 2, 2);
+    assert.deepEqual(await tasks(2), [destinationTask, dated, added, undated]);
+    await move(2, 2, 1);
+    await archive(1, true);
+    assert.equal((await move(2, 1, 1)).status, 409);
+    await stop();
+    await start();
+    await archive(1, false);
+    await move(2, 1, 1);
+    assert.deepEqual(await tasks(1), [dated, undated, sourceAdded, arrival]);
+    assert.deepEqual(await tasks(2), [destinationTask, added]);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(1), [dated, undated, sourceAdded, arrival]);
+    assert.deepEqual(await tasks(2), [destinationTask, added]);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
   }
 });
+}

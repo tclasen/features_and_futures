@@ -67,7 +67,11 @@ projects. Reopening a project starts with empty range boundaries.
 
 Use Destination project and Move task in a task row to move it to another
 active project. Destinations use current project names in project creation
-order. The task appends after the destination's existing tasks, preserving its
+order. On its first arrival, the task appends after all positions established
+in the destination. Returning to a previous project restores its remembered
+position relative to that project's other tasks, even when several tasks
+return in a different order. Positions persist separately per project across
+restarts, project renaming, archival, and restoration, preserving current task
 identity, title, completion, priority, and due date. The source page stays open
 with all filters retained, and both project summaries reflect the move.
 Archived projects cannot send or receive tasks. Move controls are disabled
