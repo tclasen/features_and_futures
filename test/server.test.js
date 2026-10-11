@@ -24,7 +24,13 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
   legacy.exec(`CREATE TABLE projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL CHECK (length(trim(name)) > 0)
-  ); INSERT INTO projects (name) VALUES ('Legacy');`);
+  ); INSERT INTO projects (name) VALUES ('Legacy');
+  CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0
+  ); INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy task', 1);`);
   legacy.close();
   const port = await availablePort();
   const base = `http://127.0.0.1:${port}`;
@@ -66,11 +72,14 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     await start();
     const migrated = await (await fetch(base)).text();
     assert.match(migrated, /Legacy/);
-    assert.match(migrated, /data-testid="project-summary">0\/0 completed/);
+    assert.match(migrated, /data-testid="project-summary">1\/1 completed/);
+    const migratedTasks = await (await fetch(`${base}/projects/1`)).text();
+    assert.match(migratedTasks, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    assert.match(migratedTasks, /aria-label="Complete Legacy task" checked/);
     // Remove fixture data so the original creation-order checks remain unchanged.
     await stop();
     const fixture = new DatabaseSync(join(directory, 'db.sqlite'));
-    fixture.exec("DELETE FROM projects; DELETE FROM sqlite_sequence WHERE name = 'projects'");
+    fixture.exec("DELETE FROM tasks; DELETE FROM projects; DELETE FROM sqlite_sequence WHERE name IN ('projects', 'tasks')");
     fixture.close();
     await start();
     const initial = await (await fetch(base)).text();
@@ -272,6 +281,51 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     await stop();
     await start();
     assert.equal(await tasksPage(), finalDetail);
+
+    const priorityPath = completionPath.replace('/completion', '/priority');
+    const normalOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    const highOptions = '<option>Low</option><option>Normal</option><option selected>High</option>';
+    const lowOptions = '<option selected>Low</option><option>Normal</option><option>High</option>';
+    assert.equal(finalDetail.split(normalOptions).length - 1, 2);
+    assert.equal((finalDetail.match(/>Task priority<\/label>/g) || []).length, 2);
+    const otherProjectBefore = await (await fetch(`${base}/projects/2`)).text();
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(priorityPath, { priority })).status, 400);
+      assert.equal(await tasksPage(), finalDetail);
+    }
+    assert.equal((await post(priorityPath.replace('/projects/1/', '/projects/2/'), { priority: 'High' })).status, 404);
+    assert.equal((await post(`${detailPath}/tasks/999999/priority`, { priority: 'High' })).status, 404);
+    const priorityResponse = await post(priorityPath, { priority: 'High', filter: 'Completed' });
+    assert.equal(priorityResponse.status, 303);
+    assert.equal(priorityResponse.headers.get('location'), `${detailPath}?filter=Completed`);
+    let prioritizedDetail = finalDetail.replace(normalOptions, highOptions);
+    assert.equal(await tasksPage(), prioritizedDetail);
+    assert.equal(await (await fetch(`${base}/projects/2`)).text(), otherProjectBefore);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    assert.match(await tasksPage('?filter=Completed'), /<option selected>High<\/option>/);
+    assert.match(await tasksPage('?filter=Open'), /<option selected>Normal<\/option>/);
+    await post(`${detailPath}/tasks/2/priority`, { priority: 'Low', filter: 'Open' });
+    prioritizedDetail = prioritizedDetail.replace(normalOptions, lowOptions);
+    assert.equal(await tasksPage(), prioritizedDetail);
+    await post(taskRenamePath, { title: 'Priority preserved' });
+    prioritizedDetail = prioritizedDetail.replaceAll('Renamed &lt;task&gt; &amp; &quot;title&quot;', 'Priority preserved');
+    assert.equal(await tasksPage(), prioritizedDetail);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), prioritizedDetail);
+    assert.equal(await (await fetch(base)).text(), beforeTaskRenameList);
+    await post(`${detailPath}/archive`, {});
+    const archivedPriorities = await tasksPage();
+    assert.equal((archivedPriorities.match(/name="priority" disabled/g) || []).length, 2);
+    assert.equal((await post(priorityPath, { priority: 'Normal' })).status, 403);
+    assert.equal(await tasksPage(), archivedPriorities);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), archivedPriorities);
+    await post(`${detailPath}/restore`, {});
+    assert.equal(await tasksPage(), prioritizedDetail);
+    await post(priorityPath, { priority: 'Normal' });
+    assert.equal(await tasksPage(), prioritizedDetail.replace(highOptions, normalOptions));
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
