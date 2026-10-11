@@ -104,6 +104,7 @@ async function showRoute() {
     document.querySelector('#directory-project-scope').value = 'Active';
     document.querySelector('#directory-task-filter').value = 'All';
     document.querySelector('#directory-priority-filter').value = 'All';
+    document.querySelector('#directory-order').value = 'Original';
     document.querySelector('#directory-due-from').value = '';
     document.querySelector('#directory-due-through').value = '';
     document.querySelector('#directory-search').value = '';
@@ -169,7 +170,8 @@ async function loadDirectory() {
   const visibleOpenIds = [];
   const visibleCompletedIds = [];
   results.replaceChildren();
-  for (const task of tasks) {
+  const matchingTasks = [];
+  for (const [originalIndex, task] of tasks.entries()) {
     if (task.archived !== (scope === 'Archived')) continue;
     if (taskFilter === 'Deleted' ? !task.deleted : task.deleted) continue;
     if (taskFilter === 'Open' && task.completed) continue;
@@ -179,6 +181,31 @@ async function loadDirectory() {
     if (appliedDirectoryFrom && task.dueDate < appliedDirectoryFrom) continue;
     if (appliedDirectoryThrough && task.dueDate > appliedDirectoryThrough) continue;
     if (!normalizeSearchText(task.title).includes(normalizeSearchText(appliedDirectoryQuery))) continue;
+    matchingTasks.push({ task, originalIndex });
+  }
+  const directoryOrder = document.querySelector('#directory-order').value;
+  const priorityRank = { High: 0, Normal: 1, Low: 2 };
+  const compareCodePoints = (left, right) => {
+    const a = Array.from(left);
+    const b = Array.from(right);
+    for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+      const difference = a[index].codePointAt(0) - b[index].codePointAt(0);
+      if (difference) return difference;
+    }
+    return a.length - b.length;
+  };
+  matchingTasks.sort((left, right) => {
+    let difference = 0;
+    if (directoryOrder === 'Priority') difference = priorityRank[left.task.priority] - priorityRank[right.task.priority];
+    if (directoryOrder === 'Due date') {
+      const leftDate = left.task.dueDate;
+      const rightDate = right.task.dueDate;
+      difference = leftDate && rightDate ? leftDate.localeCompare(rightDate) : leftDate ? -1 : rightDate ? 1 : 0;
+    }
+    if (directoryOrder === 'Title') difference = compareCodePoints(asciiLower(left.task.title), asciiLower(right.task.title));
+    return difference || left.originalIndex - right.originalIndex;
+  });
+  for (const { task } of matchingTasks) {
     if (!task.deleted) (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.dataset.taskId = task.id; row.className = 'task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
@@ -495,7 +522,7 @@ document.querySelector('#open-directory').addEventListener('click', () => naviga
 document.querySelector('#directory-projects').addEventListener('click', () => navigate('/'));
 document.querySelector('#complete-visible-tasks').addEventListener('click', () => updateVisibleCompletion(true));
 document.querySelector('#reopen-visible-tasks').addEventListener('click', () => updateVisibleCompletion(false));
-for (const selector of ['#directory-project-scope', '#directory-task-filter', '#directory-priority-filter']) {
+for (const selector of ['#directory-project-scope', '#directory-task-filter', '#directory-priority-filter', '#directory-order']) {
   document.querySelector(selector).addEventListener('change', loadDirectory);
 }
 document.querySelector('#directory-search-form').addEventListener('submit', async (event) => {
