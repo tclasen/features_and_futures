@@ -1031,13 +1031,14 @@ test('project and task searches intersect filters and survive edits, archives, a
     const projectNames = (html) => [...html.matchAll(/data-testid="project-row">\s*<span>([^<]*)/g)].map((m) => m[1]);
     const titles = (html) => [...html.matchAll(/aria-label="Complete ([^"]*)"/g)].map((m) => m[1]);
     assert.deepEqual(projectNames(await get('/?query=%20aLPHa%20')), ['Alpha  Team', 'Alpha Other']);
-    assert.deepEqual(projectNames(await get('/?query=alpha%20team')), []);
+    assert.deepEqual(projectNames(await get('/?query=alpha%20team')), ['Alpha  Team']);
+    assert.deepEqual(projectNames(await get('/?query=alpha%09%20%09team')), ['Alpha  Team']);
     assert.deepEqual(projectNames(await get('/?query=alpha%20%20team')), ['Alpha  Team']);
     await post('/projects/b/archive', { query: 'alpha' });
     assert.deepEqual(projectNames(await get('/?filter=Archived&query=alpha')), ['Alpha Other']);
     assert.deepEqual(projectNames(await get('/?query=alpha')), ['Alpha  Team']);
     assert.deepEqual(projectNames(await get('/')), ['Alpha  Team', 'Beta']);
-    for (const title of ['Alpha One', 'ALPHA  Two', 'Other', 'Alpha Undated']) {
+    for (const title of ['Alpha One', 'ALPHA \t Two', 'Other', 'Alpha Undated']) {
       await post('/projects/a/tasks', { title });
     }
     const paths = [...(await get('/projects/a')).matchAll(/action="([^"]+\/tasks\/[^/"?]+)"/g)].map((m) => m[1]);
@@ -1053,7 +1054,9 @@ test('project and task searches intersect filters and survive edits, archives, a
     assert.deepEqual(titles(await get(location)), ['Alpha One']);
     const filtered = `/projects/a?${new URLSearchParams(state)}`;
     assert.deepEqual(titles(await get(filtered)), ['Alpha One']);
-    assert.deepEqual(titles(await get('/projects/a?query=alpha%20%20two')), ['ALPHA  Two']);
+    assert.deepEqual(titles(await get('/projects/a?query=alpha%20%20two')), ['ALPHA \t Two']);
+    assert.deepEqual(titles(await get('/projects/a?query=alpha%20two')), ['ALPHA \t Two']);
+    assert.deepEqual(titles(await get('/projects/a?query=alpha%09%09two')), ['ALPHA \t Two']);
     response = await post(`${paths[0]}/rename`, { ...state, title: 'Not matching' });
     assert.deepEqual(titles(await get(response.headers.get('location'))), []);
     await post(`${paths[0]}/rename`, { ...state, title: 'Alpha Renamed' });
@@ -1067,7 +1070,7 @@ test('project and task searches intersect filters and survive edits, archives, a
     assert.equal(response.status, 422);
     assert.deepEqual(titles(await response.text()), ['Alpha Renamed']);
     for (const [path, values] of [
-      ['/projects/a/rename', { name: 'Renamed project' }],
+      ['/projects/a/rename', { name: 'Renamed \t Project' }],
       ['/projects/a/default-priority', { priority: 'High' }],
       ['/projects/a/tasks', { title: 'Does not match' }],
       [`${paths[0]}/priority`, { priority: 'High' }],
@@ -1090,7 +1093,17 @@ test('project and task searches intersect filters and survive edits, archives, a
     await server.stop();
     server = await startServer(databasePath);
     assert.equal(await get(filtered), before);
-    assert.deepEqual(titles(await get('/projects/a')), ['Alpha Renamed', 'ALPHA  Two', 'Other', 'Alpha Undated', 'Does not match']);
+    assert.deepEqual(titles(await get('/projects/a')), ['Alpha Renamed', 'ALPHA \t Two', 'Other', 'Alpha Undated', 'Does not match']);
+    assert.deepEqual(projectNames(await get('/?query=renamed%20project')), ['Renamed \t Project']);
+    assert.deepEqual(projectNames(await get('/')), ['Renamed \t Project', 'Beta']);
+    assert.deepEqual(titles(await get('/projects/a?query=alpha%20two')), ['ALPHA \t Two']);
+    const saved = new DatabaseSync(databasePath);
+    try {
+      assert.equal(saved.prepare('SELECT name FROM projects WHERE id = ?').get('a').name, 'Renamed \t Project');
+      assert.equal(saved.prepare('SELECT title FROM tasks WHERE id = ?').get(paths[1].split('/').at(-1)).title, 'ALPHA \t Two');
+    } finally {
+      saved.close();
+    }
     assert.match(await get('/projects/a'), /id="task-search" name="searchQuery" type="text" value=""/);
   } finally {
     if (server) await server.stop();

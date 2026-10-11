@@ -1,13 +1,13 @@
-// Search folds ASCII letters only; other characters and internal whitespace
-// retain their literal meaning. Queries are transient view state, not data.
+// Queries are transient view state, not data. Matching folds only ASCII
+// letters and runs of spaces/tabs; saved names and titles stay untouched.
 export function normalizeSearch(value) {
   return (value ?? '').trim();
 }
 
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+function normalizeForMatching(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 export function matchesSearch(value, query) {
-  return foldAscii(value).includes(foldAscii(query));
+  return normalizeForMatching(value).includes(normalizeForMatching(query));
 }

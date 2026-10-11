@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 import { matchesSearch, normalizeSearch } from '../search.js';
 import { renderProjects, renderProject } from '../views.js';
 
-test('search trims query boundaries, folds only ASCII, and keeps literal substrings', () => {
+test('search trims query boundaries and folds only ASCII letters and space/tab runs', () => {
   assert.equal(normalizeSearch(' \t Alpha  Beta \n'), 'Alpha  Beta');
   assert.equal(normalizeSearch(null), '');
   for (const [value, query, expected] of [
     ['Alpha  Beta', 'alpha  b', true],
-    ['Alpha  Beta', 'alpha b', false],
+    ['Alpha  Beta', 'alpha b', true],
+    ['Alpha \t \tBeta', 'ALPHA\t\t B', true],
+    ['Alpha Beta', 'alpha \t beta', true],
+    ['Alpha\nBeta', 'alpha beta', false],
+    ['Alpha\rBeta', 'alpha beta', false],
+    ['Alpha\u00a0Beta', 'alpha beta', false],
+    ['Alpha Beta', 'alphabeta', false],
     ['Éclair', 'éclair', false],
     ['Anything', '', true],
     ['100%_[x]', '%_[', true],
