@@ -100,3 +100,11 @@ established positions, including those reserved by tasks currently away. Positio
 persist across restarts, project renaming, archival, and restoration. Returning
 keeps current task fields rather than restoring old values. Creation and movement
 save ownership and remembered positions together in a SQLite transaction.
+
+Project search and Task search apply literal substring queries, trimming surrounding
+query whitespace and ignoring ASCII letter case only. Internal whitespace remains
+significant. Search intersects each page's existing filters without changing saved
+data, task order, or all-task summaries. Applied queries travel in the URL and form
+fields through edits, movement, and validation errors; task membership is immediately
+re-evaluated after changes. Task search stays usable on archived projects. Opening
+from the project list or returning via Projects uses a bare URL with an empty query.

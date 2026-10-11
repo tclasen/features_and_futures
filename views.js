@@ -47,10 +47,18 @@ function page(title, content) {
 </html>`;
 }
 
-export function projectListPage(projects, error = '', filter = 'Active') {
+export function projectListPage(projects, error = '', filter = 'Active', search = '') {
+  const searchInput = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
   return page('Projects', `
     <h1>Workboard</h1>
+    <form class="task-filter" method="get" action="/">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-search">Project search</label>
+      <input id="project-search" name="search" type="text" value="${escapeHtml(search)}">
+      <button type="submit">Search projects</button>
+    </form>
     <form class="create-form" method="post" action="/projects">
+      ${searchInput}
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <label for="project-name">Project name</label>
@@ -60,6 +68,7 @@ export function projectListPage(projects, error = '', filter = 'Active') {
       </div>
     </form>
     <form class="task-filter" method="get" action="/">
+      ${searchInput}
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['Active', 'Archived'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -70,13 +79,14 @@ export function projectListPage(projects, error = '', filter = 'Active') {
         <span class="project-name">${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
         <form method="get" action="/projects/${project.id}"><button type="submit">Open project</button></form>
-        <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}"><button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button></form>
+        <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}">${searchInput}<button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button></form>
       </div>`).join('')}
     </div>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', priorityFilter = 'All', errors = {}, range = { from: '', through: '' }, destinations = []) {
-  const rangeInputs = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
+export function projectPage(project, tasks = [], filter = 'All', priorityFilter = 'All', errors = {}, range = { from: '', through: '' }, destinations = [], search = '') {
+  const rangeAndSearchInputs = `<input type="hidden" name="search" value="${escapeHtml(search)}">
+    <input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
@@ -85,7 +95,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
       ${errors.projectRename ? `<p role="alert">${escapeHtml(errors.projectRename)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-      ${rangeInputs}
+      ${rangeAndSearchInputs}
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
         <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
@@ -95,7 +105,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
     <form class="task-filter" method="post" action="/projects/${project.id}/default-priority">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-      ${rangeInputs}
+      ${rangeAndSearchInputs}
       <label for="default-task-priority">Default task priority</label>
       <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         ${TASK_PRIORITIES.map((priority) => `<option${project.default_task_priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
@@ -105,7 +115,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
       ${errors.taskCreation ? `<p role="alert">${escapeHtml(errors.taskCreation)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-      ${rangeInputs}
+      ${rangeAndSearchInputs}
       <label for="task-title">Task title</label>
       <div class="form-controls">
         <input id="task-title" name="title" type="text">
@@ -113,7 +123,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
       </div>
     </form>
     <form class="task-filter" method="get" action="/projects/${project.id}">
-      ${rangeInputs}
+      ${rangeAndSearchInputs}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -127,25 +137,34 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
       ${errors.dueRange ? `<p role="alert">${escapeHtml(errors.dueRange)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-      ${rangeInputs}
+      ${rangeAndSearchInputs}
       <label for="due-from">Due from</label>
       <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(errors.rangeFrom ?? range.from)}">
       <label for="due-through">Due through</label>
       <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(errors.rangeThrough ?? range.through)}">
       <button type="submit">Apply due range</button>
     </form>
+    <form class="task-filter" method="get" action="/projects/${project.id}">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      <input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
+      <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">
+      <label for="task-search">Task search</label>
+      <input id="task-search" name="search" type="text" value="${escapeHtml(search)}">
+      <button type="submit">Search tasks</button>
+    </form>
     <div class="projects">
       ${tasks.map((task) => `<div class="task-row" data-testid="task-row">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-          ${rangeInputs}
+          ${rangeAndSearchInputs}
           <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
         </form>
         <form class="task-filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-          ${rangeInputs}
+          ${rangeAndSearchInputs}
           <label for="task-priority-${task.id}">Task priority</label>
           <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${TASK_PRIORITIES.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
@@ -155,7 +174,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           ${errors.taskRename?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskRename.message)}</p>` : ''}
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-          ${rangeInputs}
+          ${rangeAndSearchInputs}
           <label for="new-task-title-${task.id}">New task title</label>
           <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
@@ -164,7 +183,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           ${errors.taskDueDate?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskDueDate.message)}</p>` : ''}
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-          ${rangeInputs}
+          ${rangeAndSearchInputs}
           <label for="task-due-date-${task.id}">Task due date</label>
           <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
@@ -173,7 +192,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           ${errors.taskMove?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskMove.message)}</p>` : ''}
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
-          ${rangeInputs}
+          ${rangeAndSearchInputs}
           <label for="destination-project-${task.id}">Destination project</label>
           <select id="destination-project-${task.id}" name="destination"${project.archived || !destinations.length ? ' disabled' : ''}>
             ${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
