@@ -1,5 +1,15 @@
 # Workboard
 
+Project pages provide Due from and Due through textboxes and Apply due range.
+The applied range includes both boundaries and intersects the completion and
+priority filters. Blank boundaries are unbounded; undated tasks match only when
+both boundaries are blank. Dates use the same Gregorian validation as task due
+dates, and invalid or reversed ranges show an alert while preserving the previous
+applied range. Task edits reapply all three filters without resetting selections;
+renaming, creation, and default-priority changes retain the applied range.
+Range controls work in archived projects. Reopening a project starts with empty
+range fields and both combobox filters set to All.
+
 Each task has a Task due date textbox and Save due date button. Dates are optional;
 saving blank text clears the date. Nonempty values must be real Gregorian dates
 in YYYY-MM-DD format (years 0001–9999). Surrounding whitespace is trimmed.
@@ -81,3 +91,6 @@ project, and filtering archived projects without changing their saved data.
 Project-default checks cover migration, independent defaults, inheritance of all
 three priorities, existing-task preservation, filter retention, restart persistence,
 rename preservation, and archive/restore protection.
+Due-range checks cover inclusive and one-sided boundaries, undated tasks,
+calendar validation, preservation after invalid submissions, intersection with
+both combobox filters, membership updates after edits, and archived filtering.

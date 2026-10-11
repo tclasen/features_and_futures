@@ -629,3 +629,155 @@ test('due date controls save independently while retaining filters and archive p
   assert.equal(rows(app)[0].querySelector('input').checked, true);
   assert.equal(rows(app)[0].querySelector('select').value, 'High');
 });
+
+async function dueRange(app, from, through) {
+  app.querySelector('#due-from').value = from;
+  app.querySelector('#due-through').value = through;
+  await app.querySelector('#due-range-form').emit('submit');
+}
+const taskTitles = app => rows(app).map(row => row.children[0].textContent);
+const dueDateForm = row => row.children.find(child => child.tag === 'form' &&
+  child.querySelector('button').textContent === 'Save due date');
+
+test('due ranges are inclusive, intersect both filters, validate calendars and preserve the applied range', async () => {
+  const projects = [{ ...project(), total_count: 5, completed_count: 2 }];
+  const pending = { tasks: [
+    { id: 1, title: 'Undated', completed: false, priority: 'Normal', due_date: '' },
+    { id: 2, title: 'Before', completed: true, priority: 'High', due_date: '2024-02-28' },
+    { id: 3, title: 'Lower', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 4, title: 'Upper', completed: true, priority: 'High', due_date: '2024-03-01' },
+    { id: 5, title: 'After', completed: false, priority: 'Low', due_date: '2024-03-02' },
+  ] };
+  const original = structuredClone(pending.tasks);
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#due-from').value, '');
+  assert.equal(app.querySelector('#due-through').value, '');
+  await dueRange(app, ' 2024-02-29 ', ' 2024-03-01 ');
+  assert.deepEqual(taskTitles(app), ['Lower', 'Upper']);
+  assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'High');
+  assert.deepEqual(taskTitles(app), ['Upper']);
+  for (const invalid of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29',
+    '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00',
+    '2024-1-01', '2024-01-1', '2024-01-01T00:00:00Z', 'nonsense']) {
+    for (const [from, through] of [[invalid, ''], ['', invalid]]) {
+      await dueRange(app, from, through);
+      assert.match(app.querySelector('[role="alert"]').textContent, /Due range must use valid YYYY-MM-DD dates/);
+      assert.equal(app.querySelector('[role="alert"]').hidden, false);
+      assert.deepEqual(taskTitles(app), ['Upper']);
+    }
+  }
+  await dueRange(app, '2024-03-02', '2024-02-29');
+  assert.match(app.querySelector('[role="alert"]').textContent, /Due from must not be after Due through/);
+  assert.deepEqual(taskTitles(app), ['Upper']);
+  // Even with invalid draft fields, combobox changes use the last applied range.
+  await filter(app, 'Open');
+  assert.deepEqual(taskTitles(app), ['Lower']);
+  await priorityFilter(app, 'All');
+  await filter(app, 'All');
+  await dueRange(app, '', '2024-02-29');
+  assert.deepEqual(taskTitles(app), ['Before', 'Lower']);
+  await dueRange(app, '2024-03-01', '');
+  assert.deepEqual(taskTitles(app), ['Upper', 'After']);
+  for (const date of ['0001-01-01', '0099-12-31', '2000-02-29', '9999-12-31']) {
+    await dueRange(app, date, date);
+    assert.equal(app.querySelector('[role="alert"]').hidden, true);
+  }
+  await dueRange(app, ' \t ', ' \n ');
+  assert.deepEqual(taskTitles(app), original.map(task => task.title));
+  assert.deepEqual(pending.tasks, original);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  assert.ok(control(rows(app)[0], '2/5 completed'));
+});
+
+test('edits retain the applied range and selections, re-evaluate membership, and archived ranges remain usable', async () => {
+  const projects = [{ ...project(), total_count: 2, completed_count: 0 }];
+  const pending = { tasks: [
+    { id: 1, title: 'First', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 2, title: 'Second', completed: false, priority: 'High', due_date: '2024-03-01' },
+  ] };
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await filter(app, 'Open');
+  await priorityFilter(app, 'High');
+  await dueRange(app, '2024-02-29', '2024-03-01');
+  const assertSelections = () => {
+    assert.equal(app.querySelector('#task-filter').value, 'Open');
+    assert.equal(app.querySelector('#priority-filter').value, 'High');
+    assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+    assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  };
+  const renameTask = rows(app)[0].querySelector('form');
+  renameTask.querySelector('input').value = 'Renamed';
+  await renameTask.emit('submit');
+  const renameProject = app.querySelector('#rename-form');
+  renameProject.querySelector('input').value = 'Renamed project';
+  await renameProject.emit('submit');
+  const defaults = app.querySelector('#default-task-priority');
+  defaults.value = 'High';
+  await defaults.emit('change');
+  const create = app.querySelector('form');
+  create.querySelector('input').value = 'New undated';
+  await create.emit('submit');
+  assert.deepEqual(taskTitles(app), ['Renamed', 'Second']);
+  assertSelections();
+  let dateForm = dueDateForm(rows(app)[0]);
+  dateForm.querySelector('input').value = '2024-03-02';
+  await dateForm.emit('submit');
+  assert.deepEqual(taskTitles(app), ['Second']);
+  assertSelections();
+  let priority = rows(app)[0].querySelector('select');
+  priority.value = 'Low';
+  await priority.emit('change');
+  assert.equal(rows(app).length, 0);
+  assertSelections();
+  await priorityFilter(app, 'Low');
+  const checkbox = rows(app)[0].querySelector('input');
+  checkbox.checked = true;
+  await checkbox.emit('change');
+  assert.equal(rows(app).length, 0);
+  await filter(app, 'Completed');
+  assert.deepEqual(taskTitles(app), ['Second']);
+  dateForm = dueDateForm(rows(app)[0]);
+  dateForm.querySelector('input').value = '';
+  await dateForm.emit('submit');
+  assert.equal(rows(app).length, 0);
+  await dueRange(app, '', '');
+  assert.deepEqual(taskTitles(app), ['Second']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#due-from').value, '');
+  assert.equal(app.querySelector('#due-through').value, '');
+  assert.equal(app.querySelector('#due-range-form').querySelector('button').disabled, false);
+  await dueRange(app, '2024-03-02', '2024-03-02');
+  assert.deepEqual(taskTitles(app), ['Renamed']);
+  const row = rows(app)[0];
+  assert.equal(row.querySelector('input').disabled, true);
+  assert.equal(row.querySelector('select').disabled, true);
+  assert.equal(row.querySelector('form').querySelector('button').disabled, true);
+  assert.equal(dueDateForm(row).querySelector('input').disabled, true);
+  assert.equal(dueDateForm(row).querySelector('button').disabled, true);
+  await filter(app, 'Open');
+  await priorityFilter(app, 'High');
+  assert.deepEqual(taskTitles(app), ['Renamed']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#due-from').value, '');
+  assert.equal(app.querySelector('#due-through').value, '');
+  assert.equal(rows(app).length, 3);
+  assert.equal(dueDateForm(rows(app)[0]).querySelector('input').value, '2024-03-02');
+  assert.equal(dueDateForm(rows(app)[0]).querySelector('input').disabled, false);
+});

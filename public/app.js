@@ -18,6 +18,15 @@ function navigate(path) {
   render();
 }
 
+function validRangeDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 function projectRow(project, onUpdate) {
   const row = document.createElement('li');
   row.dataset.testid = 'project-row';
@@ -91,6 +100,13 @@ async function render() {
           <option>Low</option><option>Normal</option><option>High</option>
         </select>
       </div>
+      <form id="due-range-form" class="task-filter">
+        <label for="due-from">Due from</label>
+        <input id="due-from" type="text" autocomplete="off">
+        <label for="due-through">Due through</label>
+        <input id="due-through" type="text" autocomplete="off">
+        <button type="submit">Apply due range</button>
+      </form>
       <ul id="task-list" aria-label="Tasks"></ul>`;
     app.querySelector('#projects').addEventListener('click', () => navigate('/'));
     const form = app.querySelector('form');
@@ -99,6 +115,13 @@ async function render() {
     const filter = app.querySelector('#task-filter');
     const priorityFilter = app.querySelector('#priority-filter');
     const defaultPriority = app.querySelector('#default-task-priority');
+    const dueRangeForm = app.querySelector('#due-range-form');
+    const dueFrom = app.querySelector('#due-from');
+    const dueThrough = app.querySelector('#due-through');
+    // Draft fields are separate from the applied range so invalid submissions
+    // and unsaved input cannot change the visible membership.
+    let appliedFrom = '';
+    let appliedThrough = '';
     const list = app.querySelector('ul');
     const renameForm = app.querySelector('#rename-form');
     const renameInput = app.querySelector('#new-project-name');
@@ -160,7 +183,10 @@ async function render() {
       const visible = tasks.filter(task =>
         (filter.value === 'All' ||
           (filter.value === 'Completed' ? task.completed : !task.completed)) &&
-        (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+        (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+        ((!appliedFrom && !appliedThrough) ||
+          (task.due_date && (!appliedFrom || task.due_date >= appliedFrom) &&
+            (!appliedThrough || task.due_date <= appliedThrough))));
       list.replaceChildren(...visible.map(task => {
         const row = document.createElement('li');
         row.dataset.testid = 'task-row';
@@ -298,6 +324,25 @@ async function render() {
     }
     filter.addEventListener('change', displayTasks);
     priorityFilter.addEventListener('change', displayTasks);
+    dueRangeForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const from = dueFrom.value.trim();
+      const through = dueThrough.value.trim();
+      if ((from && !validRangeDate(from)) || (through && !validRangeDate(through))) {
+        alertMessage('Due range must use valid YYYY-MM-DD dates');
+        return;
+      }
+      if (from && through && from > through) {
+        alertMessage('Due from must not be after Due through');
+        return;
+      }
+      appliedFrom = from;
+      appliedThrough = through;
+      dueFrom.value = from;
+      dueThrough.value = through;
+      alertMessage('');
+      displayTasks();
+    });
     form.addEventListener('submit', async event => {
       event.preventDefault();
       if (submit.disabled) return;
