@@ -24,15 +24,20 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const priorities = ['Low', 'Normal', 'High'];
 const taskFilter = (value) => ['Open', 'Completed'].includes(value) ? value : 'All';
 const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
 
@@ -153,6 +158,13 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
           <div class="fields"><input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
           ${taskRenameError?.id === task.id ? `<p role="alert">${escapeHtml(taskRenameError.message)}</p>` : ''}
         </form>
+        <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${priorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+          </select>
+        </form>
       </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
     </section>`);
 }
@@ -223,6 +235,32 @@ const server = http.createServer(async (req, res) => {
       const archived = path.endsWith('/archive');
       setProjectArchived.run(archived ? 1 : 0, id);
       redirect(res, archived ? '/' : '/?filter=Archived');
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/priority$/.test(path)) {
+      const [, , projectId, , taskId] = path.split('/');
+      const id = Number(projectId);
+      const taskNumber = Number(taskId);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project) {
+        html(res, 404, page('Project not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      if (!Number.isSafeInteger(taskNumber) || !findTask.get(taskNumber, id)) {
+        html(res, 404, page('Task not found', '<h1>Task not found</h1>'));
+        return;
+      }
+      const form = await readForm(req);
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) {
+        html(res, 409, projectPage(project, filter, 'Archived project'));
+        return;
+      }
+      const priority = form.get('priority');
+      if (!priorities.includes(priority)) {
+        html(res, 422, projectPage(project, filter, 'Task priority must be Low, Normal, or High'));
+        return;
+      }
+      setTaskPriority.run(priority, taskNumber, id);
+      redirect(res, `/projects/${id}${filter === 'All' ? '' : `?filter=${filter}`}`);
     } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/rename$/.test(path)) {
       const [, , projectId, , taskId] = path.split('/');
       const id = Number(projectId);

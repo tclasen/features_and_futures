@@ -33,6 +33,11 @@ and required. Renaming preserves task ownership, creation order, completion,
 filter membership, and project completion totals. Archived projects disable
 task renaming until restoration. Renamed titles persist across server restarts.
 
+Each task row has a `Task priority` selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Priorities persist independently across
+reloads and restarts, including after renaming, archiving, and restoration.
+Archived projects disable priority edits until restoration.
+
 Run the integration checks with:
 
 ```sh
