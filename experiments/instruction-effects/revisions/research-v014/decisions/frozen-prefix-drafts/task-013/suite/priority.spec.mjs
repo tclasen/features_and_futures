@@ -83,7 +83,7 @@ if (stage >= 6) {
     await expect(priority(page, 'Priority retained').locator('option:checked')).toHaveText('High');
     await page.getByRole('button', {name:'Projects', exact:true}).click();
     await page.getByRole('combobox', {name:'Project filter', exact:true}).selectOption({label:'Archived'});
-    await projectRow(page, 'Priority archive').getByRole('button', {name:'Restore project', exact:true}).click();
+    await projectRow(page, 'Priority archive').getByRole('button', {name:'Restore project', exact:true}).click();await expect(projectRow(page, 'Priority archive').getByRole('button', {name:'Restore project', exact:true})).toHaveCount(0);
     await page.getByRole('combobox', {name:'Project filter', exact:true}).selectOption({label:'Active'});
     await openProject(page, 'Priority archive');
     await expect(priority(page, 'Priority retained')).toBeEnabled();

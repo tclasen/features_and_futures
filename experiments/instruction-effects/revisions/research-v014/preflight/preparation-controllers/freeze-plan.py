@@ -32,7 +32,7 @@ assert exact['exact_candidate_suite_files']==file_hashes(v/'preflight/all-restor
 assert load(exact_native.parent/'resource.json')['status']=='removed' and load(exact_native.parent/'resource.json')['inventory_absence_verified']
 focused=load(source/'preflight/restore-navigation-replay-001/verified.json');assert focused['verified'] and focused['original_pairs_failed']==focused['readiness_pairs_passed']==3
 for filename in ('directory.spec.mjs','search-whitespace.spec.mjs'):
- assert file_hashes(v/'preflight/all-restore-candidate/task-020/suite')[filename]==file_hashes(prior_v/'preflight/all-restore-candidate/task-020/suite')[filename]
+ assert file_hashes(v/'preflight/all-restore-candidate/task-020/suite')[filename]==file_hashes(prior_v/'preflight/task020-executed-suite')[filename]
 # The unchanged historical directed controls remain scoped as retained proofs.
 assert len(load(next((prior_v/'preflight').glob('directory065-check-*/verified.json')))['results'])==18
 prior=load(prior_v/'analysis-plan.json');plan=load(v/'analysis-plan.json');assert plan['status']=='draft-before-main-dispatch';changed={k for k in prior.keys()|plan.keys() if prior.get(k)!=plan.get(k)};assert changed<={'revision_id','status','lineage','adoption_evidence','frozen_at'},changed

@@ -228,7 +228,7 @@ if (stage >= 4) {
     await expect(page.getByRole('button', { name: 'Rename project', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Projects', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Archived' });
-    await projectRow(page, 'Rename archive').getByRole('button', { name: 'Restore project', exact: true }).click();
+    await projectRow(page, 'Rename archive').getByRole('button', { name: 'Restore project', exact: true }).click();await expect(projectRow(page, 'Rename archive').getByRole('button', { name: 'Restore project', exact: true })).toHaveCount(0);
     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Active' });
     await openProject(page, 'Rename archive');
     await expect(page.getByRole('textbox', { name: 'New project name', exact: true })).toBeEnabled();
@@ -284,7 +284,7 @@ if (stage >= 5) {
     await expect(taskRow(page, 'Archived title').getByRole('button', { name: 'Rename task', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Projects', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Archived' });
-    await projectRow(page, 'Task rename archive').getByRole('button', { name: 'Restore project', exact: true }).click();
+    await projectRow(page, 'Task rename archive').getByRole('button', { name: 'Restore project', exact: true }).click();await expect(projectRow(page, 'Task rename archive').getByRole('button', { name: 'Restore project', exact: true })).toHaveCount(0);
     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Active' });
     await openProject(page, 'Task rename archive');
     await expect(taskRow(page, 'Archived title').getByRole('textbox', { name: 'New task title', exact: true })).toBeEnabled();

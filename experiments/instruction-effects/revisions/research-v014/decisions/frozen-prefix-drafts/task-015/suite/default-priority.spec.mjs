@@ -63,7 +63,7 @@ if(stage>=8) {
   await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});await openProject(page,'Defaults renamed');
   await expect(defaults(page)).toBeDisabled();await expect(defaults(page).locator('option:checked')).toHaveText('Low');
   await page.getByRole('button',{name:'Projects',exact:true}).click();await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});
-  await projectRow(page,'Defaults renamed').getByRole('button',{name:'Restore project',exact:true}).click();
+  await projectRow(page,'Defaults renamed').getByRole('button',{name:'Restore project',exact:true}).click();await expect(projectRow(page,'Defaults renamed').getByRole('button',{name:'Restore project',exact:true})).toHaveCount(0);
   await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Active'});await openProject(page,'Defaults renamed');
   await expect(defaults(page)).toBeEnabled();await expect(defaults(page).locator('option:checked')).toHaveText('Low');
   await expect(priority(page,'Lifecycle task').locator('option:checked')).toHaveText('Low');

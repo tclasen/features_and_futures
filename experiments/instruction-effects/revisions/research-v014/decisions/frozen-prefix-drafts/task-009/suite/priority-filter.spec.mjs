@@ -111,7 +111,7 @@ if(stage>=7) {
     await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(1);
     await page.getByRole('button',{name:'Projects',exact:true}).click();
     await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});
-    await projectRow(page,'Archived combined filters').getByRole('button',{name:'Restore project',exact:true}).click();
+    await projectRow(page,'Archived combined filters').getByRole('button',{name:'Restore project',exact:true}).click();await expect(projectRow(page,'Archived combined filters').getByRole('button',{name:'Restore project',exact:true})).toHaveCount(0);
     await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Active'});
     await openProject(page,'Archived combined filters');
     await expect(filter(page).locator('option:checked')).toHaveText('All');
