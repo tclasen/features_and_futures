@@ -13,7 +13,10 @@ async function client(matching, filter = 'Completed') {
     URLSearchParams,
     FormData: class { constructor(form) { return Object.entries(form.fields); } },
     document: {
-      addEventListener(type, callback) { assert.equal(type, 'change'); change = callback; },
+      addEventListener(type, callback) {
+        assert.ok(['change', 'submit'].includes(type));
+        if (type === 'change') change = callback;
+      },
       querySelector(selector) {
         assert.equal(selector, '#task-filter', 'Only read the current filter; never replace controls');
         return { value: filter };
@@ -53,6 +56,28 @@ test('completion preserves matching rows and all current controls instead of rep
     const saving = await client(true, filter);
     assert.equal(await saving.finish(), false);
   }
+});
+
+test('directory hides an empty-result announcement during result requests only', async () => {
+  const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
+  let submit, removed = 0;
+  runInNewContext(script, {
+    URL,
+    document: {
+      addEventListener(type, callback) { if (type === 'submit') submit = callback; },
+      querySelector(selector) {
+        assert.equal(selector, '[data-directory-empty]');
+        return { remove() { removed++; } };
+      }
+    }
+  });
+  submit({ target: { action: 'http://localhost/projects' } });
+  assert.equal(removed, 0);
+  for (const path of ['/directory', '/directory/due-range', '/directory/completion']) {
+    submit({ target: { action: `http://localhost${path}` } });
+  }
+  assert.equal(removed, 3);
 });
 
 test('completion response cannot modify a row from an obsolete page after another navigation', async () => {

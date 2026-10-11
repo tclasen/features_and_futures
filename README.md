@@ -86,7 +86,7 @@ names show Project name is required. Successful imports open the new project,
 preserving supplied task order, exact titles, LF notes, explicit priorities, dates,
 completion, deletion, archive state and project default. Imported tasks establish
 fresh remembered positions; existing identities and projects are never merged.
-Task directory on the home page opens a read-only cross-project view. Each opening
+Task directory on the home page opens a cross-project view with read-only rows. Each opening
 starts with Active project scope, All task/priority filters, empty search and due range.
 Scope, live/deleted completion filters, priority, inclusive due range and title-only
 search intersect and preserve one another. Search uses the same ASCII-case and
@@ -96,6 +96,12 @@ project creation order and each owner's stored task order, display original titl
 owner names, completion, priority, dates and literal multiline notes, and offer only
 Open project navigation. Opening an owner starts its ordinary default project filters;
 archived owners remain read-only. Viewing and filtering never change saved data.
+Complete visible tasks and Reopen visible tasks atomically update completion for the
+current matching live tasks in Active scope, preserving every other field and all
+filters. Each action is disabled when no matching task needs that change, and both
+are disabled in Archived scope or the Deleted filter. Results and summaries reflect
+saved completion, including after restart. Empty resolved results announce No matching
+tasks; this announcement is hidden while a new directory request is loading.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -130,4 +136,7 @@ Directory tests cover independent filter intersections and retained controls, da
 validation and boundaries, normalized title-only search, literal notes, read-only rows,
 imported and upgraded records, archived/deleted visibility, current ownership and
 remembered return ordering, default navigation, unchanged exports and restart persistence.
+Bulk directory tests cover cross-project filter targeting, disabled actions, forged
+archived/deleted requests, unchanged fields and positions, refreshed summaries,
+empty-result announcements, movement and real server restart persistence.
 Temporary files are removed afterward.

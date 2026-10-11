@@ -175,3 +175,78 @@ test('directory displays upgraded records with public defaults and no editable r
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('directory bulk completion targets only visible live active tasks and persists fields and order', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-bulk-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'db.sqlite');
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = async (path, values = {}) => (await fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values)
+    })).text();
+    const importCopy = (name, tasks, archived = false) => post('/projects/import', {
+      importedName: name, projectJson: portable(name, tasks, archived)
+    });
+    const matching = fields => task('Target\t  task', { priority: 'High', dueDate: '2024-02-29', notes: '  <雪>\ntext ', ...fields });
+    await importCopy('First', [matching(), matching({ completed: true }), matching({ deleted: true }),
+      matching({ priority: 'Low' }), matching({ dueDate: '' }), task('Other', { priority: 'High', dueDate: '2024-02-29' })]);
+    await importCopy('Second', [matching(), matching({ dueDate: '2024-03-01' })]);
+    await importCopy('Archived', [matching(), matching({ completed: true })], true);
+    const state = { scope: 'Active', filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', search: 'target task' };
+    const path = values => '/directory?' + new URLSearchParams(values);
+    const buttonDisabled = (html, label) => new RegExp('<button[^>]* disabled[^>]*>' + label + '</button>').test(html);
+    let html = await get(path(state));
+    assert.equal(titles(html).length, 2);
+    assert.equal(buttonDisabled(html, 'Complete visible tasks'), false);
+    assert.equal(buttonDisabled(html, 'Reopen visible tasks'), true);
+    const before = await Promise.all([1, 2, 3].map(id => get(`/projects/${id}/export`).then(JSON.parse)));
+    html = await post('/directory/completion', { ...state, completed: '1' });
+    assert.deepEqual(titles(html), []);
+    assert.match(html, /role="status">No matching tasks</);
+    assert.equal(buttonDisabled(html, 'Complete visible tasks'), true);
+    assert.equal(buttonDisabled(html, 'Reopen visible tasks'), true);
+    for (const [name, value] of Object.entries(state)) {
+      assert.ok(html.includes(`name="${name}"`) && html.includes(`value="${value}"`), name);
+    }
+    const after = await Promise.all([1, 2, 3].map(id => get(`/projects/${id}/export`).then(JSON.parse)));
+    const expected = structuredClone(before);
+    expected[0].project.tasks[0].completed = true;
+    expected[1].project.tasks[0].completed = true;
+    assert.deepEqual(after, expected);
+    assert.match(await get('/'), /data-testid="project-summary">2\/5 completed/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(await Promise.all([1, 2, 3].map(id => get(`/projects/${id}/export`).then(JSON.parse))), expected);
+    // Archived and deleted scopes cannot be updated, even by forged requests.
+    for (const restricted of [{ ...state, scope: 'Archived', filter: 'All' }, { ...state, filter: 'Deleted' }]) {
+      html = await get(path(restricted));
+      for (const label of ['Complete visible tasks', 'Reopen visible tasks']) assert.ok(buttonDisabled(html, label));
+      await post('/directory/completion', { ...restricted, completed: '1' });
+      await post('/directory/completion', { ...restricted, completed: '0' });
+    }
+    assert.deepEqual(await Promise.all([1, 2, 3].map(id => get(`/projects/${id}/export`).then(JSON.parse))), expected);
+    html = await post('/directory/completion', { ...state, filter: 'Completed', completed: '0' });
+    assert.deepEqual(titles(html), []);
+    assert.match(html, /No matching tasks/);
+    expected[0].project.tasks[0].completed = false;
+    expected[0].project.tasks[1].completed = false;
+    expected[1].project.tasks[0].completed = false;
+    assert.deepEqual(await Promise.all([1, 2, 3].map(id => get(`/projects/${id}/export`).then(JSON.parse))), expected);
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(JSON.parse(await get('/projects/1/export')), expected[0]);
+    html = await get('/directory');
+    assert.equal(buttonDisabled(html, 'Complete visible tasks'), false);
+    assert.equal(buttonDisabled(html, 'Reopen visible tasks'), true);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(JSON.parse(await get('/projects/1/export')), expected[0]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

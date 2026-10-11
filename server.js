@@ -127,6 +127,13 @@ function page(title, content) {
 <script>
   // Preserve the current controls and DOM while saving completion. Replacing
   // main with a response snapshot can overwrite edits made while fetch runs.
+  // Full-page directory requests resolve results on the server. Hide the old
+  // empty announcement as soon as a new result request starts loading.
+  document.addEventListener('submit', event => {
+    if (new URL(event.target.action).pathname.startsWith('/directory')) {
+      document.querySelector('[data-directory-empty]')?.remove();
+    }
+  });
   const completionSaves = new WeakMap();
   document.addEventListener('change', async event => {
     const checkbox = event.target;
@@ -330,6 +337,11 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <input id="due-through" name="through" type="text" value="${escapeHtml(range.through)}">
       <button type="submit">Apply due range</button>
     </form>
+    <form class="filter" method="post" action="/directory/completion">
+      ${hidden({ ...state, ...rangeState })}
+      <button type="submit" name="completed" value="1"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
+      <button type="submit" name="completed" value="0"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
+    </form>
     <section class="tasks" aria-label="Directory tasks">${tasks.length ? tasks.map(task => `
       <div class="task" data-testid="directory-task-row">
         <div data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</div>
@@ -339,7 +351,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
         <div data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</div>
         <div data-testid="directory-task-notes" style="white-space: pre-wrap; overflow-wrap: anywhere">${escapeHtml(task.notes).replace(/\r\n?/g, '\n').replace(/\n/g, '&#10;')}</div>
         <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
-      </div>`).join('') : '<p>No matching tasks.</p>'}</section>`);
+      </div>`).join('') : '<p data-directory-empty role="status">No matching tasks</p>'}</section>`);
 }
 
 function projectPage(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }) {
@@ -483,6 +495,26 @@ const server = http.createServer(async (req, res) => {
       sendHtml(res, 200, directoryPage(projectFilter(url.searchParams.get('scope')),
         taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')),
         dueRange(url.searchParams)));
+    } else if (req.method === 'POST' && url.pathname === '/directory/completion') {
+      const form = await readForm(req);
+      const scope = projectFilter(form.get('scope'));
+      const filter = taskFilter(form.get('filter'));
+      const priority = priorityFilter(form.get('priorityFilter'));
+      const range = dueRange(form);
+      const completed = form.get('completed');
+      if (scope === 'Active' && filter !== 'Deleted' && ['0', '1'].includes(completed)) {
+        // Select and update the entire current intersection in one transaction;
+        // no client-supplied task IDs can broaden the result set.
+        transaction(() => {
+          for (const task of directoryTasks.all(0)) {
+            if (matchesTask(task, filter, priority, range)) {
+              updateTask.run(Number(completed), task.id, task.project_id);
+            }
+          }
+        });
+      }
+      res.writeHead(303, { Location: directoryLocation(scope, filter, priority, range) });
+      res.end();
     } else if (req.method === 'POST' && url.pathname === '/directory/due-range') {
       const form = await readForm(req);
       const scope = projectFilter(form.get('scope'));
