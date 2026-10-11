@@ -16,6 +16,8 @@ Choose Task directory on the home page to open `/directory`, a cross-project vie
 
 Delete visible tasks marks all matching live tasks deleted in Active scope; Restore visible tasks restores matching tasks only in Active scope with the Deleted filter selected. These controls retain directory filters, search, range and order, refresh both directory summaries and owner rows, and preserve all task fields, ownership and reserved positions. They are disabled for protected scopes, incompatible filters or empty results. Project summaries exclude deleted tasks; bulk restoration retains each task's saved completion and priority.
 
+Visible tasks priority offers Low, Normal and High, initially Normal on each fresh directory visit. Set visible priority updates only matching live tasks in Active scope, retaining all directory controls and ordering. The action is disabled for Archived scope, Deleted views and empty results. Saved changes immediately re-evaluate priority-filter membership and totals; all other fields, owners and remembered positions remain unchanged. Missing or invalid submitted priorities never modify tasks.
+
 ## Verify
 
 ```sh
