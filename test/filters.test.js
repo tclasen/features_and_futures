@@ -56,24 +56,34 @@ async function fixture(archived = false) {
     { id: 4, title: 'Fourth', completed: false, priority: 'Low' },
   ];
   const requests = [];
+  const project = { id: 1, archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const context = {
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     fetch: async (path, options) => {
       if (!options) return { ok: true, json: async () => structuredClone(tasks) };
       requests.push(options);
+      if (path === '/api/projects/1') {
+        Object.assign(project, JSON.parse(options.body));
+        return { ok: true, json: async () => structuredClone(project) };
+      }
+      if (options.method === 'POST') {
+        const task = { id: tasks.length + 1, ...JSON.parse(options.body), completed: false, priority: project.default_priority };
+        tasks.push(task);
+        return { ok: true, json: async () => structuredClone(task) };
+      }
       const task = tasks.find(item => item.id === Number(path.split('/').at(-1)));
       Object.assign(task, JSON.parse(options.body));
       return { ok: true, json: async () => structuredClone(task) };
     },
   };
   runInNewContext(source.slice(0, source.lastIndexOf('\nrender().catch')) + '\nthis.renderTasks = renderTasks;', context);
-  await context.renderTasks({ id: 1, archived });
+  await context.renderTasks({ ...project });
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
   const rows = () => app.querySelector('#task-list').children;
   const titles = () => rows().map(row => row.children[0].textContent);
-  return { app, completion, priority, rows, titles, requests, tasks };
+  return { app, completion, priority, rows, titles, requests, tasks, project };
 }
 
 async function choose(select, value) {
@@ -142,4 +152,32 @@ test('archived projects keep both filters usable while task edits remain disable
   assert.deepEqual(f.titles(), ['Third']);
   assert.equal(f.requests.length, 0);
   assert.equal((await fixture()).priority.value, 'All');
+});
+
+
+test('default priority changes preserve both filters and existing rows', async () => {
+  const f = await fixture();
+  const defaultPriority = f.app.querySelector('#default-task-priority');
+  assert.equal(defaultPriority.value, 'Normal');
+  assert.deepEqual(defaultPriority.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  await choose(f.completion, 'Open');
+  await choose(f.priority, 'High');
+  const originalTasks = structuredClone(f.tasks);
+  const originalRows = f.rows();
+  await choose(defaultPriority, 'High');
+  assert.equal(f.project.default_priority, 'High');
+  assert.equal(defaultPriority.value, 'High');
+  assert.equal(defaultPriority.disabled, false);
+  assert.equal(f.completion.value, 'Open');
+  assert.equal(f.priority.value, 'High');
+  assert.equal(f.rows(), originalRows);
+  assert.deepEqual(f.tasks, originalTasks);
+  f.app.querySelector('#task-title').value = 'New high task';
+  await f.app.querySelector('form').fire('submit');
+  assert.deepEqual(f.titles(), ['First', 'New high task']);
+  assert.equal(f.completion.value, 'Open');
+  assert.equal(f.priority.value, 'High');
+  const archived = await fixture(true);
+  assert.equal(archived.app.querySelector('#default-task-priority').disabled, true);
+  assert.equal(archived.app.querySelector('#default-task-priority').value, 'Normal');
 });

@@ -100,6 +100,12 @@ async function renderTasks(project) {
         <button type="submit">Create task</button>
       </div>
     </form>
+    <label for="default-task-priority">Default task priority</label>
+    <select id="default-task-priority">
+      <option>Low</option>
+      <option>Normal</option>
+      <option>High</option>
+    </select>
     <label for="task-filter">Task filter</label>
     <select id="task-filter">
       <option>All</option>
@@ -121,6 +127,27 @@ async function renderTasks(project) {
   const list = section.querySelector('#task-list');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
+  const defaultPriority = section.querySelector('#default-task-priority');
+  defaultPriority.value = project.default_priority;
+  defaultPriority.disabled = Boolean(project.archived);
+  defaultPriority.addEventListener('change', async () => {
+    if (project.archived) return;
+    defaultPriority.disabled = true;
+    app.querySelector('[role="alert"]')?.remove();
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: defaultPriority.value }),
+      });
+      project.default_priority = saved.default_priority;
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      defaultPriority.value = project.default_priority;
+      defaultPriority.disabled = Boolean(project.archived);
+    }
+  });
   function drawTasks() {
     const visible = tasks.filter(task =>
       (filter.value === 'All' ||

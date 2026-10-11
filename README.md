@@ -8,7 +8,7 @@ A project and task application using Node.js 22.22.1, built-in HTTP and SQLite, 
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port `8080` and database `data/workboard.sqlite`. Keep the database file to preserve projects, tasks, completion state, project names, task titles, task priorities, and archive state across restarts. Existing databases migrate automatically.
+Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port `8080` and database `data/workboard.sqlite`. Keep the database file to preserve projects, tasks, completion state, project names, task titles, task priorities, project default priorities, and archive state across restarts. Existing databases migrate automatically.
 
 Health: `GET /health` returns `{"status":"ok"}`.
 
@@ -28,4 +28,6 @@ On an active project page, create tasks, toggle their completion checkboxes, and
 
 Each task row provides New task title and Rename task. Renames trim whitespace and preserve ownership, creation order, completion, filter membership, and summary counts. Empty titles show an alert without changing the task. Restore an archived project to enable task renaming again.
 
-Each task row has a Task priority selector with Low, Normal, and High options. New and migrated tasks default to Normal. Priorities are saved independently and preserved by renaming, completion changes, and archive/restore. Archived projects disable priority editing.
+Each task row has a Task priority selector with Low, Normal, and High options. Migrated tasks default to Normal. New tasks inherit their project's saved Default task priority, initially Normal. Priorities are saved independently and preserved by renaming, completion changes, and archive/restore. Archived projects disable priority editing.
+
+Default task priority offers Low, Normal, and High on each project page. Changing it saves only that project's default for future tasks; existing tasks, summary counts, and both filter selections remain unchanged. The default survives renaming, restarts, archival, and restoration. Archived projects display it in a disabled selector.
