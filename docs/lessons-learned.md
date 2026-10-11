@@ -9,3 +9,5 @@ Before preparing a run, review relevant lessons and record adopted safeguards, t
 A lesson must lead to a concrete control when practical: a meaningful regression check, fixture, readiness gate, isolation probe, recovery procedure or preregistered analysis rule. Record verification against raw evidence. Never manufacture a success to close a lesson, claim a cause from one model failure, or mistake a three-task pilot for a maintainability finding.
 
 The user grants full pilot-completion and secret-free publication authority. Preserve timing, token exposure, failure evidence and original Git histories while improving the PM control plane. Publish only after scanning current files, decoded archives and reachable historical objects.
+
+When PM fixtures are live, stage their stable source inputs explicitly. Do not recursively stage their active output directories: Playwright trace files may disappear during enumeration. Stage a completed result directory only after its verification and input-closure records pass. Preserve a failed staging observation and the successful recovery without treating either as builder exposure.
