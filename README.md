@@ -22,3 +22,5 @@ The project list defaults to Active and can show Archived projects. Archive and 
 Active project pages allow renaming with a trimmed, nonempty name. Names persist without changing project URLs, list order, tasks, or summaries. Archived projects cannot be renamed until restored; both the browser controls and server enforce this restriction.
 
 Each task row allows renaming with a trimmed, nonempty title. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries. The completion checkbox label follows the saved title. Archived projects disable task rename controls and reject title updates until restored. Task titles persist across reloads and server restarts.
+
+Each task has a saved Low, Normal, or High priority, defaulting to Normal for existing and new tasks. Priority changes preserve the task's other fields and project summary; renaming preserves priority. Archived projects disable priority controls and reject updates until restored. Priorities persist across reloads and server restarts.

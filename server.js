@@ -49,9 +49,9 @@ const server = createServer(async (request, response) => {
       }
       return json(response, 201, projects.create(body.name));
     }
-    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/title)?)?$/);
+    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/(?:title|priority))?)?$/);
     if (tasksMatch) {
-      const [, projectId, taskId, titlePath] = tasksMatch;
+      const [, projectId, taskId, fieldPath] = tasksMatch;
       const project = projects.get(projectId);
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (!taskId && request.method === 'GET') {
@@ -69,7 +69,11 @@ const server = createServer(async (request, response) => {
       }
       if (taskId && request.method === 'PATCH') {
         const body = await readJson(request);
-        if (titlePath) {
+        if (fieldPath === '/priority') {
+          const task = projects.tasks.setPriority(projectId, taskId, body?.priority);
+          return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
+        }
+        if (fieldPath === '/title') {
           const task = projects.tasks.rename(projectId, taskId, body?.title);
           return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
         }

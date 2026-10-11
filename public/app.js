@@ -168,7 +168,40 @@ async function renderTasks(project) {
           renameButton.disabled = project.archived;
         }
       });
-      row.append(title, checkbox, renameForm);
+      const priorityControls = document.createElement('div');
+      const priorityLabel = document.createElement('label');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      priorityLabel.textContent = 'Task priority';
+      const prioritySelect = document.createElement('select');
+      prioritySelect.id = priorityLabel.htmlFor;
+      for (const priority of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = priority;
+        option.textContent = priority;
+        prioritySelect.append(option);
+      }
+      prioritySelect.value = task.priority;
+      prioritySelect.disabled = project.archived;
+      prioritySelect.addEventListener('change', async () => {
+        prioritySelect.disabled = true;
+        alert.hidden = true;
+        try {
+          const updated = await request(`${endpoint}/${task.id}/priority`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: prioritySelect.value }),
+          });
+          task.priority = updated.priority;
+          prioritySelect.value = task.priority;
+        } catch (error) {
+          prioritySelect.value = task.priority;
+          showError(alert, error.message);
+        } finally {
+          prioritySelect.disabled = project.archived;
+        }
+      });
+      priorityControls.append(priorityLabel, prioritySelect);
+      row.append(title, checkbox, priorityControls, renameForm);
       list.append(row);
     }
   }

@@ -8,11 +8,15 @@ export function createTaskStore(database) {
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id);
   `);
-  const list = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-  const get = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+  }
+  const list = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+  const get = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
   const insert = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const update = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+  const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
   const taskValue = (row) => row ? { ...row, completed: Boolean(row.completed) } : undefined;
 
   return {
@@ -25,6 +29,15 @@ export function createTaskStore(database) {
     setCompleted(projectId, taskId, completed) {
       if (typeof completed !== 'boolean') throw new Error('Completion must be a boolean');
       update.run(Number(completed), projectId, taskId);
+      return taskValue(get.get(projectId, taskId));
+    },
+    setPriority(projectId, taskId, priority) {
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        const error = new Error('Task priority must be Low, Normal, or High');
+        error.status = 400;
+        throw error;
+      }
+      updatePriority.run(priority, projectId, taskId);
       return taskValue(get.get(projectId, taskId));
     },
     rename(projectId, taskId, title) {
