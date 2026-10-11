@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open http://localhost:8080. The server binds to `0.0.0.0`; defaults are port
 8080 and database `data/workboard.sqlite`. Use the same `DB_PATH` across restarts
-to preserve projects, task titles, notes, priorities, due dates, project priority defaults, completion state, archive state, task ownership/order, and remembered positions in previous projects. Existing databases
+to preserve projects, task titles, notes, priorities, due dates, project priority defaults, completion state, archive state, task deletion state, task ownership/order, and remembered positions in previous projects. Existing databases
 are migrated automatically. `GET /health` returns `{"status":"ok"}`.
 
 ## Verify
@@ -55,3 +55,9 @@ Task notes are optional multiline plain text saved without trimming. They travel
 do not participate in search, and are read-only in archived projects. Notes tests cover
 migration, literal markup and Unicode, whitespace, filter retention, movement/return ordering,
 restart persistence, restoration, and clearing.
+Tasks can be deleted reversibly. All/Open/Completed and completion summaries include
+only live tasks; Deleted intersects the same priority, due-range and title-search filters.
+Deleted tasks are read-only until restored and retain every saved field and reserved
+position. Archived projects disable deletion and restoration. Deletion tests cover
+migration to live state, filter retention, summary updates, rejected deleted-task edits,
+archive restrictions, restart persistence, reverse-order restoration and later movement.
