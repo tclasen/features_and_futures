@@ -40,6 +40,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -93,6 +94,24 @@ async function handle(req, res) {
   if (req.method === 'GET' && projectMatch) {
     const project = getProject.get(decodeURIComponent(projectMatch[1]));
     return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
+  }
+  if (req.method === 'PATCH' && projectMatch) {
+    const projectId = decodeURIComponent(projectMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be renamed' });
+    let payload;
+    try {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      payload = JSON.parse(raw);
+    } catch {
+      return sendJson(res, 400, { error: 'Invalid request body' });
+    }
+    const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
+    if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+    updateProjectName.run(name, projectId);
+    return sendJson(res, 200, { ...project, name });
   }
 
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
