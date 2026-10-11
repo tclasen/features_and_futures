@@ -2746,3 +2746,130 @@ test('directory bulk deletion and restoration preserve owners, fields, reserved 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory bulk priority updates only matching live active tasks and preserves data through moves and restart', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'directory-priority-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const path = values => `/directory?${new URLSearchParams(values)}`;
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return {
+          projects: database.prepare('SELECT * FROM projects ORDER BY id').all().map(row => ({ ...row })),
+          tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all().map(row => ({ ...row })),
+          positions: database.prepare('SELECT * FROM task_positions ORDER BY project_id, position').all().map(row => ({ ...row })),
+        };
+      } finally { database.close(); }
+    };
+    const task = (title, completed = false, priority = 'High', dueDate = '2026-01-01', deleted = false) =>
+      ({ title, completed, priority, dueDate, deleted, notes: '  雪 <literal>\n line\t  ' });
+    for (const [name, archived, tasks] of [
+      ['Same owner', false, [task('Zulu MATCH'), task('Completed match', true),
+        task('Low match', false, 'Low'), task('Undated match', false, 'High', ''),
+        task('Late match', false, 'High', '2026-01-02'), task('Other title'),
+        task('Deleted match', false, 'High', '2026-01-01', true)]],
+      ['Same owner', false, [task('Alpha match')]],
+      ['Archive', true, [task('Archived match')]],
+    ]) {
+      assert.equal((await post('/projects/import', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks },
+      }) })).status, 303);
+    }
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    const before = snapshot();
+    const view = { scope: 'Active', filter: 'Open', priorityFilter: 'High', order: 'Title',
+      dueFrom: '2026-01-01', dueThrough: '2026-01-01', directorySearch: 'MATCH' };
+    const titles = page => [...page.matchAll(/data-testid="directory-task-title">([^<]*)/g)].map(match => match[1]);
+    const disabled = (page, label) => {
+      const button = new RegExp(`<button[^>]*>${label}</button>`).exec(page);
+      assert.ok(button, `Missing ${label}`);
+      return button[0].includes(' disabled');
+    };
+    const check = (page, expectedTitles, summary, owners) => {
+      assert.deepEqual(titles(page), expectedTitles);
+      assert.ok(page.includes(`data-testid="directory-summary">${summary}`));
+      const rows = [...page.matchAll(/<div data-testid="directory-owner-row"[\s\S]*?<\/form>\s*<\/div>/g)];
+      assert.deepEqual(rows.map(([row]) => [Number(/action="\/projects\/(\d+)"/.exec(row)[1]),
+        /data-testid="directory-owner-summary">([^<]*)/.exec(row)[1]]), owners);
+      assert.equal(page.includes('role="status">No matching tasks'), expectedTitles.length === 0);
+    };
+    let page = await html('/directory');
+    const select = /<select id="visible-tasks-priority"[\s\S]*?<\/select>/.exec(page)[0];
+    assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]*)/g)].map(match => match[1]), ['Low', 'Normal', 'High']);
+    assert.match(select, /<option selected>Normal/);
+    page = await html(path(view));
+    check(page, ['Alpha match', 'Zulu MATCH'], '0/2 completed', [[1, '0/1 completed'], [2, '0/1 completed']]);
+    assert.equal(disabled(page, 'Set visible priority'), false);
+    const form = /<form method="post" action="\/directory\/priority">[\s\S]*?<\/form>/.exec(page)[0];
+    for (const [key, value] of Object.entries(view)) assert.ok(form.includes(`name="${key}" value="${value}"`));
+    for (const values of [
+      { ...view, scope: 'Archived' }, { ...view, filter: 'Deleted' },
+      { ...view, directorySearch: 'absent' },
+    ]) {
+      assert.equal(disabled(await html(path(values)), 'Set visible priority'), true);
+      assert.equal((await post('/directory/priority', { ...values, visiblePriority: 'Low' })).status, 303);
+      assert.deepEqual(snapshot(), before);
+    }
+    for (const value of [undefined, '', 'Urgent', 'low']) {
+      const values = { ...view };
+      if (value !== undefined) values.visiblePriority = value;
+      const rejected = await post('/directory/priority', values);
+      assert.equal(rejected.status, 400);
+      assert.match(await rejected.text(), /role="alert"/);
+      assert.deepEqual(snapshot(), before);
+    }
+    const changed = await post('/directory/priority', { ...view, visiblePriority: 'Normal' });
+    assert.equal(changed.status, 303);
+    const location = changed.headers.get('location');
+    for (const [key, value] of Object.entries(view)) assert.equal(new URL(location, server.base).searchParams.get(key), value);
+    page = await html(location);
+    check(page, [], '0/0 completed', []);
+    for (const label of ['Set visible priority', 'Delete visible tasks', 'Restore visible tasks',
+      'Complete visible tasks', 'Reopen visible tasks']) assert.equal(disabled(page, label), true);
+    const after = snapshot();
+    assert.deepEqual(after.projects, before.projects);
+    assert.deepEqual(after.positions, before.positions);
+    assert.deepEqual(after.tasks, before.tasks.map(row => [1, 8].includes(row.id) ? { ...row, priority: 'Normal' } : row));
+    const normalView = { ...view, priorityFilter: 'Normal' };
+    check(await html(path(normalView)), ['Alpha match', 'Zulu MATCH'], '0/2 completed', [[1, '0/1 completed'], [2, '0/1 completed']]);
+    // The current membership is captured before updates; All and Completed work too.
+    const completedView = { ...view, filter: 'Completed' };
+    await post('/directory/priority', { ...completedView, visiblePriority: 'Low' });
+    check(await html(path(completedView)), [], '0/0 completed', []);
+    await post('/directory/priority', { ...normalView, filter: 'All', visiblePriority: 'High' });
+    assert.deepEqual(snapshot().tasks, before.tasks.map(row => row.id === 2 ? { ...row, priority: 'Low' } : row));
+    // Sorting refreshes when priority changes even without a restricting priority filter.
+    const ordered = { ...normalView, priorityFilter: 'All', order: 'Priority' };
+    const response = await post('/directory/priority', { ...ordered, visiblePriority: 'Low' });
+    page = await html(response.headers.get('location'));
+    check(page, ['Zulu MATCH', 'Low match', 'Alpha match'], '0/3 completed', [[1, '0/2 completed'], [2, '0/1 completed']]);
+    assert.match(page, /id="visible-tasks-priority"[\s\S]*?<option selected>Low/);
+    assert.equal(disabled(page, 'Set visible priority'), false);
+    const saved = snapshot();
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(snapshot(), saved);
+    const exported = await (await fetch(`${server.base}/projects/1/export`)).json();
+    assert.equal(exported.project.tasks[0].priority, 'Low');
+    assert.equal(exported.project.tasks[0].notes, before.tasks[0].notes);
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), saved);
+    check(await html(path(ordered)), ['Zulu MATCH', 'Low match', 'Alpha match'], '0/3 completed', [[1, '0/2 completed'], [2, '0/1 completed']]);
+    assert.match(await html('/directory'), /id="visible-tasks-priority"[\s\S]*?<option selected>Normal/);
+    assert.deepEqual(await (await fetch(`${server.base}/health`)).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

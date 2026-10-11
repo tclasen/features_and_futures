@@ -456,13 +456,15 @@ function directoryState(values) {
     range: dueRange(values),
     query: searchQuery(values, 'directorySearch'),
     order: directoryOrders.includes(values.get('order')) ? values.get('order') : 'Original',
+    visiblePriority: taskPriorities.includes(values.get('visiblePriority')) ? values.get('visiblePriority') : 'Normal',
   };
 }
 
 function directoryPath(state) {
   const params = new URLSearchParams({ scope: state.scope, filter: state.filter,
     priorityFilter: state.priority, dueFrom: state.range.from,
-    dueThrough: state.range.through, directorySearch: state.query, order: state.order });
+    dueThrough: state.range.through, directorySearch: state.query, order: state.order,
+    visiblePriority: state.visiblePriority });
   return `/directory?${params}`;
 }
 
@@ -506,10 +508,11 @@ function directoryPage(state, error = '', rangeInput = state.range) {
   }
   const owners = [...ownersById.values()].sort((a, b) => a.id - b.id);
   const canEdit = scope === 'Active' && filter !== 'Deleted';
-  const selections = `<input type="hidden" name="scope" value="${scope}">
+  const viewSelections = `<input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priority}">
     <input type="hidden" name="order" value="${order}">`;
+  const selections = `${viewSelections}<input type="hidden" name="visiblePriority" value="${state.visiblePriority}">`;
   const rangeInputs = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   return page('Task directory', `
@@ -518,6 +521,7 @@ function directoryPage(state, error = '', rangeInput = state.range) {
     ${error ? `<p role="alert" class="alert">${escapeHtml(error)}</p>` : ''}
     <section aria-label="Directory filters">
       <form method="get" action="/directory">
+        <input type="hidden" name="visiblePriority" value="${state.visiblePriority}">
         <label for="project-scope">Project scope</label>
         <select id="project-scope" name="scope" onchange="this.form.requestSubmit()">
           ${['Active', 'Archived'].map(option => `<option${option === scope ? ' selected' : ''}>${option}</option>`).join('')}
@@ -562,6 +566,14 @@ function directoryPage(state, error = '', rangeInput = state.range) {
       ${selections}${rangeInputs}${searchField('directorySearch', query)}
       <button type="submit" name="deleted" value="1"${canEdit && tasks.length ? '' : ' disabled'}>Delete visible tasks</button>
       <button type="submit" name="deleted" value="0"${scope === 'Active' && filter === 'Deleted' && tasks.length ? '' : ' disabled'}>Restore visible tasks</button>
+    </form>
+    <form method="post" action="/directory/priority">
+      ${viewSelections}${rangeInputs}${searchField('directorySearch', query)}
+      <label for="visible-tasks-priority">Visible tasks priority</label>
+      <select id="visible-tasks-priority" name="visiblePriority">
+        ${taskPriorities.map(option => `<option${option === state.visiblePriority ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <button type="submit"${canEdit && tasks.length ? '' : ' disabled'}>Set visible priority</button>
     </form>
     <section aria-label="Directory projects">
       ${owners.map(owner => `
@@ -678,6 +690,28 @@ const server = createServer(async (request, response) => {
         transaction(() => {
           for (const task of directoryTasks(state)) {
             setTaskDeleted.run(Number(deleted), task.id, task.project_id);
+          }
+        });
+      }
+      redirect(response, directoryPath(state));
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/directory/priority') {
+      const form = await readForm(request);
+      if (!form) {
+        sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
+      }
+      const state = directoryState(form);
+      const priority = form.get('visiblePriority');
+      if (!taskPriorities.includes(priority)) {
+        sendHtml(response, 400, directoryPage(state, 'Invalid task priority'));
+        return;
+      }
+      if (state.scope === 'Active' && state.filter !== 'Deleted') {
+        transaction(() => {
+          for (const task of directoryTasks(state)) {
+            setTaskPriority.run(priority, task.id, task.project_id);
           }
         });
       }
