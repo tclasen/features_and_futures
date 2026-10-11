@@ -36,15 +36,39 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at, rowid)
+  FROM tasks`);
+function transaction(callback) {
+  db.exec('BEGIN');
+  try {
+    const result = callback();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+  FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position`);
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -123,7 +147,12 @@ const server = http.createServer(async (req, res) => {
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
       const task = { id: randomUUID(), projectId: tasksMatch[1], title, completed: 0 };
       task.priority = project.defaultPriority;
-      insertTask.run(task.id, task.projectId, task.title, Date.now(), task.priority);
+      const create = () => transaction(() => {
+        insertTask.run(task.id, task.projectId, task.title, Date.now(), task.priority);
+        const position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(task.projectId).value;
+        db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(task.id, task.projectId, position);
+      });
+      create();
       return send(201, JSON.stringify(task));
     }
     const moveMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/move$/);
@@ -137,8 +166,16 @@ const server = http.createServer(async (req, res) => {
       const source = getProject.get(task.projectId);
       const destination = getProject.get(payload?.destinationProjectId);
       if (source.archived || !destination || destination.archived || destination.id === source.id) return send(400, JSON.stringify({ error: 'Invalid destination project' }));
-      const nextOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destination.id).value;
-      moveTask.run(destination.id, nextOrder, task.id);
+      const move = () => transaction(() => {
+        const knownPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(task.id, destination.id);
+        let position = knownPosition?.position;
+        if (position === undefined) {
+          position = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destination.id).value;
+          db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(task.id, destination.id, position);
+        }
+        moveTask.run(destination.id, task.id);
+      });
+      move();
       return send(200, JSON.stringify({ ...task, projectId: destination.id }));
     }
     const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
