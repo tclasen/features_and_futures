@@ -392,3 +392,89 @@ test('projects validate, navigate, escape names, and persist in creation order',
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('combined filters preserve selections through edits, archive, and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const get = path => fetch(`${server.url}${path}`).then(response => response.text());
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const view = (filter, priorityFilter) => get(`/projects/1?${new URLSearchParams({ filter, priorityFilter })}`);
+    const titles = content => [...content.matchAll(/data-testid="task-row">\s*<span>(.*?)<\/span>/g)].map(match => match[1]);
+    const selections = (content, filter, priority) => {
+      assert.match(content, new RegExp(`id="task-filter"[^>]*>[\\s\\S]*?<option selected>${filter}</option>`));
+      const prioritySelect = /<select id="priority-filter"[^>]*>([\s\S]*?)<\/select>/.exec(content)[1];
+      assert.equal(prioritySelect.replace(/\s+/g, ''), ['All', 'Low', 'Normal', 'High'].map(value =>
+        `<option${value === priority ? ' selected' : ''}>${value}</option>`.replace(/\s+/g, '')).join(''));
+    };
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Other' });
+    const tasks = [
+      ['Low open', 'Low', false], ['High done', 'High', true],
+      ['Normal open', 'Normal', false], ['High open', 'High', false],
+      ['Low done', 'Low', true], ['Normal done', 'Normal', true],
+    ];
+    for (const [index, [title, priority, completed]] of tasks.entries()) {
+      await post('/projects/1/tasks', { title });
+      await post(`/projects/1/tasks/${index + 1}/priority`, { priority });
+      if (completed) await post(`/projects/1/tasks/${index + 1}`, { completed: '1' });
+    }
+    selections(await get('/projects/1'), 'All', 'All');
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const content = await view(filter, priority);
+        selections(content, filter, priority);
+        assert.deepEqual(titles(content), tasks.filter(([, p, done]) =>
+          (priority === 'All' || p === priority) &&
+          (filter === 'All' || done === (filter === 'Completed'))).map(([title]) => title));
+      }
+    }
+    assert.match(await get('/'), /project-summary">3\/6 completed/);
+    assert.deepEqual(titles(await get('/projects/2?filter=Open&priorityFilter=High')), []);
+    const state = { filter: 'Open', priorityFilter: 'High' };
+    const edit = async (path, values) => {
+      const response = await post(path, { ...state, ...values });
+      assert.equal(response.headers.get('location'), '/projects/1?filter=Open&priorityFilter=High');
+      const content = await get(response.headers.get('location'));
+      selections(content, 'Open', 'High');
+      return content;
+    };
+    let content = await edit('/projects/1/tasks/4/rename', { title: '  Renamed  ' });
+    assert.deepEqual(titles(content), ['Renamed']);
+    assert.match(content, /aria-label="Complete Renamed"/);
+    const invalid = await post('/projects/1/tasks/4/rename', { ...state, title: '  ' });
+    content = await invalid.text();
+    selections(content, 'Open', 'High');
+    assert.match(content, /role="alert">Task title is required/);
+    assert.deepEqual(titles(content), ['Renamed']);
+    content = await edit('/projects/1/tasks/4/priority', { priority: 'Low' });
+    assert.deepEqual(titles(content), []);
+    content = await edit('/projects/1/tasks/1/priority', { priority: 'High' });
+    assert.deepEqual(titles(content), ['Low open']);
+    content = await edit('/projects/1/tasks/1', { completed: '1' });
+    assert.deepEqual(titles(content), []);
+    assert.match(await get('/'), /project-summary">4\/6 completed/);
+    await post('/projects/1/archive');
+    content = await view('Open', 'Low');
+    selections(content, 'Open', 'Low');
+    assert.deepEqual(titles(content), ['Renamed']);
+    assert.match(content, /id="task-priority-4"[^>]* disabled/);
+    assert.doesNotMatch(content, /id="(?:task-filter|priority-filter)"[^>]* disabled/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await view('Open', 'Low'), content);
+    await post('/projects/1/restore');
+    content = await view('Open', 'Low');
+    assert.deepEqual(titles(content), ['Renamed']);
+    assert.doesNotMatch(content, / disabled/);
+    assert.match(await get('/'), /project-summary">4\/6 completed/);
+    selections(await get('/projects/1'), 'All', 'All');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
