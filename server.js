@@ -112,8 +112,8 @@ const page = `<!doctype html>
             body: JSON.stringify({ archived: button.dataset.projectAction === 'archive' })
           });
           if (!response.ok) throw new Error('Project update failed');
-          // Keep the current list filter; the changed project should disappear from this view.
-          window.location.reload();
+          // Return to the same view; the changed project should disappear from this view.
+          window.location.assign(window.location.href);
         } catch { document.querySelector('[role="alert"]').textContent = 'Unable to update project'; }
       });
     });
@@ -181,7 +181,8 @@ function escapeHtml(value) {
 function renderPage(pathname, search = '') {
   let content;
   if (pathname === '/') {
-    const archivedView = new URLSearchParams(search).get('filter')?.toLowerCase() === 'archived';
+    const requestedFilter = new URLSearchParams(search).get('filter');
+    const archivedView = requestedFilter === 'Archived';
     const rows = listProjects.all().filter((project) => Boolean(project.archived) === archivedView).map((project) => `
       <section data-testid="project-row" data-project-id="${project.id}"><span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
@@ -193,7 +194,7 @@ function renderPage(pathname, search = '') {
       <form id="project-form"><label for="project-name">Project name</label>
         <input id="project-name" name="name" type="text"><button type="submit">Create project</button>
       </form><p role="alert" aria-live="polite"></p>${rows}`;
-  } else {
+  } else if (/^\/projects\/\d+\/?$/.test(pathname)) {
     const id = Number(pathname.match(/^\/projects\/(\d+)\/?$/)[1]);
     const project = getProject.get(id);
     if (project) {
@@ -211,6 +212,8 @@ function renderPage(pathname, search = '') {
     } else {
       content = '<h1>Project not found</h1><button type="button" onclick="window.location.href=\'/\'">Projects</button>';
     }
+  } else {
+    content = '<h1>Page not found</h1><button type="button" onclick="window.location.href=\'/\'">Projects</button>';
   }
   return page.replace('__INITIAL_CONTENT__', content);
 }
