@@ -96,6 +96,9 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form method="get" action="${projectPath}/export">
+      <button type="submit">Download project</button>
+    </form>
     <form method="get" action="/">
       <button type="submit">Projects</button>
     </form>

@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { renderProjects, renderProject, renderNotFound } from './views.js';
 import { isValidDueDate, dueRangeError, matchesDueRange } from './dates.js';
 import { normalizeSearch, matchesSearch } from './search.js';
+import { exportProject } from './export.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const databasePath = process.env.DB_PATH ?? './data/workboard.sqlite';
@@ -235,6 +236,20 @@ const server = http.createServer(async (request, response) => {
       }
       insertProject.run(randomUUID(), name);
       redirect(response, projectsLocation(projectFilter(form.get('filter')), normalizeSearch(form.get('query'))));
+      return;
+    }
+    const exportMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/export$/);
+    if (request.method === 'GET' && exportMatch) {
+      const project = findProject.get(exportMatch[1]);
+      if (!project) {
+        sendHtml(response, 404, renderNotFound());
+        return;
+      }
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      });
+      response.end(JSON.stringify(exportProject(project, listTasks.all(project.id)), null, 2));
       return;
     }
     const renameMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/rename$/);

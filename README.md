@@ -26,6 +26,10 @@ Each task row provides a `Task notes` textarea and `Save notes` button. Notes ar
 
 The project list provides `Project search` and `Search projects`; each project page provides `Task search` and `Search tasks`. Applied queries match substrings, trimming surrounding query whitespace and ignoring ASCII letter case. For matching only, runs of ASCII spaces and horizontal tabs in both queries and saved names/titles become one space. Other internal whitespace and non-ASCII characters remain significant. Saved names/titles and their display are never rewritten by search. Blank queries match everything. Project search intersects Active/Archived; task search intersects completion, priority, and the applied due range. Searches preserve ordering and never affect saved data or all-live-task summaries. Queries are carried in URLs and forms through filter changes, edits, and validation failures. Archived projects still allow searching. Opening a project from the list or returning with `Projects` resets the corresponding query to empty.
 
+## Project export
+
+Every project page provides `Download project`, including archived projects. `GET /projects/<id>/export` downloads UTF-8 `workboard-project.json` with format `workboard-project`, version `1`, and the current project name, archive flag, default priority, and all live/deleted tasks in their stored project order. Each task includes title, completion, explicit priority, due date, notes, and deletion state. Export ignores view filters and searches, omits identities and remembered positions, and changes no stored data. Notes line endings are normalized to LF only in the exported representation; other characters remain exact. Empty projects have an empty tasks array.
+
 ## Verify
 
 ```sh

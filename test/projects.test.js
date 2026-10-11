@@ -766,7 +766,7 @@ test('due ranges intersect filters, retain applied state through edits, and work
     assert.match(html, /name="rangeThrough" type="text" value="2025-03-03"/);
     // Applied range is included in every editing form and the combobox form.
     for (const form of html.matchAll(/<form[^>]*action="([^\"]+)"[^>]*>([\s\S]*?)<\/form>/g)) {
-      if (form[1].startsWith(path)) {
+      if (form[1].startsWith(path) && form[1] !== `${path}/export`) {
         assert.match(form[2], /name="dueFrom" value="2025-03-01"/);
         assert.match(form[2], /name="dueThrough" value="2025-03-03"/);
       }
@@ -1309,6 +1309,69 @@ test('notes upgrade, exact text, filters, movement, archive protection, and pers
     server = await startServer(databasePath);
     assert.equal(savedTasks()[0].notes, '');
     assert.equal(savedTasks()[1].notes, '  \n\t  ');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project download includes unfiltered live/deleted tasks in remembered order without mutations', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
+    CREATE TABLE tasks (position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, project_id TEXT NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (id, name) VALUES ('a', 'Saved  Ω'), ('b', 'Other'), ('empty', 'Empty');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES ('one', 'a', 'First  Title', 1), ('two', 'a', 'Second', 0), ('other', 'b', 'Excluded', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const download = async (path = '/projects/a/export') => {
+      const response = await fetch(`${server.url}${path}`);
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('content-type'), /application\/json; charset=utf-8/);
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    let document = await download();
+    assert.equal(document.project.defaultPriority, 'Normal');
+    assert.deepEqual(document.project.tasks[0], { title: 'First  Title', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false });
+    await post('/projects/a/tasks/one/priority', { priority: 'Low' });
+    await post('/projects/a/tasks/one/due-date', { dueDate: '2024-02-29' });
+    const notes = '  Ω <script>literal</script>\r\n\rsecond\n  ';
+    await post('/projects/a/tasks/one/notes', { notes });
+    await post('/projects/a/tasks/one/move', { destination: 'b' });
+    await post('/projects/b/tasks/one/move', { destination: 'a' });
+    await post('/projects/a/tasks/one/delete');
+    await post('/projects/a/default-priority', { priority: 'High' });
+    const filteredPath = '/projects/a?filter=Completed&priorityFilter=High&dueFrom=9999-01-01&query=missing';
+    const before = await (await fetch(`${server.url}${filteredPath}`)).text();
+    assert.match(before, /<button type="submit">Download project<\/button>/);
+    document = await download('/projects/a/export?filter=Open&query=missing');
+    assert.deepEqual(document.project.tasks.map((task) => task.title), ['First  Title', 'Second']);
+    assert.deepEqual(document.project.tasks[0], { title: 'First  Title', completed: true, priority: 'Low', dueDate: '2024-02-29', notes: notes.replace(/\r\n?/g, '\n'), deleted: true });
+    assert.equal(await (await fetch(`${server.url}${filteredPath}`)).text(), before);
+    await post('/projects/a/tasks/two/delete');
+    await post('/projects/a/archive');
+    document = await download();
+    assert.equal(document.project.archived, true);
+    assert.equal(document.project.defaultPriority, 'High');
+    assert.ok(document.project.tasks.every((task) => task.deleted));
+    assert.match(await (await fetch(`${server.url}/projects/a`)).text(), /<button type="submit">Download project<\/button>/);
+    assert.deepEqual((await download('/projects/empty/export')).project.tasks, []);
+    assert.equal((await fetch(`${server.url}/projects/missing/export`)).status, 404);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await download(), document);
+    const db = new DatabaseSync(databasePath);
+    try { assert.equal(db.prepare("SELECT notes FROM tasks WHERE id = 'one'").get().notes, notes); }
+    finally { db.close(); }
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

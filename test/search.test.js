@@ -35,7 +35,7 @@ test('search UI escapes queries and carries applied state in every editing form'
   assert.match(html, /<label for="task-search">Task search<\/label>/);
   assert.match(html, /<button type="submit">Search tasks<\/button>/);
   for (const form of html.matchAll(/<form[\s\S]*?<\/form>/g)) {
-    if (form[0].includes('action="/"')) continue;
+    if (form[0].includes('action="/"') || form[0].includes('action="/projects/p/export"')) continue;
     assert.ok(form[0].includes(`name="query" value="${escaped}"`));
   }
 });
