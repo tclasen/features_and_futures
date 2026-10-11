@@ -1170,12 +1170,12 @@ test('moving tasks migrates order, preserves data and filters, and protects arch
     await post('/projects/2/tasks/1/move', { destinationProject: '1' });
     await post('/projects/2/tasks/2/move', { destinationProject: '1' });
     const returned = await html('/projects/1');
-    assert.deepEqual(titles(returned), ['Remaining', 'Dated mover', 'Blank mover']);
-    assertSavedMover(rows(returned)[1]);
-    assertSavedMover(rows(returned)[2], { blank: true });
+    assert.deepEqual(titles(returned), ['Dated mover', 'Blank mover', 'Remaining']);
+    assertSavedMover(rows(returned)[0]);
+    assertSavedMover(rows(returned)[1], { blank: true });
     assert.deepEqual(await summary(), ['2/3 completed', '0/3 completed', '0/0 completed']);
     await post('/projects/1/tasks/1/move', { destinationProject: '2' });
-    assert.deepEqual(titles(await html('/projects/2')), ['Destination first', 'Destination second', 'Created after move', 'Dated mover']);
+    assert.deepEqual(titles(await html('/projects/2')), ['Destination first', 'Destination second', 'Dated mover', 'Created after move']);
     const finalSource = await html('/projects/1');
     const finalDestination = await html('/projects/2');
     await server.stop();
@@ -1183,6 +1183,103 @@ test('moving tasks migrates order, preserves data and filters, and protects arch
     server = await startServer(dbPath);
     assert.equal(await html('/projects/1'), finalSource);
     assert.equal(await html('/projects/2'), finalDestination);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('returning tasks restores per-project order after migration, reverse returns, edits and restarts', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'return-order-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+      due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Original'), ('Second'), ('Third');
+    INSERT INTO tasks (project_id, title, position) VALUES
+      (1, 'Middle', 20), (1, 'First', 10), (1, 'Last', 30), (2, 'Resident', 5);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const titles = page => [...page.matchAll(/data-testid="task-row"[^>]*>\s*<span>([^<]*)/g)].map(match => match[1]);
+    const order = async (projectId, expected) => assert.deepEqual(titles(await html(`/projects/${projectId}`)), expected);
+    const move = async (source, task, destination, filters = {}) => {
+      const response = await post(`/projects/${source}/tasks/${task}/move`, { destinationProject: destination, ...filters });
+      assert.equal(response.status, 303);
+      return response;
+    };
+    const restart = async () => {
+      await server.stop();
+      server = undefined;
+      server = await startServer(dbPath);
+    };
+    await order(1, ['First', 'Middle', 'Last']);
+    await move(1, 2, 2);
+    await move(1, 1, 2);
+    await move(1, 3, 2);
+    await order(2, ['Resident', 'First', 'Middle', 'Last']);
+    // Even with every original task away, new positions follow all remembered positions.
+    await post('/projects/1/tasks', { title: 'New original' });
+    await move(2, 4, 1);
+    await post('/projects/1/rename', { name: 'Renamed original' });
+    await post('/projects/2/tasks/1/rename', { title: 'Edited middle' });
+    await post('/projects/2/tasks/1', { completed: '1' });
+    await post('/projects/2/tasks/1/priority', { priority: 'High' });
+    await post('/projects/2/tasks/1/due-date', { dueDate: '2026-10-11' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await restart();
+    await move(2, 3, 1);
+    await move(2, 1, 1);
+    await move(2, 2, 1);
+    await order(1, ['First', 'Edited middle', 'Last', 'New original', 'Resident']);
+    const edited = await html('/projects/1?filter=Completed&priorityFilter=High&dueFrom=2026-10-11&dueThrough=2026-10-11');
+    assert.deepEqual(titles(edited), ['Edited middle']);
+    assert.match(edited, /aria-label="Complete Edited middle" checked/);
+    assert.match(edited, /name="dueDate" type="text" value="2026-10-11"/);
+    assert.match(await html('/'), /1\/5 completed/);
+    // Returning through a third project still uses each project's independent history.
+    await move(1, 3, 3);
+    await move(1, 2, 3);
+    await move(1, 1, 3, { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-11' });
+    await order(3, ['Last', 'First', 'Edited middle']);
+    await post('/projects/2/tasks', { title: 'New second' });
+    await post('/projects/2/archive');
+    assert.equal((await post('/projects/3/tasks/1/move', { destinationProject: '2' })).status, 400);
+    assert.doesNotMatch(await html('/projects/3'), /<option value="2">/);
+    await restart();
+    await post('/projects/2/restore');
+    const response = await move(3, 1, 2, { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-11' });
+    assert.equal(response.headers.get('location'), '/projects/3?filter=Completed&priorityFilter=High&dueFrom=2026-10-11');
+    await move(3, 3, 2);
+    await move(3, 2, 2);
+    await move(1, 4, 2);
+    await order(2, ['Resident', 'First', 'Edited middle', 'Last', 'New second']);
+    await order(1, ['New original']);
+    await order(3, []);
+    await move(2, 1, 3);
+    await move(2, 2, 3);
+    await move(2, 3, 3);
+    await order(3, ['Last', 'First', 'Edited middle']);
+    const saved = await html('/projects/3');
+    await restart();
+    assert.equal(await html('/projects/3'), saved);
+    await move(3, 3, 1);
+    await move(3, 1, 1);
+    await move(3, 2, 1);
+    await order(1, ['First', 'Edited middle', 'Last', 'New original']);
+    assert.match(await html('/'), /1\/4 completed/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
