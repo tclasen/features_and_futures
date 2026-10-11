@@ -74,7 +74,21 @@ async function loadTasks(projectId) {
       const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
       if (response.ok) await loadTasks(projectId);
     });
-    row.append(title, checkbox, renameInput, renameButton);
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.disabled = checkbox.disabled;
+    priority.addEventListener('change', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+      if (!response.ok) await loadTasks(projectId);
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority);
     container.append(row);
   }
 }

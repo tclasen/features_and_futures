@@ -17,9 +17,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 const root = new URL('.', import.meta.url).pathname;
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -61,7 +63,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+    return json(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
   }
   if (tasksMatch && req.method === 'POST') {
     const projectId = Number(tasksMatch[1]);
@@ -86,6 +88,11 @@ const server = createServer(async (req, res) => {
     const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(Number(taskMatch[1]));
     if (!task) return json(res, 404, { error: 'Task not found' });
     if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
+    if (typeof data.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(data.priority)) return json(res, 400, { error: 'Invalid priority' });
+      db.prepare('UPDATE tasks SET priority=? WHERE id=?').run(data.priority, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, priority: data.priority });
+    }
     if (typeof data.title === 'string') {
       const title = data.title.trim();
       if (!title) return json(res, 400, { error: 'Task title is required' });
