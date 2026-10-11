@@ -11,9 +11,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+)`);
+db.exec('PRAGMA foreign_keys = ON');
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id ASC');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 const page = `<!doctype html>
 <html lang="en">
@@ -35,6 +46,12 @@ const page = `<!doctype html>
     button:focus-visible, input:focus-visible { outline: 3px solid #80aaff; outline-offset: 2px; }
     #error { color: #a11b1b; margin: 0 0 1rem; }
     #projects { list-style: none; margin: 0; padding: 0; }
+    .task-controls { display: flex; gap: .75rem; margin: 1.5rem 0; }
+    .task-controls .field { flex: 1; }
+    select { box-sizing: border-box; padding: .65rem .75rem; border: 1px solid #9aa6b8; border-radius: 6px; font: inherit; background: white; }
+    [data-testid="task-row"] { display: flex; align-items: center; gap: .75rem; padding: .8rem 0; border-top: 1px solid #e5e9f0; }
+    [data-testid="task-row"] label { margin: 0; font-weight: 400; }
+    [data-testid="task-row"] input { width: auto; }
     [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 0; border-top: 1px solid #e5e9f0; }
     .project-name { overflow-wrap: anywhere; }
     @media (max-width: 480px) { body { padding: 1rem .75rem; } main { padding: 1.25rem; } form { align-items: stretch; flex-direction: column; } }
@@ -124,7 +141,91 @@ const page = `<!doctype html>
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
-      app.append(back, heading);
+      const form = document.createElement('form');
+      form.className = 'task-controls';
+      form.noValidate = true;
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.htmlFor = 'task-title';
+      label.textContent = 'Task title';
+      const input = document.createElement('input');
+      input.id = 'task-title';
+      input.type = 'text';
+      field.append(label, input);
+      const create = document.createElement('button');
+      create.type = 'submit';
+      create.textContent = 'Create task';
+      form.append(field, create);
+      const error = document.createElement('p');
+      error.id = 'error';
+      error.setAttribute('role', 'alert');
+      error.hidden = true;
+      const filterLabel = document.createElement('label');
+      filterLabel.htmlFor = 'task-filter';
+      filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select');
+      filter.id = 'task-filter';
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      const tasksList = document.createElement('ul');
+      tasksList.id = 'tasks';
+      tasksList.style.listStyle = 'none';
+      tasksList.style.margin = '0';
+      tasksList.style.padding = '0';
+      let tasks = await request('/api/projects/' + encodeURIComponent(id) + '/tasks');
+      function drawTasks() {
+        tasksList.replaceChildren();
+        const visible = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
+        for (const task of visible) {
+          const row = document.createElement('li');
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = Boolean(task.completed);
+          checkbox.id = 'task-' + task.id;
+          checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+          checkbox.addEventListener('change', async () => {
+            try {
+              const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+              tasks = tasks.map(item => item.id === updated.id ? updated : item);
+              drawTasks();
+            } catch { checkbox.checked = !checkbox.checked; }
+          });
+          const title = document.createElement('label');
+          title.htmlFor = checkbox.id;
+          title.textContent = task.title;
+          row.append(checkbox, title);
+          tasksList.append(row);
+        }
+      }
+      filter.addEventListener('change', drawTasks);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) {
+          error.textContent = 'Task title is required';
+          error.hidden = false;
+          input.focus();
+          return;
+        }
+        error.hidden = true;
+        try {
+          const created = await request('/api/projects/' + encodeURIComponent(id) + '/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+          tasks.push(created);
+          input.value = '';
+          drawTasks();
+        } catch {
+          error.textContent = 'Unable to create task';
+          error.hidden = false;
+        }
+      });
+      drawTasks();
+      app.append(back, heading, form, error, filterLabel, filter, tasksList);
     }
 
     if (escPath) {
@@ -159,6 +260,45 @@ const server = http.createServer(async (request, response) => {
     sendJson(response, project ? 200 : 404, project || { error: 'Project not found' });
     return;
   }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+  if (tasksMatch) {
+    const projectId = Number(tasksMatch[1]);
+    if (!findProject.get(projectId)) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    if (request.method === 'GET' && !tasksMatch[2]) {
+      sendJson(response, 200, listTasks.all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return;
+    }
+    if (request.method === 'POST' && !tasksMatch[2]) {
+      try {
+        const data = await readBody(request);
+        const title = typeof data.title === 'string' ? data.title.trim() : '';
+        if (!title) {
+          sendJson(response, 400, { error: 'Task title is required' });
+          return;
+        }
+        const result = addTask.run(projectId, title);
+        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+      } catch { sendJson(response, 400, { error: 'Invalid request' }); }
+      return;
+    }
+    if (request.method === 'PATCH' && tasksMatch[2]) {
+      try {
+        const data = await readBody(request);
+        if (typeof data.completed !== 'boolean') {
+          sendJson(response, 400, { error: 'Completion state is required' });
+          return;
+        }
+        updateTask.run(data.completed ? 1 : 0, Number(tasksMatch[2]), projectId);
+        const task = findTask.get(Number(tasksMatch[2]), projectId);
+        if (!task) sendJson(response, 404, { error: 'Task not found' });
+        else sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
+      } catch { sendJson(response, 400, { error: 'Invalid request' }); }
+      return;
+    }
+  }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
     try {
@@ -187,6 +327,15 @@ const server = http.createServer(async (request, response) => {
   response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end('Not found');
 });
+
+async function readBody(request) {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > 1_000_000) throw new Error('Request too large');
+  }
+  return JSON.parse(body);
+}
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Workboard listening on 0.0.0.0:${port}`);
