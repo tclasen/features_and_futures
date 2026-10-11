@@ -43,6 +43,11 @@ test('directory totals follow resolved intersections, ordering and bulk updates 
       assert.equal([...body.matchAll(/data-testid="directory-task-row"/g)].length, total);
       assert.equal([...body.matchAll(/data-testid="directory-task-completion">Completed/g)].length, completed);
       assert.equal(body.includes('role="status">No matching tasks'), total === 0);
+      const owners = [...body.matchAll(/data-testid="directory-owner-summary">(\d+)\/(\d+) completed<\/p>/g)];
+      assert.equal(owners.reduce((sum, owner) => sum + Number(owner[1]), 0), completed);
+      assert.equal(owners.reduce((sum, owner) => sum + Number(owner[2]), 0), total);
+      assert.equal([...body.matchAll(/data-testid="directory-owner-row"/g)].length, owners.length);
+      assert.ok(owners.every((owner) => Number(owner[2]) > 0));
     };
     const before = snapshot();
     for (const [query, completed, total] of [
@@ -86,6 +91,95 @@ test('directory totals follow resolved intersections, ordering and bulk updates 
     check(await get('/directory?filter=Deleted'), 1, 2);
     check(await get('/directory?scope=Archived'), 1, 2);
     assert.match(await get('/'), /data-testid="project-summary">0\/3 completed/);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('directory owner rows preserve distinct identities and creation order through sorting and result updates', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-owners-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const task = (title, completed, priority, dueDate = '', deleted = false) =>
+      ({ title, completed, priority, dueDate, notes: '', deleted });
+    const name = 'Same  雪 <b>';
+    for (const [owner, archived, tasks] of [
+      [name, false, [task('Zebra', true, 'Low', '2025-03-01'), task('Needle first', false, 'High', '2025-01-01'), task('Deleted first', true, 'High', '', true)]],
+      [name, false, [task('Alpha', false, 'Normal', '2025-02-01'), task('Needle second', true, 'High', '2025-01-01'), task('Deleted second', false, 'Low', '', true)]],
+      ['Archive', true, [task('Archived live', true, 'Normal'), task('Archived deleted', false, 'High', '', true)]],
+      ['Empty', false, []],
+    ]) {
+      assert.equal((await post('/projects/import', { name: owner, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name: owner, archived, defaultPriority: 'Normal', tasks },
+      }) })).status, 303);
+    }
+    const owners = (body) => [...body.matchAll(/data-testid="directory-owner-row">([\s\S]*?)<\/form>\s*<\/div>/g)].map(([, row]) => ({
+      id: Number(row.match(/action="\/projects\/(\d+)"/)[1]),
+      name: row.match(/data-testid="directory-owner-name"[^>]*>([^<]*)<\/span>/)[1],
+      summary: row.match(/data-testid="directory-owner-summary">([^<]*)<\/p>/)[1],
+    }));
+    const escapedName = 'Same  雪 &lt;b&gt;';
+    const expected = [
+      { id: 1, name: escapedName, summary: '1/2 completed' },
+      { id: 2, name: escapedName, summary: '1/2 completed' },
+    ];
+    const snapshot = () => {
+      const db = new DatabaseSync(dbPath);
+      try { return ['projects', 'tasks', 'task_positions'].map((table) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()); }
+      finally { db.close(); }
+    };
+    const before = snapshot();
+    for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+      assert.deepEqual(owners(await get('/directory?order=' + encodeURIComponent(order))), expected);
+    }
+    assert.deepEqual(owners(await get('/directory?filter=Deleted&order=Title')), [
+      { ...expected[0], summary: '1/1 completed' }, { ...expected[1], summary: '0/1 completed' },
+    ]);
+    assert.deepEqual(owners(await get('/directory?scope=Archived')), [{ id: 3, name: 'Archive', summary: '1/1 completed' }]);
+    assert.deepEqual(owners(await get('/directory?scope=Archived&filter=Deleted')), [{ id: 3, name: 'Archive', summary: '0/1 completed' }]);
+    assert.deepEqual(owners(await get('/directory?priorityFilter=Low')), [{ ...expected[0], summary: '1/1 completed' }]);
+    const selected = { scope: 'Active', filter: 'All', priorityFilter: 'High', dueFrom: '2025-01-01', dueThrough: '2025-01-01', searchQuery: 'Needle', order: 'Title' };
+    const selectedPath = '/directory?' + new URLSearchParams(selected);
+    const matching = [{ ...expected[0], summary: '0/1 completed' }, { ...expected[1], summary: '1/1 completed' }];
+    assert.deepEqual(owners(await get(selectedPath)), matching);
+    const invalid = await post('/directory/due-range', { ...selected, rangeFrom: '2025-02-29' });
+    assert.equal(invalid.status, 422);
+    assert.deepEqual(owners(await invalid.text()), matching);
+    const searched = await post('/directory/search', { ...selected, query: ' NEEDLE\t second ' });
+    assert.deepEqual(owners(await get(searched.headers.get('location'))), [matching[1]]);
+    const ranged = await post('/directory/due-range', { ...selected, rangeFrom: '2025-02-01', rangeThrough: '' });
+    const empty = await get(ranged.headers.get('location'));
+    assert.deepEqual(owners(empty), []);
+    assert.match(empty, /data-testid="directory-summary">0\/0 completed/);
+    assert.match(empty, /No matching tasks/);
+    assert.deepEqual(snapshot(), before);
+    const completed = await post('/directory/completion', { ...selected, filter: 'Open', completed: '1' });
+    assert.deepEqual(owners(await get(completed.headers.get('location'))), []);
+    assert.deepEqual(owners(await get(selectedPath)), matching.map((owner) => ({ ...owner, summary: '1/1 completed' })));
+    const reopened = await post('/directory/completion', { ...selected, filter: 'Completed', completed: '0' });
+    assert.deepEqual(owners(await get(reopened.headers.get('location'))), []);
+    await post('/projects/2/rename', { name: '  Renamed  ' });
+    await post('/projects/2/rename', { name: '  ' + name + '  ' });
+    assert.deepEqual(owners(await get('/directory')), [expected[0], { ...expected[1], summary: '0/2 completed' }]);
+    // Owner navigation contains no directory state; each project opens with its default filters.
+    const opened = await get('/projects/2');
+    assert.match(opened, /<option selected>All/);
+    assert.match(opened, /name="query" type="text" value=""/);
+    assert.match(await get('/projects/3'), /Archived project/);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(owners(await get('/directory')), [expected[0], { ...expected[1], summary: '0/2 completed' }]);
+    assert.deepEqual(owners(await get('/directory?filter=Deleted')), [
+      { ...expected[0], summary: '1/1 completed' }, { ...expected[1], summary: '0/1 completed' },
+    ]);
   } finally {
     if (app) await app.stop();
     await rm(dir, { recursive: true, force: true });

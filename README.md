@@ -164,3 +164,9 @@ The directory summary shows completed tasks out of all tasks in the current
 filtered result, including retained completion flags in Deleted views. Sorting
 does not affect these totals. Empty resolved results show `0/0 completed` and
 `No matching tasks`; project summaries still count only their own live tasks.
+
+The directory also lists each project represented in the current result, with
+its matching-task completion total and an `Open project` button. Owner rows
+stay in project creation order regardless of task sorting. Projects with the
+same name retain separate identities and totals. Filters, searches, date ranges
+and bulk actions refresh both the global and per-project totals together.

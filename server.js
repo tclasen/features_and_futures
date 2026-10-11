@@ -318,6 +318,17 @@ function orderDirectoryTasks(tasks, order) {
 
 function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range, order = 'Original') {
   const tasks = directoryTasks(scope, filter, priority, range, search);
+  // Group the resolved Original result by identity before sorting task rows.
+  // Map insertion order keeps owners in project creation order, even with duplicate names.
+  const owners = new Map();
+  for (const task of tasks) {
+    if (!owners.has(task.project_id)) {
+      owners.set(task.project_id, { id: task.project_id, name: task.project_name, completed: 0, total: 0 });
+    }
+    const owner = owners.get(task.project_id);
+    owner.total++;
+    if (task.completed) owner.completed++;
+  }
   orderDirectoryTasks(tasks, order);
   const bulkDisabled = scope === 'Archived' || filter === 'Deleted';
   const state = `<input type="hidden" name="scope" value="${scope}">
@@ -362,6 +373,13 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <button type="submit" name="completed" value="1"${bulkDisabled || !tasks.some((task) => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${bulkDisabled || !tasks.some((task) => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
+    <section class="projects" aria-label="Directory owners">
+      ${[...owners.values()].map((owner) => `<div class="project" data-testid="directory-owner-row">
+        <div><span class="project-name" data-testid="directory-owner-name" style="white-space: pre-wrap">${escapeHtml(owner.name)}</span>
+          <p class="summary" data-testid="directory-owner-summary">${owner.completed}/${owner.total} completed</p></div>
+        <form method="get" action="/projects/${owner.id}"><button type="submit">Open project</button></form>
+      </div>`).join('')}
+    </section>
     <section class="projects" aria-label="Directory tasks">
       <p data-testid="directory-summary">${tasks.filter((task) => task.completed).length}/${tasks.length} completed</p>
       ${tasks.length ? tasks.map((task) => `<div class="task" data-testid="directory-task-row">
