@@ -236,6 +236,15 @@ function setDirectoryCompletion(state, completed) {
   });
 }
 
+function setDirectoryDeletion(state, deleted) {
+  // Soft deletion changes only the flag; ownership and reserved positions stay intact.
+  transaction(() => {
+    for (const task of directoryTasks(state)) {
+      updateTaskDeleted.run(Number(deleted), task.project_id, task.id);
+    }
+  });
+}
+
 function renderFilteredProject(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, query = '') {
   const tasks = listTasks.all(project.id).filter((task) => matchesTask(task, filter, priority, range, query));
   return renderProject(project, tasks, filter, error, priority, range, listDestinations.all(project.id), query);
@@ -310,6 +319,18 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       setDirectoryCompletion(state, pathname === '/directory/complete');
+      redirect(response, directoryLocation(state));
+      return;
+    }
+    if (request.method === 'POST' && ['/directory/delete', '/directory/restore'].includes(pathname)) {
+      const state = directoryState(await readForm(request));
+      const deleted = pathname === '/directory/delete';
+      const eligibleFilter = deleted ? state.filter !== 'Deleted' : state.filter === 'Deleted';
+      if (state.scope !== 'Active' || !eligibleFilter) {
+        sendHtml(response, 403, directoryPage(state, 'Only matching tasks in active projects can be deleted or restored'));
+        return;
+      }
+      setDirectoryDeletion(state, deleted);
       redirect(response, directoryLocation(state));
       return;
     }

@@ -284,6 +284,8 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query, 
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
+  const canDelete = canEdit && tasks.length > 0;
+  const canRestore = scope === 'Active' && filter === 'Deleted' && tasks.length > 0;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   const selections = `<input type="hidden" name="order" value="${escapeHtml(order)}">
@@ -332,6 +334,16 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query, 
       ${selections}${rangeFields}
       <input type="hidden" name="query" value="${escapeHtml(query)}">
       <button type="submit"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
+    </form>
+    <form class="create" method="post" action="/directory/delete">
+      ${selections}${rangeFields}
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
+      <button type="submit"${canDelete ? '' : ' disabled'}>Delete visible tasks</button>
+    </form>
+    <form class="create" method="post" action="/directory/restore">
+      ${selections}${rangeFields}
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
+      <button type="submit"${canRestore ? '' : ' disabled'}>Restore visible tasks</button>
     </form>
     <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     <ul class="projects" aria-label="Matching projects">${owners.map((owner) => `
