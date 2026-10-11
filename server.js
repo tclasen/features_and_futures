@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low','Normal','High')),
   due_date TEXT,
   notes TEXT NOT NULL DEFAULT '',
-  sort_order INTEGER
+  sort_order INTEGER,
+  deleted INTEGER NOT NULL DEFAULT 0
 );`);
 
 try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch (error) {
@@ -38,6 +39,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 );
 INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, sort_order FROM tasks;`);
+
+try { db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -73,8 +78,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/projects' && req.method === 'GET') {
     const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
     return send(200, JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0 AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0) AS totalCount
       FROM projects p WHERE p.archived = ? ORDER BY p.id`).all(archived)));
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
@@ -103,7 +108,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
     if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
-    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(tasksMatch[1])));
+    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(tasksMatch[1])));
   }
   if (tasksMatch && req.method === 'POST') {
     let raw = '';
@@ -126,9 +131,13 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     try {
       const payload = JSON.parse(raw);
+      if (Object.hasOwn(payload, 'deleted')) {
+        const result = db.prepare(`UPDATE tasks SET deleted = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(payload.deleted ? 1 : 0, taskMatch[1]);
+        return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
+      }
       if (Object.hasOwn(payload, 'destinationProject')) {
         const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(payload.destinationProject);
-        const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').get(taskMatch[1]);
+        const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND deleted = 0 AND project_id IN (SELECT id FROM projects WHERE archived = 0)').get(taskMatch[1]);
         if (!destination || !task) return send(404, JSON.stringify({ error: 'Not found' }));
         const taskId = Number(taskMatch[1]);
         let position = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destination.id)?.position;
@@ -140,7 +149,7 @@ const server = http.createServer(async (req, res) => {
         return send(200, JSON.stringify({ ok: true }));
       }
       if (Object.hasOwn(payload, 'notes')) {
-        const result = db.prepare(`UPDATE tasks SET notes = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(String(payload.notes ?? ''), taskMatch[1]);
+        const result = db.prepare(`UPDATE tasks SET notes = ? WHERE id = ? AND deleted = 0 AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(String(payload.notes ?? ''), taskMatch[1]);
         return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
       }
       if (Object.hasOwn(payload, 'dueDate')) {
