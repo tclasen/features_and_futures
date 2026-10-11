@@ -86,7 +86,12 @@ async function browser(storage, projects, pending = {}) {
     },
     fetch: async (path, options) => {
       let result;
-      if (options?.method === 'POST' && path.endsWith('/tasks')) {
+      if (options?.method === 'POST' && path === '/api/projects') {
+        result = { id: Math.max(0, ...projects.map(project => project.id)) + 1,
+          name: JSON.parse(options.body).name, archived: false,
+          default_priority: 'Normal', total_count: 0, completed_count: 0 };
+        projects.push(result);
+      } else if (options?.method === 'POST' && path.endsWith('/tasks')) {
         const owner = projects.find(project => path === `/api/projects/${project.id}/tasks`);
         result = { id: Math.max(0, ...tasks.map(task => task.id)) + 1,
           project_id: owner.id, title: JSON.parse(options.body).title,
@@ -356,6 +361,37 @@ test('archive and restore update the list even if the filter changes before the 
   await restore;
   assert.equal(rows(app).length, 1);
   assert.ok(control(rows(app)[0], 'Archive project'));
+});
+
+test('creating from a retained Archived view reveals the active project and supports archive/restore', async () => {
+  const storage = new Map([['project-filter', 'Archived']]);
+  const projects = [{ ...project(), archived: true }];
+  let app = await browser(storage, projects);
+  assert.equal(app.querySelector('select').value, 'Archived');
+  const form = app.querySelector('form');
+  form.querySelector('input').value = '   ';
+  await form.emit('submit');
+  assert.equal(projects.length, 1);
+  assert.equal(app.querySelector('select').value, 'Archived');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  form.querySelector('input').value = '  task-009 Calendar archival  ';
+  await form.emit('submit');
+  assert.equal(app.querySelector('select').value, 'Active');
+  assert.equal(storage.get('project-filter'), 'Active');
+  assert.equal(rows(app).length, 1);
+  assert.equal(rows(app)[0].children[0].textContent, 'task-009 Calendar archival');
+  assert.equal(control(rows(app)[0], '0/0 completed').dataset.testid, 'project-summary');
+  assert.equal(projects[0].archived, true);
+  app = await browser(storage, projects);
+  assert.equal(rows(app)[0].children[0].textContent, 'task-009 Calendar archival');
+  await control(rows(app)[0], 'Archive project').emit('click');
+  assert.equal(rows(app).length, 0);
+  await filter(app, 'Archived');
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent),
+    ['Archive lifecycle', 'task-009 Calendar archival']);
+  await control(rows(app)[1], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  assert.equal(rows(app)[0].children[0].textContent, 'task-009 Calendar archival');
 });
 
 test('Archived filter survives reload and opening a read-only project then returning to Projects', async () => {

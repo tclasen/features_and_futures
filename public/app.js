@@ -373,6 +373,11 @@ async function render() {
     try {
       if (sessionStorage.getItem('project-filter') === 'Archived') filter.value = 'Archived';
     } catch { /* The list still works when browser storage is unavailable. */ }
+    function saveProjectFilter() {
+      try {
+        sessionStorage.setItem('project-filter', filter.value);
+      } catch { /* Filtering does not depend on storage availability. */ }
+    }
     function displayProjects() {
       list.replaceChildren(...projects
         .filter(project => project.archived === (filter.value === 'Archived'))
@@ -382,9 +387,7 @@ async function render() {
         })));
     }
     filter.addEventListener('change', () => {
-      try {
-        sessionStorage.setItem('project-filter', filter.value);
-      } catch { /* Filtering does not depend on storage availability. */ }
+      saveProjectFilter();
       displayProjects();
     });
     // Wait for the initial list before allowing creation, keeping creation order stable.
@@ -408,6 +411,10 @@ async function render() {
         });
         projects.push(project);
         if (!form.isConnected) return;
+        // New projects are active: reveal the saved row even when creation
+        // started from the archived view retained by this browser session.
+        filter.value = 'Active';
+        saveProjectFilter();
         displayProjects();
         input.value = '';
         input.focus();

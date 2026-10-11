@@ -50,6 +50,8 @@ The project list defaults to Active and can show Archived projects. Archive or
 restore a project from its row; its completion summary includes all its tasks.
 The selected project filter is kept within the browser session across reloads
 and returning from a project page. New browser sessions start with Active.
+Successfully creating a project switches the list to Active so the new row is
+visible even when creation started from the Archived view.
 Archived project pages allow viewing and filtering tasks, with task creation and
 completion changes disabled. Archiving preserves tasks and their completion state.
 Active project pages also allow renaming with New project name and Rename project.
