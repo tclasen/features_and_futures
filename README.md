@@ -18,4 +18,9 @@ Within a project, create tasks, check or uncheck completion, and use Task filter
 to show All, Open, or Completed tasks. Projects, tasks, and completion persist in
 the configured SQLite file across restarts.
 
+Use Project filter to view Active or Archived projects. Archive and restore
+projects from their rows; summaries count all completed and total tasks.
+Archived project pages allow viewing and filtering tasks, with creation and
+completion controls disabled. Existing databases are upgraded automatically.
+
 Run the integration checks with `npm test`.
