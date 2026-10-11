@@ -21,12 +21,26 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id, id);
 `);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Upgrade databases created before archive support without changing existing IDs or tasks.
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const listProjects = db.prepare(`
+  SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
+    COALESCE(SUM(t.completed), 0) AS completed
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
+`);
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+
+function projectFilter(value) {
+  return value === 'Archived' ? 'Archived' : 'Active';
+}
 
 function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
@@ -73,6 +87,8 @@ function page(content) {
     input { border: 1px solid #8896a8; max-width: 100%; box-sizing: border-box; }
     button { background: #234fa3; color: white; border: 1px solid #234fa3; cursor: pointer; }
     button:hover { background: #183c80; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .project { flex-wrap: wrap; }
     :focus-visible { outline: 3px solid #e09817; outline-offset: 3px; }
     .create { display: flex; gap: 12px; flex-wrap: wrap; }
     .project { display: flex; align-items: center; justify-content: space-between; gap: 20px;
@@ -86,21 +102,32 @@ function page(content) {
 </html>`;
 }
 
-function projectList(error = '', enteredName = '') {
-  const projects = listProjects.all();
+function projectList(error = '', enteredName = '', filter = 'Active') {
+  const projects = listProjects.all(filter === 'Archived' ? 1 : 0);
   return page(`<h1>Workboard</h1>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="/projects" method="post">
+      <input type="hidden" name="filter" value="${filter}">
       <label for="project-name">Project name</label>
       <div class="create">
         <input id="project-name" name="name" value="${escapeHtml(enteredName)}" autocomplete="off">
         <button type="submit">Create project</button>
       </div>
     </form>
+    <form action="/" method="get">
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['Active', 'Archived'].map(value => `<option${value === filter ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+    </form>
     <section aria-label="Projects">
       ${projects.map(project => `<div class="project" data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
+        <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
+        <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+          <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
+        </form>
       </div>`).join('')}
     </section>`);
 }
@@ -110,13 +137,14 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '') {
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(`<h1>${escapeHtml(project.name)}</h1>
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
       <div class="create">
         <input id="task-title" name="title" value="${escapeHtml(enteredTitle)}" autocomplete="off">
-        <button type="submit">Create task</button>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
       </div>
     </form>
     <form action="/projects/${project.id}" method="get">
@@ -130,7 +158,7 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '') {
         <span>${escapeHtml(task.title)}</span>
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
           <input type="hidden" name="filter" value="${filter}">
-          <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+          <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         </form>
       </div>`).join('')}
     </section>`);
@@ -151,19 +179,29 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && path === '/') {
-      html(response, 200, projectList());
+      html(response, 200, projectList('', '', projectFilter(url.searchParams.get('filter'))));
       return;
     }
     if (request.method === 'POST' && path === '/projects') {
-      const enteredName = (await readForm(request)).get('name') || '';
+      const form = await readForm(request);
+      const enteredName = form.get('name') || '';
+      const filter = projectFilter(form.get('filter'));
       const name = enteredName.trim();
       if (!name) {
-        html(response, 200, projectList('Project name is required', enteredName));
+        html(response, 200, projectList('Project name is required', enteredName, filter));
         return;
       }
       createProject.run(name);
       redirect(response, '/');
       return;
+    }
+    const archiveMatch = /^\/projects\/(\d+)\/(archive|restore)$/.exec(path);
+    if (request.method === 'POST' && archiveMatch) {
+      const result = archiveProject.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
+      if (result.changes) {
+        redirect(response, archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived');
+        return;
+      }
     }
     const match = /^\/projects\/(\d+)$/.exec(path);
     if (request.method === 'GET' && match) {
@@ -177,6 +215,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (project) {
+        if (project.archived) {
+          html(response, 403, projectPage(project, 'All', 'Archived project'));
+          return;
+        }
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         if (taskMatch[2]) {
