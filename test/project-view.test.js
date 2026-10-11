@@ -923,3 +923,152 @@ test('edits retain the applied range and selections, re-evaluate membership, and
   assert.equal(dueDateForm(rows(app)[0]).querySelector('input').value, '2024-03-02');
   assert.equal(dueDateForm(rows(app)[0]).querySelector('input').disabled, false);
 });
+
+async function search(app, kind, query) {
+  app.querySelector(`#${kind}-search`).value = query;
+  await app.querySelector(`#${kind}-search-form`).emit('submit');
+}
+const visibleNames = app => rows(app).map(row => row.children[0].textContent);
+
+test('project search applies literal ASCII substring matching, intersects archive filter and resets on return', async () => {
+  const projects = [
+    { ...project(), name: 'Alpha  PLAN' },
+    { ...project(), id: 2, name: 'Alpha plan', total_count: 3, completed_count: 2 },
+    { ...project(), id: 3, name: 'Archived PLAN', archived: true },
+    { ...project(), id: 4, name: 'Ä PLAN' },
+  ];
+  const original = structuredClone(projects);
+  const app = await browser(new Map(), projects);
+  await search(app, 'project', '  pLaN \t');
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN', 'Alpha plan', 'Ä PLAN']);
+  assert.equal(rows(app)[1].children[1].textContent, '2/3 completed');
+  await filter(app, 'Archived');
+  assert.deepEqual(visibleNames(app), ['Archived PLAN']);
+  assert.equal(app.querySelector('#project-search').value, 'pLaN');
+  await filter(app, 'Active');
+  await search(app, 'project', 'alpha plan');
+  assert.deepEqual(visibleNames(app), ['Alpha plan']);
+  await search(app, 'project', 'alpha  plan');
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN']);
+  await search(app, 'project', 'ä');
+  assert.deepEqual(visibleNames(app), []);
+  await search(app, 'project', 'Ä');
+  assert.deepEqual(visibleNames(app), ['Ä PLAN']);
+  // Draft text does not become an applied query when another filter changes.
+  app.querySelector('#project-search').value = 'missing';
+  await filter(app, 'Active');
+  assert.deepEqual(visibleNames(app), ['Ä PLAN']);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#project-search').value, '');
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN', 'Alpha plan', 'Ä PLAN']);
+  await search(app, 'project', ' \t ');
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN', 'Alpha plan', 'Ä PLAN']);
+  assert.deepEqual(projects, original);
+});
+
+test('task search intersects all filters, retains queries during edits and movement, and resets on opening', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Destination' }];
+  const pending = { tasks: [
+    { id: 1, project_id: 1, title: 'Plan  ONE', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 2, project_id: 1, title: 'Plan two', completed: true, priority: 'High', due_date: '2024-03-01' },
+    { id: 3, project_id: 1, title: 'Other', completed: false, priority: 'High', due_date: '2024-03-01' },
+    { id: 4, project_id: 1, title: 'Plan three', completed: false, priority: 'Normal', due_date: '' },
+    { id: 5, project_id: 1, title: 'Ä Plan', completed: false, priority: 'Low', due_date: '' },
+  ] };
+  const original = structuredClone(pending.tasks);
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await search(app, 'task', 'plan one');
+  assert.deepEqual(visibleNames(app), []);
+  await search(app, 'task', 'plan  one');
+  assert.deepEqual(visibleNames(app), ['Plan  ONE']);
+  await search(app, 'task', '  pLaN  ');
+  assert.deepEqual(visibleNames(app), ['Plan  ONE', 'Plan two', 'Plan three', 'Ä Plan']);
+  await priorityFilter(app, 'High');
+  await filter(app, 'Open');
+  await dueRange(app, '2024-02-29', '2024-03-01');
+  assert.deepEqual(visibleNames(app), ['Plan  ONE']);
+  assert.deepEqual(pending.tasks, original);
+  function retained() {
+    assert.equal(app.querySelector('#task-search').value, 'pLaN');
+    assert.equal(app.querySelector('#task-filter').value, 'Open');
+    assert.equal(app.querySelector('#priority-filter').value, 'High');
+    assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+    assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  }
+  let rename = rows(app)[0].querySelector('form');
+  rename.querySelector('input').value = 'Plan renamed';
+  await rename.emit('submit');
+  retained();
+  assert.deepEqual(visibleNames(app), ['Plan renamed']);
+  const date = dueDateForm(rows(app)[0]);
+  date.querySelector('input').value = '2024-03-02';
+  await date.emit('submit');
+  retained();
+  assert.deepEqual(visibleNames(app), []);
+  await dueRange(app, '', '');
+  // Set completion explicitly: the DOM adapter does not toggle checkboxes on click.
+  const checkbox = rows(app)[0].querySelector('input');
+  checkbox.checked = true;
+  await checkbox.emit('change');
+  assert.deepEqual(visibleNames(app), []);
+  await filter(app, 'Completed');
+  assert.deepEqual(visibleNames(app), ['Plan renamed', 'Plan two']);
+  const priority = rows(app)[0].querySelector('select');
+  priority.value = 'Low';
+  await priority.emit('change');
+  assert.deepEqual(visibleNames(app), ['Plan two']);
+  await moveForm(rows(app)[0]).emit('submit');
+  assert.deepEqual(visibleNames(app), []);
+  assert.equal(app.querySelector('#task-search').value, 'pLaN');
+  await filter(app, 'Open');
+  const defaults = app.querySelector('#default-task-priority');
+  defaults.value = 'High';
+  await defaults.emit('change');
+  const create = app.querySelector('form');
+  create.querySelector('input').value = 'New PLAN';
+  await create.emit('submit');
+  assert.deepEqual(visibleNames(app), ['New PLAN']);
+  create.querySelector('input').value = 'Unmatched';
+  await create.emit('submit');
+  assert.deepEqual(visibleNames(app), ['New PLAN']);
+  const projectRename = app.querySelector('#rename-form');
+  projectRename.querySelector('input').value = 'Renamed project';
+  await projectRename.emit('submit');
+  assert.equal(app.querySelector('#task-search').value, 'pLaN');
+  rename = rows(app)[0].querySelector('form');
+  rename.querySelector('input').value = 'No match';
+  await rename.emit('submit');
+  assert.deepEqual(visibleNames(app), []);
+  await search(app, 'task', ' \t ');
+  assert.deepEqual(visibleNames(app), ['Other', 'No match', 'Unmatched']);
+  await filter(app, 'All');
+  await priorityFilter(app, 'All');
+  await search(app, 'task', 'ä');
+  assert.deepEqual(visibleNames(app), []);
+  await search(app, 'task', 'Ä');
+  assert.deepEqual(visibleNames(app), ['Ä Plan']);
+  await search(app, 'task', 'plan one');
+  assert.deepEqual(visibleNames(app), []);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#task-search').value, '');
+  assert.equal(rows(app).length, 6);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await search(app, 'task', 'other');
+  assert.deepEqual(visibleNames(app), ['Other']);
+  assert.equal(app.querySelector('#task-search').disabled, false);
+  assert.equal(rows(app)[0].querySelector('input').disabled, true);
+  assert.equal(moveForm(rows(app)[0]).querySelector('button').disabled, true);
+});

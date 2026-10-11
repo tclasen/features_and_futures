@@ -1,5 +1,16 @@
 # Workboard
 
+The project list provides Project search and Search projects; project pages
+provide Task search and Search tasks. Applying a query trims surrounding
+whitespace and matches name/title substrings ignoring ASCII letter case, while
+preserving internal whitespace and non-ASCII case. Blank queries match all rows.
+Project search intersects Active/Archived; task search intersects completion,
+priority, and the applied due range. Filters and edits retain applied queries,
+and task edits immediately re-evaluate membership. Search preserves stored data,
+order, and all-task summaries, and remains available in archived projects.
+Opening the list or returning through Projects resets project search; opening a
+project resets task search. Draft queries take effect only when submitted.
+
 Each task row provides Destination project and Move task. Destinations are active
 projects other than the source, listed by project creation order under their current
 names. A first arrival appends after all positions established in the destination;
@@ -111,3 +122,6 @@ Move checks cover schema migration, appending older tasks after newer destinatio
 tasks, restoring independent positions on reverse-order returns, creation and first
 arrivals while tasks are absent, saved values and summaries, restart
 persistence, archive protection, destination options, and source filter retention.
+Search checks cover ASCII matching, significant internal spaces, blank queries,
+archive and task-filter intersections, query retention during edits and movement,
+and reset when returning to the list or opening a project.

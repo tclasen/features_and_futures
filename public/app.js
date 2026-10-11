@@ -20,6 +20,11 @@ function navigate(path) {
   render();
 }
 
+// Search folds ASCII letters only; other characters and internal spaces are literal.
+function searchKey(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
 function validRangeDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -109,6 +114,11 @@ async function render() {
         <input id="due-through" type="text" autocomplete="off">
         <button type="submit">Apply due range</button>
       </form>
+      <form id="task-search-form" class="task-filter">
+        <label for="task-search">Task search</label>
+        <input id="task-search" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </form>
       <ul id="task-list" aria-label="Tasks"></ul>`;
     app.querySelector('#projects').addEventListener('click', () => navigate('/'));
     const form = app.querySelector('form');
@@ -124,6 +134,9 @@ async function render() {
     // and unsaved input cannot change the visible membership.
     let appliedFrom = '';
     let appliedThrough = '';
+    const searchForm = app.querySelector('#task-search-form');
+    const searchInput = app.querySelector('#task-search');
+    let appliedQuery = '';
     const list = app.querySelector('ul');
     const renameForm = app.querySelector('#rename-form');
     const renameInput = app.querySelector('#new-project-name');
@@ -187,6 +200,7 @@ async function render() {
         (filter.value === 'All' ||
           (filter.value === 'Completed' ? task.completed : !task.completed)) &&
         (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+        searchKey(task.title).includes(appliedQuery) &&
         ((!appliedFrom && !appliedThrough) ||
           (task.due_date && (!appliedFrom || task.due_date >= appliedFrom) &&
             (!appliedThrough || task.due_date <= appliedThrough))));
@@ -365,6 +379,13 @@ async function render() {
     }
     filter.addEventListener('change', displayTasks);
     priorityFilter.addEventListener('change', displayTasks);
+    searchForm.addEventListener('submit', event => {
+      event.preventDefault();
+      searchInput.value = searchInput.value.trim();
+      appliedQuery = searchKey(searchInput.value);
+      alertMessage('');
+      displayTasks();
+    });
     dueRangeForm.addEventListener('submit', event => {
       event.preventDefault();
       const from = dueFrom.value.trim();
@@ -451,6 +472,11 @@ async function render() {
         <label for="project-filter">Project filter</label>
         <select id="project-filter"><option>Active</option><option>Archived</option></select>
       </div>
+      <form id="project-search-form" class="project-filter">
+        <label for="project-search">Project search</label>
+        <input id="project-search" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </form>
       <ul id="project-list" aria-label="Projects"></ul>`;
     const form = app.querySelector('form');
     const input = app.querySelector('input');
@@ -458,13 +484,17 @@ async function render() {
     const submit = form.querySelector('button');
     const filter = app.querySelector('select');
     let projects = [];
+    const searchForm = app.querySelector('#project-search-form');
+    const searchInput = app.querySelector('#project-search');
+    let appliedQuery = '';
     filter.value = projectFilter;
     function saveProjectFilter() {
       projectFilter = filter.value;
     }
     function displayProjects() {
       list.replaceChildren(...projects
-        .filter(project => project.archived === (filter.value === 'Archived'))
+        .filter(project => project.archived === (filter.value === 'Archived') &&
+          searchKey(project.name).includes(appliedQuery))
         .map(project => projectRow(project, saved => {
           projects = projects.map(item => item.id === saved.id ? saved : item);
           if (list.isConnected) displayProjects();
@@ -472,6 +502,13 @@ async function render() {
     }
     filter.addEventListener('change', () => {
       saveProjectFilter();
+      displayProjects();
+    });
+    searchForm.addEventListener('submit', event => {
+      event.preventDefault();
+      searchInput.value = searchInput.value.trim();
+      appliedQuery = searchKey(searchInput.value);
+      alertMessage('');
       displayProjects();
     });
     // Wait for the initial list before allowing creation, keeping creation order stable.
