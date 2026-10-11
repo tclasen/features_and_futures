@@ -2,6 +2,10 @@ const listView = document.querySelector('#project-list');
 const detailView = document.querySelector('#project-detail');
 const projectsContainer = document.querySelector('#projects');
 const form = document.querySelector('#create-project-form');
+const importForm = document.querySelector('#import-project-form');
+const importJsonInput = document.querySelector('#project-json');
+const importNameInput = document.querySelector('#imported-project-name');
+const importAlert = document.querySelector('#import-alert');
 const nameInput = document.querySelector('#project-name');
 const alertMessage = document.querySelector('#form-alert');
 const taskForm = document.querySelector('#create-task-form');
@@ -377,6 +381,37 @@ form.addEventListener('submit', async (event) => {
   alertMessage.hidden = true;
   nameInput.value = '';
   await loadProjects();
+});
+
+importForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = importNameInput.value.trim();
+  if (!name) {
+    importAlert.textContent = 'Project name is required';
+    importAlert.hidden = false;
+    return;
+  }
+  let document;
+  try {
+    document = JSON.parse(importJsonInput.value);
+  } catch {
+    importAlert.textContent = 'Invalid project JSON';
+    importAlert.hidden = false;
+    return;
+  }
+  const response = await fetch('/api/projects/import', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ document, name }),
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    importAlert.textContent = result.error || 'Invalid project JSON';
+    importAlert.hidden = false;
+    return;
+  }
+  const created = await response.json();
+  importAlert.hidden = true;
+  navigate(`/projects/${created.id}`);
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
