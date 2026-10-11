@@ -21,15 +21,33 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id)
 `);
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const listProjects = database.prepare(`
+  SELECT projects.id, projects.name, projects.archived,
+    COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+  WHERE projects.archived = ?
+  GROUP BY projects.id ORDER BY projects.id
+`);
+const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 function taskFilter(value) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function projectFilter(value) {
+  return value === 'Archived' ? 'Archived' : 'Active';
+}
+
+function renderProjects(filter, error = '') {
+  return projectListPage(listProjects.all(filter === 'Archived' ? 1 : 0), error, filter);
 }
 
 function renderProject(project, filter, error = '') {
@@ -67,16 +85,17 @@ async function readForm(request) {
 const server = createServer(async (request, response) => {
   try {
     const { pathname, searchParams } = new URL(request.url, 'http://localhost');
-    const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*))?)?$/);
+    const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*))?|\/(archive|restore))?$/);
     if (request.method === 'GET' && pathname === '/health') {
       send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     } else if (request.method === 'GET' && pathname === '/') {
-      send(response, 200, projectListPage(listProjects.all()));
+      send(response, 200, renderProjects(projectFilter(searchParams.get('filter'))));
     } else if (request.method === 'POST' && pathname === '/projects') {
       const form = await readForm(request);
       const name = (form.get('name') || '').trim();
+      const filter = projectFilter(form.get('filter'));
       if (!name) {
-        send(response, 400, projectListPage(listProjects.all(), 'Project name is required'));
+        send(response, 400, renderProjects(filter, 'Project name is required'));
         return;
       }
       insertProject.run(name);
@@ -90,7 +109,15 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'GET' && pathname === `/projects/${id}`) {
         send(response, 200, renderProject(project, taskFilter(searchParams.get('filter'))));
+      } else if (request.method === 'POST' && projectRoute[3]) {
+        const archive = projectRoute[3] === 'archive';
+        setProjectArchived.run(archive ? 1 : 0, id);
+        redirect(response, archive ? '/' : '/?filter=Archived');
       } else if (request.method === 'POST' && pathname.includes('/tasks')) {
+        if (project.archived) {
+          send(response, 403, 'Archived project', 'text/plain; charset=utf-8');
+          return;
+        }
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         if (projectRoute[2]) {

@@ -22,3 +22,10 @@ creation and escaped for display; project IDs provide stable URLs.
 Each project owns its tasks. Task titles are trimmed and escaped for display.
 Completion changes are saved immediately; the All, Open, and Completed filters
 retain creation order. The selected filter is stored in the project page URL.
+
+The project list initially shows Active projects; choose Archived to open or
+restore archived projects. Archiving preserves tasks and completion state but
+disables task creation and completion changes, including direct POST requests.
+Each project summary counts all its tasks regardless of task filters. Existing
+SQLite databases are migrated automatically, with existing projects initially
+active. Archive state and task data persist across restarts.
