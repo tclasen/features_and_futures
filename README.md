@@ -33,3 +33,8 @@ Each task can also be renamed within its row. New titles are trimmed and blank
 titles are rejected. Renaming preserves task order, ownership, completion state,
 and filter membership. Task rename controls are disabled while the project is
 archived, and renamed titles persist across restarts.
+Each task has a Low/Normal/High priority, defaulting to Normal for both existing
+and new tasks. Priority changes are saved automatically and persist across
+restarts without changing task order, completion, ownership, or summaries.
+Renaming preserves priority. Archived projects disable priority edits until
+restored; the server also rejects direct edits to archived tasks.

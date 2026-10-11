@@ -53,6 +53,7 @@ function projectList(projects, filter, error = '') {
 }
 
 const taskFilters = ['All', 'Open', 'Completed'];
+const taskPriorities = ['Low', 'Normal', 'High'];
 
 function readTaskFilter(value) {
   return taskFilters.includes(value) ? value : 'All';
@@ -91,6 +92,13 @@ function projectPage(project, tasks, filter, error = '') {
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
           <input type="hidden" name="filter" value="${filter}">
           <input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+        </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${taskPriorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+          </select>
         </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename">
           <input type="hidden" name="filter" value="${filter}">
@@ -136,6 +144,10 @@ export function createWorkboardServer(databasePath) {
       completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
     );
     CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id)`);
+  // Preserve existing tasks and initialize each priority independently.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+  }
   const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -144,11 +156,12 @@ export function createWorkboardServer(databasePath) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
-  const listTasks = database.prepare(`SELECT id, title, completed FROM tasks
+  const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+  const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   function tasksFor(projectId, filter) {
     const completed = filter === 'All' ? null : Number(filter === 'Completed');
     return listTasks.all(projectId, completed, completed);
@@ -190,7 +203,7 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/(completion|rename))?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -219,6 +232,12 @@ export function createWorkboardServer(databasePath) {
                 const title = (form.get('title') ?? '').trim();
                 if (!title) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task title is required'));
                 result = renameTask.run(title, taskId, id);
+              } else if (match[3] === 'priority') {
+                const priority = form.get('priority');
+                if (!taskPriorities.includes(priority)) {
+                  return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task priority is invalid'));
+                }
+                result = updatePriority.run(priority, taskId, id);
               } else {
                 result = updateCompletion.run(Number(form.get('completed') === '1'), taskId, id);
               }
