@@ -13,6 +13,7 @@ controls=list((v/'preflight').glob('directory065-check-*/verified.json'));assert
 c=json.loads(controls[0].read_text());assert c['verified'] and len(c['results'])==18
 for closed in [baselines[0],controls[0]]:assert json.loads((closed.parent/'input-closure.json').read_text())['verified']
 assert sum(x['exit']==0 for x in c['results'])==6 and sum(x['exit']!=0 for x in c['results'])==12
+assert json.loads((controls[0].parent/'input-closure-strict.json').read_text())['verified']
 controls_inputs=json.loads((v/'preflight/directory065-inputs.json').read_text());assert controls_inputs['controller_sha256']==__import__('hashlib').sha256((controls[0].parent/'executed-controller.mjs').read_bytes()).hexdigest()
 for p,key in [(v/'preflight/pm-checks/verified.json','verified'),(v/'preflight/runtime/verified.json','passed'),(v/'preflight/prefix-phase-listing/verified.json','verified')]:assert json.loads(p.read_text())[key]
 assert json.loads((v/'preflight/runtime/resource.json').read_text())['status']=='removed'

@@ -20,5 +20,8 @@ for row in rows:
  assert s['unexpected']==(0 if positive else 1)
  assert s['expected']==((68 if row['phase']=='acceptance' else 1) if base else (1 if positive else 0))
 if not base:assert sum(r['exit']==0 for r in rows)==6
-write_json(p.parent/'input-closure.json',{'verified':True,'utc':timestamp(),'native_model_calls':0,'controller_sha256':inputs['controller_sha256'],'suite_files':inputs['suite_files'],'variants':len(rows),'prepared_inputs_match_executed_controller_and_draft_suite':True,'scope':'Completed synthetic fixture input closure only; native builder evaluation/restart separately required.'})
+target=p.parent/'input-closure.json'
+if target.exists():target=p.parent/'input-closure-strict.json'
+assert not target.exists(), 'Keep completed closure observations immutable'
+write_json(target,{'verified':True,'utc':timestamp(),'native_model_calls':0,'controller_sha256':inputs['controller_sha256'],'suite_files':inputs['suite_files'],'variants':len(rows),'prepared_inputs_match_executed_controller_and_draft_suite':True,'scope':'Completed synthetic fixture input closure only; native builder evaluation/restart separately required.'})
 print(json.dumps({'verified':True,'kind':args.kind,'variants':len(rows)}))
