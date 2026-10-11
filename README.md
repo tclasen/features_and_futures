@@ -41,6 +41,12 @@ dated tasks in the range match. The range intersects both selectors, survives ed
 and selector changes, and remains usable in archived projects. Invalid calendar dates
 or reversed boundaries show an alert without replacing the applied range. Reopening
 from the project list resets the range to empty; filters never alter saved task data.
+Each task row has Destination project and Move task controls. Destinations are other
+active projects in project creation order, using their current names. Moving appends
+the task after the destination's existing tasks, preserving title, completion, priority
+and due date, and keeps the source page's filters and due range. Summaries reflect
+current ownership. Moves and task ordering persist across restarts. Archived projects
+cannot send or receive tasks; controls are disabled when no destination is available.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -56,5 +62,6 @@ filters and completion, archive/restore, summaries, project and task renaming an
 task priorities, project-default migration and inheritance, edits, isolation, combined filters and selection preservation,
 due-date migration, calendar validation, clearing and isolation, archive restrictions,
 inclusive due ranges, combined membership, invalid-range preservation, edit re-evaluation,
-and persistence across server restarts.
+task moves, destination eligibility, persistent append ordering, move summaries,
+source-filter preservation, archive restrictions, and persistence across server restarts.
 Temporary files are removed afterward.

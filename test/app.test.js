@@ -29,6 +29,83 @@ async function start(dbPath) {
   };
 }
 
+test('task moves append persistently, preserve data and filters, and reject archived projects', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'db.sqlite');
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = async (path, values = {}) => (await fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values)
+    })).text();
+    const rows = html => [...html.matchAll(/aria-label="Complete ([^"]*)"/g)].map(match => match[1]);
+    await post('/projects', { name: 'Source' });
+    await post('/projects/1/tasks', { title: 'Moved' });
+    let html = await get('/projects/1');
+    assert.match(html, /name="destination" disabled>\s*<\/select>/);
+    assert.match(html, /disabled>Move task/);
+    await post('/projects', { name: 'Destination' });
+    await post('/projects', { name: 'Archived' });
+    await post('/projects/3/archive');
+    await post('/projects/2/rename', { name: 'New destination' });
+    await post('/projects/2/default-priority', { priority: 'Low' });
+    await post('/projects/2/tasks', { title: 'Existing' });
+    await post('/projects/1/tasks', { title: 'Remaining' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    html = await get('/projects/1');
+    const options = html.match(/name="destination"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.equal(options.trim(), '<option value="2">New destination</option>');
+    const selected = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-01', dueThrough: '2024-03-01' };
+    html = await post('/projects/1/tasks/1/move', { ...selected, destination: '2' });
+    assert.deepEqual(rows(html), []);
+    assert.match(html, /<h1>Source<\/h1>/);
+    assert.match(html, /id="task-filter"[\s\S]*?<option selected>Completed/);
+    assert.match(html, /id="priority-filter"[\s\S]*?<option selected>High/);
+    assert.match(html, /id="due-from"[^>]*value="2024-02-01"/);
+    assert.match(html, /id="due-through"[^>]*value="2024-03-01"/);
+    assert.deepEqual(rows(await get('/projects/1')), ['Remaining']);
+    html = await get('/projects/2');
+    assert.deepEqual(rows(html), ['Existing', 'Moved']);
+    assert.match(html, /aria-label="Complete Moved" checked/);
+    assert.match(html, /<option selected>High/);
+    assert.match(html, /id="task-due-date-1"[^>]*value="2024-02-29"/);
+    html = await get('/');
+    assert.match(html, /0\/1 completed/);
+    assert.match(html, /1\/2 completed/);
+    await post('/projects/2/tasks/1/move', { destination: '3' });
+    await post('/projects/2/tasks/1/move', { destination: '2' });
+    assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'Moved']);
+    await post('/projects/2/archive');
+    html = await get('/projects/2');
+    assert.match(html, /name="destination" disabled/);
+    assert.match(html, /disabled>Move task/);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'Moved']);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'Moved']);
+    await post('/projects/2/restore');
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(rows(await get('/projects/1')), ['Remaining', 'Moved']);
+    await post('/projects/2/tasks', { title: 'Later' });
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual(rows(await get('/projects/2')), ['Existing', 'Later', 'Moved']);
+    await post('/projects/2/tasks/2/move', { destination: '1' });
+    assert.deepEqual(rows(await get('/projects/1')), ['Remaining', 'Existing']);
+    assert.match(await get('/projects/1'), /id="task-due-date-2"[^>]*value=""/);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(rows(await get('/projects/2')), ['Later', 'Moved']);
+    assert.deepEqual(rows(await get('/projects/1')), ['Remaining', 'Existing']);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('due ranges intersect filters, validate inclusively and survive edits without saving filter state', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-ranges-'));
   let server;
