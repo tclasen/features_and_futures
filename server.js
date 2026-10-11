@@ -25,9 +25,14 @@ db.exec(`
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal',
     created_at INTEGER NOT NULL
   )
 `);
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
@@ -41,10 +46,11 @@ const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id 
 const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -159,6 +165,12 @@ async function handle(req, res) {
       const result = updateTaskTitle.run(title, taskId, projectId);
       if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
       return sendJson(res, 200, { id: taskId, title });
+    }
+    if (typeof payload?.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(payload.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      const result = updateTaskPriority.run(payload.priority, taskId, projectId);
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: taskId, priority: payload.priority });
     }
     if (typeof payload?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     const result = updateTask.run(payload.completed ? 1 : 0, taskId, projectId);

@@ -255,6 +255,32 @@ async function renderProject(id) {
         }
       });
       row.append(renameForm);
+      const priorityLabel = element('label', 'task-priority-label', 'Task priority');
+      const priority = element('select', 'task-priority');
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', '', value);
+        option.value = value;
+        priority.append(option);
+      }
+      priority.value = task.priority || 'Normal';
+      priority.disabled = Boolean(project.archived);
+      priorityLabel.append(priority);
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+          priority.value = task.priority || 'Normal';
+        } finally {
+          priority.disabled = Boolean(project.archived);
+        }
+      });
+      row.append(priorityLabel);
       list.append(row);
     }
   }
