@@ -316,10 +316,21 @@ async function renderProject(id, viewState = {}) {
     list.replaceChildren();
     const visible = tasks.filter((task) => {
       const isDeleted = Boolean(task.deleted);
-      const statusMatches = filter.value === 'deleted'
-        ? isDeleted
-        : !isDeleted && (filter.value === 'all' ||
-          (filter.value === 'completed') === Boolean(task.completed));
+      let statusMatches = false;
+      switch (filter.value) {
+        case 'deleted':
+          statusMatches = isDeleted;
+          break;
+        case 'all':
+          statusMatches = !isDeleted;
+          break;
+        case 'open':
+          statusMatches = !isDeleted && !Boolean(task.completed);
+          break;
+        case 'completed':
+          statusMatches = !isDeleted && Boolean(task.completed);
+          break;
+      }
       const priorityMatches = priorityFilter.value === 'all' ||
         (task.priority || 'Normal').toLowerCase() === priorityFilter.value;
       const searchMatches = normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch));
