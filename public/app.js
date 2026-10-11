@@ -522,16 +522,21 @@ async function showProjects() {
       const open = element('button', { text: 'Open project' });
       open.type = 'button';
       open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-      const stateButton = element('button', { text: project.archived ? 'Restore project' : 'Archive project', className: 'secondary-button' });
+      // The endpoint is already scoped to the selected state. Use that state
+      // for the action label as well, so the Archived view always offers the
+      // restoration action even if a client has stale project data.
+      const isArchivedView = filter.value === 'Archived';
+      const stateButton = element('button', { text: isArchivedView ? 'Restore project' : 'Archive project', className: 'secondary-button' });
       stateButton.type = 'button';
       stateButton.addEventListener('click', async () => {
         stateButton.disabled = true;
         try {
           const response = await fetch(`/api/projects/${project.id}/archive`, {
             method: 'PATCH', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ archived: !project.archived }),
+            body: JSON.stringify({ archived: !isArchivedView }),
           });
           if (!response.ok) throw new Error('Could not update project');
+          project.archived = !isArchivedView;
           await renderProjects();
         } catch {
           stateButton.disabled = false;
