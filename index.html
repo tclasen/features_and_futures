@@ -27,6 +27,7 @@
   <script type="module">
     const app = document.querySelector('#app');
     const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    const asciiLower = value => String(value).replace(/[A-Z]/g, char => char.toLowerCase());
 
     async function render() {
       const match = location.pathname.match(/^\/projects\/(\d+)$/);
@@ -50,6 +51,7 @@
           <div class="filter"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
           <div class="filter"><label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></div>
           <div class="filter"><label for="default-priority">Default task priority</label><select id="default-priority" ${project.archived ? 'disabled' : ''}><option ${project.defaultPriority === 'Low' ? 'selected' : ''}>Low</option><option ${project.defaultPriority === 'Normal' ? 'selected' : ''}>Normal</option><option ${project.defaultPriority === 'High' ? 'selected' : ''}>High</option></select></div>
+          <form id="task-search-form"><label for="task-search">Task search</label><input id="task-search" type="text"><button type="submit">Search tasks</button></form>
           <form id="due-range-form"><label for="due-from">Due from</label><input id="due-from" type="text"><label for="due-through">Due through</label><input id="due-through" type="text"><button type="submit">Apply due range</button></form>
           <section id="task-list" aria-label="Tasks"></section>`;
         app.querySelector('#back').addEventListener('click', () => navigate('/'));
@@ -67,7 +69,7 @@
         });
         const filter = app.querySelector('#task-filter');
         const priorityFilter = app.querySelector('#priority-filter');
-        let appliedDueFrom = '', appliedDueThrough = '';
+        let appliedDueFrom = '', appliedDueThrough = '', appliedTaskQuery = '';
         const validDate = value => {
           const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
           if (!match) return false;
@@ -76,6 +78,11 @@
           const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
           return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
         };
+        app.querySelector('#task-search-form').addEventListener('submit', event => {
+          event.preventDefault();
+          appliedTaskQuery = asciiLower(app.querySelector('#task-search').value.trim());
+          paintTasks();
+        });
         app.querySelector('#due-range-form').addEventListener('submit', event => {
           event.preventDefault();
           const from = app.querySelector('#due-from').value.trim();
@@ -94,6 +101,7 @@
           const visible = tasks.filter(task =>
             (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
             (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+            asciiLower(task.title).includes(appliedTaskQuery) &&
             ((!appliedDueFrom && !appliedDueThrough) || (Boolean(task.dueDate) && (!appliedDueFrom || task.dueDate >= appliedDueFrom) && (!appliedDueThrough || task.dueDate <= appliedDueThrough)))
           );
           app.querySelector('#task-list').innerHTML = visible.map(task => `<div class="row task-row" data-testid="task-row"><input type="checkbox" id="task-${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><label for="task-${task.id}">${escapeHtml(task.title)}</label><input type="text" aria-label="New task title" data-rename-input="${task.id}" value="${escapeHtml(task.title)}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" aria-label="Task due date" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><select aria-label="Destination project" data-destination="${task.id}" ${project.archived || !destinations.length ? 'disabled' : ''}>${destinations.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select><button type="button" data-move="${task.id}" ${project.archived || !destinations.length ? 'disabled' : ''}>Move task</button></div>`).join('');
@@ -147,18 +155,25 @@
       app.innerHTML = `<h1>Workboard</h1>
         <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form>
         <div id="message" role="alert" aria-live="polite"></div>
+        <form id="project-search-form"><label for="project-search">Project search</label><input id="project-search" type="text"><button type="submit">Search projects</button></form>
         <div class="filter"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
         <section aria-label="Projects" id="project-list"></section>`;
       const projectFilter = app.querySelector('#project-filter');
+      let appliedProjectQuery = '';
       const paintProjects = () => {
         const archived = projectFilter.value === 'Archived';
-        app.querySelector('#project-list').innerHTML = projects.filter(project => Boolean(project.archived) === archived).map(project => `<div class="row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-archive="${project.id}" data-value="${archived ? 0 : 1}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
+        app.querySelector('#project-list').innerHTML = projects.filter(project => Boolean(project.archived) === archived && asciiLower(project.name).includes(appliedProjectQuery)).map(project => `<div class="row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-archive="${project.id}" data-value="${archived ? 0 : 1}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
         app.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => navigate(`/projects/${button.dataset.open}`)));
         app.querySelectorAll('[data-archive]').forEach(button => button.addEventListener('click', async () => {
           const response = await fetch(`/api/projects/${button.dataset.archive}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: button.dataset.value === '1' }) });
           if (response.ok) { const updated = await response.json(); Object.assign(projects.find(p => p.id === updated.id), updated); paintProjects(); }
         }));
       };
+      app.querySelector('#project-search-form').addEventListener('submit', event => {
+        event.preventDefault();
+        appliedProjectQuery = asciiLower(app.querySelector('#project-search').value.trim());
+        paintProjects();
+      });
       projectFilter.addEventListener('change', paintProjects);
       paintProjects();
       app.querySelector('#create-form').addEventListener('submit', async event => {
