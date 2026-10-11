@@ -42,7 +42,7 @@ const page = `<!doctype html>
   </style>
 </head>
 <body>
-  <main id="app"></main>
+  <main id="app">__INITIAL_CONTENT__</main>
   <script>
   (() => {
     const app = document.querySelector('#app');
@@ -132,6 +132,33 @@ function sendJson(response, status, value) {
   response.end(JSON.stringify(value));
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
+}
+
+function renderPage(pathname) {
+  let content;
+  if (pathname === '/') {
+    const rows = listProjects.all().map((project) => `
+      <section data-testid="project-row"><span>${escapeHtml(project.name)}</span>
+        <button type="button" onclick="window.location.href='/projects/${project.id}'">Open project</button>
+      </section>`).join('');
+    content = `<h1>Workboard</h1>
+      <form id="project-form"><label for="project-name">Project name</label>
+        <input id="project-name" name="name" type="text"><button type="submit">Create project</button>
+      </form><p role="alert" aria-live="polite"></p>${rows}`;
+  } else {
+    const id = Number(pathname.match(/^\/projects\/(\d+)/)[1]);
+    const project = getProject.get(id);
+    content = project
+      ? `<h1>${escapeHtml(project.name)}</h1><button type="button" onclick="window.location.href='/'">Projects</button>`
+      : '<h1>Project not found</h1><button type="button" onclick="window.location.href=\'/\'">Projects</button>';
+  }
+  return page.replace('__INITIAL_CONTENT__', content);
+}
+
 async function readJson(request) {
   let body = '';
   for await (const chunk of request) {
@@ -178,7 +205,7 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    response.end(page);
+    response.end(renderPage(url.pathname));
     return;
   }
   sendJson(response, 404, { error: 'Not found' });
