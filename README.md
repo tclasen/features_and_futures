@@ -20,6 +20,8 @@ Each task row has Destination project and Move task controls. Destinations list 
 
 The Project filter defaults to Active. Archive projects to move them to Archived, or restore them without losing tasks. Archived project pages are read-only, but task filtering remains available. Each project row summarizes completed tasks out of all tasks.
 
+Project search and Search projects apply a name substring query alongside the Active/Archived filter. Task search and Search tasks apply a title substring query alongside completion, priority, and due-range filters. Searches ignore ASCII letter case and trim surrounding query whitespace only; internal whitespace and non-ASCII case remain significant. Blank queries match everything allowed by the other filters. Queries are page-local, reset when opening a page, and never modify saved data or summaries. Changing filters and editing, creating, or moving tasks retains the applied task query and immediately re-evaluates membership. Search stays usable in archived projects.
+
 `GET /health` returns `{"status":"ok"}`.
 
 Run automated tests (HTTP/SQLite integration including restart persistence, and browser-controller tests using a minimal DOM adapter):

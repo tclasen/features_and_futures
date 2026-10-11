@@ -728,3 +728,171 @@ test('renaming validates, updates the heading, and preserves the route and task 
   assert.equal(app.querySelector('h1').textContent, 'New name');
   assert.equal(button.disabled, false);
 });
+
+function searchPage(pathname, projects, tasks = []) {
+  const app = new Node('main');
+  const writes = [];
+  runInNewContext(source, {
+    document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+    location: { pathname, assign() {} },
+    async fetch(path, options) {
+      let data;
+      if (!options) data = path === '/api/projects' ? projects
+        : path === '/api/projects/1' ? projects[0] : tasks.map((task) => ({ ...task }));
+      else {
+        const changes = JSON.parse(options.body);
+        writes.push({ path, ...changes });
+        if (path === '/api/projects' || path === '/api/projects/1/tasks') {
+          data = path === '/api/projects'
+            ? { id: projects.length + 1, archived: false, totalCount: 0, completedCount: 0, ...changes }
+            : { id: tasks.length + 1, completed: false, priority: projects[0].defaultTaskPriority, dueDate: '', ...changes };
+        } else if (path === '/api/projects/1') {
+          Object.assign(projects[0], changes);
+          data = { ...projects[0] };
+        } else {
+          const task = tasks.find((task) => path.endsWith(`/${task.id}`));
+          Object.assign(task, changes);
+          data = { ...task };
+        }
+      }
+      return { ok: true, json: async () => data };
+    },
+  });
+  return { app, writes };
+}
+
+const formWithLabel = (app, label) => app.children.find((node) => node.children[0]?.textContent === label);
+async function applySearch(form, query) {
+  form.children[1].value = query;
+  await form.fire('submit');
+}
+
+test('project search is applied, ASCII-only, ordered and intersects archive filter', async () => {
+  const projects = [
+    { id: 1, name: 'Alpha  PLAN', archived: false, completedCount: 1, totalCount: 2 },
+    { id: 2, name: 'alpha plan', archived: false, completedCount: 0, totalCount: 0 },
+    { id: 3, name: 'Alpha  archived', archived: true, completedCount: 2, totalCount: 2 },
+    { id: 4, name: 'Älpha', archived: false, completedCount: 0, totalCount: 0 },
+  ];
+  const { app, writes } = searchPage('/', projects);
+  await new Promise((resolve) => setImmediate(resolve));
+  const search = formWithLabel(app, 'Project search');
+  const filter = app.children.find((node) => node.className === 'project-filter').children[1];
+  const names = () => app.querySelector('ul').children.map((row) => row.children[0].textContent);
+  assert.equal(search.children[1].value, '');
+  assert.equal(search.children[0].htmlFor, search.children[1].id);
+  assert.equal(search.children[1].type, 'text');
+  assert.equal(search.children[2].textContent, 'Search projects');
+  await applySearch(search, '  ALPHA  ');
+  assert.deepEqual(names(), ['Alpha  PLAN', 'alpha plan']);
+  assert.equal(app.querySelector('ul').children[0].children[1].textContent, '1/2 completed');
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['Alpha  archived']);
+  assert.equal(search.children[1].value, 'ALPHA');
+  filter.value = 'Active';
+  await filter.fire('change');
+  await applySearch(search, 'alpha  ');
+  await applySearch(search, 'alpha  p');
+  assert.deepEqual(names(), ['Alpha  PLAN']);
+  search.children[1].value = 'draft';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['Alpha  PLAN']);
+  await applySearch(search, 'älpha');
+  assert.deepEqual(names(), []);
+  await applySearch(search, 'ÄLPHA');
+  assert.deepEqual(names(), ['Älpha']);
+  await applySearch(search, ' \t ');
+  assert.deepEqual(names(), ['Alpha  PLAN', 'alpha plan', 'Älpha']);
+  assert.equal(writes.length, 0);
+  await applySearch(search, 'alpha');
+  await app.querySelector('ul').children[0].children[3].fire('click');
+  assert.deepEqual(names(), ['alpha plan']);
+  const reopened = searchPage('/', projects);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(formWithLabel(reopened.app, 'Project search').children[1].value, '');
+  assert.deepEqual(reopened.app.querySelector('ul').children.map((row) => row.children[0].textContent), ['alpha plan', 'Älpha']);
+});
+
+for (const archived of [false, true]) {
+  test(`task search intersects all filters and retains applied state (${archived ? 'archived' : 'active'})`, async () => {
+    const project = { id: 1, name: 'Project', archived, defaultTaskPriority: 'High' };
+    const tasks = [
+      { id: 1, title: 'Alpha  PLAN', completed: false, priority: 'High', dueDate: '2000-02-29' },
+      { id: 2, title: 'alpha plan', completed: true, priority: 'High', dueDate: '2000-02-29' },
+      { id: 3, title: 'Other', completed: false, priority: 'Normal', dueDate: '' },
+    ];
+    const { app, writes } = searchPage('/projects/1', [project, { id: 2, name: 'Destination', archived: false }], tasks);
+    await new Promise((resolve) => setImmediate(resolve));
+    const search = formWithLabel(app, 'Task search');
+    const range = formWithLabel(app, 'Due from');
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    const completion = filters.children[1];
+    const priority = filters.children[3];
+    const titles = () => app.querySelector('ul').children.map((row) => row.children[1].textContent);
+    const row = () => app.querySelector('ul').children[0];
+    assert.equal(search.children[1].value, '');
+    assert.equal(search.children[0].htmlFor, search.children[1].id);
+    assert.equal(search.children[2].textContent, 'Search tasks');
+    await applySearch(search, ' ALPHA ');
+    assert.deepEqual(titles(), ['Alpha  PLAN', 'alpha plan']);
+    completion.value = 'Open';
+    await completion.fire('change');
+    priority.value = 'High';
+    await priority.fire('change');
+    range.children[1].value = range.children[3].value = '2000-02-29';
+    await range.fire('submit');
+    assert.deepEqual(titles(), ['Alpha  PLAN']);
+    await applySearch(search, 'alpha p');
+    assert.deepEqual(titles(), []);
+    await applySearch(search, '   ');
+    assert.deepEqual(titles(), ['Alpha  PLAN']);
+    await applySearch(search, 'alpha');
+    assert.equal(writes.length, 0);
+    if (archived) {
+      assert.equal(row().children[2].children[1].disabled, true);
+      assert.equal(row().children[4].disabled, true);
+      assert.equal(row().children[5].children[1].disabled, true);
+      assert.equal(row().children[6].children[2].disabled, true);
+    } else {
+      await applySearch(row().children[2], 'Alpha renamed');
+      assert.deepEqual(titles(), ['Alpha renamed']);
+      await applySearch(formWithLabel(app, 'New project name'), 'Renamed project');
+      const defaults = formWithLabel(app, 'Default task priority').children[1];
+      defaults.value = 'Low';
+      await defaults.fire('change');
+      await applySearch(formWithLabel(app, 'Task title'), 'Alpha new');
+      assert.deepEqual(titles(), ['Alpha renamed']);
+      await applySearch(row().children[2], 'No match');
+      assert.deepEqual(titles(), []);
+      await applySearch(search, 'no match');
+      assert.deepEqual(titles(), ['No match']);
+      await applySearch(row().children[5], '2000-03-01');
+      assert.deepEqual(titles(), []);
+      range.children[3].value = '2000-03-01';
+      await range.fire('submit');
+      const taskPriority = row().children[4];
+      taskPriority.value = 'Low';
+      await taskPriority.fire('change');
+      assert.deepEqual(titles(), []);
+      priority.value = 'Low';
+      await priority.fire('change');
+      row().children[0].checked = true;
+      await row().children[0].fire('change');
+      assert.deepEqual(titles(), []);
+      completion.value = 'Completed';
+      await completion.fire('change');
+      assert.deepEqual(titles(), ['No match']);
+      await row().children[6].fire('submit');
+      assert.deepEqual(titles(), []);
+      assert.equal(search.children[1].value, 'no match');
+    }
+    assert.equal(range.children[1].value, '2000-02-29');
+    assert.equal(range.children[3].value, archived ? '2000-02-29' : '2000-03-01');
+    assert.equal(completion.value, archived ? 'Open' : 'Completed');
+    assert.equal(priority.value, archived ? 'High' : 'Low');
+    const reopened = searchPage('/projects/1', [project], tasks);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(formWithLabel(reopened.app, 'Task search').children[1].value, '');
+  });
+}

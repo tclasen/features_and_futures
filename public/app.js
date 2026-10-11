@@ -25,6 +25,31 @@ function showAlert(message) {
   alert.textContent = message;
 }
 
+// Fold ASCII letters only; non-ASCII characters and internal whitespace stay literal.
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
+function searchControl(labelText, buttonText, id, onApply) {
+  const form = element('form');
+  const label = element('label', labelText);
+  label.htmlFor = id;
+  const input = element('input');
+  input.id = id;
+  input.type = 'text';
+  const button = element('button', buttonText);
+  button.type = 'submit';
+  let query = '';
+  form.append(label, input, button);
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    input.value = input.value.trim();
+    query = asciiLower(input.value);
+    onApply();
+  });
+  return { form, matches: (text) => asciiLower(text).includes(query) };
+}
+
 function projectRow(project, onArchiveChange) {
   const row = element('li');
   row.dataset.testid = 'project-row';
@@ -84,9 +109,11 @@ async function showProjects() {
   const filters = element('div');
   filters.className = 'project-filter';
   filters.append(filterLabel, filter);
+  const search = searchControl('Project search', 'Search projects', 'project-search', renderProjects);
   function renderProjects() {
     list.replaceChildren(...projects
-      .filter((project) => Boolean(project.archived) === (filter.value === 'Archived'))
+      .filter((project) => Boolean(project.archived) === (filter.value === 'Archived')
+        && search.matches(project.name))
       .map((project) => projectRow(project, renderProjects)));
   }
   filter.addEventListener('change', renderProjects);
@@ -117,7 +144,7 @@ async function showProjects() {
       create.disabled = false;
     }
   });
-  app.append(form, filters, list);
+  app.append(form, filters, search.form, list);
   // Enable creation only after the initial list has loaded, preserving ordering.
   create.disabled = true;
   try {
@@ -207,8 +234,10 @@ async function showTasks(project) {
   const list = element('ul');
   list.className = 'tasks';
 
+  const search = searchControl('Task search', 'Search tasks', 'task-search', renderTasks);
   function renderTasks() {
     const visible = tasks.filter((task) =>
+      search.matches(task.title) &&
       (filter.value === 'All'
         || (filter.value === 'Completed' ? task.completed : !task.completed))
       && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
@@ -364,7 +393,7 @@ async function showTasks(project) {
       create.disabled = archived;
     }
   });
-  app.append(form, filters, rangeForm, defaultPriorityControl(project), list);
+  app.append(form, filters, rangeForm, search.form, defaultPriorityControl(project), list);
   const [savedTasks, projects] = await Promise.all([api(endpoint), api('/api/projects')]);
   tasks = savedTasks;
   destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== projectId);
