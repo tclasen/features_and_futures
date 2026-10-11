@@ -28,6 +28,11 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
   )
 `);
+// Add priorities to databases created before Task 006.
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 database.exec('PRAGMA foreign_keys = ON');
 
 const page = await readFile(new URL('./public/index.html', import.meta.url));
@@ -135,7 +140,7 @@ const server = createServer(async (request, response) => {
   const tasksRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksRoute && request.method === 'GET') {
     const tasks = database.prepare(
-      'SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id'
+      'SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id'
     ).all(Number(tasksRoute[1])).map((task) => ({ ...task, completed: Boolean(task.completed) }));
     send(response, 200, 'application/json; charset=utf-8', JSON.stringify(tasks));
     return;
@@ -161,7 +166,7 @@ const server = createServer(async (request, response) => {
       }
       const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
       send(response, 201, 'application/json; charset=utf-8', JSON.stringify({
-        id: Number(result.lastInsertRowid), projectId, title, completed: false,
+        id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal',
       }));
     } catch {
       send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
@@ -184,18 +189,24 @@ const server = createServer(async (request, response) => {
         return;
       }
       const payload = await readJson(request);
-      if (typeof payload.completed !== 'boolean') {
-        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid completion state' }));
+      let result;
+      if (typeof payload.completed === 'boolean') {
+        result = database.prepare(
+          'UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?'
+        ).run(payload.completed ? 1 : 0, taskId, projectId);
+      } else if (['Low', 'Normal', 'High'].includes(payload.priority)) {
+        result = database.prepare(
+          'UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?'
+        ).run(payload.priority, taskId, projectId);
+      } else {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid task update' }));
         return;
       }
-      const result = database.prepare(
-        'UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?'
-      ).run(payload.completed ? 1 : 0, taskId, projectId);
       if (result.changes === 0) {
         send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
         return;
       }
-      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ id: taskId, projectId, completed: payload.completed }));
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ id: taskId, projectId, ...payload }));
     } catch {
       send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
     }

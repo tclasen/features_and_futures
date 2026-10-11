@@ -199,6 +199,38 @@ async function showProject(projectId) {
         }
       });
       row.append(renameForm);
+      const priorityLabel = element('label', { text: 'Task priority', className: 'priority-label' });
+      const priority = element('select');
+      priority.setAttribute('aria-label', 'Task priority');
+      priority.disabled = project.archived;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', { text: value });
+        option.value = value;
+        option.selected = value === task.priority;
+        priority.append(option);
+      }
+      priority.addEventListener('change', async () => {
+        const previousPriority = task.priority;
+        priority.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          if (!response.ok) throw new Error('Could not update task priority');
+          task.priority = priority.value;
+          alert.hidden = true;
+        } catch {
+          priority.value = previousPriority;
+          alert.textContent = 'Could not update task priority';
+          alert.hidden = false;
+        } finally {
+          priority.disabled = project.archived;
+        }
+      });
+      priorityLabel.append(priority);
+      row.append(priorityLabel);
       taskList.append(row);
     }
   }
