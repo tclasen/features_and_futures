@@ -97,7 +97,7 @@ const server = createServer(async (request, response) => {
         return redirect(response, `/projects/${project.id}?filter=${filter}`);
       }
     }
-    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/completion)?$/);
+    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/);
     if (request.method === 'POST' && taskMatch &&
         Number.isSafeInteger(Number(taskMatch[1])) &&
         (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
@@ -108,7 +108,16 @@ const server = createServer(async (request, response) => {
         }
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
-        if (taskMatch[2]) {
+        if (taskMatch[3] === 'rename') {
+          const title = (form.get('title') || '').trim();
+          if (!title) {
+            return send(response, 400, 'text/html; charset=utf-8',
+              projectPage(project, projects.listTasks(project.id, filter), filter, 'Task title is required'));
+          }
+          if (!projects.renameTask(project.id, Number(taskMatch[2]), title)) {
+            return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
+          }
+        } else if (taskMatch[2]) {
           if (!projects.setTaskCompleted(project.id, Number(taskMatch[2]), form.has('completed'))) {
             return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
           }

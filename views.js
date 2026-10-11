@@ -90,6 +90,12 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
             <input type="hidden" name="filter" value="${escapeHtml(filter)}">
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
           </form>
+          <form action="${projectPath}/tasks/${task.id}/rename" method="post" class="task-rename">
+            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </form>
         </div>`).join('') : '<p class="empty">No tasks match this filter.</p>'}
     </section>`);
 }

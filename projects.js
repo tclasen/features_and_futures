@@ -44,6 +44,10 @@ export function openProjects(databasePath) {
     UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
+  const updateTaskTitle = database.prepare(`
+    UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
 
   return {
     list: (filter = 'Active') => list.all(filter === 'Archived' ? 1 : 0),
@@ -73,6 +77,11 @@ export function openProjects(databasePath) {
     },
     setTaskCompleted(projectId, taskId, completed) {
       return updateTask.run(completed ? 1 : 0, taskId, projectId).changes > 0;
+    },
+    renameTask(projectId, taskId, title) {
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle) return false;
+      return updateTaskTitle.run(trimmedTitle, taskId, projectId).changes > 0;
     },
     close: () => database.close(),
   };

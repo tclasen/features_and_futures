@@ -29,3 +29,7 @@ are migrated automatically with all previous projects remaining active.
 Active project pages also support renaming with trimmed, nonempty names. Renaming
 preserves the project URL, creation order, tasks, and completion summary. Archived
 projects disable rename controls and reject rename requests until restored.
+Each task row also supports renaming with a trimmed, nonempty title. Task renames
+preserve ownership, creation order, completion state, and summaries, and update
+the completion checkbox label. Archived projects disable task rename controls
+and reject task rename requests until restored. Renamed titles persist in SQLite.
