@@ -7,6 +7,10 @@ function element(tag, text, attributes = {}) {
   return node;
 }
 
+function normalizeSearch(value) {
+  return value.trim().replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
 async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
@@ -53,6 +57,11 @@ async function renderList() {
   const projects = element('section', undefined, { id: 'projects', 'aria-label': 'Projects' });
   const filter = element('select', undefined, { 'aria-label': 'Project filter' });
   filter.append(element('option', 'Active', { value: 'active' }), element('option', 'Archived', { value: 'archived' }));
+  const searchForm = element('form');
+  const searchInput = element('input', undefined, { type: 'text', 'aria-label': 'Project search', autocomplete: 'off' });
+  const searchButton = element('button', 'Search projects', { type: 'submit' });
+  searchForm.append(searchInput, searchButton);
+  let appliedQuery = '';
   app.append(form, alert, filter, projects);
 
   const drawProjects = async () => {
@@ -60,11 +69,18 @@ async function renderList() {
     const rows = document.createDocumentFragment();
     for (const project of allProjects) {
       if (project.archived !== (filter.value === 'archived')) continue;
+      if (!normalizeSearch(project.name).includes(appliedQuery)) continue;
       rows.append(projectRow(project, drawProjects));
     }
     projects.replaceChildren(rows);
   };
   filter.addEventListener('change', drawProjects);
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedQuery = normalizeSearch(searchInput.value);
+    drawProjects();
+  });
+  app.insertBefore(searchForm, projects);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -160,6 +176,11 @@ async function renderProject(id) {
   const applyDueRange = element('button', 'Apply due range', { type: 'submit' });
   dueRangeForm.append(dueFromInput, dueThroughInput, applyDueRange);
   const dueRangeAlert = element('p', '', { role: 'alert', hidden: '' });
+  const searchForm = element('form');
+  const searchInput = element('input', undefined, { type: 'text', 'aria-label': 'Task search', autocomplete: 'off' });
+  const searchButton = element('button', 'Search tasks', { type: 'submit' });
+  searchForm.append(searchInput, searchButton);
+  let appliedQuery = '';
   let appliedDueFrom = '';
   let appliedDueThrough = '';
   const validDate = value => {
@@ -218,6 +239,7 @@ async function renderProject(id) {
     for (const task of taskData) {
       if (mode === 'open' && task.completed || mode === 'completed' && !task.completed) continue;
       if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
+      if (!normalizeSearch(task.title).includes(appliedQuery)) continue;
       if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
       if (task.dueDate && appliedDueFrom && task.dueDate < appliedDueFrom) continue;
       if (task.dueDate && appliedDueThrough && task.dueDate > appliedDueThrough) continue;
@@ -337,6 +359,11 @@ async function renderProject(id) {
   };
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedQuery = normalizeSearch(searchInput.value);
+    drawTasks();
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const title = input.value.trim();
@@ -361,7 +388,7 @@ async function renderProject(id) {
   const taskResponse = await fetch(`/api/projects/${id}/tasks`);
   if (taskResponse.ok) taskData = await taskResponse.json();
   drawTasks();
-  view.append(back, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, dueRangeForm, dueRangeAlert, tasks);
+  view.append(back, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, dueRangeForm, dueRangeAlert, searchForm, tasks);
   app.replaceChildren(view);
 }
 
