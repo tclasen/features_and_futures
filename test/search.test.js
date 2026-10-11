@@ -40,7 +40,7 @@ test('search intersects filters, uses ASCII case folding, and stays applied thro
     const follow = async response => get(response.headers.get('location'));
     for (const name of ['Alpha  Board', 'alpha Board', 'Älpha Board']) await post('/projects', { name });
     assert.deepEqual(names(await get('/?search=%20ALPHA%20'), 'project'), ['Alpha  Board', 'alpha Board']);
-    assert.deepEqual(names(await get('/?search=alpha%20%20b'), 'project'), ['Alpha  Board']);
+    assert.deepEqual(names(await get('/?search=alpha%20%20b'), 'project'), ['Alpha  Board', 'alpha Board']);
     assert.deepEqual(names(await get('/?search=älpha'), 'project'), []);
     await post('/projects/2/archive', {});
     assert.deepEqual(names(await get('/?search=ALPHA'), 'project'), ['Alpha  Board']);
@@ -55,7 +55,7 @@ test('search intersects filters, uses ASCII case folding, and stays applied thro
     const state = { filter: 'Open', priorityFilter: 'High', dueFrom: '2028-02-29', dueThrough: '2028-03-01', search: 'SHIP' };
     const location = '/projects/1?' + new URLSearchParams(state);
     assert.deepEqual(names(await get(location), 'task'), ['Ship  NOW', 'ship now']);
-    assert.deepEqual(names(await get('/projects/1?search=ship%20%20n'), 'task'), ['Ship  NOW']);
+    assert.deepEqual(names(await get('/projects/1?search=ship%20%20n'), 'task'), ['Ship  NOW', 'ship now']);
     let content = await follow(await post('/projects/1/tasks/1/rename', { ...state, title: 'Other now' }));
     assert.deepEqual(names(content, 'task'), ['ship now']);
     assert.match(content, /name="search" value="SHIP"/);
@@ -96,6 +96,48 @@ test('search intersects filters, uses ASCII case folding, and stays applied thro
     server = await start(dbPath);
     assert.deepEqual(names(await get('/projects/1?search=SHIP'), 'task'), ['ship now']);
     assert.deepEqual(names(await get('/projects/1'), 'task'), ['Other now', 'ship now', 'Other', 'Unrelated']);
+  } finally {
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('search collapses only spaces and tabs without rewriting persistent names or titles', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-search-spaces-'));
+  let server;
+  try {
+    const dbPath = join(dir, 'db.sqlite');
+    server = await start(dbPath);
+    const get = path => fetch(server.url + path).then(response => response.text());
+    const post = (path, data) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(data), redirect: 'manual',
+    });
+    const originals = ['MiXeD \t  Board', 'mixed Board', 'Mixed\u00a0Board', 'Mixed\nBoard'];
+    for (const name of originals) await post('/projects', { name });
+    for (const title of originals) await post('/projects/1/tasks', { title });
+    const query = ' \t MIXED\t \t bOaRd \n';
+    const projectPath = '/?' + new URLSearchParams({ search: query });
+    const taskPath = '/projects/1?' + new URLSearchParams({ search: query });
+    // Line breaks and non-ASCII spaces must not collapse into ASCII spaces.
+    assert.deepEqual(names(await get(projectPath), 'project'), originals.slice(0, 2));
+    assert.deepEqual(names(await get(taskPath), 'task'), originals.slice(0, 2));
+    assert.match(await get(taskPath), /<h1>MiXeD \t  Board<\/h1>/);
+    await post('/projects/2/archive', {});
+    assert.deepEqual(names(await get(projectPath), 'project'), [originals[0]]);
+    assert.deepEqual(names(await get('/?' + new URLSearchParams({ filter: 'Archived', search: query })), 'project'), [originals[1]]);
+    await post('/projects/1/archive', {});
+    assert.deepEqual(names(await get(taskPath), 'task'), originals.slice(0, 2));
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(names(await get(taskPath), 'task'), originals.slice(0, 2));
+    // Inspect the full HTML because the row helper deliberately excludes newlines.
+    const tasks = await get('/projects/1');
+    const projects = await get('/?filter=Archived');
+    for (const title of originals) assert.ok(tasks.includes(`<span>${title}</span>`));
+    assert.ok(projects.includes(`<span>${originals[0]}</span>`));
+    assert.ok(projects.includes(`<span>${originals[1]}</span>`));
+    await post('/projects/1/restore', {});
+    assert.deepEqual(names(await get(projectPath), 'project'), [originals[0]]);
   } finally {
     if (server) await server.stop();
     await rm(dir, { recursive: true, force: true });
