@@ -1569,3 +1569,144 @@ test('directory intersects read-only filters, preserves order and data, and rese
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory bulk completion intersects all filters, protects read-only data, and persists', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-bulk-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const task = (title, extra = {}) => ({ title, completed: false, priority: 'High',
+      dueDate: '2024-02-29', notes: '  Ω <b>literal</b>\nnext\n ', deleted: false, ...extra });
+    const importCopy = async (name, archived, tasks) => {
+      const response = await post('/imports/projects', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks },
+      }) });
+      return response.headers.get('location');
+    };
+    const first = await importCopy('First', false, [
+      task('Match  \t ONE'), task('Match one done', { completed: true }),
+      task('Match one low', { priority: 'Low' }), task('Match one undated', { dueDate: '' }),
+      task('Match one early', { dueDate: '2024-02-28' }),
+      task('Match one late', { dueDate: '2024-03-01' }), task('Other title'),
+      task('Match one deleted', { deleted: true }),
+    ]);
+    const second = await importCopy('Second', false, [task('Match one second'), task('Second other')]);
+    const archived = await importCopy('Archive', true, [task('Match one archived'),
+      task('Match one archived done', { completed: true }), task('Match one archived deleted', { deleted: true })]);
+    const snapshot = () => {
+      const db = new DatabaseSync(databasePath);
+      try {
+        return {
+          projects: db.prepare('SELECT * FROM projects ORDER BY position').all(),
+          tasks: db.prepare('SELECT * FROM tasks ORDER BY position').all().map((row) => ({ ...row })),
+          positions: db.prepare('SELECT * FROM task_project_positions ORDER BY project_id, position').all(),
+        };
+      } finally { db.close(); }
+    };
+    const before = snapshot();
+    const state = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      query: '  mATCH\t one  ', dueFrom: '2024-02-29', dueThrough: '2024-02-29' };
+    const view = () => get(`/directory?${new URLSearchParams(state)}`);
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title">([^<]*)<\/div>/g)].map((match) => match[1]);
+    const buttons = (html, complete, reopen) => {
+      assert.match(html, new RegExp(`<button type="submit"${complete ? '' : ' disabled'}>Complete visible tasks`));
+      assert.match(html, new RegExp(`<button type="submit"${reopen ? '' : ' disabled'}>Reopen visible tasks`));
+    };
+    let html = await view();
+    assert.deepEqual(titles(html), ['Match  \t ONE', 'Match one second']);
+    buttons(html, true, false);
+    assert.doesNotMatch(html, /No matching tasks/);
+    const completed = await post('/directory/complete', state);
+    assert.equal(completed.status, 303);
+    const location = completed.headers.get('location');
+    const savedState = new URL(location, server.url).searchParams;
+    for (const [key, value] of Object.entries(state)) {
+      assert.equal(savedState.get(key), key === 'query' ? value.trim() : value);
+    }
+    html = await get(location);
+    assert.deepEqual(titles(html), []);
+    assert.match(html, /role="status">No matching tasks/);
+    buttons(html, false, false);
+    const afterComplete = snapshot();
+    assert.deepEqual(afterComplete.projects, before.projects);
+    assert.deepEqual(afterComplete.positions, before.positions);
+    assert.deepEqual(afterComplete.tasks, before.tasks.map((task) => (
+      ['Match  \t ONE', 'Match one second'].includes(task.title) ? { ...task, completed: 1 } : task
+    )));
+    assert.match(await get('/'), /project-summary">2\/7 completed/);
+    assert.match(await get('/'), /project-summary">1\/2 completed/);
+    // Repeating a no-match action is harmless; IDs submitted by a client do not
+    // replace the server-resolved matching set.
+    await post('/directory/complete', { ...state, taskId: before.tasks[6].id });
+    assert.deepEqual(snapshot(), afterComplete);
+    state.filter = 'All';
+    buttons(await view(), false, true);
+    state.filter = 'Completed';
+    html = await view();
+    assert.deepEqual(titles(html), ['Match  \t ONE', 'Match one done', 'Match one second']);
+    buttons(html, false, true);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await view(), html);
+    assert.deepEqual(snapshot(), afterComplete);
+    const reopened = await post('/directory/reopen', state);
+    assert.equal(reopened.status, 303);
+    html = await get(reopened.headers.get('location'));
+    assert.match(html, /No matching tasks/);
+    assert.deepEqual(titles(html), []);
+    buttons(html, false, false);
+    const afterReopen = snapshot();
+    assert.deepEqual(afterReopen.tasks, before.tasks.map((task) => (
+      task.title === 'Match one done' ? { ...task, completed: 0 } : task
+    )));
+    assert.deepEqual(afterReopen.positions, before.positions);
+    assert.deepEqual(afterReopen.projects, before.projects);
+    assert.equal((await get('/')).match(/project-summary">0\//g).length, 2);
+    // Archived and deleted views disable both controls, and direct requests
+    // cannot bypass those restrictions.
+    for (const restricted of [
+      { ...state, scope: 'Archived', filter: 'All' },
+      { ...state, scope: 'Archived', filter: 'Deleted' },
+      { ...state, filter: 'Deleted' },
+    ]) {
+      buttons(await get(`/directory?${new URLSearchParams(restricted)}`), false, false);
+      for (const action of ['complete', 'reopen']) {
+        assert.equal((await post(`/directory/${action}`, restricted)).status, 403);
+        assert.deepEqual(snapshot(), afterReopen);
+      }
+    }
+    buttons(await get('/directory'), true, false);
+    // Mixed completion enables both actions; All changes matching tasks only.
+    await post('/directory/complete', { ...state, filter: 'Open', query: 'second', dueFrom: '', dueThrough: '' });
+    buttons(await get('/directory'), true, true);
+    await post('/directory/reopen', { scope: 'Active', filter: 'All', priorityFilter: 'All' });
+    buttons(await get('/directory'), true, false);
+    // A later move and return retain the bulk completion and remembered order.
+    await post('/directory/complete', { ...state, filter: 'Open' });
+    const moved = before.tasks[0];
+    const taskPath = `${first}/tasks/${moved.id}`;
+    await post(`${taskPath}/move`, { destination: second.split('/').at(-1) });
+    assert.match(await get(second), /Complete Match  \t ONE" checked/);
+    await post(`${second}/tasks/${moved.id}/move`, { destination: first.split('/').at(-1) });
+    const detail = await get(first);
+    assert.ok(detail.indexOf('Complete Match  \t ONE" checked') < detail.indexOf('Complete Match one done" checked'));
+    assert.deepEqual(snapshot().positions.filter((position) => position.project_id === moved.project_id),
+      before.positions.filter((position) => position.project_id === moved.project_id));
+    const finalSnapshot = snapshot();
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), finalSnapshot);
+    assert.equal(await get(first), detail);
+    assert.match(await get(`${archived}?filter=Deleted`), /Match one archived deleted/);
+    assert.equal((await fetch(`${server.url}/health`)).status, 200);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

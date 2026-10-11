@@ -88,7 +88,7 @@ const listTasks = database.prepare(`
   WHERE tasks.project_id = ? ORDER BY ordering.position
 `);
 const listDirectoryTasks = database.prepare(`
-  SELECT tasks.title, tasks.completed, tasks.priority, tasks.due_date, tasks.notes, tasks.deleted,
+  SELECT tasks.id, tasks.title, tasks.completed, tasks.priority, tasks.due_date, tasks.notes, tasks.deleted,
     projects.id AS project_id, projects.name AS project_name
   FROM tasks JOIN projects ON projects.id = tasks.project_id
   JOIN task_project_positions AS ordering
@@ -205,10 +205,32 @@ function directoryState(params) {
   };
 }
 
-function directoryPage(state, error = '') {
-  const tasks = listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+function directoryTasks(state) {
+  return listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
     .filter((task) => matchesTask(task, state.filter, state.priority, state.range, state.query));
-  return renderDirectory(tasks, state, error);
+}
+
+function directoryPage(state, error = '') {
+  return renderDirectory(directoryTasks(state), state, error);
+}
+
+function directoryLocation(state) {
+  return `/directory?${new URLSearchParams({
+    scope: state.scope, filter: state.filter, priorityFilter: state.priority,
+    dueFrom: state.range.from, dueThrough: state.range.through, query: state.query,
+  })}`;
+}
+
+function setDirectoryCompletion(state, completed) {
+  // Resolve the matching set and save it in one transaction, using exactly the
+  // same matching rules as the view. Only completion is changed.
+  transaction(() => {
+    for (const task of directoryTasks(state)) {
+      if (Boolean(task.completed) !== completed) {
+        updateTask.run(Number(completed), task.project_id, task.id);
+      }
+    }
+  });
 }
 
 function renderFilteredProject(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, query = '') {
@@ -278,6 +300,16 @@ const server = http.createServer(async (request, response) => {
       sendHtml(response, 200, directoryPage(directoryState(searchParams)));
       return;
     }
+    if (request.method === 'POST' && ['/directory/complete', '/directory/reopen'].includes(pathname)) {
+      const state = directoryState(await readForm(request));
+      if (state.scope === 'Archived' || state.filter === 'Deleted') {
+        sendHtml(response, 403, directoryPage(state, 'Only live tasks in active projects can be changed'));
+        return;
+      }
+      setDirectoryCompletion(state, pathname === '/directory/complete');
+      redirect(response, directoryLocation(state));
+      return;
+    }
     if (request.method === 'POST' && pathname === '/directory/due-range') {
       const form = await readForm(request);
       const state = directoryState(form);
@@ -288,10 +320,7 @@ const server = http.createServer(async (request, response) => {
         sendHtml(response, 422, directoryPage(state, error));
         return;
       }
-      redirect(response, `/directory?${new URLSearchParams({
-        scope: state.scope, filter: state.filter, priorityFilter: state.priority,
-        dueFrom: from, dueThrough: through, query: state.query,
-      })}`);
+      redirect(response, directoryLocation({ ...state, range: { from, through } }));
       return;
     }
     if (request.method === 'POST' && pathname === '/imports/projects') {

@@ -218,6 +218,9 @@ ${escapeHtml(task.notes)}</textarea>
 }
 
 export function renderDirectory(tasks, { scope, filter, priority, range, query }, error = '') {
+  const canEdit = scope === 'Active' && filter !== 'Deleted';
+  const canComplete = canEdit && tasks.some((task) => !task.completed);
+  const canReopen = canEdit && tasks.some((task) => task.completed);
   const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   const selections = `<input type="hidden" name="scope" value="${escapeHtml(scope)}">
@@ -255,6 +258,16 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query }
       <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(range.through)}">
       <button type="submit">Apply due range</button>
     </form>
+    <form class="create" method="post" action="/directory/complete">
+      ${selections}${rangeFields}
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
+      <button type="submit"${canComplete ? '' : ' disabled'}>Complete visible tasks</button>
+    </form>
+    <form class="create" method="post" action="/directory/reopen">
+      ${selections}${rangeFields}
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
+      <button type="submit"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
+    </form>
     ${tasks.length ? `<ul class="tasks">${tasks.map((task) => `
       <li class="task" data-testid="directory-task-row">
         <div data-testid="directory-task-title">${escapeHtml(task.title)}</div>
@@ -266,7 +279,21 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query }
         <form method="get" action="/projects/${escapeHtml(task.project_id)}">
           <button type="submit">Open project</button>
         </form>
-      </li>`).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
+      </li>`).join('')}</ul>` : '<p id="directory-empty" class="empty" role="status">No matching tasks</p>'}
+    <script>
+      // Native navigation keeps the old document visible during the request.
+      // Hide its empty announcement until the next resolved page arrives.
+      const emptyResult = document.getElementById('directory-empty');
+      document.addEventListener('submit', (event) => {
+        const path = new URL(event.target.action).pathname;
+        if (emptyResult && (path === '/directory' || path.startsWith('/directory/'))) {
+          emptyResult.hidden = true;
+        }
+      });
+      window.addEventListener('pageshow', () => {
+        if (emptyResult) emptyResult.hidden = false;
+      });
+    </script>
   `);
 }
 
