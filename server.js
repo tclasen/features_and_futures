@@ -263,6 +263,17 @@ const page = `<!doctype html>
         option.textContent = value;
         filter.append(option);
       }
+      const priorityFilterLabel = document.createElement('label');
+      priorityFilterLabel.htmlFor = 'priority-filter';
+      priorityFilterLabel.textContent = 'Priority filter';
+      const priorityFilter = document.createElement('select');
+      priorityFilter.id = 'priority-filter';
+      for (const value of ['All', 'Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priorityFilter.append(option);
+      }
       const tasksList = document.createElement('ul');
       tasksList.id = 'tasks';
       tasksList.style.listStyle = 'none';
@@ -271,7 +282,10 @@ const page = `<!doctype html>
       let tasks = await request('/api/projects/' + encodeURIComponent(id) + '/tasks');
       function drawTasks() {
         tasksList.replaceChildren();
-        const visible = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
+        const visible = tasks.filter(task =>
+          (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
+          (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+        );
         for (const task of visible) {
           const row = document.createElement('li');
           row.dataset.testid = 'task-row';
@@ -332,6 +346,7 @@ const page = `<!doctype html>
             try {
               const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
               tasks = tasks.map(item => item.id === updated.id ? updated : item);
+              drawTasks();
             } catch { priority.value = task.priority || 'Normal'; }
           });
           row.append(checkbox, title, renameInput, renameButton, priority);
@@ -339,6 +354,7 @@ const page = `<!doctype html>
         }
       }
       filter.addEventListener('change', drawTasks);
+      priorityFilter.addEventListener('change', drawTasks);
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const title = input.value.trim();
@@ -360,7 +376,7 @@ const page = `<!doctype html>
         }
       });
       drawTasks();
-      app.append(back, heading, archived, renameForm, form, error, filterLabel, filter, tasksList);
+      app.append(back, heading, archived, renameForm, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, tasksList);
     }
 
     if (escPath) {
