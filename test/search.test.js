@@ -3,13 +3,19 @@ import assert from 'node:assert/strict';
 import { filterProjects, matchesSearch, normalizeSearchQuery } from '../public/search.js';
 import { filterTasks } from '../public/task-filters.js';
 
-test('search trims edges, folds only ASCII letters, and preserves internal whitespace', () => {
+test('search trims query edges, folds ASCII case, and collapses only spaces and tabs', () => {
   for (const [value, input, expected] of [
     ['Build Workboard', ' \tWORK\n ', true],
     ['Build Workboard', 'board', true],
-    ['Build Workboard', 'build  work', false],
+    ['Build Workboard', 'build  work', true],
     ['Build  Workboard', 'BUILD  WORK', true],
-    ['Build\tWorkboard', 'build work', false],
+    ['Build\tWorkboard', 'build work', true],
+    ['Build \t \tWorkboard', 'BUILD\t \tWORK', true],
+    ['Build\nWorkboard', 'build work', false],
+    ['Build\rWorkboard', 'build work', false],
+    ['Build\u00a0Workboard', 'build work', false],
+    ['Build Workboard', 'build\nwork', false],
+    ['Build\nWorkboard', 'build\nwork', true],
     ['Ä Team', 'ä team', false],
     ['Ä Team', 'Ä TEAM', true],
     ['Anything', ' \t\n ', true],
@@ -18,6 +24,35 @@ test('search trims edges, folds only ASCII letters, and preserves internal white
   ]) {
     assert.equal(matchesSearch(value, normalizeSearchQuery(input)), expected);
   }
+});
+
+test('normalized searches intersect project and task filters without rewriting stored text', () => {
+  const name = 'Release  \t PLAN';
+  const projects = [
+    { id: 1, name, archived: false, completed_count: 1, total_count: 2 },
+    { id: 2, name: 'release\tplan archived', archived: true, completed_count: 0, total_count: 0 },
+    { id: 3, name: 'Unrelated', archived: false, completed_count: 0, total_count: 0 },
+  ];
+  const tasks = [
+    { id: 8, title: name, completed: false, priority: 'High', due_date: '2026-01-01' },
+    { id: 2, title: 'release\tplan done', completed: true, priority: 'High', due_date: '2026-01-01' },
+    { id: 5, title: 'Release plan low', completed: false, priority: 'Low', due_date: '' },
+    { id: 4, title: 'Release\nplan', completed: false, priority: 'High', due_date: '2026-01-01' },
+  ];
+  const originalProjects = structuredClone(projects);
+  const originalTasks = structuredClone(tasks);
+  const query = normalizeSearchQuery(' \nRELEASE\t  PLAN\t ');
+  assert.equal(query, 'release plan');
+  assert.deepEqual(filterProjects(projects, 'active', query), [projects[0]]);
+  assert.deepEqual(filterProjects(projects, 'archived', query), [projects[1]]);
+  assert.deepEqual(filterTasks(tasks, 'all', 'all', undefined, query), tasks.slice(0, 3));
+  const range = { from: '2026-01-01', through: '2026-01-01' };
+  assert.deepEqual(filterTasks(tasks, 'open', 'High', range, query), [tasks[0]]);
+  assert.deepEqual(filterTasks(tasks, 'completed', 'High', range, query), [tasks[1]]);
+  assert.deepEqual(filterProjects(projects, 'active', ''), [projects[0], projects[2]]);
+  assert.deepEqual(filterTasks(tasks, 'all', 'all'), tasks);
+  assert.deepEqual(projects, originalProjects);
+  assert.deepEqual(tasks, originalTasks);
 });
 
 test('project search intersects archive state and retains order, summaries, and data', () => {

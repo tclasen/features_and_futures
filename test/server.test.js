@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
+import { matchesSearch, normalizeSearchQuery } from '../public/search.js';
 
 test('projects, tasks, renames, priorities, archive state, and summaries persist across server restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
@@ -249,9 +250,9 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     assert.equal((await renameTask(second.id, firstTask.id, 'Wrong project')).status, 404);
     assert.equal((await renameTask(first.id, 999999, 'Missing task')).status, 404);
     assert.equal((await renameTask(999999, firstTask.id, 'Missing project')).status, 404);
-    const renamedTaskResponse = await renameTask(first.id, firstTask.id, '  Renamed <task> & team  ');
+    const renamedTaskResponse = await renameTask(first.id, firstTask.id, '  Renamed  \t<task> & team  ');
     assert.equal(renamedTaskResponse.status, 200);
-    firstTask.title = 'Renamed <task> & team';
+    firstTask.title = 'Renamed  \t<task> & team';
     completedTask.title = firstTask.title;
     assert.deepEqual(await renamedTaskResponse.json(), completedTask);
     const renamedOpenResponse = await renameTask(first.id, secondTask.id, '  Renamed open task  ');
@@ -268,9 +269,9 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
       assert.deepEqual(await getProject(first.id), firstWithTasks);
     }
     assert.equal((await rename(999999, 'Missing project')).status, 404);
-    const renamedResponse = await rename(first.id, '  Renamed <project> & team  ');
+    const renamedResponse = await rename(first.id, '  Renamed \t  <project> & team  ');
     assert.equal(renamedResponse.status, 200);
-    firstWithTasks.name = 'Renamed <project> & team';
+    firstWithTasks.name = 'Renamed \t  <project> & team';
     assert.deepEqual(await renamedResponse.json(), firstWithTasks);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, secondWithTasks]);
     assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
@@ -298,6 +299,13 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     assert.deepEqual(await getProject(first.id), { ...firstWithTasks, archived: true });
     assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
     assert.deepEqual(await listTasks(second.id), [otherTask]);
+    // Search normalizes restored text for matching without changing its stored spacing or case.
+    const restoredProject = await getProject(first.id);
+    const restoredTasks = await listTasks(first.id);
+    assert.equal(matchesSearch(restoredProject.name, normalizeSearchQuery(' RENAMED <PROJECT> ')), true);
+    assert.equal(matchesSearch(restoredTasks[0].title, normalizeSearchQuery(' renamed\t<task> ')), true);
+    assert.equal((await getProject(first.id)).name, firstWithTasks.name);
+    assert.equal((await listTasks(first.id))[0].title, completedTask.title);
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.deepEqual(await (await setArchived(first.id, false)).json(), firstWithTasks);
     firstTask.priority = 'Normal';

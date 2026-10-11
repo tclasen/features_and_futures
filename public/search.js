@@ -1,15 +1,16 @@
-// Fold ASCII letters only: non-ASCII characters remain significant.
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+// Normalize only for matching; saved names and titles remain untouched.
+function normalizeSearchText(value) {
+  return value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 export function normalizeSearchQuery(query) {
-  return foldAscii(query.trim());
+  return normalizeSearchText(query.trim());
 }
 
 // Apply normalization on submission; matching consumes that applied query.
 export function matchesSearch(value, query) {
-  return foldAscii(value).includes(query);
+  return normalizeSearchText(value).includes(query);
 }
 
 export function filterProjects(projects, archiveFilter, query = '') {
