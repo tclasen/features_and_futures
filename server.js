@@ -226,7 +226,7 @@ const server = createServer(async (request, response) => {
       completed: Boolean(task.completed),
       priority: task.priority || 'Normal',
       dueDate: task.dueDate || '',
-      notes: String(task.notes || '').replace(/\\r\\n?/g, '\\n'),
+      notes: String(task.notes || '').replace(/\r\n?/g, '\n'),
       deleted: Boolean(task.deleted)
     }));
     const document = {
