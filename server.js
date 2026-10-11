@@ -37,6 +37,10 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'sort_order')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
+  database.exec('UPDATE tasks SET sort_order = id');
+}
 database.exec('PRAGMA foreign_keys = ON');
 
 const indexHtml = await readFile(path.join(root, 'index.html'));
@@ -61,6 +65,9 @@ const server = createServer(async (req, res) => {
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id
     `).all().map((project) => ({ ...project, id: Number(project.id), archived: Boolean(project.archived), totalCount: Number(project.totalCount), completedCount: Number(project.completedCount) })));
+  }
+  if (url.pathname === '/api/projects/active' && req.method === 'GET') {
+    return sendJson(res, 200, database.prepare('SELECT id, name FROM projects WHERE archived = 0 ORDER BY id').all().map((p) => ({ ...p, id: Number(p.id) })));
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
@@ -111,7 +118,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -124,10 +131,28 @@ const server = createServer(async (req, res) => {
     const project = database.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(res, 403, { error: 'Archived project' });
-    const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+    const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, nextOrder);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: 0, priority: project.default_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (moveMatch && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let data;
+    try { data = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    const taskId = Number(moveMatch[1]);
+    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    const source = database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id);
+    const destinationId = Number(data.destinationProjectId);
+    const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    if (source.archived || !destination || destination.archived || destinationId === Number(task.project_id)) return sendJson(res, 400, { error: 'Invalid destination project' });
+    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+    database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
+    return sendJson(res, 200, { id: taskId, projectId: destinationId });
+  }
   if (taskMatch && req.method === 'PATCH') {
     let body = '';
     for await (const chunk of req) body += chunk;

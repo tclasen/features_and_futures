@@ -128,6 +128,8 @@ async function loadTasks(projectId, archived = false) {
   const response = await fetch(`/api/projects/${projectId}/tasks`);
   if (!response.ok) return;
   const tasks = await response.json();
+  const destinationResponse = await fetch('/api/projects/active');
+  const destinations = destinationResponse.ok ? await destinationResponse.json() : [];
   taskContainer.replaceChildren();
   for (const task of tasks) {
     if (taskFilter.value === 'open' && task.completed) continue;
@@ -224,7 +226,28 @@ async function loadTasks(projectId, archived = false) {
       await loadTasks(projectId, archived);
     });
     label.append(checkbox);
-    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, label);
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    const eligible = destinations.filter((item) => item.id !== projectId);
+    for (const item of eligible) {
+      const option = document.createElement('option');
+      option.value = String(item.id);
+      option.textContent = item.name;
+      destination.append(option);
+    }
+    destination.disabled = archived || eligible.length === 0;
+    const move = document.createElement('button');
+    move.type = 'button';
+    move.textContent = 'Move task';
+    move.disabled = archived || eligible.length === 0;
+    move.addEventListener('click', async () => {
+      const moved = await fetch(`/api/tasks/${task.id}/move`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+      });
+      if (moved.ok) await loadTasks(projectId, archived);
+    });
+    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, move, label);
     taskContainer.append(row);
   }
 }
