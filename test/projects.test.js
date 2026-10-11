@@ -1275,7 +1275,8 @@ test('notes upgrade, exact text, filters, movement, archive protection, and pers
     let html = await get(location);
     assert.equal((html.match(/data-testid="task-row"/g) ?? []).length, 1);
     assert.match(html, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;&lt;\/textarea&gt;&amp;/);
-    assert.doesNotMatch(html, /<script>/);
+    assert.doesNotMatch(html, /<script>alert/);
+    assert.doesNotMatch(html.match(/<textarea[^>]*>[\s\S]*?<\/textarea>/)[0], /<script>/);
     assert.deepEqual(savedTasks(), [{ ...before[0], notes }, before[1]]);
     assert.doesNotMatch(await get('/projects/a?query=Unicode'), /data-testid="task-row"/);
     assert.match(await get('/'), /project-summary">1\/2 completed/);

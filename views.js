@@ -170,7 +170,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
         <form method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}">
           ${filterFields}
           <label>
-            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${readOnly ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${readOnly ? ' disabled' : ''} onchange="deferCompletionSubmit(this.form)">
             <span>${escapeHtml(task.title)}</span>
           </label>
           <noscript><button type="submit"${readOnly ? ' disabled' : ''}>Save completion</button></noscript>
@@ -216,6 +216,14 @@ ${escapeHtml(task.notes)}</textarea>
         </form>
       </li>`;
     }).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
+    <script>
+      // Let the native checkbox interaction finish before navigation can remove
+      // its row under Open/Completed filters. Coalesce rapid toggles per form.
+      function deferCompletionSubmit(form) {
+        clearTimeout(form.completionSubmitTimer);
+        form.completionSubmitTimer = setTimeout(() => form.requestSubmit(), 150);
+      }
+    </script>
   `);
 }
 
