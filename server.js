@@ -41,6 +41,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+// Soft deletion preserves all task fields and reserved ordering positions.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 // Separate ordering from identity so moves append without changing task IDs.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
@@ -61,7 +65,7 @@ db.exec(`
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed
-  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted = 0
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
 `);
 const findProject = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
@@ -69,7 +73,7 @@ const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority =
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
 const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const recordCreatedPosition = db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
@@ -80,8 +84,9 @@ const rememberDestination = db.prepare(`INSERT OR IGNORE INTO task_positions (ta
 const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
   position = (SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?)
   WHERE id = ? AND project_id = ?`);
-const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
-const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ? AND deleted = 0');
+const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ? AND deleted = 0');
+const setTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
@@ -114,7 +119,7 @@ function projectFilter(value) {
 }
 
 function taskFilter(value) {
-  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+  return ['All', 'Open', 'Completed', 'Deleted'].includes(value) ? value : 'All';
 }
 
 function priorityFilter(value) {
@@ -214,6 +219,8 @@ function page(content) {
       padding: 18px; margin-top: 12px; border: 1px solid #d7dee8; border-radius: 8px; background: white; }
     .project span { overflow-wrap: anywhere; min-width: 0; }
     .project form { flex-shrink: 0; }
+    .project fieldset { border: 0; margin: 0; padding: 0; min-width: 0;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
     [role=alert] { color: #a51e25; }
   </style>
 </head>
@@ -264,7 +271,8 @@ function projectList(error = '', enteredName = '', filter = 'Active', query = ''
 function projectPage(project, filter = 'All', error = '', enteredTitle = '', enteredName = '', prioritySelection = 'All', range = { from: '', through: '' }, rangeInput = range, query = '') {
   const tasks = listTasks.all(project.id).filter(task =>
     matchesSearch(task.title, query) &&
-    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+    (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
+      (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))) &&
     (prioritySelection === 'All' || task.priority === prioritySelection) &&
     ((!range.from && !range.through) || (task.due_date &&
       (!range.from || task.due_date >= range.from) &&
@@ -307,7 +315,7 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ent
       ${searchField(query)}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
-        ${['All', 'Open', 'Completed'].map(value => `<option${value === filter ? ' selected' : ''}>${value}</option>`).join('')}
+        ${['All', 'Open', 'Completed', 'Deleted'].map(value => `<option${value === filter ? ' selected' : ''}>${value}</option>`).join('')}
       </select>
       <label for="priority-filter">Priority filter</label>
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
@@ -333,6 +341,7 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ent
     <section aria-label="Tasks">
       ${tasks.map(task => `<div class="project" data-testid="task-row">
         <span>${escapeHtml(task.title)}</span>
+        <fieldset${project.archived || task.deleted ? ' disabled' : ''}>
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
           ${filterFields}
           <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
@@ -373,6 +382,11 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ent
             <input id="new-task-title-${task.id}" name="title" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </div>
+        </form>
+        </fieldset>
+        <form action="/projects/${project.id}/tasks/${task.id}/${task.deleted ? 'restore' : 'delete'}" method="post">
+          ${filterFields}
+          <button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
         </form>
       </div>`).join('')}
     </section>`);
@@ -490,6 +504,28 @@ const server = http.createServer(async (request, response) => {
         }
         updateDefaultPriority.run(priority, project.id);
         redirect(response, projectLocation(project.id, filter, prioritySelection, dueRange(form), searchQuery(form)));
+        return;
+      }
+    }
+    const deletionMatch = /^\/projects\/(\d+)\/tasks\/(\d+)\/(delete|restore)$/.exec(path);
+    if (request.method === 'POST' && deletionMatch) {
+      const project = findProject.get(deletionMatch[1]);
+      if (project) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        const prioritySelection = priorityFilter(form.get('priorityFilter'));
+        const range = dueRange(form);
+        const query = searchQuery(form);
+        if (project.archived) {
+          html(response, 403, projectPage(project, filter, 'Archived project', '', '', prioritySelection, range, undefined, query));
+          return;
+        }
+        const result = setTaskDeleted.run(deletionMatch[3] === 'delete' ? 1 : 0, deletionMatch[2], project.id);
+        if (!result.changes) {
+          html(response, 404, page('<h1>Task not found</h1>'));
+          return;
+        }
+        redirect(response, projectLocation(project.id, filter, prioritySelection, range, query));
         return;
       }
     }

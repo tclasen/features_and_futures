@@ -97,7 +97,7 @@ test('notes upgrade safely, preserve exact plain text and filters, and travel th
     }
     const { notes: empty, ...second } = tasks[1];
     assert.equal(empty, '');
-    assert.deepEqual(second, { ...original[1] });
+    assert.deepEqual(second, { ...original[1], deleted: 0 });
     stored.close();
     server = await start(dbPath);
     assert.ok((await get('/projects/1')).includes(escapedNotes(notes)));
