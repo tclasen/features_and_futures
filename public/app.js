@@ -22,6 +22,33 @@ async function loadProjects() {
   }
 }
 
+async function loadTasks(projectId) {
+  const response = await fetch(`/api/projects/${projectId}/tasks`);
+  if (!response.ok) return;
+  const tasks = await response.json();
+  const filter = document.querySelector('#task-filter').value;
+  const container = document.querySelector('#tasks');
+  container.replaceChildren();
+  for (const task of tasks) {
+    if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.dataset.testid = 'task-row';
+    const title = document.createElement('span');
+    title.textContent = task.title;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = Boolean(task.completed);
+    checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    checkbox.addEventListener('change', async () => {
+      await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+      await loadTasks(projectId);
+    });
+    row.append(title, checkbox);
+    container.append(row);
+  }
+}
+
 async function render() {
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (match) {
@@ -31,6 +58,7 @@ async function render() {
       document.querySelector('#project-title').textContent = project.name;
       list.hidden = true;
       detail.hidden = false;
+      await loadTasks(project.id);
       return;
     }
   }
@@ -58,4 +86,20 @@ document.querySelector('#create-form').addEventListener('submit', async event =>
   }
 });
 document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+document.querySelector('#task-filter').addEventListener('change', () => {
+  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+  if (match) loadTasks(match[1]);
+});
+document.querySelector('#task-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#task-title');
+  const title = input.value.trim();
+  const alert = document.querySelector('#task-alert');
+  if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+  alert.hidden = true;
+  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+  if (!match) return;
+  const response = await fetch(`/api/projects/${match[1]}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+  if (response.ok) { input.value = ''; await loadTasks(match[1]); }
+});
 render();
