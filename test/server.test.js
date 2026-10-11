@@ -101,11 +101,33 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     assert.deepEqual(await (await fetch(tasksURL)).json(), [task, nextTask]);
     assert.deepEqual(await (await fetch(otherTasksURL)).json(), []);
     assert.equal((await completeTask(`${otherTasksURL}/${task.id}`, true)).status, 404);
-    const completed = await (await completeTask(`${tasksURL}/${task.id}`, true)).json();
+    let completed = await (await completeTask(`${tasksURL}/${task.id}`, true)).json();
     assert.equal(completed.completed, true);
     assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
     assert.equal((await completeTask(`${tasksURL}/${task.id}`, 'true')).status, 400);
     assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
+    const renameTask = (url, title) => fetch(url, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    for (const title of ['', ' \t\n ', null]) {
+      const invalid = await renameTask(`${tasksURL}/${task.id}`, title);
+      assert.equal(invalid.status, 400);
+      assert.match((await invalid.json()).error, /Task title is required/);
+      assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
+    }
+    assert.equal((await renameTask(`${otherTasksURL}/${task.id}`, 'Wrong project')).status, 404);
+    assert.equal((await renameTask(`${tasksURL}/999999`, 'Missing task')).status, 404);
+    const renameResponse = await renameTask(`${tasksURL}/${task.id}`, '  Renamed completed task  ');
+    assert.equal(renameResponse.status, 200);
+    const renamedTask = await renameResponse.json();
+    assert.deepEqual(renamedTask, { ...completed, title: 'Renamed completed task' });
+    completed = renamedTask;
+    const renamedOpenTask = await (await renameTask(`${tasksURL}/${nextTask.id}`, '  Renamed open task  ')).json();
+    assert.deepEqual(renamedOpenTask, { ...nextTask, title: 'Renamed open task' });
+    Object.assign(nextTask, renamedOpenTask);
+    assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
+    assert.deepEqual(await (await fetch(otherTasksURL)).json(), []);
     const patchProject = archived => fetch(`${base}/api/projects/${first.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ archived }),
@@ -133,6 +155,7 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     assert.equal((await (await fetch(`${base}/api/projects/${first.id}`)).json()).name, 'Renamed project');
     assert.equal((await postTask('Not allowed')).status, 409);
     assert.equal((await completeTask(`${tasksURL}/${task.id}`, false)).status, 409);
+    assert.equal((await renameTask(`${tasksURL}/${task.id}`, 'Forbidden task rename')).status, 409);
     assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
     await stop(child);
     child = undefined;
@@ -146,6 +169,10 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     const renamedAgain = await (await rename('  Restored and renamed  ')).json();
     assert.deepEqual(renamedAgain, { ...restored, name: 'Restored and renamed' });
     Object.assign(restored, renamedAgain);
+    const restoredTask = await (await renameTask(`${tasksURL}/${task.id}`, '  Renamed after restoration  ')).json();
+    assert.deepEqual(restoredTask, { ...completed, title: 'Renamed after restoration' });
+    completed = restoredTask;
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), restored);
     const reopened = await (await completeTask(`${tasksURL}/${task.id}`, false)).json();
     assert.equal(reopened.completed, false);
     assert.deepEqual(await (await fetch(tasksURL)).json(), [reopened, nextTask]);
