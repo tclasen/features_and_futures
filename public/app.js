@@ -43,6 +43,17 @@ async function render() {
       } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
     });
     app.append(renameForm);
+    const defaultPriorityLabel = element('label', { for: 'default-task-priority' }, 'Default task priority');
+    const defaultPriority = element('select', { id: 'default-task-priority' });
+    for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(element('option', { value }, value));
+    defaultPriority.value = project.defaultPriority || 'Normal';
+    defaultPriority.disabled = Boolean(project.archived);
+    defaultPriority.addEventListener('change', async () => {
+      try {
+        await request(`/api/projects/${encodeURIComponent(match[1])}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultPriority: defaultPriority.value }) });
+      } catch { defaultPriority.value = project.defaultPriority || 'Normal'; }
+    });
+    app.append(defaultPriorityLabel, defaultPriority);
     const form = element('form');
     const label = element('label', { for: 'task-title' }, 'Task title');
     const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
