@@ -105,6 +105,25 @@ const server = createServer(async (request, response) => {
     return json(response, 200, { status: 'ok' });
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = database.prepare(`
+      SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
+        t.due_date AS dueDate, t.notes, t.deleted, p.name AS projectName,
+        p.archived, t.task_order AS taskOrder
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      ORDER BY p.id, t.task_order, t.id
+    `).all();
+    return json(response, 200, rows.map((task) => ({
+      ...task,
+      completed: Boolean(task.completed),
+      deleted: Boolean(task.deleted),
+      archived: Boolean(task.archived),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: task.notes || '',
+    })));
+  }
+
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     return json(response, 200, database.prepare(`
       SELECT p.id, p.name, p.archived,
@@ -415,7 +434,7 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/styles.css') {
     return serveFile(response, 'styles.css', 'text/css; charset=utf-8');
   }
-  if (request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) {
+  if (request.method === 'GET' && (/^\/projects\/\d+$/.test(url.pathname) || url.pathname === '/directory')) {
     return serveFile(response, 'index.html', 'text/html; charset=utf-8');
   }
 

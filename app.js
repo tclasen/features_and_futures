@@ -1,5 +1,6 @@
 const listView = document.querySelector('#project-list');
 const detailView = document.querySelector('#project-detail');
+const directoryView = document.querySelector('#task-directory');
 const projectList = document.querySelector('#projects');
 const form = document.querySelector('#create-project-form');
 const nameInput = document.querySelector('#project-name');
@@ -80,6 +81,7 @@ function includesSearch(value, query) {
 async function showList() {
   listView.hidden = false;
   detailView.hidden = true;
+  directoryView.hidden = true;
   appliedProjectQuery = '';
   projectSearchInput.value = '';
   renderProjects(await fetchProjects());
@@ -113,8 +115,70 @@ async function showProject(id) {
   taskForm.querySelectorAll('input, button').forEach((control) => { control.disabled = activeProjectArchived; });
   listView.hidden = true;
   detailView.hidden = false;
+  directoryView.hidden = true;
   taskAlert.hidden = true;
   await refreshTasks();
+}
+
+const directoryState = { query: '', range: { from: '', through: '' } };
+const directoryDateValid = (value) => {
+  if (!value) return true;
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || year > 9999) return false;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
+
+async function showDirectory() {
+  listView.hidden = true;
+  detailView.hidden = true;
+  directoryView.hidden = false;
+  const scope = document.querySelector('#directory-scope');
+  const filter = document.querySelector('#directory-task-filter');
+  const priority = document.querySelector('#directory-priority-filter');
+  scope.value = 'Active'; filter.value = 'All'; priority.value = 'All';
+  directoryState.query = '';
+  directoryState.range = { from: '', through: '' };
+  document.querySelector('#directory-search').value = '';
+  document.querySelector('#directory-due-from').value = '';
+  document.querySelector('#directory-due-through').value = '';
+  document.querySelector('#directory-alert').hidden = true;
+  await refreshDirectory();
+}
+
+async function refreshDirectory() {
+  const response = await fetch('/api/directory');
+  if (!response.ok) throw new Error('Could not load task directory');
+  const tasks = await response.json();
+  const scope = document.querySelector('#directory-scope').value === 'Archived';
+  const filter = document.querySelector('#directory-task-filter').value;
+  const priority = document.querySelector('#directory-priority-filter').value;
+  const results = document.querySelector('#directory-results');
+  results.replaceChildren();
+  for (const task of tasks) {
+    if (task.archived !== scope) continue;
+    if (filter === 'Deleted' ? !task.deleted : task.deleted) continue;
+    if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if (priority !== 'All' && task.priority !== priority) continue;
+    if ((directoryState.range.from || directoryState.range.through) && !task.dueDate) continue;
+    if (directoryState.range.from && task.dueDate < directoryState.range.from) continue;
+    if (directoryState.range.through && task.dueDate > directoryState.range.through) continue;
+    if (!includesSearch(task.title, directoryState.query)) continue;
+    const row = document.createElement('div');
+    row.className = 'task-row'; row.dataset.testid = 'directory-task-row';
+    const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
+    const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
+    const completion = document.createElement('span'); completion.dataset.testid = 'directory-task-completion'; completion.textContent = task.completed ? 'Completed' : 'Open';
+    const taskPriority = document.createElement('span'); taskPriority.dataset.testid = 'directory-task-priority'; taskPriority.textContent = task.priority;
+    const dueDate = document.createElement('span'); dueDate.dataset.testid = 'directory-task-due-date'; dueDate.textContent = task.dueDate;
+    const notes = document.createElement('span'); notes.dataset.testid = 'directory-task-notes'; notes.textContent = task.notes; notes.style.whiteSpace = 'pre-wrap';
+    const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Open project';
+    open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
+    row.append(title, owner, completion, taskPriority, dueDate, notes, open);
+    results.append(row);
+  }
 }
 
 async function refreshTasks() {
@@ -332,6 +396,7 @@ async function renderRoute() {
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   try {
     if (match) await showProject(match[1]);
+    else if (location.pathname === '/directory') await showDirectory();
     else await showList();
   } catch {
     listView.hidden = false;
@@ -390,6 +455,30 @@ importForm.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
+document.querySelector('#directory-projects').addEventListener('click', () => navigate('/'));
+for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) {
+  document.querySelector(`#${id}`).addEventListener('change', refreshDirectory);
+}
+document.querySelector('#directory-search-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  directoryState.query = document.querySelector('#directory-search').value.trim();
+  refreshDirectory();
+});
+document.querySelector('#directory-apply-due-range').addEventListener('click', () => {
+  const from = document.querySelector('#directory-due-from').value.trim();
+  const through = document.querySelector('#directory-due-through').value.trim();
+  const error = document.querySelector('#directory-alert');
+  if (!directoryDateValid(from) || !directoryDateValid(through)) {
+    error.textContent = 'Due range must use valid YYYY-MM-DD dates'; error.hidden = false; return;
+  }
+  if (from && through && from > through) {
+    error.textContent = 'Due from must not be after Due through'; error.hidden = false; return;
+  }
+  error.hidden = true;
+  directoryState.range = { from, through };
+  refreshDirectory();
+});
 document.querySelector('#download-project').addEventListener('click', async (event) => {
   const projectId = event.currentTarget.dataset.projectId;
   const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/export`);
