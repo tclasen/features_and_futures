@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeDueDate } from '../due-date.js';
+import { normalizeDueDate, normalizeDueRange } from '../due-date.js';
 
 test('due dates validate Gregorian days and canonical four-digit years', () => {
   for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29',
@@ -14,4 +14,21 @@ test('due dates validate Gregorian days and canonical four-digit years', () => {
     assert.equal(normalizeDueDate(date), null, date);
   }
   for (const value of ['', ' \t\n ']) assert.equal(normalizeDueDate(value), '');
+});
+
+test('due ranges normalize optional inclusive boundaries and distinguish invalid dates from reversed ranges', () => {
+  for (const [from, through, expected] of [
+    ['', ' \t ', { dueFrom: '', dueThrough: '' }],
+    [' 0001-01-01 ', '9999-12-31', { dueFrom: '0001-01-01', dueThrough: '9999-12-31' }],
+    ['2000-02-29', '2000-02-29', { dueFrom: '2000-02-29', dueThrough: '2000-02-29' }],
+    ['', '2026-01-01', { dueFrom: '', dueThrough: '2026-01-01' }],
+    ['2026-01-01', '', { dueFrom: '2026-01-01', dueThrough: '' }],
+  ]) assert.deepEqual(normalizeDueRange(from, through), expected);
+  for (const [from, through] of [['1900-02-29', ''], ['', '0000-01-01'],
+    ['2026-1-01', '2026-01-01'], ['2026-04-31', '2026-01-01']]) {
+    assert.deepEqual(normalizeDueRange(from, through), { error: 'Due range must use valid YYYY-MM-DD dates' });
+  }
+  assert.deepEqual(normalizeDueRange('2026-01-02', '2026-01-01'), {
+    error: 'Due from must not be after Due through',
+  });
 });

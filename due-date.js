@@ -11,3 +11,15 @@ export function normalizeDueDate(value) {
   const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day >= 1 && day <= daysInMonth[month - 1] ? date : null;
 }
+
+export function normalizeDueRange(from, through) {
+  const dueFrom = normalizeDueDate(from);
+  const dueThrough = normalizeDueDate(through);
+  if (dueFrom === null || dueThrough === null) {
+    return { error: 'Due range must use valid YYYY-MM-DD dates' };
+  }
+  if (dueFrom && dueThrough && dueFrom > dueThrough) {
+    return { error: 'Due from must not be after Due through' };
+  }
+  return { dueFrom, dueThrough };
+}

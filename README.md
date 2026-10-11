@@ -58,3 +58,11 @@ show an alert and leave saved data unchanged. Dates have no timezone conversion,
 persist across restarts, and survive renaming, archival, and restoration.
 Saving dates preserves both filters and all other task data. Archived projects
 disable due-date controls and reject direct date edits until restored.
+Due from and Due through apply an inclusive date range that intersects completion
+and priority filters. Blank boundaries are unbounded; undated tasks match only
+when both boundaries are blank. Invalid dates or reversed ranges show an alert
+and preserve the previously applied range. Applying a range never edits task data.
+Task edits immediately re-evaluate membership, and all edits retain the three
+filters. Range controls remain usable in archived projects. Applied boundaries
+are page state in the URL, preserved on reload; reopening from the project list
+starts with empty boundaries.
