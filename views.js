@@ -42,17 +42,25 @@ function page(title, content) {
 </html>`;
 }
 
-export function renderProjects(projects, filter = 'Active', error = '') {
+export function renderProjects(projects, filter = 'Active', error = '', query = '') {
   return page('Projects', `
     <h1>Workboard</h1>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create" method="post" action="/projects">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text">
       <button type="submit">Create project</button>
     </form>
+    <form class="create project-search" method="get" action="/">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <label for="project-search">Project search</label>
+      <input id="project-search" name="query" type="text" value="${escapeHtml(query)}">
+      <button type="submit">Search projects</button>
+    </form>
     <form class="project-filter" method="get" action="/">
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['Active', 'Archived'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -67,16 +75,18 @@ export function renderProjects(projects, filter = 'Active', error = '') {
           <button type="submit">Open project</button>
         </form>
         <form method="post" action="/projects/${escapeHtml(project.id)}/${project.archived ? 'restore' : 'archive'}">
+          <input type="hidden" name="query" value="${escapeHtml(query)}">
           <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
         </form>
       </li>`).join('')}</ul>` : '<p class="empty">No projects yet.</p>'}
   `);
 }
 
-export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, destinations = []) {
+export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, destinations = [], query = '') {
   const moveDisabled = project.archived || destinations.length === 0;
   const projectPath = `/projects/${escapeHtml(project.id)}`;
-  const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
+  const rangeFields = `<input type="hidden" name="query" value="${escapeHtml(query)}">
+      <input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
       <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   const filterFields = `<input type="hidden" name="filter" value="${escapeHtml(filter)}">
       <input type="hidden" name="priorityFilter" value="${escapeHtml(priority)}">
@@ -119,6 +129,12 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
         ${['All', 'Low', 'Normal', 'High'].map((option) => `<option${priority === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <noscript><button type="submit">Apply filter</button></noscript>
+    </form>
+    <form class="create task-search" method="post" action="${projectPath}/search">
+      ${filterFields}
+      <label for="task-search">Task search</label>
+      <input id="task-search" name="searchQuery" type="text" value="${escapeHtml(query)}">
+      <button type="submit">Search tasks</button>
     </form>
     <form class="create due-range" method="post" action="${projectPath}/due-range">
       ${filterFields}

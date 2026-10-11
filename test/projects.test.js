@@ -1012,3 +1012,88 @@ test('remembered project positions migrate and survive reverse returns, new arri
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('project and task searches intersect filters and survive edits, archives, and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const db = new DatabaseSync(databasePath);
+  db.exec(`CREATE TABLE projects (
+    position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL
+  ); INSERT INTO projects (id, name) VALUES ('a', 'Alpha  Team'), ('b', 'Alpha Other'), ('c', 'Beta');`);
+  db.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const projectNames = (html) => [...html.matchAll(/data-testid="project-row">\s*<span>([^<]*)/g)].map((m) => m[1]);
+    const titles = (html) => [...html.matchAll(/aria-label="Complete ([^"]*)"/g)].map((m) => m[1]);
+    assert.deepEqual(projectNames(await get('/?query=%20aLPHa%20')), ['Alpha  Team', 'Alpha Other']);
+    assert.deepEqual(projectNames(await get('/?query=alpha%20team')), []);
+    assert.deepEqual(projectNames(await get('/?query=alpha%20%20team')), ['Alpha  Team']);
+    await post('/projects/b/archive', { query: 'alpha' });
+    assert.deepEqual(projectNames(await get('/?filter=Archived&query=alpha')), ['Alpha Other']);
+    assert.deepEqual(projectNames(await get('/?query=alpha')), ['Alpha  Team']);
+    assert.deepEqual(projectNames(await get('/')), ['Alpha  Team', 'Beta']);
+    for (const title of ['Alpha One', 'ALPHA  Two', 'Other', 'Alpha Undated']) {
+      await post('/projects/a/tasks', { title });
+    }
+    const paths = [...(await get('/projects/a')).matchAll(/action="([^"]+\/tasks\/[^/"?]+)"/g)].map((m) => m[1]);
+    await post(`${paths[0]}/priority`, { priority: 'High' });
+    await post(`${paths[1]}/priority`, { priority: 'High' });
+    await post(`${paths[0]}/due-date`, { dueDate: '2026-04-01' });
+    await post(`${paths[1]}/due-date`, { dueDate: '2026-04-30' });
+    await post(paths[1], { completed: '1' });
+    const state = { filter: 'Open', priorityFilter: 'High', dueFrom: '2026-04-01', dueThrough: '2026-04-30', query: 'alpha' };
+    let response = await post('/projects/a/search', { ...state, searchQuery: '  ALpha  ' });
+    let location = response.headers.get('location');
+    assert.equal(new URL(location, server.url).searchParams.get('query'), 'ALpha');
+    assert.deepEqual(titles(await get(location)), ['Alpha One']);
+    const filtered = `/projects/a?${new URLSearchParams(state)}`;
+    assert.deepEqual(titles(await get(filtered)), ['Alpha One']);
+    assert.deepEqual(titles(await get('/projects/a?query=alpha%20%20two')), ['ALPHA  Two']);
+    response = await post(`${paths[0]}/rename`, { ...state, title: 'Not matching' });
+    assert.deepEqual(titles(await get(response.headers.get('location'))), []);
+    await post(`${paths[0]}/rename`, { ...state, title: 'Alpha Renamed' });
+    response = await post(paths[0], { ...state, completed: '1' });
+    assert.deepEqual(titles(await get(response.headers.get('location'))), []);
+    await post(paths[0], state);
+    response = await post(`${paths[0]}/due-date`, { ...state, dueDate: 'bad' });
+    assert.equal(response.status, 422);
+    assert.deepEqual(titles(await response.text()), ['Alpha Renamed']);
+    response = await post('/projects/a/due-range', { ...state, rangeFrom: 'bad', rangeThrough: '' });
+    assert.equal(response.status, 422);
+    assert.deepEqual(titles(await response.text()), ['Alpha Renamed']);
+    for (const [path, values] of [
+      ['/projects/a/rename', { name: 'Renamed project' }],
+      ['/projects/a/default-priority', { priority: 'High' }],
+      ['/projects/a/tasks', { title: 'Does not match' }],
+      [`${paths[0]}/priority`, { priority: 'High' }],
+    ]) {
+      response = await post(path, { ...state, ...values });
+      assert.equal(new URL(response.headers.get('location'), server.url).searchParams.get('query'), 'alpha');
+      assert.deepEqual(titles(await get(response.headers.get('location'))), ['Alpha Renamed']);
+    }
+    await post('/projects/a/archive');
+    assert.deepEqual(titles(await get(filtered)), ['Alpha Renamed']);
+    response = await post('/projects/a/search', { ...state, searchQuery: '' });
+    assert.deepEqual(titles(await get(response.headers.get('location'))), ['Alpha Renamed']);
+    await post('/projects/a/restore');
+    response = await post(`${paths[0]}/move`, { ...state, destination: 'c' });
+    assert.deepEqual(titles(await get(response.headers.get('location'))), []);
+    const destinationTask = (await get('/projects/c')).match(/action="([^"]+\/tasks\/[^/"?]+)"/)[1];
+    await post(`${destinationTask}/move`, { destination: 'a' });
+    assert.deepEqual(titles(await get(filtered)), ['Alpha Renamed']);
+    const before = await get(filtered);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(filtered), before);
+    assert.deepEqual(titles(await get('/projects/a')), ['Alpha Renamed', 'ALPHA  Two', 'Other', 'Alpha Undated', 'Does not match']);
+    assert.match(await get('/projects/a'), /id="task-search" name="searchQuery" type="text" value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
