@@ -73,8 +73,10 @@ feature was introduced cannot be reconstructed. Project renaming, archival and
 restoration preserve remembered positions.
 
 Project search and Task search apply trimmed substring queries with ASCII-only
-case-insensitive matching; internal whitespace remains significant. Blank queries
-match all rows. Project search intersects Active/Archived; task search intersects
+case-insensitive matching. Runs of ASCII spaces and horizontal tabs in both queries
+and names/titles match as one space; other internal whitespace remains significant.
+Normalization is only for matching: saved and displayed names/titles remain unchanged.
+Blank queries match all rows. Project search intersects Active/Archived; task search intersects
 completion, priority, and applied due range. Edits immediately reapply the retained
 query without changing other filters, ordering, saved data, or summaries. Search
 remains usable in archived projects. Opening either page (including returning via

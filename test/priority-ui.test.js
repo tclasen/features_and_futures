@@ -528,8 +528,12 @@ test('project search is applied, ASCII-only, and intersects archive filtering', 
   assert.equal(input.value, 'aLpHa');
   filter.value = 'Active';
   filter.listeners.change();
-  submitSearch(app, 'project', 'alpha  team');
-  assert.deepEqual(names(), ['Alpha  Team']);
+  const original = JSON.stringify(projects);
+  for (const query of ['alpha team', 'alpha  team', ' \tALPHA\t \tteam\t ']) {
+    submitSearch(app, 'project', query);
+    assert.deepEqual(names(), ['Alpha  Team', 'ALPHA Team']);
+  }
+  assert.equal(JSON.stringify(projects), original);
   submitSearch(app, 'project', 'älpha');
   assert.deepEqual(names(), []);
   submitSearch(app, 'project', '  ');
@@ -562,7 +566,7 @@ test('task search intersects all filters and edits reapply the retained query', 
   submitSearch(ui.app, 'task', '   ');
   assert.deepEqual(ui.titles(), ['No longer matches']);
   submitSearch(ui.app, 'task', 'no  longer');
-  assert.deepEqual(ui.titles(), []);
+  assert.deepEqual(ui.titles(), ['No longer matches']);
   const archived = await projectUI(true);
   submitSearch(archived.app, 'task', 'LOW');
   assert.deepEqual(archived.titles(), ['Low done', 'Low open']);
@@ -570,4 +574,27 @@ test('task search intersects all filters and edits reapply the retained query', 
   const reopened = await projectUI();
   assert.equal(reopened.byId('task-search').value, '');
   assert.equal(reopened.rows().length, 6);
+});
+
+test('search collapses only ASCII spaces and tabs without rewriting task titles', async () => {
+  const ui = await projectUI();
+  const titles = ['MiXeD \t  Team', 'mixed team', 'mixed\nteam', 'mixed\u00a0team', 'MİXED team', 'Unrelated'];
+  ui.tasks.forEach((task, index) => { task.title = titles[index]; });
+  const original = JSON.stringify(ui.tasks);
+  for (const query of ['mixed team', ' \tmIXed\t \tTEAM  ']) {
+    submitSearch(ui.app, 'task', query);
+    assert.deepEqual(ui.titles(), titles.slice(0, 2));
+  }
+  await ui.change('task-filter', 'Completed');
+  assert.deepEqual(ui.titles(), ['mixed team']);
+  await ui.change('priority-filter', 'Low');
+  assert.deepEqual(ui.titles(), ['mixed team']);
+  submitSearch(ui.app, 'task', '\t ');
+  assert.deepEqual(ui.titles(), ['mixed team']);
+  await ui.change('priority-filter', 'All');
+  assert.deepEqual(ui.titles(), ['mixed team', 'mixed\u00a0team', 'Unrelated']);
+  await ui.change('task-filter', 'All');
+  assert.deepEqual(ui.titles(), titles);
+  assert.equal(JSON.stringify(ui.tasks), original);
+  assert.equal(ui.requests.length, 0);
 });

@@ -25,10 +25,11 @@ async function request(path, options) {
   return body;
 }
 
-// Fold only ASCII letters; non-ASCII characters and internal whitespace stay exact.
+// Normalize only for matching; keep saved and displayed text unchanged.
 function searchMatches(text, query) {
-  const fold = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
-  return fold(text).includes(fold(query));
+  const normalize = value => value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return normalize(text).includes(normalize(query));
 }
 
 function searchForm(kind, onSearch) {
