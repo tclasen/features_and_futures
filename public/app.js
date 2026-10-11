@@ -107,7 +107,7 @@ async function renderList() {
   });
 }
 
-async function renderProject(id) {
+async function renderProject(id, viewState = {}) {
   app.replaceChildren();
   const project = await request(`/api/projects/${encodeURIComponent(id)}`);
   const back = element('button', 'back', 'Projects');
@@ -149,7 +149,11 @@ async function renderProject(id) {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      await renderProject(id);
+      await renderProject(id, {
+        taskFilter: filter.value,
+        priorityFilter: priorityFilter.value,
+        appliedRange,
+      });
     } catch (error) {
       renameAlert.textContent = error.message;
       renameAlert.hidden = false;
@@ -213,6 +217,7 @@ async function renderProject(id) {
     option.value = value.toLowerCase();
     filter.append(option);
   }
+  filter.value = viewState.taskFilter || 'all';
   filterLabel.append(filter);
   app.append(filterLabel);
 
@@ -225,8 +230,40 @@ async function renderProject(id) {
     option.value = value.toLowerCase();
     priorityFilter.append(option);
   }
+  priorityFilter.value = viewState.priorityFilter || 'all';
   priorityFilterLabel.append(priorityFilter);
   app.append(priorityFilterLabel);
+
+  let appliedRange = viewState.appliedRange || { from: '', through: '' };
+  const dueRangeForm = element('form', 'due-range-form');
+  const dueFromLabel = element('label', '', 'Due from');
+  const dueFrom = element('input');
+  dueFrom.type = 'text';
+  dueFrom.autocomplete = 'off';
+  dueFrom.setAttribute('aria-label', 'Due from');
+  dueFrom.value = appliedRange.from;
+  dueFromLabel.append(dueFrom);
+  const dueThroughLabel = element('label', '', 'Due through');
+  const dueThrough = element('input');
+  dueThrough.type = 'text';
+  dueThrough.autocomplete = 'off';
+  dueThrough.setAttribute('aria-label', 'Due through');
+  dueThrough.value = appliedRange.through;
+  dueThroughLabel.append(dueThrough);
+  const applyDueRange = element('button', 'secondary', 'Apply due range');
+  applyDueRange.type = 'submit';
+  dueRangeForm.append(dueFromLabel, dueThroughLabel, applyDueRange);
+  app.append(dueRangeForm);
+  function validCalendarDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  }
 
   const list = element('div', 'task-list');
   list.setAttribute('aria-label', 'Tasks');
@@ -237,7 +274,10 @@ async function renderProject(id) {
     list.replaceChildren();
     const visible = tasks.filter((task) =>
       (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed)) &&
-      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value));
+      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
+      ((!appliedRange.from && !appliedRange.through) || (Boolean(task.dueDate) &&
+        (!appliedRange.from || task.dueDate >= appliedRange.from) &&
+        (!appliedRange.through || task.dueDate <= appliedRange.through))));
     for (const task of visible) {
       const row = element('article', 'task-row');
       row.dataset.testid = 'task-row';
@@ -359,6 +399,24 @@ async function renderProject(id) {
 
   filter.addEventListener('change', renderTasks);
   priorityFilter.addEventListener('change', renderTasks);
+  dueRangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+      alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+      alert.hidden = false;
+      return;
+    }
+    if (from && through && from > through) {
+      alert.textContent = 'Due from must not be after Due through';
+      alert.hidden = false;
+      return;
+    }
+    appliedRange = { from, through };
+    renderTasks();
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     alert.hidden = true;
