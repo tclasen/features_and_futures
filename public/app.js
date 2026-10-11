@@ -50,6 +50,10 @@ async function showPage() {
   if (!response.ok) { document.querySelector('#project-title').textContent = 'Project not found'; return; }
   const project = await response.json(); window.currentProjectArchived = project.archived;
   document.querySelector('#project-title').textContent = project.name;
+  const renameInput = document.querySelector('#new-project-name');
+  renameInput.value = project.name;
+  renameInput.disabled = project.archived;
+  document.querySelector('#rename-form button').disabled = project.archived;
   document.querySelector('#archived-notice').hidden = !project.archived;
   document.querySelector('#task-title').disabled = project.archived;
   document.querySelector('#task-form button').disabled = project.archived;
@@ -62,6 +66,18 @@ document.querySelector('#create-form').addEventListener('submit', async event =>
   const response = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
   if (!response.ok) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
   input.value = ''; alert.hidden = true; await loadProjects();
+});
+
+document.querySelector('#rename-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#new-project-name');
+  const name = input.value.trim();
+  const message = document.querySelector('#rename-alert');
+  if (!name) { message.textContent = 'Project name is required'; message.hidden = false; return; }
+  const response = await fetch(`/api/projects/${activeProjectId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+  if (!response.ok) { message.textContent = response.status === 400 ? 'Project name is required' : 'Unable to rename project'; message.hidden = false; return; }
+  message.hidden = true;
+  await showPage();
 });
 
 document.querySelector('#task-form').addEventListener('submit', async event => {

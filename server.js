@@ -44,6 +44,16 @@ const server = http.createServer(async (req, res) => {
     return result.changes ? send(200, { status: 'ok' }) : send(404, { error: 'Project not found' });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (req.method === 'PATCH' && projectMatch) {
+    try {
+      const data = await readBody();
+      if (typeof data.name !== 'string' || !data.name.trim()) return send(400, { error: 'Project name is required' });
+      const result = db.prepare('UPDATE projects SET name=? WHERE id=? AND archived=0').run(data.name.trim(), Number(projectMatch[1]));
+      if (result.changes) return send(200, { name: data.name.trim() });
+      const project = db.prepare('SELECT id FROM projects WHERE id=?').get(Number(projectMatch[1]));
+      return project ? send(409, { error: 'Archived project' }) : send(404, { error: 'Project not found' });
+    } catch { return send(400, { error: 'Invalid request' }); }
+  }
   if (req.method === 'GET' && projectMatch) { const project = db.prepare('SELECT id, name, archived FROM projects WHERE id=?').get(Number(projectMatch[1])); return project ? send(200, { ...project, archived: Boolean(project.archived) }) : send(404, { error: 'Project not found' }); }
   if (req.method === 'GET') {
     const file = url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname) ? 'index.html' : url.pathname.slice(1);
