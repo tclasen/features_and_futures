@@ -9,7 +9,8 @@ const dbPath = process.env.DB_PATH || join(root, 'workboard.sqlite');
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 db.exec('PRAGMA foreign_keys = ON');
 const port = Number(process.env.PORT || 8080);
@@ -28,7 +29,7 @@ const server = http.createServer(async (req, res) => {
     const projectId = Number(tasksMatch[1]);
     const project = db.prepare('SELECT id, archived FROM projects WHERE id=?').get(projectId);
     if (!project) return send(404, { error: 'Project not found' });
-    if (req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed FROM tasks WHERE project_id=? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    if (req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id=? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (project.archived) return send(409, { error: 'Archived project' });
       try { const data = await readBody(); if (typeof data.title !== 'string' || !data.title.trim()) return send(400, { error: 'Task title is required' }); const title = data.title.trim(); const result = db.prepare('INSERT INTO tasks(project_id,title) VALUES (?,?)').run(projectId, title); return send(201, { id: Number(result.lastInsertRowid), title, completed: false }); } catch { return send(400, { error: 'Invalid request' }); }
@@ -44,6 +45,13 @@ const server = http.createServer(async (req, res) => {
         const result = db.prepare('UPDATE tasks SET title=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(title, Number(taskMatch[1]));
         if (result.changes) return send(200, { title });
         const task = db.prepare('SELECT t.id, p.archived FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=?').get(Number(taskMatch[1]));
+        return task ? send(409, { error: 'Archived project' }) : send(404, { error: 'Task not found' });
+      }
+      if (typeof data.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(data.priority)) return send(400, { error: 'Invalid priority' });
+        const result = db.prepare('UPDATE tasks SET priority=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(data.priority, Number(taskMatch[1]));
+        if (result.changes) return send(200, { priority: data.priority });
+        const task = db.prepare('SELECT t.id FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=?').get(Number(taskMatch[1]));
         return task ? send(409, { error: 'Archived project' }) : send(404, { error: 'Task not found' });
       }
       if (typeof data.completed !== 'boolean') return send(400, { error: 'Invalid completion state' });

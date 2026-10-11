@@ -49,7 +49,15 @@ async function loadTasks() {
       if (!result.ok) { message.textContent = result.status === 400 ? 'Task title is required' : 'Unable to rename task'; message.hidden = false; return; }
       message.hidden = true; await loadTasks();
     });
-    row.append(renameInput, renameButton); container.append(row);
+    row.append(renameInput, renameButton);
+    const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority'); priority.disabled = Boolean(window.currentProjectArchived);
+    for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; priority.append(option); }
+    priority.value = task.priority || 'Normal';
+    priority.addEventListener('change', async () => {
+      const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+      if (!result.ok) priority.value = task.priority || 'Normal';
+    });
+    row.append(priority); container.append(row);
   }
 }
 
