@@ -28,6 +28,8 @@ async function loadTasks() {
   const response = await fetch(`/api/projects/${activeProjectId}/tasks`);
   if (!response.ok) throw new Error('Could not load tasks');
   const tasks = await response.json();
+  const projectsResponse = await fetch('/api/projects');
+  const activeProjects = projectsResponse.ok ? (await projectsResponse.json()).filter(project => !project.archived && String(project.id) !== String(activeProjectId)) : [];
   const filter = document.querySelector('#task-filter').value;
   const priorityFilter = document.querySelector('#priority-filter').value;
   const { from, through } = appliedDueRange;
@@ -75,7 +77,16 @@ async function loadTasks() {
       if (!result.ok) { message.textContent = result.status === 400 ? 'Due date must be a valid YYYY-MM-DD date' : 'Unable to save due date'; message.hidden = false; return; }
       message.hidden = true; await loadTasks();
     });
-    row.append(dueDate, saveDate); container.append(row);
+    row.append(dueDate, saveDate);
+    const destination = document.createElement('select'); destination.setAttribute('aria-label', 'Destination project');
+    for (const project of activeProjects) { const option = document.createElement('option'); option.value = project.id; option.textContent = project.name; destination.append(option); }
+    const moveButton = document.createElement('button'); moveButton.type = 'button'; moveButton.textContent = 'Move task';
+    destination.disabled = moveButton.disabled = Boolean(window.currentProjectArchived) || activeProjects.length === 0;
+    moveButton.addEventListener('click', async () => {
+      const result = await fetch(`/api/tasks/${task.id}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destination_project_id: destination.value }) });
+      if (result.ok) await loadTasks();
+    });
+    row.append(destination, moveButton); container.append(row);
   }
 }
 
