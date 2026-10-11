@@ -37,6 +37,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const indexHtml = await readFile(resolve(root, 'public/index.html'));
 const appJs = await readFile(resolve(root, 'public/app.js'));
 const appCss = await readFile(resolve(root, 'public/style.css'));
@@ -75,6 +76,20 @@ const server = http.createServer(async (req, res) => {
       const id = randomUUID();
       insertProject.run(id, name, Date.now());
       return send(201, JSON.stringify({ id, name }));
+    }
+    const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (req.method === 'PATCH' && renameMatch) {
+      const project = getProject.get(renameMatch[1]);
+      if (!project) return send(404, JSON.stringify({ error: 'Project not found' }));
+      if (project.archived) return send(409, JSON.stringify({ error: 'Archived project cannot be changed' }));
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      let payload;
+      try { payload = JSON.parse(raw); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+      const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      renameProject.run(name, project.id);
+      return send(200, JSON.stringify({ ...project, name }));
     }
     const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
     if (tasksMatch && (req.method === 'GET' || req.method === 'POST')) {
