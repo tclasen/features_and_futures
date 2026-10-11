@@ -1,0 +1,3380 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: workboard.spec.mjs >> 015 archived rename controls become available after restoration
+- Location: runs/instruction-effects/eval-014/tasks/task-014/suite/workboard.spec.mjs:243:3
+
+# Error details
+
+```
+Test timeout of 20000ms exceeded.
+```
+
+```
+Error: locator.click: Test timeout of 20000ms exceeded.
+Call log:
+  - waiting for getByTestId('project-row').filter({ hasText: 'task-014 Rename archive' }).visible().getByRole('button', { name: 'Restore project', exact: true })
+
+```
+
+# Page snapshot
+
+```yaml
+- main [ref=f2e2]:
+  - heading "Workboard" [level=1] [ref=f2e3]
+  - generic [ref=f2e4]:
+    - text: Project filter
+    - combobox "Project filter" [ref=f2e5]:
+      - option "Active"
+      - option "Archived" [selected]
+  - generic [ref=f2e6]:
+    - generic [ref=f2e7]:
+      - text: Project search
+      - textbox "Project search" [ref=f2e8]
+    - button "Search projects" [ref=f2e9] [cursor=pointer]
+  - generic [ref=f2e10]:
+    - generic [ref=f2e11]:
+      - generic [ref=f2e12]:
+        - generic [ref=f2e13]: task-001 Alpha create
+        - generic [ref=f2e14]: 0/0 completed
+      - generic [ref=f2e15]:
+        - button "Open project" [ref=f2e16] [cursor=pointer]
+        - button "Archive project" [ref=f2e17] [cursor=pointer]
+    - generic [ref=f2e18]:
+      - generic [ref=f2e19]:
+        - generic [ref=f2e20]: task-001 Blank validation sentinel
+        - generic [ref=f2e21]: 0/0 completed
+      - generic [ref=f2e22]:
+        - button "Open project" [ref=f2e23] [cursor=pointer]
+        - button "Archive project" [ref=f2e24] [cursor=pointer]
+    - generic [ref=f2e25]:
+      - generic [ref=f2e26]:
+        - generic [ref=f2e27]: task-001 Order first
+        - generic [ref=f2e28]: 0/0 completed
+      - generic [ref=f2e29]:
+        - button "Open project" [ref=f2e30] [cursor=pointer]
+        - button "Archive project" [ref=f2e31] [cursor=pointer]
+    - generic [ref=f2e32]:
+      - generic [ref=f2e33]:
+        - generic [ref=f2e34]: task-001 Order second
+        - generic [ref=f2e35]: 0/0 completed
+      - generic [ref=f2e36]:
+        - button "Open project" [ref=f2e37] [cursor=pointer]
+        - button "Archive project" [ref=f2e38] [cursor=pointer]
+    - generic [ref=f2e39]:
+      - generic [ref=f2e40]:
+        - generic [ref=f2e41]: task-001 Persistence sentinel
+        - generic [ref=f2e42]: 0/0 completed
+      - generic [ref=f2e43]:
+        - button "Open project" [ref=f2e44] [cursor=pointer]
+        - button "Archive project" [ref=f2e45] [cursor=pointer]
+    - generic [ref=f2e46]:
+      - generic [ref=f2e47]:
+        - generic [ref=f2e48]: task-002 Alpha create
+        - generic [ref=f2e49]: 0/0 completed
+      - generic [ref=f2e50]:
+        - button "Open project" [ref=f2e51] [cursor=pointer]
+        - button "Archive project" [ref=f2e52] [cursor=pointer]
+    - generic [ref=f2e53]:
+      - generic [ref=f2e54]:
+        - generic [ref=f2e55]: task-002 Blank validation sentinel
+        - generic [ref=f2e56]: 0/0 completed
+      - generic [ref=f2e57]:
+        - button "Open project" [ref=f2e58] [cursor=pointer]
+        - button "Archive project" [ref=f2e59] [cursor=pointer]
+    - generic [ref=f2e60]:
+      - generic [ref=f2e61]:
+        - generic [ref=f2e62]: task-002 Order first
+        - generic [ref=f2e63]: 0/0 completed
+      - generic [ref=f2e64]:
+        - button "Open project" [ref=f2e65] [cursor=pointer]
+        - button "Archive project" [ref=f2e66] [cursor=pointer]
+    - generic [ref=f2e67]:
+      - generic [ref=f2e68]:
+        - generic [ref=f2e69]: task-002 Order second
+        - generic [ref=f2e70]: 0/0 completed
+      - generic [ref=f2e71]:
+        - button "Open project" [ref=f2e72] [cursor=pointer]
+        - button "Archive project" [ref=f2e73] [cursor=pointer]
+    - generic [ref=f2e74]:
+      - generic [ref=f2e75]:
+        - generic [ref=f2e76]: task-002 Task reload
+        - generic [ref=f2e77]: 0/1 completed
+      - generic [ref=f2e78]:
+        - button "Open project" [ref=f2e79] [cursor=pointer]
+        - button "Archive project" [ref=f2e80] [cursor=pointer]
+    - generic [ref=f2e81]:
+      - generic [ref=f2e82]:
+        - generic [ref=f2e83]: task-002 Task invalid
+        - generic [ref=f2e84]: 0/0 completed
+      - generic [ref=f2e85]:
+        - button "Open project" [ref=f2e86] [cursor=pointer]
+        - button "Archive project" [ref=f2e87] [cursor=pointer]
+    - generic [ref=f2e88]:
+      - generic [ref=f2e89]:
+        - generic [ref=f2e90]: task-002 Task owner
+        - generic [ref=f2e91]: 0/1 completed
+      - generic [ref=f2e92]:
+        - button "Open project" [ref=f2e93] [cursor=pointer]
+        - button "Archive project" [ref=f2e94] [cursor=pointer]
+    - generic [ref=f2e95]:
+      - generic [ref=f2e96]:
+        - generic [ref=f2e97]: task-002 Other project
+        - generic [ref=f2e98]: 0/0 completed
+      - generic [ref=f2e99]:
+        - button "Open project" [ref=f2e100] [cursor=pointer]
+        - button "Archive project" [ref=f2e101] [cursor=pointer]
+    - generic [ref=f2e102]:
+      - generic [ref=f2e103]:
+        - generic [ref=f2e104]: task-002 Task filters
+        - generic [ref=f2e105]: 0/2 completed
+      - generic [ref=f2e106]:
+        - button "Open project" [ref=f2e107] [cursor=pointer]
+        - button "Archive project" [ref=f2e108] [cursor=pointer]
+    - generic [ref=f2e109]:
+      - generic [ref=f2e110]:
+        - generic [ref=f2e111]: task-002 Persistence sentinel
+        - generic [ref=f2e112]: 1/1 completed
+      - generic [ref=f2e113]:
+        - button "Open project" [ref=f2e114] [cursor=pointer]
+        - button "Archive project" [ref=f2e115] [cursor=pointer]
+    - generic [ref=f2e116]:
+      - generic [ref=f2e117]:
+        - generic [ref=f2e118]: task-003 Alpha create
+        - generic [ref=f2e119]: 0/0 completed
+      - generic [ref=f2e120]:
+        - button "Open project" [ref=f2e121] [cursor=pointer]
+        - button "Archive project" [ref=f2e122] [cursor=pointer]
+    - generic [ref=f2e123]:
+      - generic [ref=f2e124]:
+        - generic [ref=f2e125]: task-003 Blank validation sentinel
+        - generic [ref=f2e126]: 0/0 completed
+      - generic [ref=f2e127]:
+        - button "Open project" [ref=f2e128] [cursor=pointer]
+        - button "Archive project" [ref=f2e129] [cursor=pointer]
+    - generic [ref=f2e130]:
+      - generic [ref=f2e131]:
+        - generic [ref=f2e132]: task-003 Order first
+        - generic [ref=f2e133]: 0/0 completed
+      - generic [ref=f2e134]:
+        - button "Open project" [ref=f2e135] [cursor=pointer]
+        - button "Archive project" [ref=f2e136] [cursor=pointer]
+    - generic [ref=f2e137]:
+      - generic [ref=f2e138]:
+        - generic [ref=f2e139]: task-003 Order second
+        - generic [ref=f2e140]: 0/0 completed
+      - generic [ref=f2e141]:
+        - button "Open project" [ref=f2e142] [cursor=pointer]
+        - button "Archive project" [ref=f2e143] [cursor=pointer]
+    - generic [ref=f2e144]:
+      - generic [ref=f2e145]:
+        - generic [ref=f2e146]: task-003 Task reload
+        - generic [ref=f2e147]: 0/1 completed
+      - generic [ref=f2e148]:
+        - button "Open project" [ref=f2e149] [cursor=pointer]
+        - button "Archive project" [ref=f2e150] [cursor=pointer]
+    - generic [ref=f2e151]:
+      - generic [ref=f2e152]:
+        - generic [ref=f2e153]: task-003 Task invalid
+        - generic [ref=f2e154]: 0/0 completed
+      - generic [ref=f2e155]:
+        - button "Open project" [ref=f2e156] [cursor=pointer]
+        - button "Archive project" [ref=f2e157] [cursor=pointer]
+    - generic [ref=f2e158]:
+      - generic [ref=f2e159]:
+        - generic [ref=f2e160]: task-003 Task owner
+        - generic [ref=f2e161]: 0/1 completed
+      - generic [ref=f2e162]:
+        - button "Open project" [ref=f2e163] [cursor=pointer]
+        - button "Archive project" [ref=f2e164] [cursor=pointer]
+    - generic [ref=f2e165]:
+      - generic [ref=f2e166]:
+        - generic [ref=f2e167]: task-003 Other project
+        - generic [ref=f2e168]: 0/0 completed
+      - generic [ref=f2e169]:
+        - button "Open project" [ref=f2e170] [cursor=pointer]
+        - button "Archive project" [ref=f2e171] [cursor=pointer]
+    - generic [ref=f2e172]:
+      - generic [ref=f2e173]:
+        - generic [ref=f2e174]: task-003 Task filters
+        - generic [ref=f2e175]: 0/2 completed
+      - generic [ref=f2e176]:
+        - button "Open project" [ref=f2e177] [cursor=pointer]
+        - button "Archive project" [ref=f2e178] [cursor=pointer]
+    - generic [ref=f2e179]:
+      - generic [ref=f2e180]:
+        - generic [ref=f2e181]: task-003 Archive lifecycle
+        - generic [ref=f2e182]: 0/0 completed
+      - generic [ref=f2e183]:
+        - button "Open project" [ref=f2e184] [cursor=pointer]
+        - button "Archive project" [ref=f2e185] [cursor=pointer]
+    - generic [ref=f2e186]:
+      - generic [ref=f2e187]:
+        - generic [ref=f2e188]: task-003 Archive tasks
+        - generic [ref=f2e189]: 1/1 completed
+      - generic [ref=f2e190]:
+        - button "Open project" [ref=f2e191] [cursor=pointer]
+        - button "Archive project" [ref=f2e192] [cursor=pointer]
+    - generic [ref=f2e193]:
+      - generic [ref=f2e194]:
+        - generic [ref=f2e195]: task-003 Summary project
+        - generic [ref=f2e196]: 1/2 completed
+      - generic [ref=f2e197]:
+        - button "Open project" [ref=f2e198] [cursor=pointer]
+        - button "Archive project" [ref=f2e199] [cursor=pointer]
+    - generic [ref=f2e200]:
+      - generic [ref=f2e201]:
+        - generic [ref=f2e202]: task-004 Alpha create
+        - generic [ref=f2e203]: 0/0 completed
+      - generic [ref=f2e204]:
+        - button "Open project" [ref=f2e205] [cursor=pointer]
+        - button "Archive project" [ref=f2e206] [cursor=pointer]
+    - generic [ref=f2e207]:
+      - generic [ref=f2e208]:
+        - generic [ref=f2e209]: task-004 Blank validation sentinel
+        - generic [ref=f2e210]: 0/0 completed
+      - generic [ref=f2e211]:
+        - button "Open project" [ref=f2e212] [cursor=pointer]
+        - button "Archive project" [ref=f2e213] [cursor=pointer]
+    - generic [ref=f2e214]:
+      - generic [ref=f2e215]:
+        - generic [ref=f2e216]: task-004 Order first
+        - generic [ref=f2e217]: 0/0 completed
+      - generic [ref=f2e218]:
+        - button "Open project" [ref=f2e219] [cursor=pointer]
+        - button "Archive project" [ref=f2e220] [cursor=pointer]
+    - generic [ref=f2e221]:
+      - generic [ref=f2e222]:
+        - generic [ref=f2e223]: task-004 Order second
+        - generic [ref=f2e224]: 0/0 completed
+      - generic [ref=f2e225]:
+        - button "Open project" [ref=f2e226] [cursor=pointer]
+        - button "Archive project" [ref=f2e227] [cursor=pointer]
+    - generic [ref=f2e228]:
+      - generic [ref=f2e229]:
+        - generic [ref=f2e230]: task-004 Task reload
+        - generic [ref=f2e231]: 0/1 completed
+      - generic [ref=f2e232]:
+        - button "Open project" [ref=f2e233] [cursor=pointer]
+        - button "Archive project" [ref=f2e234] [cursor=pointer]
+    - generic [ref=f2e235]:
+      - generic [ref=f2e236]:
+        - generic [ref=f2e237]: task-004 Task invalid
+        - generic [ref=f2e238]: 0/0 completed
+      - generic [ref=f2e239]:
+        - button "Open project" [ref=f2e240] [cursor=pointer]
+        - button "Archive project" [ref=f2e241] [cursor=pointer]
+    - generic [ref=f2e242]:
+      - generic [ref=f2e243]:
+        - generic [ref=f2e244]: task-004 Task owner
+        - generic [ref=f2e245]: 0/1 completed
+      - generic [ref=f2e246]:
+        - button "Open project" [ref=f2e247] [cursor=pointer]
+        - button "Archive project" [ref=f2e248] [cursor=pointer]
+    - generic [ref=f2e249]:
+      - generic [ref=f2e250]:
+        - generic [ref=f2e251]: task-004 Other project
+        - generic [ref=f2e252]: 0/0 completed
+      - generic [ref=f2e253]:
+        - button "Open project" [ref=f2e254] [cursor=pointer]
+        - button "Archive project" [ref=f2e255] [cursor=pointer]
+    - generic [ref=f2e256]:
+      - generic [ref=f2e257]:
+        - generic [ref=f2e258]: task-004 Task filters
+        - generic [ref=f2e259]: 0/2 completed
+      - generic [ref=f2e260]:
+        - button "Open project" [ref=f2e261] [cursor=pointer]
+        - button "Archive project" [ref=f2e262] [cursor=pointer]
+    - generic [ref=f2e263]:
+      - generic [ref=f2e264]:
+        - generic [ref=f2e265]: task-004 Archive lifecycle
+        - generic [ref=f2e266]: 0/0 completed
+      - generic [ref=f2e267]:
+        - button "Open project" [ref=f2e268] [cursor=pointer]
+        - button "Archive project" [ref=f2e269] [cursor=pointer]
+    - generic [ref=f2e270]:
+      - generic [ref=f2e271]:
+        - generic [ref=f2e272]: task-004 Archive tasks
+        - generic [ref=f2e273]: 1/1 completed
+      - generic [ref=f2e274]:
+        - button "Open project" [ref=f2e275] [cursor=pointer]
+        - button "Archive project" [ref=f2e276] [cursor=pointer]
+    - generic [ref=f2e277]:
+      - generic [ref=f2e278]:
+        - generic [ref=f2e279]: task-004 Summary project
+        - generic [ref=f2e280]: 1/2 completed
+      - generic [ref=f2e281]:
+        - button "Open project" [ref=f2e282] [cursor=pointer]
+        - button "Archive project" [ref=f2e283] [cursor=pointer]
+    - generic [ref=f2e284]:
+      - generic [ref=f2e285]:
+        - generic [ref=f2e286]: task-004 Identity updated
+        - generic [ref=f2e287]: 1/1 completed
+      - generic [ref=f2e288]:
+        - button "Open project" [ref=f2e289] [cursor=pointer]
+        - button "Archive project" [ref=f2e290] [cursor=pointer]
+    - generic [ref=f2e291]:
+      - generic [ref=f2e292]:
+        - generic [ref=f2e293]: task-004 Identity second
+        - generic [ref=f2e294]: 0/0 completed
+      - generic [ref=f2e295]:
+        - button "Open project" [ref=f2e296] [cursor=pointer]
+        - button "Archive project" [ref=f2e297] [cursor=pointer]
+    - generic [ref=f2e298]:
+      - generic [ref=f2e299]:
+        - generic [ref=f2e300]: task-004 Rename invalid
+        - generic [ref=f2e301]: 0/0 completed
+      - generic [ref=f2e302]:
+        - button "Open project" [ref=f2e303] [cursor=pointer]
+        - button "Archive project" [ref=f2e304] [cursor=pointer]
+    - generic [ref=f2e305]:
+      - generic [ref=f2e306]:
+        - generic [ref=f2e307]: task-004 Rename archive
+        - generic [ref=f2e308]: 0/0 completed
+      - generic [ref=f2e309]:
+        - button "Open project" [ref=f2e310] [cursor=pointer]
+        - button "Archive project" [ref=f2e311] [cursor=pointer]
+    - generic [ref=f2e312]:
+      - generic [ref=f2e313]:
+        - generic [ref=f2e314]: task-005 Alpha create
+        - generic [ref=f2e315]: 0/0 completed
+      - generic [ref=f2e316]:
+        - button "Open project" [ref=f2e317] [cursor=pointer]
+        - button "Archive project" [ref=f2e318] [cursor=pointer]
+    - generic [ref=f2e319]:
+      - generic [ref=f2e320]:
+        - generic [ref=f2e321]: task-005 Blank validation sentinel
+        - generic [ref=f2e322]: 0/0 completed
+      - generic [ref=f2e323]:
+        - button "Open project" [ref=f2e324] [cursor=pointer]
+        - button "Archive project" [ref=f2e325] [cursor=pointer]
+    - generic [ref=f2e326]:
+      - generic [ref=f2e327]:
+        - generic [ref=f2e328]: task-005 Order first
+        - generic [ref=f2e329]: 0/0 completed
+      - generic [ref=f2e330]:
+        - button "Open project" [ref=f2e331] [cursor=pointer]
+        - button "Archive project" [ref=f2e332] [cursor=pointer]
+    - generic [ref=f2e333]:
+      - generic [ref=f2e334]:
+        - generic [ref=f2e335]: task-005 Order second
+        - generic [ref=f2e336]: 0/0 completed
+      - generic [ref=f2e337]:
+        - button "Open project" [ref=f2e338] [cursor=pointer]
+        - button "Archive project" [ref=f2e339] [cursor=pointer]
+    - generic [ref=f2e340]:
+      - generic [ref=f2e341]:
+        - generic [ref=f2e342]: task-005 Task reload
+        - generic [ref=f2e343]: 0/1 completed
+      - generic [ref=f2e344]:
+        - button "Open project" [ref=f2e345] [cursor=pointer]
+        - button "Archive project" [ref=f2e346] [cursor=pointer]
+    - generic [ref=f2e347]:
+      - generic [ref=f2e348]:
+        - generic [ref=f2e349]: task-005 Task invalid
+        - generic [ref=f2e350]: 0/0 completed
+      - generic [ref=f2e351]:
+        - button "Open project" [ref=f2e352] [cursor=pointer]
+        - button "Archive project" [ref=f2e353] [cursor=pointer]
+    - generic [ref=f2e354]:
+      - generic [ref=f2e355]:
+        - generic [ref=f2e356]: task-005 Task owner
+        - generic [ref=f2e357]: 0/1 completed
+      - generic [ref=f2e358]:
+        - button "Open project" [ref=f2e359] [cursor=pointer]
+        - button "Archive project" [ref=f2e360] [cursor=pointer]
+    - generic [ref=f2e361]:
+      - generic [ref=f2e362]:
+        - generic [ref=f2e363]: task-005 Other project
+        - generic [ref=f2e364]: 0/0 completed
+      - generic [ref=f2e365]:
+        - button "Open project" [ref=f2e366] [cursor=pointer]
+        - button "Archive project" [ref=f2e367] [cursor=pointer]
+    - generic [ref=f2e368]:
+      - generic [ref=f2e369]:
+        - generic [ref=f2e370]: task-005 Task filters
+        - generic [ref=f2e371]: 0/2 completed
+      - generic [ref=f2e372]:
+        - button "Open project" [ref=f2e373] [cursor=pointer]
+        - button "Archive project" [ref=f2e374] [cursor=pointer]
+    - generic [ref=f2e375]:
+      - generic [ref=f2e376]:
+        - generic [ref=f2e377]: task-005 Archive lifecycle
+        - generic [ref=f2e378]: 0/0 completed
+      - generic [ref=f2e379]:
+        - button "Open project" [ref=f2e380] [cursor=pointer]
+        - button "Archive project" [ref=f2e381] [cursor=pointer]
+    - generic [ref=f2e382]:
+      - generic [ref=f2e383]:
+        - generic [ref=f2e384]: task-005 Archive tasks
+        - generic [ref=f2e385]: 1/1 completed
+      - generic [ref=f2e386]:
+        - button "Open project" [ref=f2e387] [cursor=pointer]
+        - button "Archive project" [ref=f2e388] [cursor=pointer]
+    - generic [ref=f2e389]:
+      - generic [ref=f2e390]:
+        - generic [ref=f2e391]: task-005 Summary project
+        - generic [ref=f2e392]: 1/2 completed
+      - generic [ref=f2e393]:
+        - button "Open project" [ref=f2e394] [cursor=pointer]
+        - button "Archive project" [ref=f2e395] [cursor=pointer]
+    - generic [ref=f2e396]:
+      - generic [ref=f2e397]:
+        - generic [ref=f2e398]: task-005 Identity updated
+        - generic [ref=f2e399]: 1/1 completed
+      - generic [ref=f2e400]:
+        - button "Open project" [ref=f2e401] [cursor=pointer]
+        - button "Archive project" [ref=f2e402] [cursor=pointer]
+    - generic [ref=f2e403]:
+      - generic [ref=f2e404]:
+        - generic [ref=f2e405]: task-005 Identity second
+        - generic [ref=f2e406]: 0/0 completed
+      - generic [ref=f2e407]:
+        - button "Open project" [ref=f2e408] [cursor=pointer]
+        - button "Archive project" [ref=f2e409] [cursor=pointer]
+    - generic [ref=f2e410]:
+      - generic [ref=f2e411]:
+        - generic [ref=f2e412]: task-005 Rename invalid
+        - generic [ref=f2e413]: 0/0 completed
+      - generic [ref=f2e414]:
+        - button "Open project" [ref=f2e415] [cursor=pointer]
+        - button "Archive project" [ref=f2e416] [cursor=pointer]
+    - generic [ref=f2e417]:
+      - generic [ref=f2e418]:
+        - generic [ref=f2e419]: task-005 Rename archive
+        - generic [ref=f2e420]: 0/0 completed
+      - generic [ref=f2e421]:
+        - button "Open project" [ref=f2e422] [cursor=pointer]
+        - button "Archive project" [ref=f2e423] [cursor=pointer]
+    - generic [ref=f2e424]:
+      - generic [ref=f2e425]:
+        - generic [ref=f2e426]: task-005 Task rename identity
+        - generic [ref=f2e427]: 1/2 completed
+      - generic [ref=f2e428]:
+        - button "Open project" [ref=f2e429] [cursor=pointer]
+        - button "Archive project" [ref=f2e430] [cursor=pointer]
+    - generic [ref=f2e431]:
+      - generic [ref=f2e432]:
+        - generic [ref=f2e433]: task-005 Task rename invalid
+        - generic [ref=f2e434]: 0/1 completed
+      - generic [ref=f2e435]:
+        - button "Open project" [ref=f2e436] [cursor=pointer]
+        - button "Archive project" [ref=f2e437] [cursor=pointer]
+    - generic [ref=f2e438]:
+      - generic [ref=f2e439]:
+        - generic [ref=f2e440]: task-005 Task rename archive
+        - generic [ref=f2e441]: 0/1 completed
+      - generic [ref=f2e442]:
+        - button "Open project" [ref=f2e443] [cursor=pointer]
+        - button "Archive project" [ref=f2e444] [cursor=pointer]
+    - generic [ref=f2e445]:
+      - generic [ref=f2e446]:
+        - generic [ref=f2e447]: task-006 Priority ownership
+        - generic [ref=f2e448]: 0/2 completed
+      - generic [ref=f2e449]:
+        - button "Open project" [ref=f2e450] [cursor=pointer]
+        - button "Archive project" [ref=f2e451] [cursor=pointer]
+    - generic [ref=f2e452]:
+      - generic [ref=f2e453]:
+        - generic [ref=f2e454]: task-006 Priority other owner
+        - generic [ref=f2e455]: 0/1 completed
+      - generic [ref=f2e456]:
+        - button "Open project" [ref=f2e457] [cursor=pointer]
+        - button "Archive project" [ref=f2e458] [cursor=pointer]
+    - generic [ref=f2e459]:
+      - generic [ref=f2e460]:
+        - generic [ref=f2e461]: task-006 Priority completion
+        - generic [ref=f2e462]: 1/2 completed
+      - generic [ref=f2e463]:
+        - button "Open project" [ref=f2e464] [cursor=pointer]
+        - button "Archive project" [ref=f2e465] [cursor=pointer]
+    - generic [ref=f2e466]:
+      - generic [ref=f2e467]:
+        - generic [ref=f2e468]: task-006 Priority archive
+        - generic [ref=f2e469]: 0/1 completed
+      - generic [ref=f2e470]:
+        - button "Open project" [ref=f2e471] [cursor=pointer]
+        - button "Archive project" [ref=f2e472] [cursor=pointer]
+    - generic [ref=f2e473]:
+      - generic [ref=f2e474]:
+        - generic [ref=f2e475]: task-006 Alpha create
+        - generic [ref=f2e476]: 0/0 completed
+      - generic [ref=f2e477]:
+        - button "Open project" [ref=f2e478] [cursor=pointer]
+        - button "Archive project" [ref=f2e479] [cursor=pointer]
+    - generic [ref=f2e480]:
+      - generic [ref=f2e481]:
+        - generic [ref=f2e482]: task-006 Blank validation sentinel
+        - generic [ref=f2e483]: 0/0 completed
+      - generic [ref=f2e484]:
+        - button "Open project" [ref=f2e485] [cursor=pointer]
+        - button "Archive project" [ref=f2e486] [cursor=pointer]
+    - generic [ref=f2e487]:
+      - generic [ref=f2e488]:
+        - generic [ref=f2e489]: task-006 Order first
+        - generic [ref=f2e490]: 0/0 completed
+      - generic [ref=f2e491]:
+        - button "Open project" [ref=f2e492] [cursor=pointer]
+        - button "Archive project" [ref=f2e493] [cursor=pointer]
+    - generic [ref=f2e494]:
+      - generic [ref=f2e495]:
+        - generic [ref=f2e496]: task-006 Order second
+        - generic [ref=f2e497]: 0/0 completed
+      - generic [ref=f2e498]:
+        - button "Open project" [ref=f2e499] [cursor=pointer]
+        - button "Archive project" [ref=f2e500] [cursor=pointer]
+    - generic [ref=f2e501]:
+      - generic [ref=f2e502]:
+        - generic [ref=f2e503]: task-006 Task reload
+        - generic [ref=f2e504]: 0/1 completed
+      - generic [ref=f2e505]:
+        - button "Open project" [ref=f2e506] [cursor=pointer]
+        - button "Archive project" [ref=f2e507] [cursor=pointer]
+    - generic [ref=f2e508]:
+      - generic [ref=f2e509]:
+        - generic [ref=f2e510]: task-006 Task invalid
+        - generic [ref=f2e511]: 0/0 completed
+      - generic [ref=f2e512]:
+        - button "Open project" [ref=f2e513] [cursor=pointer]
+        - button "Archive project" [ref=f2e514] [cursor=pointer]
+    - generic [ref=f2e515]:
+      - generic [ref=f2e516]:
+        - generic [ref=f2e517]: task-006 Task owner
+        - generic [ref=f2e518]: 0/1 completed
+      - generic [ref=f2e519]:
+        - button "Open project" [ref=f2e520] [cursor=pointer]
+        - button "Archive project" [ref=f2e521] [cursor=pointer]
+    - generic [ref=f2e522]:
+      - generic [ref=f2e523]:
+        - generic [ref=f2e524]: task-006 Other project
+        - generic [ref=f2e525]: 0/0 completed
+      - generic [ref=f2e526]:
+        - button "Open project" [ref=f2e527] [cursor=pointer]
+        - button "Archive project" [ref=f2e528] [cursor=pointer]
+    - generic [ref=f2e529]:
+      - generic [ref=f2e530]:
+        - generic [ref=f2e531]: task-006 Task filters
+        - generic [ref=f2e532]: 0/2 completed
+      - generic [ref=f2e533]:
+        - button "Open project" [ref=f2e534] [cursor=pointer]
+        - button "Archive project" [ref=f2e535] [cursor=pointer]
+    - generic [ref=f2e536]:
+      - generic [ref=f2e537]:
+        - generic [ref=f2e538]: task-006 Archive lifecycle
+        - generic [ref=f2e539]: 0/0 completed
+      - generic [ref=f2e540]:
+        - button "Open project" [ref=f2e541] [cursor=pointer]
+        - button "Archive project" [ref=f2e542] [cursor=pointer]
+    - generic [ref=f2e543]:
+      - generic [ref=f2e544]:
+        - generic [ref=f2e545]: task-006 Archive tasks
+        - generic [ref=f2e546]: 1/1 completed
+      - generic [ref=f2e547]:
+        - button "Open project" [ref=f2e548] [cursor=pointer]
+        - button "Archive project" [ref=f2e549] [cursor=pointer]
+    - generic [ref=f2e550]:
+      - generic [ref=f2e551]:
+        - generic [ref=f2e552]: task-006 Summary project
+        - generic [ref=f2e553]: 1/2 completed
+      - generic [ref=f2e554]:
+        - button "Open project" [ref=f2e555] [cursor=pointer]
+        - button "Archive project" [ref=f2e556] [cursor=pointer]
+    - generic [ref=f2e557]:
+      - generic [ref=f2e558]:
+        - generic [ref=f2e559]: task-006 Identity updated
+        - generic [ref=f2e560]: 1/1 completed
+      - generic [ref=f2e561]:
+        - button "Open project" [ref=f2e562] [cursor=pointer]
+        - button "Archive project" [ref=f2e563] [cursor=pointer]
+    - generic [ref=f2e564]:
+      - generic [ref=f2e565]:
+        - generic [ref=f2e566]: task-006 Identity second
+        - generic [ref=f2e567]: 0/0 completed
+      - generic [ref=f2e568]:
+        - button "Open project" [ref=f2e569] [cursor=pointer]
+        - button "Archive project" [ref=f2e570] [cursor=pointer]
+    - generic [ref=f2e571]:
+      - generic [ref=f2e572]:
+        - generic [ref=f2e573]: task-006 Rename invalid
+        - generic [ref=f2e574]: 0/0 completed
+      - generic [ref=f2e575]:
+        - button "Open project" [ref=f2e576] [cursor=pointer]
+        - button "Archive project" [ref=f2e577] [cursor=pointer]
+    - generic [ref=f2e578]:
+      - generic [ref=f2e579]:
+        - generic [ref=f2e580]: task-006 Rename archive
+        - generic [ref=f2e581]: 0/0 completed
+      - generic [ref=f2e582]:
+        - button "Open project" [ref=f2e583] [cursor=pointer]
+        - button "Archive project" [ref=f2e584] [cursor=pointer]
+    - generic [ref=f2e585]:
+      - generic [ref=f2e586]:
+        - generic [ref=f2e587]: task-006 Task rename identity
+        - generic [ref=f2e588]: 1/2 completed
+      - generic [ref=f2e589]:
+        - button "Open project" [ref=f2e590] [cursor=pointer]
+        - button "Archive project" [ref=f2e591] [cursor=pointer]
+    - generic [ref=f2e592]:
+      - generic [ref=f2e593]:
+        - generic [ref=f2e594]: task-006 Task rename invalid
+        - generic [ref=f2e595]: 0/1 completed
+      - generic [ref=f2e596]:
+        - button "Open project" [ref=f2e597] [cursor=pointer]
+        - button "Archive project" [ref=f2e598] [cursor=pointer]
+    - generic [ref=f2e599]:
+      - generic [ref=f2e600]:
+        - generic [ref=f2e601]: task-006 Task rename archive
+        - generic [ref=f2e602]: 0/1 completed
+      - generic [ref=f2e603]:
+        - button "Open project" [ref=f2e604] [cursor=pointer]
+        - button "Archive project" [ref=f2e605] [cursor=pointer]
+    - generic [ref=f2e606]:
+      - generic [ref=f2e607]:
+        - generic [ref=f2e608]: task-007 Priority intersection
+        - generic [ref=f2e609]: 1/4 completed
+      - generic [ref=f2e610]:
+        - button "Open project" [ref=f2e611] [cursor=pointer]
+        - button "Archive project" [ref=f2e612] [cursor=pointer]
+    - generic [ref=f2e613]:
+      - generic [ref=f2e614]:
+        - generic [ref=f2e615]: task-007 Priority live filters
+        - generic [ref=f2e616]: 1/4 completed
+      - generic [ref=f2e617]:
+        - button "Open project" [ref=f2e618] [cursor=pointer]
+        - button "Archive project" [ref=f2e619] [cursor=pointer]
+    - generic [ref=f2e620]:
+      - generic [ref=f2e621]:
+        - generic [ref=f2e622]: task-007 Priority rename filters
+        - generic [ref=f2e623]: 1/3 completed
+      - generic [ref=f2e624]:
+        - button "Open project" [ref=f2e625] [cursor=pointer]
+        - button "Archive project" [ref=f2e626] [cursor=pointer]
+    - generic [ref=f2e627]:
+      - generic [ref=f2e628]:
+        - generic [ref=f2e629]: task-007 Archived combined filters
+        - generic [ref=f2e630]: 1/2 completed
+      - generic [ref=f2e631]:
+        - button "Open project" [ref=f2e632] [cursor=pointer]
+        - button "Archive project" [ref=f2e633] [cursor=pointer]
+    - generic [ref=f2e634]:
+      - generic [ref=f2e635]:
+        - generic [ref=f2e636]: task-007 Priority ownership
+        - generic [ref=f2e637]: 0/2 completed
+      - generic [ref=f2e638]:
+        - button "Open project" [ref=f2e639] [cursor=pointer]
+        - button "Archive project" [ref=f2e640] [cursor=pointer]
+    - generic [ref=f2e641]:
+      - generic [ref=f2e642]:
+        - generic [ref=f2e643]: task-007 Priority other owner
+        - generic [ref=f2e644]: 0/1 completed
+      - generic [ref=f2e645]:
+        - button "Open project" [ref=f2e646] [cursor=pointer]
+        - button "Archive project" [ref=f2e647] [cursor=pointer]
+    - generic [ref=f2e648]:
+      - generic [ref=f2e649]:
+        - generic [ref=f2e650]: task-007 Priority completion
+        - generic [ref=f2e651]: 1/2 completed
+      - generic [ref=f2e652]:
+        - button "Open project" [ref=f2e653] [cursor=pointer]
+        - button "Archive project" [ref=f2e654] [cursor=pointer]
+    - generic [ref=f2e655]:
+      - generic [ref=f2e656]:
+        - generic [ref=f2e657]: task-007 Priority archive
+        - generic [ref=f2e658]: 0/1 completed
+      - generic [ref=f2e659]:
+        - button "Open project" [ref=f2e660] [cursor=pointer]
+        - button "Archive project" [ref=f2e661] [cursor=pointer]
+    - generic [ref=f2e662]:
+      - generic [ref=f2e663]:
+        - generic [ref=f2e664]: task-007 Alpha create
+        - generic [ref=f2e665]: 0/0 completed
+      - generic [ref=f2e666]:
+        - button "Open project" [ref=f2e667] [cursor=pointer]
+        - button "Archive project" [ref=f2e668] [cursor=pointer]
+    - generic [ref=f2e669]:
+      - generic [ref=f2e670]:
+        - generic [ref=f2e671]: task-007 Blank validation sentinel
+        - generic [ref=f2e672]: 0/0 completed
+      - generic [ref=f2e673]:
+        - button "Open project" [ref=f2e674] [cursor=pointer]
+        - button "Archive project" [ref=f2e675] [cursor=pointer]
+    - generic [ref=f2e676]:
+      - generic [ref=f2e677]:
+        - generic [ref=f2e678]: task-007 Order first
+        - generic [ref=f2e679]: 0/0 completed
+      - generic [ref=f2e680]:
+        - button "Open project" [ref=f2e681] [cursor=pointer]
+        - button "Archive project" [ref=f2e682] [cursor=pointer]
+    - generic [ref=f2e683]:
+      - generic [ref=f2e684]:
+        - generic [ref=f2e685]: task-007 Order second
+        - generic [ref=f2e686]: 0/0 completed
+      - generic [ref=f2e687]:
+        - button "Open project" [ref=f2e688] [cursor=pointer]
+        - button "Archive project" [ref=f2e689] [cursor=pointer]
+    - generic [ref=f2e690]:
+      - generic [ref=f2e691]:
+        - generic [ref=f2e692]: task-007 Task reload
+        - generic [ref=f2e693]: 0/1 completed
+      - generic [ref=f2e694]:
+        - button "Open project" [ref=f2e695] [cursor=pointer]
+        - button "Archive project" [ref=f2e696] [cursor=pointer]
+    - generic [ref=f2e697]:
+      - generic [ref=f2e698]:
+        - generic [ref=f2e699]: task-007 Task invalid
+        - generic [ref=f2e700]: 0/0 completed
+      - generic [ref=f2e701]:
+        - button "Open project" [ref=f2e702] [cursor=pointer]
+        - button "Archive project" [ref=f2e703] [cursor=pointer]
+    - generic [ref=f2e704]:
+      - generic [ref=f2e705]:
+        - generic [ref=f2e706]: task-007 Task owner
+        - generic [ref=f2e707]: 0/1 completed
+      - generic [ref=f2e708]:
+        - button "Open project" [ref=f2e709] [cursor=pointer]
+        - button "Archive project" [ref=f2e710] [cursor=pointer]
+    - generic [ref=f2e711]:
+      - generic [ref=f2e712]:
+        - generic [ref=f2e713]: task-007 Other project
+        - generic [ref=f2e714]: 0/0 completed
+      - generic [ref=f2e715]:
+        - button "Open project" [ref=f2e716] [cursor=pointer]
+        - button "Archive project" [ref=f2e717] [cursor=pointer]
+    - generic [ref=f2e718]:
+      - generic [ref=f2e719]:
+        - generic [ref=f2e720]: task-007 Task filters
+        - generic [ref=f2e721]: 0/2 completed
+      - generic [ref=f2e722]:
+        - button "Open project" [ref=f2e723] [cursor=pointer]
+        - button "Archive project" [ref=f2e724] [cursor=pointer]
+    - generic [ref=f2e725]:
+      - generic [ref=f2e726]:
+        - generic [ref=f2e727]: task-007 Archive lifecycle
+        - generic [ref=f2e728]: 0/0 completed
+      - generic [ref=f2e729]:
+        - button "Open project" [ref=f2e730] [cursor=pointer]
+        - button "Archive project" [ref=f2e731] [cursor=pointer]
+    - generic [ref=f2e732]:
+      - generic [ref=f2e733]:
+        - generic [ref=f2e734]: task-007 Archive tasks
+        - generic [ref=f2e735]: 1/1 completed
+      - generic [ref=f2e736]:
+        - button "Open project" [ref=f2e737] [cursor=pointer]
+        - button "Archive project" [ref=f2e738] [cursor=pointer]
+    - generic [ref=f2e739]:
+      - generic [ref=f2e740]:
+        - generic [ref=f2e741]: task-007 Summary project
+        - generic [ref=f2e742]: 1/2 completed
+      - generic [ref=f2e743]:
+        - button "Open project" [ref=f2e744] [cursor=pointer]
+        - button "Archive project" [ref=f2e745] [cursor=pointer]
+    - generic [ref=f2e746]:
+      - generic [ref=f2e747]:
+        - generic [ref=f2e748]: task-007 Identity updated
+        - generic [ref=f2e749]: 1/1 completed
+      - generic [ref=f2e750]:
+        - button "Open project" [ref=f2e751] [cursor=pointer]
+        - button "Archive project" [ref=f2e752] [cursor=pointer]
+    - generic [ref=f2e753]:
+      - generic [ref=f2e754]:
+        - generic [ref=f2e755]: task-007 Identity second
+        - generic [ref=f2e756]: 0/0 completed
+      - generic [ref=f2e757]:
+        - button "Open project" [ref=f2e758] [cursor=pointer]
+        - button "Archive project" [ref=f2e759] [cursor=pointer]
+    - generic [ref=f2e760]:
+      - generic [ref=f2e761]:
+        - generic [ref=f2e762]: task-007 Rename invalid
+        - generic [ref=f2e763]: 0/0 completed
+      - generic [ref=f2e764]:
+        - button "Open project" [ref=f2e765] [cursor=pointer]
+        - button "Archive project" [ref=f2e766] [cursor=pointer]
+    - generic [ref=f2e767]:
+      - generic [ref=f2e768]:
+        - generic [ref=f2e769]: task-007 Rename archive
+        - generic [ref=f2e770]: 0/0 completed
+      - generic [ref=f2e771]:
+        - button "Open project" [ref=f2e772] [cursor=pointer]
+        - button "Archive project" [ref=f2e773] [cursor=pointer]
+    - generic [ref=f2e774]:
+      - generic [ref=f2e775]:
+        - generic [ref=f2e776]: task-007 Task rename identity
+        - generic [ref=f2e777]: 1/2 completed
+      - generic [ref=f2e778]:
+        - button "Open project" [ref=f2e779] [cursor=pointer]
+        - button "Archive project" [ref=f2e780] [cursor=pointer]
+    - generic [ref=f2e781]:
+      - generic [ref=f2e782]:
+        - generic [ref=f2e783]: task-007 Task rename invalid
+        - generic [ref=f2e784]: 0/1 completed
+      - generic [ref=f2e785]:
+        - button "Open project" [ref=f2e786] [cursor=pointer]
+        - button "Archive project" [ref=f2e787] [cursor=pointer]
+    - generic [ref=f2e788]:
+      - generic [ref=f2e789]:
+        - generic [ref=f2e790]: task-007 Task rename archive
+        - generic [ref=f2e791]: 0/1 completed
+      - generic [ref=f2e792]:
+        - button "Open project" [ref=f2e793] [cursor=pointer]
+        - button "Archive project" [ref=f2e794] [cursor=pointer]
+    - generic [ref=f2e795]:
+      - generic [ref=f2e796]:
+        - generic [ref=f2e797]: task-008 Defaults independent
+        - generic [ref=f2e798]: 0/1 completed
+      - generic [ref=f2e799]:
+        - button "Open project" [ref=f2e800] [cursor=pointer]
+        - button "Archive project" [ref=f2e801] [cursor=pointer]
+    - generic [ref=f2e802]:
+      - generic [ref=f2e803]:
+        - generic [ref=f2e804]: task-008 Defaults inheritance
+        - generic [ref=f2e805]: 1/4 completed
+      - generic [ref=f2e806]:
+        - button "Open project" [ref=f2e807] [cursor=pointer]
+        - button "Archive project" [ref=f2e808] [cursor=pointer]
+    - generic [ref=f2e809]:
+      - generic [ref=f2e810]:
+        - generic [ref=f2e811]: task-008 Defaults renamed
+        - generic [ref=f2e812]: 0/2 completed
+      - generic [ref=f2e813]:
+        - button "Open project" [ref=f2e814] [cursor=pointer]
+        - button "Archive project" [ref=f2e815] [cursor=pointer]
+    - generic [ref=f2e816]:
+      - generic [ref=f2e817]:
+        - generic [ref=f2e818]: task-008 Priority intersection
+        - generic [ref=f2e819]: 1/4 completed
+      - generic [ref=f2e820]:
+        - button "Open project" [ref=f2e821] [cursor=pointer]
+        - button "Archive project" [ref=f2e822] [cursor=pointer]
+    - generic [ref=f2e823]:
+      - generic [ref=f2e824]:
+        - generic [ref=f2e825]: task-008 Priority live filters
+        - generic [ref=f2e826]: 1/4 completed
+      - generic [ref=f2e827]:
+        - button "Open project" [ref=f2e828] [cursor=pointer]
+        - button "Archive project" [ref=f2e829] [cursor=pointer]
+    - generic [ref=f2e830]:
+      - generic [ref=f2e831]:
+        - generic [ref=f2e832]: task-008 Priority rename filters
+        - generic [ref=f2e833]: 1/3 completed
+      - generic [ref=f2e834]:
+        - button "Open project" [ref=f2e835] [cursor=pointer]
+        - button "Archive project" [ref=f2e836] [cursor=pointer]
+    - generic [ref=f2e837]:
+      - generic [ref=f2e838]:
+        - generic [ref=f2e839]: task-008 Archived combined filters
+        - generic [ref=f2e840]: 1/2 completed
+      - generic [ref=f2e841]:
+        - button "Open project" [ref=f2e842] [cursor=pointer]
+        - button "Archive project" [ref=f2e843] [cursor=pointer]
+    - generic [ref=f2e844]:
+      - generic [ref=f2e845]:
+        - generic [ref=f2e846]: task-008 Priority ownership
+        - generic [ref=f2e847]: 0/2 completed
+      - generic [ref=f2e848]:
+        - button "Open project" [ref=f2e849] [cursor=pointer]
+        - button "Archive project" [ref=f2e850] [cursor=pointer]
+    - generic [ref=f2e851]:
+      - generic [ref=f2e852]:
+        - generic [ref=f2e853]: task-008 Priority other owner
+        - generic [ref=f2e854]: 0/1 completed
+      - generic [ref=f2e855]:
+        - button "Open project" [ref=f2e856] [cursor=pointer]
+        - button "Archive project" [ref=f2e857] [cursor=pointer]
+    - generic [ref=f2e858]:
+      - generic [ref=f2e859]:
+        - generic [ref=f2e860]: task-008 Priority completion
+        - generic [ref=f2e861]: 1/2 completed
+      - generic [ref=f2e862]:
+        - button "Open project" [ref=f2e863] [cursor=pointer]
+        - button "Archive project" [ref=f2e864] [cursor=pointer]
+    - generic [ref=f2e865]:
+      - generic [ref=f2e866]:
+        - generic [ref=f2e867]: task-008 Priority archive
+        - generic [ref=f2e868]: 0/1 completed
+      - generic [ref=f2e869]:
+        - button "Open project" [ref=f2e870] [cursor=pointer]
+        - button "Archive project" [ref=f2e871] [cursor=pointer]
+    - generic [ref=f2e872]:
+      - generic [ref=f2e873]:
+        - generic [ref=f2e874]: task-008 Alpha create
+        - generic [ref=f2e875]: 0/0 completed
+      - generic [ref=f2e876]:
+        - button "Open project" [ref=f2e877] [cursor=pointer]
+        - button "Archive project" [ref=f2e878] [cursor=pointer]
+    - generic [ref=f2e879]:
+      - generic [ref=f2e880]:
+        - generic [ref=f2e881]: task-008 Blank validation sentinel
+        - generic [ref=f2e882]: 0/0 completed
+      - generic [ref=f2e883]:
+        - button "Open project" [ref=f2e884] [cursor=pointer]
+        - button "Archive project" [ref=f2e885] [cursor=pointer]
+    - generic [ref=f2e886]:
+      - generic [ref=f2e887]:
+        - generic [ref=f2e888]: task-008 Order first
+        - generic [ref=f2e889]: 0/0 completed
+      - generic [ref=f2e890]:
+        - button "Open project" [ref=f2e891] [cursor=pointer]
+        - button "Archive project" [ref=f2e892] [cursor=pointer]
+    - generic [ref=f2e893]:
+      - generic [ref=f2e894]:
+        - generic [ref=f2e895]: task-008 Order second
+        - generic [ref=f2e896]: 0/0 completed
+      - generic [ref=f2e897]:
+        - button "Open project" [ref=f2e898] [cursor=pointer]
+        - button "Archive project" [ref=f2e899] [cursor=pointer]
+    - generic [ref=f2e900]:
+      - generic [ref=f2e901]:
+        - generic [ref=f2e902]: task-008 Task reload
+        - generic [ref=f2e903]: 0/1 completed
+      - generic [ref=f2e904]:
+        - button "Open project" [ref=f2e905] [cursor=pointer]
+        - button "Archive project" [ref=f2e906] [cursor=pointer]
+    - generic [ref=f2e907]:
+      - generic [ref=f2e908]:
+        - generic [ref=f2e909]: task-008 Task invalid
+        - generic [ref=f2e910]: 0/0 completed
+      - generic [ref=f2e911]:
+        - button "Open project" [ref=f2e912] [cursor=pointer]
+        - button "Archive project" [ref=f2e913] [cursor=pointer]
+    - generic [ref=f2e914]:
+      - generic [ref=f2e915]:
+        - generic [ref=f2e916]: task-008 Task owner
+        - generic [ref=f2e917]: 0/1 completed
+      - generic [ref=f2e918]:
+        - button "Open project" [ref=f2e919] [cursor=pointer]
+        - button "Archive project" [ref=f2e920] [cursor=pointer]
+    - generic [ref=f2e921]:
+      - generic [ref=f2e922]:
+        - generic [ref=f2e923]: task-008 Other project
+        - generic [ref=f2e924]: 0/0 completed
+      - generic [ref=f2e925]:
+        - button "Open project" [ref=f2e926] [cursor=pointer]
+        - button "Archive project" [ref=f2e927] [cursor=pointer]
+    - generic [ref=f2e928]:
+      - generic [ref=f2e929]:
+        - generic [ref=f2e930]: task-008 Task filters
+        - generic [ref=f2e931]: 0/2 completed
+      - generic [ref=f2e932]:
+        - button "Open project" [ref=f2e933] [cursor=pointer]
+        - button "Archive project" [ref=f2e934] [cursor=pointer]
+    - generic [ref=f2e935]:
+      - generic [ref=f2e936]:
+        - generic [ref=f2e937]: task-008 Archive lifecycle
+        - generic [ref=f2e938]: 0/0 completed
+      - generic [ref=f2e939]:
+        - button "Open project" [ref=f2e940] [cursor=pointer]
+        - button "Archive project" [ref=f2e941] [cursor=pointer]
+    - generic [ref=f2e942]:
+      - generic [ref=f2e943]:
+        - generic [ref=f2e944]: task-008 Archive tasks
+        - generic [ref=f2e945]: 1/1 completed
+      - generic [ref=f2e946]:
+        - button "Open project" [ref=f2e947] [cursor=pointer]
+        - button "Archive project" [ref=f2e948] [cursor=pointer]
+    - generic [ref=f2e949]:
+      - generic [ref=f2e950]:
+        - generic [ref=f2e951]: task-008 Summary project
+        - generic [ref=f2e952]: 1/2 completed
+      - generic [ref=f2e953]:
+        - button "Open project" [ref=f2e954] [cursor=pointer]
+        - button "Archive project" [ref=f2e955] [cursor=pointer]
+    - generic [ref=f2e956]:
+      - generic [ref=f2e957]:
+        - generic [ref=f2e958]: task-008 Identity updated
+        - generic [ref=f2e959]: 1/1 completed
+      - generic [ref=f2e960]:
+        - button "Open project" [ref=f2e961] [cursor=pointer]
+        - button "Archive project" [ref=f2e962] [cursor=pointer]
+    - generic [ref=f2e963]:
+      - generic [ref=f2e964]:
+        - generic [ref=f2e965]: task-008 Identity second
+        - generic [ref=f2e966]: 0/0 completed
+      - generic [ref=f2e967]:
+        - button "Open project" [ref=f2e968] [cursor=pointer]
+        - button "Archive project" [ref=f2e969] [cursor=pointer]
+    - generic [ref=f2e970]:
+      - generic [ref=f2e971]:
+        - generic [ref=f2e972]: task-008 Rename invalid
+        - generic [ref=f2e973]: 0/0 completed
+      - generic [ref=f2e974]:
+        - button "Open project" [ref=f2e975] [cursor=pointer]
+        - button "Archive project" [ref=f2e976] [cursor=pointer]
+    - generic [ref=f2e977]:
+      - generic [ref=f2e978]:
+        - generic [ref=f2e979]: task-008 Rename archive
+        - generic [ref=f2e980]: 0/0 completed
+      - generic [ref=f2e981]:
+        - button "Open project" [ref=f2e982] [cursor=pointer]
+        - button "Archive project" [ref=f2e983] [cursor=pointer]
+    - generic [ref=f2e984]:
+      - generic [ref=f2e985]:
+        - generic [ref=f2e986]: task-008 Task rename identity
+        - generic [ref=f2e987]: 1/2 completed
+      - generic [ref=f2e988]:
+        - button "Open project" [ref=f2e989] [cursor=pointer]
+        - button "Archive project" [ref=f2e990] [cursor=pointer]
+    - generic [ref=f2e991]:
+      - generic [ref=f2e992]:
+        - generic [ref=f2e993]: task-008 Task rename invalid
+        - generic [ref=f2e994]: 0/1 completed
+      - generic [ref=f2e995]:
+        - button "Open project" [ref=f2e996] [cursor=pointer]
+        - button "Archive project" [ref=f2e997] [cursor=pointer]
+    - generic [ref=f2e998]:
+      - generic [ref=f2e999]:
+        - generic [ref=f2e1000]: task-008 Task rename archive
+        - generic [ref=f2e1001]: 0/1 completed
+      - generic [ref=f2e1002]:
+        - button "Open project" [ref=f2e1003] [cursor=pointer]
+        - button "Archive project" [ref=f2e1004] [cursor=pointer]
+    - generic [ref=f2e1005]:
+      - generic [ref=f2e1006]:
+        - generic [ref=f2e1007]: task-009 Defaults independent
+        - generic [ref=f2e1008]: 0/1 completed
+      - generic [ref=f2e1009]:
+        - button "Open project" [ref=f2e1010] [cursor=pointer]
+        - button "Archive project" [ref=f2e1011] [cursor=pointer]
+    - generic [ref=f2e1012]:
+      - generic [ref=f2e1013]:
+        - generic [ref=f2e1014]: task-009 Defaults inheritance
+        - generic [ref=f2e1015]: 1/4 completed
+      - generic [ref=f2e1016]:
+        - button "Open project" [ref=f2e1017] [cursor=pointer]
+        - button "Archive project" [ref=f2e1018] [cursor=pointer]
+    - generic [ref=f2e1019]:
+      - generic [ref=f2e1020]:
+        - generic [ref=f2e1021]: task-009 Defaults renamed
+        - generic [ref=f2e1022]: 0/2 completed
+      - generic [ref=f2e1023]:
+        - button "Open project" [ref=f2e1024] [cursor=pointer]
+        - button "Archive project" [ref=f2e1025] [cursor=pointer]
+    - generic [ref=f2e1026]:
+      - generic [ref=f2e1027]:
+        - generic [ref=f2e1028]: task-009 Calendar persistence
+        - generic [ref=f2e1029]: 0/1 completed
+      - generic [ref=f2e1030]:
+        - button "Open project" [ref=f2e1031] [cursor=pointer]
+        - button "Archive project" [ref=f2e1032] [cursor=pointer]
+    - generic [ref=f2e1033]:
+      - generic [ref=f2e1034]:
+        - generic [ref=f2e1035]: task-009 Calendar validation
+        - generic [ref=f2e1036]: 0/1 completed
+      - generic [ref=f2e1037]:
+        - button "Open project" [ref=f2e1038] [cursor=pointer]
+        - button "Archive project" [ref=f2e1039] [cursor=pointer]
+    - generic [ref=f2e1040]:
+      - generic [ref=f2e1041]:
+        - generic [ref=f2e1042]: task-009 Calendar independence
+        - generic [ref=f2e1043]: 2/3 completed
+      - generic [ref=f2e1044]:
+        - button "Open project" [ref=f2e1045] [cursor=pointer]
+        - button "Archive project" [ref=f2e1046] [cursor=pointer]
+    - generic [ref=f2e1047]:
+      - generic [ref=f2e1048]:
+        - generic [ref=f2e1049]: task-009 Calendar second owner
+        - generic [ref=f2e1050]: 0/1 completed
+      - generic [ref=f2e1051]:
+        - button "Open project" [ref=f2e1052] [cursor=pointer]
+        - button "Archive project" [ref=f2e1053] [cursor=pointer]
+    - generic [ref=f2e1054]:
+      - generic [ref=f2e1055]:
+        - generic [ref=f2e1056]: task-009 Calendar archival
+        - generic [ref=f2e1057]: 0/1 completed
+      - generic [ref=f2e1058]:
+        - button "Open project" [ref=f2e1059] [cursor=pointer]
+        - button "Archive project" [ref=f2e1060] [cursor=pointer]
+    - generic [ref=f2e1061]:
+      - generic [ref=f2e1062]:
+        - generic [ref=f2e1063]: task-009 Priority intersection
+        - generic [ref=f2e1064]: 1/4 completed
+      - generic [ref=f2e1065]:
+        - button "Open project" [ref=f2e1066] [cursor=pointer]
+        - button "Archive project" [ref=f2e1067] [cursor=pointer]
+    - generic [ref=f2e1068]:
+      - generic [ref=f2e1069]:
+        - generic [ref=f2e1070]: task-009 Priority live filters
+        - generic [ref=f2e1071]: 1/4 completed
+      - generic [ref=f2e1072]:
+        - button "Open project" [ref=f2e1073] [cursor=pointer]
+        - button "Archive project" [ref=f2e1074] [cursor=pointer]
+    - generic [ref=f2e1075]:
+      - generic [ref=f2e1076]:
+        - generic [ref=f2e1077]: task-009 Priority rename filters
+        - generic [ref=f2e1078]: 1/3 completed
+      - generic [ref=f2e1079]:
+        - button "Open project" [ref=f2e1080] [cursor=pointer]
+        - button "Archive project" [ref=f2e1081] [cursor=pointer]
+    - generic [ref=f2e1082]:
+      - generic [ref=f2e1083]:
+        - generic [ref=f2e1084]: task-009 Archived combined filters
+        - generic [ref=f2e1085]: 1/2 completed
+      - generic [ref=f2e1086]:
+        - button "Open project" [ref=f2e1087] [cursor=pointer]
+        - button "Archive project" [ref=f2e1088] [cursor=pointer]
+    - generic [ref=f2e1089]:
+      - generic [ref=f2e1090]:
+        - generic [ref=f2e1091]: task-009 Priority ownership
+        - generic [ref=f2e1092]: 0/2 completed
+      - generic [ref=f2e1093]:
+        - button "Open project" [ref=f2e1094] [cursor=pointer]
+        - button "Archive project" [ref=f2e1095] [cursor=pointer]
+    - generic [ref=f2e1096]:
+      - generic [ref=f2e1097]:
+        - generic [ref=f2e1098]: task-009 Priority other owner
+        - generic [ref=f2e1099]: 0/1 completed
+      - generic [ref=f2e1100]:
+        - button "Open project" [ref=f2e1101] [cursor=pointer]
+        - button "Archive project" [ref=f2e1102] [cursor=pointer]
+    - generic [ref=f2e1103]:
+      - generic [ref=f2e1104]:
+        - generic [ref=f2e1105]: task-009 Priority completion
+        - generic [ref=f2e1106]: 1/2 completed
+      - generic [ref=f2e1107]:
+        - button "Open project" [ref=f2e1108] [cursor=pointer]
+        - button "Archive project" [ref=f2e1109] [cursor=pointer]
+    - generic [ref=f2e1110]:
+      - generic [ref=f2e1111]:
+        - generic [ref=f2e1112]: task-009 Priority archive
+        - generic [ref=f2e1113]: 0/1 completed
+      - generic [ref=f2e1114]:
+        - button "Open project" [ref=f2e1115] [cursor=pointer]
+        - button "Archive project" [ref=f2e1116] [cursor=pointer]
+    - generic [ref=f2e1117]:
+      - generic [ref=f2e1118]:
+        - generic [ref=f2e1119]: task-009 Alpha create
+        - generic [ref=f2e1120]: 0/0 completed
+      - generic [ref=f2e1121]:
+        - button "Open project" [ref=f2e1122] [cursor=pointer]
+        - button "Archive project" [ref=f2e1123] [cursor=pointer]
+    - generic [ref=f2e1124]:
+      - generic [ref=f2e1125]:
+        - generic [ref=f2e1126]: task-009 Blank validation sentinel
+        - generic [ref=f2e1127]: 0/0 completed
+      - generic [ref=f2e1128]:
+        - button "Open project" [ref=f2e1129] [cursor=pointer]
+        - button "Archive project" [ref=f2e1130] [cursor=pointer]
+    - generic [ref=f2e1131]:
+      - generic [ref=f2e1132]:
+        - generic [ref=f2e1133]: task-009 Order first
+        - generic [ref=f2e1134]: 0/0 completed
+      - generic [ref=f2e1135]:
+        - button "Open project" [ref=f2e1136] [cursor=pointer]
+        - button "Archive project" [ref=f2e1137] [cursor=pointer]
+    - generic [ref=f2e1138]:
+      - generic [ref=f2e1139]:
+        - generic [ref=f2e1140]: task-009 Order second
+        - generic [ref=f2e1141]: 0/0 completed
+      - generic [ref=f2e1142]:
+        - button "Open project" [ref=f2e1143] [cursor=pointer]
+        - button "Archive project" [ref=f2e1144] [cursor=pointer]
+    - generic [ref=f2e1145]:
+      - generic [ref=f2e1146]:
+        - generic [ref=f2e1147]: task-009 Task reload
+        - generic [ref=f2e1148]: 0/1 completed
+      - generic [ref=f2e1149]:
+        - button "Open project" [ref=f2e1150] [cursor=pointer]
+        - button "Archive project" [ref=f2e1151] [cursor=pointer]
+    - generic [ref=f2e1152]:
+      - generic [ref=f2e1153]:
+        - generic [ref=f2e1154]: task-009 Task invalid
+        - generic [ref=f2e1155]: 0/0 completed
+      - generic [ref=f2e1156]:
+        - button "Open project" [ref=f2e1157] [cursor=pointer]
+        - button "Archive project" [ref=f2e1158] [cursor=pointer]
+    - generic [ref=f2e1159]:
+      - generic [ref=f2e1160]:
+        - generic [ref=f2e1161]: task-009 Task owner
+        - generic [ref=f2e1162]: 0/1 completed
+      - generic [ref=f2e1163]:
+        - button "Open project" [ref=f2e1164] [cursor=pointer]
+        - button "Archive project" [ref=f2e1165] [cursor=pointer]
+    - generic [ref=f2e1166]:
+      - generic [ref=f2e1167]:
+        - generic [ref=f2e1168]: task-009 Other project
+        - generic [ref=f2e1169]: 0/0 completed
+      - generic [ref=f2e1170]:
+        - button "Open project" [ref=f2e1171] [cursor=pointer]
+        - button "Archive project" [ref=f2e1172] [cursor=pointer]
+    - generic [ref=f2e1173]:
+      - generic [ref=f2e1174]:
+        - generic [ref=f2e1175]: task-009 Task filters
+        - generic [ref=f2e1176]: 0/2 completed
+      - generic [ref=f2e1177]:
+        - button "Open project" [ref=f2e1178] [cursor=pointer]
+        - button "Archive project" [ref=f2e1179] [cursor=pointer]
+    - generic [ref=f2e1180]:
+      - generic [ref=f2e1181]:
+        - generic [ref=f2e1182]: task-009 Archive lifecycle
+        - generic [ref=f2e1183]: 0/0 completed
+      - generic [ref=f2e1184]:
+        - button "Open project" [ref=f2e1185] [cursor=pointer]
+        - button "Archive project" [ref=f2e1186] [cursor=pointer]
+    - generic [ref=f2e1187]:
+      - generic [ref=f2e1188]:
+        - generic [ref=f2e1189]: task-009 Archive tasks
+        - generic [ref=f2e1190]: 1/1 completed
+      - generic [ref=f2e1191]:
+        - button "Open project" [ref=f2e1192] [cursor=pointer]
+        - button "Archive project" [ref=f2e1193] [cursor=pointer]
+    - generic [ref=f2e1194]:
+      - generic [ref=f2e1195]:
+        - generic [ref=f2e1196]: task-009 Summary project
+        - generic [ref=f2e1197]: 1/2 completed
+      - generic [ref=f2e1198]:
+        - button "Open project" [ref=f2e1199] [cursor=pointer]
+        - button "Archive project" [ref=f2e1200] [cursor=pointer]
+    - generic [ref=f2e1201]:
+      - generic [ref=f2e1202]:
+        - generic [ref=f2e1203]: task-009 Identity updated
+        - generic [ref=f2e1204]: 1/1 completed
+      - generic [ref=f2e1205]:
+        - button "Open project" [ref=f2e1206] [cursor=pointer]
+        - button "Archive project" [ref=f2e1207] [cursor=pointer]
+    - generic [ref=f2e1208]:
+      - generic [ref=f2e1209]:
+        - generic [ref=f2e1210]: task-009 Identity second
+        - generic [ref=f2e1211]: 0/0 completed
+      - generic [ref=f2e1212]:
+        - button "Open project" [ref=f2e1213] [cursor=pointer]
+        - button "Archive project" [ref=f2e1214] [cursor=pointer]
+    - generic [ref=f2e1215]:
+      - generic [ref=f2e1216]:
+        - generic [ref=f2e1217]: task-009 Rename invalid
+        - generic [ref=f2e1218]: 0/0 completed
+      - generic [ref=f2e1219]:
+        - button "Open project" [ref=f2e1220] [cursor=pointer]
+        - button "Archive project" [ref=f2e1221] [cursor=pointer]
+    - generic [ref=f2e1222]:
+      - generic [ref=f2e1223]:
+        - generic [ref=f2e1224]: task-009 Rename archive
+        - generic [ref=f2e1225]: 0/0 completed
+      - generic [ref=f2e1226]:
+        - button "Open project" [ref=f2e1227] [cursor=pointer]
+        - button "Archive project" [ref=f2e1228] [cursor=pointer]
+    - generic [ref=f2e1229]:
+      - generic [ref=f2e1230]:
+        - generic [ref=f2e1231]: task-009 Task rename identity
+        - generic [ref=f2e1232]: 1/2 completed
+      - generic [ref=f2e1233]:
+        - button "Open project" [ref=f2e1234] [cursor=pointer]
+        - button "Archive project" [ref=f2e1235] [cursor=pointer]
+    - generic [ref=f2e1236]:
+      - generic [ref=f2e1237]:
+        - generic [ref=f2e1238]: task-009 Task rename invalid
+        - generic [ref=f2e1239]: 0/1 completed
+      - generic [ref=f2e1240]:
+        - button "Open project" [ref=f2e1241] [cursor=pointer]
+        - button "Archive project" [ref=f2e1242] [cursor=pointer]
+    - generic [ref=f2e1243]:
+      - generic [ref=f2e1244]:
+        - generic [ref=f2e1245]: task-009 Task rename archive
+        - generic [ref=f2e1246]: 0/1 completed
+      - generic [ref=f2e1247]:
+        - button "Open project" [ref=f2e1248] [cursor=pointer]
+        - button "Archive project" [ref=f2e1249] [cursor=pointer]
+    - generic [ref=f2e1250]:
+      - generic [ref=f2e1251]:
+        - generic [ref=f2e1252]: task-010 Defaults independent
+        - generic [ref=f2e1253]: 0/1 completed
+      - generic [ref=f2e1254]:
+        - button "Open project" [ref=f2e1255] [cursor=pointer]
+        - button "Archive project" [ref=f2e1256] [cursor=pointer]
+    - generic [ref=f2e1257]:
+      - generic [ref=f2e1258]:
+        - generic [ref=f2e1259]: task-010 Defaults inheritance
+        - generic [ref=f2e1260]: 1/4 completed
+      - generic [ref=f2e1261]:
+        - button "Open project" [ref=f2e1262] [cursor=pointer]
+        - button "Archive project" [ref=f2e1263] [cursor=pointer]
+    - generic [ref=f2e1264]:
+      - generic [ref=f2e1265]:
+        - generic [ref=f2e1266]: task-010 Defaults renamed
+        - generic [ref=f2e1267]: 0/2 completed
+      - generic [ref=f2e1268]:
+        - button "Open project" [ref=f2e1269] [cursor=pointer]
+        - button "Archive project" [ref=f2e1270] [cursor=pointer]
+    - generic [ref=f2e1271]:
+      - generic [ref=f2e1272]:
+        - generic [ref=f2e1273]: task-010 Calendar persistence
+        - generic [ref=f2e1274]: 0/1 completed
+      - generic [ref=f2e1275]:
+        - button "Open project" [ref=f2e1276] [cursor=pointer]
+        - button "Archive project" [ref=f2e1277] [cursor=pointer]
+    - generic [ref=f2e1278]:
+      - generic [ref=f2e1279]:
+        - generic [ref=f2e1280]: task-010 Calendar validation
+        - generic [ref=f2e1281]: 0/1 completed
+      - generic [ref=f2e1282]:
+        - button "Open project" [ref=f2e1283] [cursor=pointer]
+        - button "Archive project" [ref=f2e1284] [cursor=pointer]
+    - generic [ref=f2e1285]:
+      - generic [ref=f2e1286]:
+        - generic [ref=f2e1287]: task-010 Calendar independence
+        - generic [ref=f2e1288]: 2/3 completed
+      - generic [ref=f2e1289]:
+        - button "Open project" [ref=f2e1290] [cursor=pointer]
+        - button "Archive project" [ref=f2e1291] [cursor=pointer]
+    - generic [ref=f2e1292]:
+      - generic [ref=f2e1293]:
+        - generic [ref=f2e1294]: task-010 Calendar second owner
+        - generic [ref=f2e1295]: 0/1 completed
+      - generic [ref=f2e1296]:
+        - button "Open project" [ref=f2e1297] [cursor=pointer]
+        - button "Archive project" [ref=f2e1298] [cursor=pointer]
+    - generic [ref=f2e1299]:
+      - generic [ref=f2e1300]:
+        - generic [ref=f2e1301]: task-010 Calendar archival
+        - generic [ref=f2e1302]: 0/1 completed
+      - generic [ref=f2e1303]:
+        - button "Open project" [ref=f2e1304] [cursor=pointer]
+        - button "Archive project" [ref=f2e1305] [cursor=pointer]
+    - generic [ref=f2e1306]:
+      - generic [ref=f2e1307]:
+        - generic [ref=f2e1308]: task-010 Range boundaries
+        - generic [ref=f2e1309]: 0/5 completed
+      - generic [ref=f2e1310]:
+        - button "Open project" [ref=f2e1311] [cursor=pointer]
+        - button "Archive project" [ref=f2e1312] [cursor=pointer]
+    - generic [ref=f2e1313]:
+      - generic [ref=f2e1314]:
+        - generic [ref=f2e1315]: task-010 Range intersections
+        - generic [ref=f2e1316]: 0/4 completed
+      - generic [ref=f2e1317]:
+        - button "Open project" [ref=f2e1318] [cursor=pointer]
+        - button "Archive project" [ref=f2e1319] [cursor=pointer]
+    - generic [ref=f2e1320]:
+      - generic [ref=f2e1321]:
+        - generic [ref=f2e1322]: task-010 Range validation
+        - generic [ref=f2e1323]: 0/2 completed
+      - generic [ref=f2e1324]:
+        - button "Open project" [ref=f2e1325] [cursor=pointer]
+        - button "Archive project" [ref=f2e1326] [cursor=pointer]
+    - generic [ref=f2e1327]:
+      - generic [ref=f2e1328]:
+        - generic [ref=f2e1329]: task-010 Range archival
+        - generic [ref=f2e1330]: 0/2 completed
+      - generic [ref=f2e1331]:
+        - button "Open project" [ref=f2e1332] [cursor=pointer]
+        - button "Archive project" [ref=f2e1333] [cursor=pointer]
+    - generic [ref=f2e1334]:
+      - generic [ref=f2e1335]:
+        - generic [ref=f2e1336]: task-010 Range owner renamed
+        - generic [ref=f2e1337]: 0/3 completed
+      - generic [ref=f2e1338]:
+        - button "Open project" [ref=f2e1339] [cursor=pointer]
+        - button "Archive project" [ref=f2e1340] [cursor=pointer]
+    - generic [ref=f2e1341]:
+      - generic [ref=f2e1342]:
+        - generic [ref=f2e1343]: task-010 Priority intersection
+        - generic [ref=f2e1344]: 1/4 completed
+      - generic [ref=f2e1345]:
+        - button "Open project" [ref=f2e1346] [cursor=pointer]
+        - button "Archive project" [ref=f2e1347] [cursor=pointer]
+    - generic [ref=f2e1348]:
+      - generic [ref=f2e1349]:
+        - generic [ref=f2e1350]: task-010 Priority live filters
+        - generic [ref=f2e1351]: 1/4 completed
+      - generic [ref=f2e1352]:
+        - button "Open project" [ref=f2e1353] [cursor=pointer]
+        - button "Archive project" [ref=f2e1354] [cursor=pointer]
+    - generic [ref=f2e1355]:
+      - generic [ref=f2e1356]:
+        - generic [ref=f2e1357]: task-010 Priority rename filters
+        - generic [ref=f2e1358]: 1/3 completed
+      - generic [ref=f2e1359]:
+        - button "Open project" [ref=f2e1360] [cursor=pointer]
+        - button "Archive project" [ref=f2e1361] [cursor=pointer]
+    - generic [ref=f2e1362]:
+      - generic [ref=f2e1363]:
+        - generic [ref=f2e1364]: task-010 Archived combined filters
+        - generic [ref=f2e1365]: 1/2 completed
+      - generic [ref=f2e1366]:
+        - button "Open project" [ref=f2e1367] [cursor=pointer]
+        - button "Archive project" [ref=f2e1368] [cursor=pointer]
+    - generic [ref=f2e1369]:
+      - generic [ref=f2e1370]:
+        - generic [ref=f2e1371]: task-010 Priority ownership
+        - generic [ref=f2e1372]: 0/2 completed
+      - generic [ref=f2e1373]:
+        - button "Open project" [ref=f2e1374] [cursor=pointer]
+        - button "Archive project" [ref=f2e1375] [cursor=pointer]
+    - generic [ref=f2e1376]:
+      - generic [ref=f2e1377]:
+        - generic [ref=f2e1378]: task-010 Priority other owner
+        - generic [ref=f2e1379]: 0/1 completed
+      - generic [ref=f2e1380]:
+        - button "Open project" [ref=f2e1381] [cursor=pointer]
+        - button "Archive project" [ref=f2e1382] [cursor=pointer]
+    - generic [ref=f2e1383]:
+      - generic [ref=f2e1384]:
+        - generic [ref=f2e1385]: task-010 Priority completion
+        - generic [ref=f2e1386]: 1/2 completed
+      - generic [ref=f2e1387]:
+        - button "Open project" [ref=f2e1388] [cursor=pointer]
+        - button "Archive project" [ref=f2e1389] [cursor=pointer]
+    - generic [ref=f2e1390]:
+      - generic [ref=f2e1391]:
+        - generic [ref=f2e1392]: task-010 Priority archive
+        - generic [ref=f2e1393]: 0/1 completed
+      - generic [ref=f2e1394]:
+        - button "Open project" [ref=f2e1395] [cursor=pointer]
+        - button "Archive project" [ref=f2e1396] [cursor=pointer]
+    - generic [ref=f2e1397]:
+      - generic [ref=f2e1398]:
+        - generic [ref=f2e1399]: task-010 Alpha create
+        - generic [ref=f2e1400]: 0/0 completed
+      - generic [ref=f2e1401]:
+        - button "Open project" [ref=f2e1402] [cursor=pointer]
+        - button "Archive project" [ref=f2e1403] [cursor=pointer]
+    - generic [ref=f2e1404]:
+      - generic [ref=f2e1405]:
+        - generic [ref=f2e1406]: task-010 Blank validation sentinel
+        - generic [ref=f2e1407]: 0/0 completed
+      - generic [ref=f2e1408]:
+        - button "Open project" [ref=f2e1409] [cursor=pointer]
+        - button "Archive project" [ref=f2e1410] [cursor=pointer]
+    - generic [ref=f2e1411]:
+      - generic [ref=f2e1412]:
+        - generic [ref=f2e1413]: task-010 Order first
+        - generic [ref=f2e1414]: 0/0 completed
+      - generic [ref=f2e1415]:
+        - button "Open project" [ref=f2e1416] [cursor=pointer]
+        - button "Archive project" [ref=f2e1417] [cursor=pointer]
+    - generic [ref=f2e1418]:
+      - generic [ref=f2e1419]:
+        - generic [ref=f2e1420]: task-010 Order second
+        - generic [ref=f2e1421]: 0/0 completed
+      - generic [ref=f2e1422]:
+        - button "Open project" [ref=f2e1423] [cursor=pointer]
+        - button "Archive project" [ref=f2e1424] [cursor=pointer]
+    - generic [ref=f2e1425]:
+      - generic [ref=f2e1426]:
+        - generic [ref=f2e1427]: task-010 Task reload
+        - generic [ref=f2e1428]: 0/1 completed
+      - generic [ref=f2e1429]:
+        - button "Open project" [ref=f2e1430] [cursor=pointer]
+        - button "Archive project" [ref=f2e1431] [cursor=pointer]
+    - generic [ref=f2e1432]:
+      - generic [ref=f2e1433]:
+        - generic [ref=f2e1434]: task-010 Task invalid
+        - generic [ref=f2e1435]: 0/0 completed
+      - generic [ref=f2e1436]:
+        - button "Open project" [ref=f2e1437] [cursor=pointer]
+        - button "Archive project" [ref=f2e1438] [cursor=pointer]
+    - generic [ref=f2e1439]:
+      - generic [ref=f2e1440]:
+        - generic [ref=f2e1441]: task-010 Task owner
+        - generic [ref=f2e1442]: 0/1 completed
+      - generic [ref=f2e1443]:
+        - button "Open project" [ref=f2e1444] [cursor=pointer]
+        - button "Archive project" [ref=f2e1445] [cursor=pointer]
+    - generic [ref=f2e1446]:
+      - generic [ref=f2e1447]:
+        - generic [ref=f2e1448]: task-010 Other project
+        - generic [ref=f2e1449]: 0/0 completed
+      - generic [ref=f2e1450]:
+        - button "Open project" [ref=f2e1451] [cursor=pointer]
+        - button "Archive project" [ref=f2e1452] [cursor=pointer]
+    - generic [ref=f2e1453]:
+      - generic [ref=f2e1454]:
+        - generic [ref=f2e1455]: task-010 Task filters
+        - generic [ref=f2e1456]: 0/2 completed
+      - generic [ref=f2e1457]:
+        - button "Open project" [ref=f2e1458] [cursor=pointer]
+        - button "Archive project" [ref=f2e1459] [cursor=pointer]
+    - generic [ref=f2e1460]:
+      - generic [ref=f2e1461]:
+        - generic [ref=f2e1462]: task-010 Archive lifecycle
+        - generic [ref=f2e1463]: 0/0 completed
+      - generic [ref=f2e1464]:
+        - button "Open project" [ref=f2e1465] [cursor=pointer]
+        - button "Archive project" [ref=f2e1466] [cursor=pointer]
+    - generic [ref=f2e1467]:
+      - generic [ref=f2e1468]:
+        - generic [ref=f2e1469]: task-010 Archive tasks
+        - generic [ref=f2e1470]: 1/1 completed
+      - generic [ref=f2e1471]:
+        - button "Open project" [ref=f2e1472] [cursor=pointer]
+        - button "Archive project" [ref=f2e1473] [cursor=pointer]
+    - generic [ref=f2e1474]:
+      - generic [ref=f2e1475]:
+        - generic [ref=f2e1476]: task-010 Summary project
+        - generic [ref=f2e1477]: 1/2 completed
+      - generic [ref=f2e1478]:
+        - button "Open project" [ref=f2e1479] [cursor=pointer]
+        - button "Archive project" [ref=f2e1480] [cursor=pointer]
+    - generic [ref=f2e1481]:
+      - generic [ref=f2e1482]:
+        - generic [ref=f2e1483]: task-010 Identity updated
+        - generic [ref=f2e1484]: 1/1 completed
+      - generic [ref=f2e1485]:
+        - button "Open project" [ref=f2e1486] [cursor=pointer]
+        - button "Archive project" [ref=f2e1487] [cursor=pointer]
+    - generic [ref=f2e1488]:
+      - generic [ref=f2e1489]:
+        - generic [ref=f2e1490]: task-010 Identity second
+        - generic [ref=f2e1491]: 0/0 completed
+      - generic [ref=f2e1492]:
+        - button "Open project" [ref=f2e1493] [cursor=pointer]
+        - button "Archive project" [ref=f2e1494] [cursor=pointer]
+    - generic [ref=f2e1495]:
+      - generic [ref=f2e1496]:
+        - generic [ref=f2e1497]: task-010 Rename invalid
+        - generic [ref=f2e1498]: 0/0 completed
+      - generic [ref=f2e1499]:
+        - button "Open project" [ref=f2e1500] [cursor=pointer]
+        - button "Archive project" [ref=f2e1501] [cursor=pointer]
+    - generic [ref=f2e1502]:
+      - generic [ref=f2e1503]:
+        - generic [ref=f2e1504]: task-010 Rename archive
+        - generic [ref=f2e1505]: 0/0 completed
+      - generic [ref=f2e1506]:
+        - button "Open project" [ref=f2e1507] [cursor=pointer]
+        - button "Archive project" [ref=f2e1508] [cursor=pointer]
+    - generic [ref=f2e1509]:
+      - generic [ref=f2e1510]:
+        - generic [ref=f2e1511]: task-010 Task rename identity
+        - generic [ref=f2e1512]: 1/2 completed
+      - generic [ref=f2e1513]:
+        - button "Open project" [ref=f2e1514] [cursor=pointer]
+        - button "Archive project" [ref=f2e1515] [cursor=pointer]
+    - generic [ref=f2e1516]:
+      - generic [ref=f2e1517]:
+        - generic [ref=f2e1518]: task-010 Task rename invalid
+        - generic [ref=f2e1519]: 0/1 completed
+      - generic [ref=f2e1520]:
+        - button "Open project" [ref=f2e1521] [cursor=pointer]
+        - button "Archive project" [ref=f2e1522] [cursor=pointer]
+    - generic [ref=f2e1523]:
+      - generic [ref=f2e1524]:
+        - generic [ref=f2e1525]: task-010 Task rename archive
+        - generic [ref=f2e1526]: 0/1 completed
+      - generic [ref=f2e1527]:
+        - button "Open project" [ref=f2e1528] [cursor=pointer]
+        - button "Archive project" [ref=f2e1529] [cursor=pointer]
+    - generic [ref=f2e1530]:
+      - generic [ref=f2e1531]:
+        - generic [ref=f2e1532]: task-011 Defaults independent
+        - generic [ref=f2e1533]: 0/1 completed
+      - generic [ref=f2e1534]:
+        - button "Open project" [ref=f2e1535] [cursor=pointer]
+        - button "Archive project" [ref=f2e1536] [cursor=pointer]
+    - generic [ref=f2e1537]:
+      - generic [ref=f2e1538]:
+        - generic [ref=f2e1539]: task-011 Defaults inheritance
+        - generic [ref=f2e1540]: 1/4 completed
+      - generic [ref=f2e1541]:
+        - button "Open project" [ref=f2e1542] [cursor=pointer]
+        - button "Archive project" [ref=f2e1543] [cursor=pointer]
+    - generic [ref=f2e1544]:
+      - generic [ref=f2e1545]:
+        - generic [ref=f2e1546]: task-011 Defaults renamed
+        - generic [ref=f2e1547]: 0/2 completed
+      - generic [ref=f2e1548]:
+        - button "Open project" [ref=f2e1549] [cursor=pointer]
+        - button "Archive project" [ref=f2e1550] [cursor=pointer]
+    - generic [ref=f2e1551]:
+      - generic [ref=f2e1552]:
+        - generic [ref=f2e1553]: task-011 Calendar persistence
+        - generic [ref=f2e1554]: 0/1 completed
+      - generic [ref=f2e1555]:
+        - button "Open project" [ref=f2e1556] [cursor=pointer]
+        - button "Archive project" [ref=f2e1557] [cursor=pointer]
+    - generic [ref=f2e1558]:
+      - generic [ref=f2e1559]:
+        - generic [ref=f2e1560]: task-011 Calendar validation
+        - generic [ref=f2e1561]: 0/1 completed
+      - generic [ref=f2e1562]:
+        - button "Open project" [ref=f2e1563] [cursor=pointer]
+        - button "Archive project" [ref=f2e1564] [cursor=pointer]
+    - generic [ref=f2e1565]:
+      - generic [ref=f2e1566]:
+        - generic [ref=f2e1567]: task-011 Calendar independence
+        - generic [ref=f2e1568]: 2/3 completed
+      - generic [ref=f2e1569]:
+        - button "Open project" [ref=f2e1570] [cursor=pointer]
+        - button "Archive project" [ref=f2e1571] [cursor=pointer]
+    - generic [ref=f2e1572]:
+      - generic [ref=f2e1573]:
+        - generic [ref=f2e1574]: task-011 Calendar second owner
+        - generic [ref=f2e1575]: 0/1 completed
+      - generic [ref=f2e1576]:
+        - button "Open project" [ref=f2e1577] [cursor=pointer]
+        - button "Archive project" [ref=f2e1578] [cursor=pointer]
+    - generic [ref=f2e1579]:
+      - generic [ref=f2e1580]:
+        - generic [ref=f2e1581]: task-011 Calendar archival
+        - generic [ref=f2e1582]: 0/1 completed
+      - generic [ref=f2e1583]:
+        - button "Open project" [ref=f2e1584] [cursor=pointer]
+        - button "Archive project" [ref=f2e1585] [cursor=pointer]
+    - generic [ref=f2e1586]:
+      - generic [ref=f2e1587]:
+        - generic [ref=f2e1588]: task-011 Range boundaries
+        - generic [ref=f2e1589]: 0/5 completed
+      - generic [ref=f2e1590]:
+        - button "Open project" [ref=f2e1591] [cursor=pointer]
+        - button "Archive project" [ref=f2e1592] [cursor=pointer]
+    - generic [ref=f2e1593]:
+      - generic [ref=f2e1594]:
+        - generic [ref=f2e1595]: task-011 Range intersections
+        - generic [ref=f2e1596]: 0/4 completed
+      - generic [ref=f2e1597]:
+        - button "Open project" [ref=f2e1598] [cursor=pointer]
+        - button "Archive project" [ref=f2e1599] [cursor=pointer]
+    - generic [ref=f2e1600]:
+      - generic [ref=f2e1601]:
+        - generic [ref=f2e1602]: task-011 Range validation
+        - generic [ref=f2e1603]: 0/2 completed
+      - generic [ref=f2e1604]:
+        - button "Open project" [ref=f2e1605] [cursor=pointer]
+        - button "Archive project" [ref=f2e1606] [cursor=pointer]
+    - generic [ref=f2e1607]:
+      - generic [ref=f2e1608]:
+        - generic [ref=f2e1609]: task-011 Range archival
+        - generic [ref=f2e1610]: 0/2 completed
+      - generic [ref=f2e1611]:
+        - button "Open project" [ref=f2e1612] [cursor=pointer]
+        - button "Archive project" [ref=f2e1613] [cursor=pointer]
+    - generic [ref=f2e1614]:
+      - generic [ref=f2e1615]:
+        - generic [ref=f2e1616]: task-011 Range owner renamed
+        - generic [ref=f2e1617]: 0/3 completed
+      - generic [ref=f2e1618]:
+        - button "Open project" [ref=f2e1619] [cursor=pointer]
+        - button "Archive project" [ref=f2e1620] [cursor=pointer]
+    - generic [ref=f2e1621]:
+      - generic [ref=f2e1622]:
+        - generic [ref=f2e1623]: task-011 Transfer target
+        - generic [ref=f2e1624]: 1/3 completed
+      - generic [ref=f2e1625]:
+        - button "Open project" [ref=f2e1626] [cursor=pointer]
+        - button "Archive project" [ref=f2e1627] [cursor=pointer]
+    - generic [ref=f2e1628]:
+      - generic [ref=f2e1629]:
+        - generic [ref=f2e1630]: task-011 Transfer source
+        - generic [ref=f2e1631]: 0/1 completed
+      - generic [ref=f2e1632]:
+        - button "Open project" [ref=f2e1633] [cursor=pointer]
+        - button "Archive project" [ref=f2e1634] [cursor=pointer]
+    - generic [ref=f2e1635]:
+      - generic [ref=f2e1636]:
+        - generic [ref=f2e1637]: task-011 Filtered transfer target
+        - generic [ref=f2e1638]: 0/2 completed
+      - generic [ref=f2e1639]:
+        - button "Open project" [ref=f2e1640] [cursor=pointer]
+        - button "Archive project" [ref=f2e1641] [cursor=pointer]
+    - generic [ref=f2e1642]:
+      - generic [ref=f2e1643]:
+        - generic [ref=f2e1644]: task-011 Filtered transfer source
+        - generic [ref=f2e1645]: 1/5 completed
+      - generic [ref=f2e1646]:
+        - button "Open project" [ref=f2e1647] [cursor=pointer]
+        - button "Archive project" [ref=f2e1648] [cursor=pointer]
+    - generic [ref=f2e1649]:
+      - generic [ref=f2e1650]:
+        - generic [ref=f2e1651]: task-011 Options first
+        - generic [ref=f2e1652]: 0/0 completed
+      - generic [ref=f2e1653]:
+        - button "Open project" [ref=f2e1654] [cursor=pointer]
+        - button "Archive project" [ref=f2e1655] [cursor=pointer]
+    - generic [ref=f2e1656]:
+      - generic [ref=f2e1657]:
+        - generic [ref=f2e1658]: task-011 Options second
+        - generic [ref=f2e1659]: 0/0 completed
+      - generic [ref=f2e1660]:
+        - button "Open project" [ref=f2e1661] [cursor=pointer]
+        - button "Archive project" [ref=f2e1662] [cursor=pointer]
+    - generic [ref=f2e1663]:
+      - generic [ref=f2e1664]:
+        - generic [ref=f2e1665]: task-011 Options owner
+        - generic [ref=f2e1666]: 0/1 completed
+      - generic [ref=f2e1667]:
+        - button "Open project" [ref=f2e1668] [cursor=pointer]
+        - button "Archive project" [ref=f2e1669] [cursor=pointer]
+    - generic [ref=f2e1670]:
+      - generic [ref=f2e1671]:
+        - generic [ref=f2e1672]: task-011 Read-only transfer target
+        - generic [ref=f2e1673]: 0/1 completed
+      - generic [ref=f2e1674]:
+        - button "Open project" [ref=f2e1675] [cursor=pointer]
+        - button "Archive project" [ref=f2e1676] [cursor=pointer]
+    - generic [ref=f2e1677]:
+      - generic [ref=f2e1678]:
+        - generic [ref=f2e1679]: task-011 Read-only transfer owner
+        - generic [ref=f2e1680]: 0/2 completed
+      - generic [ref=f2e1681]:
+        - button "Open project" [ref=f2e1682] [cursor=pointer]
+        - button "Archive project" [ref=f2e1683] [cursor=pointer]
+    - generic [ref=f2e1684]:
+      - generic [ref=f2e1685]:
+        - generic [ref=f2e1686]: task-011 Priority intersection
+        - generic [ref=f2e1687]: 1/4 completed
+      - generic [ref=f2e1688]:
+        - button "Open project" [ref=f2e1689] [cursor=pointer]
+        - button "Archive project" [ref=f2e1690] [cursor=pointer]
+    - generic [ref=f2e1691]:
+      - generic [ref=f2e1692]:
+        - generic [ref=f2e1693]: task-011 Priority live filters
+        - generic [ref=f2e1694]: 1/4 completed
+      - generic [ref=f2e1695]:
+        - button "Open project" [ref=f2e1696] [cursor=pointer]
+        - button "Archive project" [ref=f2e1697] [cursor=pointer]
+    - generic [ref=f2e1698]:
+      - generic [ref=f2e1699]:
+        - generic [ref=f2e1700]: task-011 Priority rename filters
+        - generic [ref=f2e1701]: 1/3 completed
+      - generic [ref=f2e1702]:
+        - button "Open project" [ref=f2e1703] [cursor=pointer]
+        - button "Archive project" [ref=f2e1704] [cursor=pointer]
+    - generic [ref=f2e1705]:
+      - generic [ref=f2e1706]:
+        - generic [ref=f2e1707]: task-011 Archived combined filters
+        - generic [ref=f2e1708]: 1/2 completed
+      - generic [ref=f2e1709]:
+        - button "Open project" [ref=f2e1710] [cursor=pointer]
+        - button "Archive project" [ref=f2e1711] [cursor=pointer]
+    - generic [ref=f2e1712]:
+      - generic [ref=f2e1713]:
+        - generic [ref=f2e1714]: task-011 Priority ownership
+        - generic [ref=f2e1715]: 0/2 completed
+      - generic [ref=f2e1716]:
+        - button "Open project" [ref=f2e1717] [cursor=pointer]
+        - button "Archive project" [ref=f2e1718] [cursor=pointer]
+    - generic [ref=f2e1719]:
+      - generic [ref=f2e1720]:
+        - generic [ref=f2e1721]: task-011 Priority other owner
+        - generic [ref=f2e1722]: 0/1 completed
+      - generic [ref=f2e1723]:
+        - button "Open project" [ref=f2e1724] [cursor=pointer]
+        - button "Archive project" [ref=f2e1725] [cursor=pointer]
+    - generic [ref=f2e1726]:
+      - generic [ref=f2e1727]:
+        - generic [ref=f2e1728]: task-011 Priority completion
+        - generic [ref=f2e1729]: 1/2 completed
+      - generic [ref=f2e1730]:
+        - button "Open project" [ref=f2e1731] [cursor=pointer]
+        - button "Archive project" [ref=f2e1732] [cursor=pointer]
+    - generic [ref=f2e1733]:
+      - generic [ref=f2e1734]:
+        - generic [ref=f2e1735]: task-011 Priority archive
+        - generic [ref=f2e1736]: 0/1 completed
+      - generic [ref=f2e1737]:
+        - button "Open project" [ref=f2e1738] [cursor=pointer]
+        - button "Archive project" [ref=f2e1739] [cursor=pointer]
+    - generic [ref=f2e1740]:
+      - generic [ref=f2e1741]:
+        - generic [ref=f2e1742]: task-011 Alpha create
+        - generic [ref=f2e1743]: 0/0 completed
+      - generic [ref=f2e1744]:
+        - button "Open project" [ref=f2e1745] [cursor=pointer]
+        - button "Archive project" [ref=f2e1746] [cursor=pointer]
+    - generic [ref=f2e1747]:
+      - generic [ref=f2e1748]:
+        - generic [ref=f2e1749]: task-011 Blank validation sentinel
+        - generic [ref=f2e1750]: 0/0 completed
+      - generic [ref=f2e1751]:
+        - button "Open project" [ref=f2e1752] [cursor=pointer]
+        - button "Archive project" [ref=f2e1753] [cursor=pointer]
+    - generic [ref=f2e1754]:
+      - generic [ref=f2e1755]:
+        - generic [ref=f2e1756]: task-011 Order first
+        - generic [ref=f2e1757]: 0/0 completed
+      - generic [ref=f2e1758]:
+        - button "Open project" [ref=f2e1759] [cursor=pointer]
+        - button "Archive project" [ref=f2e1760] [cursor=pointer]
+    - generic [ref=f2e1761]:
+      - generic [ref=f2e1762]:
+        - generic [ref=f2e1763]: task-011 Order second
+        - generic [ref=f2e1764]: 0/0 completed
+      - generic [ref=f2e1765]:
+        - button "Open project" [ref=f2e1766] [cursor=pointer]
+        - button "Archive project" [ref=f2e1767] [cursor=pointer]
+    - generic [ref=f2e1768]:
+      - generic [ref=f2e1769]:
+        - generic [ref=f2e1770]: task-011 Task reload
+        - generic [ref=f2e1771]: 0/1 completed
+      - generic [ref=f2e1772]:
+        - button "Open project" [ref=f2e1773] [cursor=pointer]
+        - button "Archive project" [ref=f2e1774] [cursor=pointer]
+    - generic [ref=f2e1775]:
+      - generic [ref=f2e1776]:
+        - generic [ref=f2e1777]: task-011 Task invalid
+        - generic [ref=f2e1778]: 0/0 completed
+      - generic [ref=f2e1779]:
+        - button "Open project" [ref=f2e1780] [cursor=pointer]
+        - button "Archive project" [ref=f2e1781] [cursor=pointer]
+    - generic [ref=f2e1782]:
+      - generic [ref=f2e1783]:
+        - generic [ref=f2e1784]: task-011 Task owner
+        - generic [ref=f2e1785]: 0/1 completed
+      - generic [ref=f2e1786]:
+        - button "Open project" [ref=f2e1787] [cursor=pointer]
+        - button "Archive project" [ref=f2e1788] [cursor=pointer]
+    - generic [ref=f2e1789]:
+      - generic [ref=f2e1790]:
+        - generic [ref=f2e1791]: task-011 Other project
+        - generic [ref=f2e1792]: 0/0 completed
+      - generic [ref=f2e1793]:
+        - button "Open project" [ref=f2e1794] [cursor=pointer]
+        - button "Archive project" [ref=f2e1795] [cursor=pointer]
+    - generic [ref=f2e1796]:
+      - generic [ref=f2e1797]:
+        - generic [ref=f2e1798]: task-011 Task filters
+        - generic [ref=f2e1799]: 0/2 completed
+      - generic [ref=f2e1800]:
+        - button "Open project" [ref=f2e1801] [cursor=pointer]
+        - button "Archive project" [ref=f2e1802] [cursor=pointer]
+    - generic [ref=f2e1803]:
+      - generic [ref=f2e1804]:
+        - generic [ref=f2e1805]: task-011 Archive lifecycle
+        - generic [ref=f2e1806]: 0/0 completed
+      - generic [ref=f2e1807]:
+        - button "Open project" [ref=f2e1808] [cursor=pointer]
+        - button "Archive project" [ref=f2e1809] [cursor=pointer]
+    - generic [ref=f2e1810]:
+      - generic [ref=f2e1811]:
+        - generic [ref=f2e1812]: task-011 Archive tasks
+        - generic [ref=f2e1813]: 1/1 completed
+      - generic [ref=f2e1814]:
+        - button "Open project" [ref=f2e1815] [cursor=pointer]
+        - button "Archive project" [ref=f2e1816] [cursor=pointer]
+    - generic [ref=f2e1817]:
+      - generic [ref=f2e1818]:
+        - generic [ref=f2e1819]: task-011 Summary project
+        - generic [ref=f2e1820]: 1/2 completed
+      - generic [ref=f2e1821]:
+        - button "Open project" [ref=f2e1822] [cursor=pointer]
+        - button "Archive project" [ref=f2e1823] [cursor=pointer]
+    - generic [ref=f2e1824]:
+      - generic [ref=f2e1825]:
+        - generic [ref=f2e1826]: task-011 Transfer restart origin
+        - generic [ref=f2e1827]: 0/0 completed
+      - generic [ref=f2e1828]:
+        - button "Open project" [ref=f2e1829] [cursor=pointer]
+        - button "Archive project" [ref=f2e1830] [cursor=pointer]
+    - generic [ref=f2e1831]:
+      - generic [ref=f2e1832]:
+        - generic [ref=f2e1833]: task-011 Identity updated
+        - generic [ref=f2e1834]: 1/1 completed
+      - generic [ref=f2e1835]:
+        - button "Open project" [ref=f2e1836] [cursor=pointer]
+        - button "Archive project" [ref=f2e1837] [cursor=pointer]
+    - generic [ref=f2e1838]:
+      - generic [ref=f2e1839]:
+        - generic [ref=f2e1840]: task-011 Identity second
+        - generic [ref=f2e1841]: 0/0 completed
+      - generic [ref=f2e1842]:
+        - button "Open project" [ref=f2e1843] [cursor=pointer]
+        - button "Archive project" [ref=f2e1844] [cursor=pointer]
+    - generic [ref=f2e1845]:
+      - generic [ref=f2e1846]:
+        - generic [ref=f2e1847]: task-011 Rename invalid
+        - generic [ref=f2e1848]: 0/0 completed
+      - generic [ref=f2e1849]:
+        - button "Open project" [ref=f2e1850] [cursor=pointer]
+        - button "Archive project" [ref=f2e1851] [cursor=pointer]
+    - generic [ref=f2e1852]:
+      - generic [ref=f2e1853]:
+        - generic [ref=f2e1854]: task-011 Rename archive
+        - generic [ref=f2e1855]: 0/0 completed
+      - generic [ref=f2e1856]:
+        - button "Open project" [ref=f2e1857] [cursor=pointer]
+        - button "Archive project" [ref=f2e1858] [cursor=pointer]
+    - generic [ref=f2e1859]:
+      - generic [ref=f2e1860]:
+        - generic [ref=f2e1861]: task-011 Task rename identity
+        - generic [ref=f2e1862]: 1/2 completed
+      - generic [ref=f2e1863]:
+        - button "Open project" [ref=f2e1864] [cursor=pointer]
+        - button "Archive project" [ref=f2e1865] [cursor=pointer]
+    - generic [ref=f2e1866]:
+      - generic [ref=f2e1867]:
+        - generic [ref=f2e1868]: task-011 Task rename invalid
+        - generic [ref=f2e1869]: 0/1 completed
+      - generic [ref=f2e1870]:
+        - button "Open project" [ref=f2e1871] [cursor=pointer]
+        - button "Archive project" [ref=f2e1872] [cursor=pointer]
+    - generic [ref=f2e1873]:
+      - generic [ref=f2e1874]:
+        - generic [ref=f2e1875]: task-011 Task rename archive
+        - generic [ref=f2e1876]: 0/1 completed
+      - generic [ref=f2e1877]:
+        - button "Open project" [ref=f2e1878] [cursor=pointer]
+        - button "Archive project" [ref=f2e1879] [cursor=pointer]
+    - generic [ref=f2e1880]:
+      - generic [ref=f2e1881]:
+        - generic [ref=f2e1882]: task-012 Defaults independent
+        - generic [ref=f2e1883]: 0/1 completed
+      - generic [ref=f2e1884]:
+        - button "Open project" [ref=f2e1885] [cursor=pointer]
+        - button "Archive project" [ref=f2e1886] [cursor=pointer]
+    - generic [ref=f2e1887]:
+      - generic [ref=f2e1888]:
+        - generic [ref=f2e1889]: task-012 Defaults inheritance
+        - generic [ref=f2e1890]: 1/4 completed
+      - generic [ref=f2e1891]:
+        - button "Open project" [ref=f2e1892] [cursor=pointer]
+        - button "Archive project" [ref=f2e1893] [cursor=pointer]
+    - generic [ref=f2e1894]:
+      - generic [ref=f2e1895]:
+        - generic [ref=f2e1896]: task-012 Defaults renamed
+        - generic [ref=f2e1897]: 0/2 completed
+      - generic [ref=f2e1898]:
+        - button "Open project" [ref=f2e1899] [cursor=pointer]
+        - button "Archive project" [ref=f2e1900] [cursor=pointer]
+    - generic [ref=f2e1901]:
+      - generic [ref=f2e1902]:
+        - generic [ref=f2e1903]: task-012 Calendar persistence
+        - generic [ref=f2e1904]: 0/1 completed
+      - generic [ref=f2e1905]:
+        - button "Open project" [ref=f2e1906] [cursor=pointer]
+        - button "Archive project" [ref=f2e1907] [cursor=pointer]
+    - generic [ref=f2e1908]:
+      - generic [ref=f2e1909]:
+        - generic [ref=f2e1910]: task-012 Calendar validation
+        - generic [ref=f2e1911]: 0/1 completed
+      - generic [ref=f2e1912]:
+        - button "Open project" [ref=f2e1913] [cursor=pointer]
+        - button "Archive project" [ref=f2e1914] [cursor=pointer]
+    - generic [ref=f2e1915]:
+      - generic [ref=f2e1916]:
+        - generic [ref=f2e1917]: task-012 Calendar independence
+        - generic [ref=f2e1918]: 2/3 completed
+      - generic [ref=f2e1919]:
+        - button "Open project" [ref=f2e1920] [cursor=pointer]
+        - button "Archive project" [ref=f2e1921] [cursor=pointer]
+    - generic [ref=f2e1922]:
+      - generic [ref=f2e1923]:
+        - generic [ref=f2e1924]: task-012 Calendar second owner
+        - generic [ref=f2e1925]: 0/1 completed
+      - generic [ref=f2e1926]:
+        - button "Open project" [ref=f2e1927] [cursor=pointer]
+        - button "Archive project" [ref=f2e1928] [cursor=pointer]
+    - generic [ref=f2e1929]:
+      - generic [ref=f2e1930]:
+        - generic [ref=f2e1931]: task-012 Calendar archival
+        - generic [ref=f2e1932]: 0/1 completed
+      - generic [ref=f2e1933]:
+        - button "Open project" [ref=f2e1934] [cursor=pointer]
+        - button "Archive project" [ref=f2e1935] [cursor=pointer]
+    - generic [ref=f2e1936]:
+      - generic [ref=f2e1937]:
+        - generic [ref=f2e1938]: task-012 Range boundaries
+        - generic [ref=f2e1939]: 0/5 completed
+      - generic [ref=f2e1940]:
+        - button "Open project" [ref=f2e1941] [cursor=pointer]
+        - button "Archive project" [ref=f2e1942] [cursor=pointer]
+    - generic [ref=f2e1943]:
+      - generic [ref=f2e1944]:
+        - generic [ref=f2e1945]: task-012 Range intersections
+        - generic [ref=f2e1946]: 0/4 completed
+      - generic [ref=f2e1947]:
+        - button "Open project" [ref=f2e1948] [cursor=pointer]
+        - button "Archive project" [ref=f2e1949] [cursor=pointer]
+    - generic [ref=f2e1950]:
+      - generic [ref=f2e1951]:
+        - generic [ref=f2e1952]: task-012 Range validation
+        - generic [ref=f2e1953]: 0/2 completed
+      - generic [ref=f2e1954]:
+        - button "Open project" [ref=f2e1955] [cursor=pointer]
+        - button "Archive project" [ref=f2e1956] [cursor=pointer]
+    - generic [ref=f2e1957]:
+      - generic [ref=f2e1958]:
+        - generic [ref=f2e1959]: task-012 Range archival
+        - generic [ref=f2e1960]: 0/2 completed
+      - generic [ref=f2e1961]:
+        - button "Open project" [ref=f2e1962] [cursor=pointer]
+        - button "Archive project" [ref=f2e1963] [cursor=pointer]
+    - generic [ref=f2e1964]:
+      - generic [ref=f2e1965]:
+        - generic [ref=f2e1966]: task-012 Range owner renamed
+        - generic [ref=f2e1967]: 0/3 completed
+      - generic [ref=f2e1968]:
+        - button "Open project" [ref=f2e1969] [cursor=pointer]
+        - button "Archive project" [ref=f2e1970] [cursor=pointer]
+    - generic [ref=f2e1971]:
+      - generic [ref=f2e1972]:
+        - generic [ref=f2e1973]: task-012 Transfer target
+        - generic [ref=f2e1974]: 1/3 completed
+      - generic [ref=f2e1975]:
+        - button "Open project" [ref=f2e1976] [cursor=pointer]
+        - button "Archive project" [ref=f2e1977] [cursor=pointer]
+    - generic [ref=f2e1978]:
+      - generic [ref=f2e1979]:
+        - generic [ref=f2e1980]: task-012 Transfer source
+        - generic [ref=f2e1981]: 0/1 completed
+      - generic [ref=f2e1982]:
+        - button "Open project" [ref=f2e1983] [cursor=pointer]
+        - button "Archive project" [ref=f2e1984] [cursor=pointer]
+    - generic [ref=f2e1985]:
+      - generic [ref=f2e1986]:
+        - generic [ref=f2e1987]: task-012 Filtered transfer target
+        - generic [ref=f2e1988]: 0/2 completed
+      - generic [ref=f2e1989]:
+        - button "Open project" [ref=f2e1990] [cursor=pointer]
+        - button "Archive project" [ref=f2e1991] [cursor=pointer]
+    - generic [ref=f2e1992]:
+      - generic [ref=f2e1993]:
+        - generic [ref=f2e1994]: task-012 Filtered transfer source
+        - generic [ref=f2e1995]: 1/5 completed
+      - generic [ref=f2e1996]:
+        - button "Open project" [ref=f2e1997] [cursor=pointer]
+        - button "Archive project" [ref=f2e1998] [cursor=pointer]
+    - generic [ref=f2e1999]:
+      - generic [ref=f2e2000]:
+        - generic [ref=f2e2001]: task-012 Options first
+        - generic [ref=f2e2002]: 0/0 completed
+      - generic [ref=f2e2003]:
+        - button "Open project" [ref=f2e2004] [cursor=pointer]
+        - button "Archive project" [ref=f2e2005] [cursor=pointer]
+    - generic [ref=f2e2006]:
+      - generic [ref=f2e2007]:
+        - generic [ref=f2e2008]: task-012 Options second
+        - generic [ref=f2e2009]: 0/0 completed
+      - generic [ref=f2e2010]:
+        - button "Open project" [ref=f2e2011] [cursor=pointer]
+        - button "Archive project" [ref=f2e2012] [cursor=pointer]
+    - generic [ref=f2e2013]:
+      - generic [ref=f2e2014]:
+        - generic [ref=f2e2015]: task-012 Options owner
+        - generic [ref=f2e2016]: 0/1 completed
+      - generic [ref=f2e2017]:
+        - button "Open project" [ref=f2e2018] [cursor=pointer]
+        - button "Archive project" [ref=f2e2019] [cursor=pointer]
+    - generic [ref=f2e2020]:
+      - generic [ref=f2e2021]:
+        - generic [ref=f2e2022]: task-012 Read-only transfer target
+        - generic [ref=f2e2023]: 0/1 completed
+      - generic [ref=f2e2024]:
+        - button "Open project" [ref=f2e2025] [cursor=pointer]
+        - button "Archive project" [ref=f2e2026] [cursor=pointer]
+    - generic [ref=f2e2027]:
+      - generic [ref=f2e2028]:
+        - generic [ref=f2e2029]: task-012 Read-only transfer owner
+        - generic [ref=f2e2030]: 0/2 completed
+      - generic [ref=f2e2031]:
+        - button "Open project" [ref=f2e2032] [cursor=pointer]
+        - button "Archive project" [ref=f2e2033] [cursor=pointer]
+    - generic [ref=f2e2034]:
+      - generic [ref=f2e2035]:
+        - generic [ref=f2e2036]: task-012 Priority intersection
+        - generic [ref=f2e2037]: 1/4 completed
+      - generic [ref=f2e2038]:
+        - button "Open project" [ref=f2e2039] [cursor=pointer]
+        - button "Archive project" [ref=f2e2040] [cursor=pointer]
+    - generic [ref=f2e2041]:
+      - generic [ref=f2e2042]:
+        - generic [ref=f2e2043]: task-012 Priority live filters
+        - generic [ref=f2e2044]: 1/4 completed
+      - generic [ref=f2e2045]:
+        - button "Open project" [ref=f2e2046] [cursor=pointer]
+        - button "Archive project" [ref=f2e2047] [cursor=pointer]
+    - generic [ref=f2e2048]:
+      - generic [ref=f2e2049]:
+        - generic [ref=f2e2050]: task-012 Priority rename filters
+        - generic [ref=f2e2051]: 1/3 completed
+      - generic [ref=f2e2052]:
+        - button "Open project" [ref=f2e2053] [cursor=pointer]
+        - button "Archive project" [ref=f2e2054] [cursor=pointer]
+    - generic [ref=f2e2055]:
+      - generic [ref=f2e2056]:
+        - generic [ref=f2e2057]: task-012 Archived combined filters
+        - generic [ref=f2e2058]: 1/2 completed
+      - generic [ref=f2e2059]:
+        - button "Open project" [ref=f2e2060] [cursor=pointer]
+        - button "Archive project" [ref=f2e2061] [cursor=pointer]
+    - generic [ref=f2e2062]:
+      - generic [ref=f2e2063]:
+        - generic [ref=f2e2064]: task-012 Priority ownership
+        - generic [ref=f2e2065]: 0/2 completed
+      - generic [ref=f2e2066]:
+        - button "Open project" [ref=f2e2067] [cursor=pointer]
+        - button "Archive project" [ref=f2e2068] [cursor=pointer]
+    - generic [ref=f2e2069]:
+      - generic [ref=f2e2070]:
+        - generic [ref=f2e2071]: task-012 Priority other owner
+        - generic [ref=f2e2072]: 0/1 completed
+      - generic [ref=f2e2073]:
+        - button "Open project" [ref=f2e2074] [cursor=pointer]
+        - button "Archive project" [ref=f2e2075] [cursor=pointer]
+    - generic [ref=f2e2076]:
+      - generic [ref=f2e2077]:
+        - generic [ref=f2e2078]: task-012 Priority completion
+        - generic [ref=f2e2079]: 1/2 completed
+      - generic [ref=f2e2080]:
+        - button "Open project" [ref=f2e2081] [cursor=pointer]
+        - button "Archive project" [ref=f2e2082] [cursor=pointer]
+    - generic [ref=f2e2083]:
+      - generic [ref=f2e2084]:
+        - generic [ref=f2e2085]: task-012 Priority archive
+        - generic [ref=f2e2086]: 0/1 completed
+      - generic [ref=f2e2087]:
+        - button "Open project" [ref=f2e2088] [cursor=pointer]
+        - button "Archive project" [ref=f2e2089] [cursor=pointer]
+    - generic [ref=f2e2090]:
+      - generic [ref=f2e2091]:
+        - generic [ref=f2e2092]: task-012 Return holding
+        - generic [ref=f2e2093]: 0/0 completed
+      - generic [ref=f2e2094]:
+        - button "Open project" [ref=f2e2095] [cursor=pointer]
+        - button "Archive project" [ref=f2e2096] [cursor=pointer]
+    - generic [ref=f2e2097]:
+      - generic [ref=f2e2098]:
+        - generic [ref=f2e2099]: task-012 Return owner
+        - generic [ref=f2e2100]: 1/4 completed
+      - generic [ref=f2e2101]:
+        - button "Open project" [ref=f2e2102] [cursor=pointer]
+        - button "Archive project" [ref=f2e2103] [cursor=pointer]
+    - generic [ref=f2e2104]:
+      - generic [ref=f2e2105]:
+        - generic [ref=f2e2106]: task-012 Return identity holding
+        - generic [ref=f2e2107]: 0/0 completed
+      - generic [ref=f2e2108]:
+        - button "Open project" [ref=f2e2109] [cursor=pointer]
+        - button "Archive project" [ref=f2e2110] [cursor=pointer]
+    - generic [ref=f2e2111]:
+      - generic [ref=f2e2112]:
+        - generic [ref=f2e2113]: task-012 Returned owner renamed
+        - generic [ref=f2e2114]: 0/3 completed
+      - generic [ref=f2e2115]:
+        - button "Open project" [ref=f2e2116] [cursor=pointer]
+        - button "Archive project" [ref=f2e2117] [cursor=pointer]
+    - generic [ref=f2e2118]:
+      - generic [ref=f2e2119]:
+        - generic [ref=f2e2120]: task-012 Position second owner
+        - generic [ref=f2e2121]: 0/2 completed
+      - generic [ref=f2e2122]:
+        - button "Open project" [ref=f2e2123] [cursor=pointer]
+        - button "Archive project" [ref=f2e2124] [cursor=pointer]
+    - generic [ref=f2e2125]:
+      - generic [ref=f2e2126]:
+        - generic [ref=f2e2127]: task-012 Position third owner
+        - generic [ref=f2e2128]: 0/0 completed
+      - generic [ref=f2e2129]:
+        - button "Open project" [ref=f2e2130] [cursor=pointer]
+        - button "Archive project" [ref=f2e2131] [cursor=pointer]
+    - generic [ref=f2e2132]:
+      - generic [ref=f2e2133]:
+        - generic [ref=f2e2134]: task-012 Position first owner
+        - generic [ref=f2e2135]: 0/4 completed
+      - generic [ref=f2e2136]:
+        - button "Open project" [ref=f2e2137] [cursor=pointer]
+        - button "Archive project" [ref=f2e2138] [cursor=pointer]
+    - generic [ref=f2e2139]:
+      - generic [ref=f2e2140]:
+        - generic [ref=f2e2141]: task-012 Alpha create
+        - generic [ref=f2e2142]: 0/0 completed
+      - generic [ref=f2e2143]:
+        - button "Open project" [ref=f2e2144] [cursor=pointer]
+        - button "Archive project" [ref=f2e2145] [cursor=pointer]
+    - generic [ref=f2e2146]:
+      - generic [ref=f2e2147]:
+        - generic [ref=f2e2148]: task-012 Blank validation sentinel
+        - generic [ref=f2e2149]: 0/0 completed
+      - generic [ref=f2e2150]:
+        - button "Open project" [ref=f2e2151] [cursor=pointer]
+        - button "Archive project" [ref=f2e2152] [cursor=pointer]
+    - generic [ref=f2e2153]:
+      - generic [ref=f2e2154]:
+        - generic [ref=f2e2155]: task-012 Order first
+        - generic [ref=f2e2156]: 0/0 completed
+      - generic [ref=f2e2157]:
+        - button "Open project" [ref=f2e2158] [cursor=pointer]
+        - button "Archive project" [ref=f2e2159] [cursor=pointer]
+    - generic [ref=f2e2160]:
+      - generic [ref=f2e2161]:
+        - generic [ref=f2e2162]: task-012 Order second
+        - generic [ref=f2e2163]: 0/0 completed
+      - generic [ref=f2e2164]:
+        - button "Open project" [ref=f2e2165] [cursor=pointer]
+        - button "Archive project" [ref=f2e2166] [cursor=pointer]
+    - generic [ref=f2e2167]:
+      - generic [ref=f2e2168]:
+        - generic [ref=f2e2169]: task-012 Task reload
+        - generic [ref=f2e2170]: 0/1 completed
+      - generic [ref=f2e2171]:
+        - button "Open project" [ref=f2e2172] [cursor=pointer]
+        - button "Archive project" [ref=f2e2173] [cursor=pointer]
+    - generic [ref=f2e2174]:
+      - generic [ref=f2e2175]:
+        - generic [ref=f2e2176]: task-012 Task invalid
+        - generic [ref=f2e2177]: 0/0 completed
+      - generic [ref=f2e2178]:
+        - button "Open project" [ref=f2e2179] [cursor=pointer]
+        - button "Archive project" [ref=f2e2180] [cursor=pointer]
+    - generic [ref=f2e2181]:
+      - generic [ref=f2e2182]:
+        - generic [ref=f2e2183]: task-012 Task owner
+        - generic [ref=f2e2184]: 0/1 completed
+      - generic [ref=f2e2185]:
+        - button "Open project" [ref=f2e2186] [cursor=pointer]
+        - button "Archive project" [ref=f2e2187] [cursor=pointer]
+    - generic [ref=f2e2188]:
+      - generic [ref=f2e2189]:
+        - generic [ref=f2e2190]: task-012 Other project
+        - generic [ref=f2e2191]: 0/0 completed
+      - generic [ref=f2e2192]:
+        - button "Open project" [ref=f2e2193] [cursor=pointer]
+        - button "Archive project" [ref=f2e2194] [cursor=pointer]
+    - generic [ref=f2e2195]:
+      - generic [ref=f2e2196]:
+        - generic [ref=f2e2197]: task-012 Task filters
+        - generic [ref=f2e2198]: 0/2 completed
+      - generic [ref=f2e2199]:
+        - button "Open project" [ref=f2e2200] [cursor=pointer]
+        - button "Archive project" [ref=f2e2201] [cursor=pointer]
+    - generic [ref=f2e2202]:
+      - generic [ref=f2e2203]:
+        - generic [ref=f2e2204]: task-012 Archive lifecycle
+        - generic [ref=f2e2205]: 0/0 completed
+      - generic [ref=f2e2206]:
+        - button "Open project" [ref=f2e2207] [cursor=pointer]
+        - button "Archive project" [ref=f2e2208] [cursor=pointer]
+    - generic [ref=f2e2209]:
+      - generic [ref=f2e2210]:
+        - generic [ref=f2e2211]: task-012 Archive tasks
+        - generic [ref=f2e2212]: 1/1 completed
+      - generic [ref=f2e2213]:
+        - button "Open project" [ref=f2e2214] [cursor=pointer]
+        - button "Archive project" [ref=f2e2215] [cursor=pointer]
+    - generic [ref=f2e2216]:
+      - generic [ref=f2e2217]:
+        - generic [ref=f2e2218]: task-012 Summary project
+        - generic [ref=f2e2219]: 1/2 completed
+      - generic [ref=f2e2220]:
+        - button "Open project" [ref=f2e2221] [cursor=pointer]
+        - button "Archive project" [ref=f2e2222] [cursor=pointer]
+    - generic [ref=f2e2223]:
+      - generic [ref=f2e2224]:
+        - generic [ref=f2e2225]: task-012 Transfer restart origin
+        - generic [ref=f2e2226]: 0/0 completed
+      - generic [ref=f2e2227]:
+        - button "Open project" [ref=f2e2228] [cursor=pointer]
+        - button "Archive project" [ref=f2e2229] [cursor=pointer]
+    - generic [ref=f2e2230]:
+      - generic [ref=f2e2231]:
+        - generic [ref=f2e2232]: task-012 Identity updated
+        - generic [ref=f2e2233]: 1/1 completed
+      - generic [ref=f2e2234]:
+        - button "Open project" [ref=f2e2235] [cursor=pointer]
+        - button "Archive project" [ref=f2e2236] [cursor=pointer]
+    - generic [ref=f2e2237]:
+      - generic [ref=f2e2238]:
+        - generic [ref=f2e2239]: task-012 Identity second
+        - generic [ref=f2e2240]: 0/0 completed
+      - generic [ref=f2e2241]:
+        - button "Open project" [ref=f2e2242] [cursor=pointer]
+        - button "Archive project" [ref=f2e2243] [cursor=pointer]
+    - generic [ref=f2e2244]:
+      - generic [ref=f2e2245]:
+        - generic [ref=f2e2246]: task-012 Rename invalid
+        - generic [ref=f2e2247]: 0/0 completed
+      - generic [ref=f2e2248]:
+        - button "Open project" [ref=f2e2249] [cursor=pointer]
+        - button "Archive project" [ref=f2e2250] [cursor=pointer]
+    - generic [ref=f2e2251]:
+      - generic [ref=f2e2252]:
+        - generic [ref=f2e2253]: task-012 Rename archive
+        - generic [ref=f2e2254]: 0/0 completed
+      - generic [ref=f2e2255]:
+        - button "Open project" [ref=f2e2256] [cursor=pointer]
+        - button "Archive project" [ref=f2e2257] [cursor=pointer]
+    - generic [ref=f2e2258]:
+      - generic [ref=f2e2259]:
+        - generic [ref=f2e2260]: task-012 Task rename identity
+        - generic [ref=f2e2261]: 1/2 completed
+      - generic [ref=f2e2262]:
+        - button "Open project" [ref=f2e2263] [cursor=pointer]
+        - button "Archive project" [ref=f2e2264] [cursor=pointer]
+    - generic [ref=f2e2265]:
+      - generic [ref=f2e2266]:
+        - generic [ref=f2e2267]: task-012 Task rename invalid
+        - generic [ref=f2e2268]: 0/1 completed
+      - generic [ref=f2e2269]:
+        - button "Open project" [ref=f2e2270] [cursor=pointer]
+        - button "Archive project" [ref=f2e2271] [cursor=pointer]
+    - generic [ref=f2e2272]:
+      - generic [ref=f2e2273]:
+        - generic [ref=f2e2274]: task-012 Task rename archive
+        - generic [ref=f2e2275]: 0/1 completed
+      - generic [ref=f2e2276]:
+        - button "Open project" [ref=f2e2277] [cursor=pointer]
+        - button "Archive project" [ref=f2e2278] [cursor=pointer]
+    - generic [ref=f2e2279]:
+      - generic [ref=f2e2280]:
+        - generic [ref=f2e2281]: task-013 Defaults independent
+        - generic [ref=f2e2282]: 0/1 completed
+      - generic [ref=f2e2283]:
+        - button "Open project" [ref=f2e2284] [cursor=pointer]
+        - button "Archive project" [ref=f2e2285] [cursor=pointer]
+    - generic [ref=f2e2286]:
+      - generic [ref=f2e2287]:
+        - generic [ref=f2e2288]: task-013 Defaults inheritance
+        - generic [ref=f2e2289]: 1/4 completed
+      - generic [ref=f2e2290]:
+        - button "Open project" [ref=f2e2291] [cursor=pointer]
+        - button "Archive project" [ref=f2e2292] [cursor=pointer]
+    - generic [ref=f2e2293]:
+      - generic [ref=f2e2294]:
+        - generic [ref=f2e2295]: task-013 Defaults renamed
+        - generic [ref=f2e2296]: 0/2 completed
+      - generic [ref=f2e2297]:
+        - button "Open project" [ref=f2e2298] [cursor=pointer]
+        - button "Archive project" [ref=f2e2299] [cursor=pointer]
+    - generic [ref=f2e2300]:
+      - generic [ref=f2e2301]:
+        - generic [ref=f2e2302]: task-013 Calendar persistence
+        - generic [ref=f2e2303]: 0/1 completed
+      - generic [ref=f2e2304]:
+        - button "Open project" [ref=f2e2305] [cursor=pointer]
+        - button "Archive project" [ref=f2e2306] [cursor=pointer]
+    - generic [ref=f2e2307]:
+      - generic [ref=f2e2308]:
+        - generic [ref=f2e2309]: task-013 Calendar validation
+        - generic [ref=f2e2310]: 0/1 completed
+      - generic [ref=f2e2311]:
+        - button "Open project" [ref=f2e2312] [cursor=pointer]
+        - button "Archive project" [ref=f2e2313] [cursor=pointer]
+    - generic [ref=f2e2314]:
+      - generic [ref=f2e2315]:
+        - generic [ref=f2e2316]: task-013 Calendar independence
+        - generic [ref=f2e2317]: 2/3 completed
+      - generic [ref=f2e2318]:
+        - button "Open project" [ref=f2e2319] [cursor=pointer]
+        - button "Archive project" [ref=f2e2320] [cursor=pointer]
+    - generic [ref=f2e2321]:
+      - generic [ref=f2e2322]:
+        - generic [ref=f2e2323]: task-013 Calendar second owner
+        - generic [ref=f2e2324]: 0/1 completed
+      - generic [ref=f2e2325]:
+        - button "Open project" [ref=f2e2326] [cursor=pointer]
+        - button "Archive project" [ref=f2e2327] [cursor=pointer]
+    - generic [ref=f2e2328]:
+      - generic [ref=f2e2329]:
+        - generic [ref=f2e2330]: task-013 Calendar archival
+        - generic [ref=f2e2331]: 0/1 completed
+      - generic [ref=f2e2332]:
+        - button "Open project" [ref=f2e2333] [cursor=pointer]
+        - button "Archive project" [ref=f2e2334] [cursor=pointer]
+    - generic [ref=f2e2335]:
+      - generic [ref=f2e2336]:
+        - generic [ref=f2e2337]: task-013 Range boundaries
+        - generic [ref=f2e2338]: 0/5 completed
+      - generic [ref=f2e2339]:
+        - button "Open project" [ref=f2e2340] [cursor=pointer]
+        - button "Archive project" [ref=f2e2341] [cursor=pointer]
+    - generic [ref=f2e2342]:
+      - generic [ref=f2e2343]:
+        - generic [ref=f2e2344]: task-013 Range intersections
+        - generic [ref=f2e2345]: 0/4 completed
+      - generic [ref=f2e2346]:
+        - button "Open project" [ref=f2e2347] [cursor=pointer]
+        - button "Archive project" [ref=f2e2348] [cursor=pointer]
+    - generic [ref=f2e2349]:
+      - generic [ref=f2e2350]:
+        - generic [ref=f2e2351]: task-013 Range validation
+        - generic [ref=f2e2352]: 0/2 completed
+      - generic [ref=f2e2353]:
+        - button "Open project" [ref=f2e2354] [cursor=pointer]
+        - button "Archive project" [ref=f2e2355] [cursor=pointer]
+    - generic [ref=f2e2356]:
+      - generic [ref=f2e2357]:
+        - generic [ref=f2e2358]: task-013 Range archival
+        - generic [ref=f2e2359]: 0/2 completed
+      - generic [ref=f2e2360]:
+        - button "Open project" [ref=f2e2361] [cursor=pointer]
+        - button "Archive project" [ref=f2e2362] [cursor=pointer]
+    - generic [ref=f2e2363]:
+      - generic [ref=f2e2364]:
+        - generic [ref=f2e2365]: task-013 Range owner renamed
+        - generic [ref=f2e2366]: 0/3 completed
+      - generic [ref=f2e2367]:
+        - button "Open project" [ref=f2e2368] [cursor=pointer]
+        - button "Archive project" [ref=f2e2369] [cursor=pointer]
+    - generic [ref=f2e2370]:
+      - generic [ref=f2e2371]:
+        - generic [ref=f2e2372]: task-013 Transfer target
+        - generic [ref=f2e2373]: 1/3 completed
+      - generic [ref=f2e2374]:
+        - button "Open project" [ref=f2e2375] [cursor=pointer]
+        - button "Archive project" [ref=f2e2376] [cursor=pointer]
+    - generic [ref=f2e2377]:
+      - generic [ref=f2e2378]:
+        - generic [ref=f2e2379]: task-013 Transfer source
+        - generic [ref=f2e2380]: 0/1 completed
+      - generic [ref=f2e2381]:
+        - button "Open project" [ref=f2e2382] [cursor=pointer]
+        - button "Archive project" [ref=f2e2383] [cursor=pointer]
+    - generic [ref=f2e2384]:
+      - generic [ref=f2e2385]:
+        - generic [ref=f2e2386]: task-013 Filtered transfer target
+        - generic [ref=f2e2387]: 0/2 completed
+      - generic [ref=f2e2388]:
+        - button "Open project" [ref=f2e2389] [cursor=pointer]
+        - button "Archive project" [ref=f2e2390] [cursor=pointer]
+    - generic [ref=f2e2391]:
+      - generic [ref=f2e2392]:
+        - generic [ref=f2e2393]: task-013 Filtered transfer source
+        - generic [ref=f2e2394]: 1/5 completed
+      - generic [ref=f2e2395]:
+        - button "Open project" [ref=f2e2396] [cursor=pointer]
+        - button "Archive project" [ref=f2e2397] [cursor=pointer]
+    - generic [ref=f2e2398]:
+      - generic [ref=f2e2399]:
+        - generic [ref=f2e2400]: task-013 Options first
+        - generic [ref=f2e2401]: 0/0 completed
+      - generic [ref=f2e2402]:
+        - button "Open project" [ref=f2e2403] [cursor=pointer]
+        - button "Archive project" [ref=f2e2404] [cursor=pointer]
+    - generic [ref=f2e2405]:
+      - generic [ref=f2e2406]:
+        - generic [ref=f2e2407]: task-013 Options second
+        - generic [ref=f2e2408]: 0/0 completed
+      - generic [ref=f2e2409]:
+        - button "Open project" [ref=f2e2410] [cursor=pointer]
+        - button "Archive project" [ref=f2e2411] [cursor=pointer]
+    - generic [ref=f2e2412]:
+      - generic [ref=f2e2413]:
+        - generic [ref=f2e2414]: task-013 Options owner
+        - generic [ref=f2e2415]: 0/1 completed
+      - generic [ref=f2e2416]:
+        - button "Open project" [ref=f2e2417] [cursor=pointer]
+        - button "Archive project" [ref=f2e2418] [cursor=pointer]
+    - generic [ref=f2e2419]:
+      - generic [ref=f2e2420]:
+        - generic [ref=f2e2421]: task-013 Read-only transfer target
+        - generic [ref=f2e2422]: 0/1 completed
+      - generic [ref=f2e2423]:
+        - button "Open project" [ref=f2e2424] [cursor=pointer]
+        - button "Archive project" [ref=f2e2425] [cursor=pointer]
+    - generic [ref=f2e2426]:
+      - generic [ref=f2e2427]:
+        - generic [ref=f2e2428]: task-013 Read-only transfer owner
+        - generic [ref=f2e2429]: 0/2 completed
+      - generic [ref=f2e2430]:
+        - button "Open project" [ref=f2e2431] [cursor=pointer]
+        - button "Archive project" [ref=f2e2432] [cursor=pointer]
+    - generic [ref=f2e2433]:
+      - generic [ref=f2e2434]:
+        - generic [ref=f2e2435]: task-013 Priority intersection
+        - generic [ref=f2e2436]: 1/4 completed
+      - generic [ref=f2e2437]:
+        - button "Open project" [ref=f2e2438] [cursor=pointer]
+        - button "Archive project" [ref=f2e2439] [cursor=pointer]
+    - generic [ref=f2e2440]:
+      - generic [ref=f2e2441]:
+        - generic [ref=f2e2442]: task-013 Priority live filters
+        - generic [ref=f2e2443]: 1/4 completed
+      - generic [ref=f2e2444]:
+        - button "Open project" [ref=f2e2445] [cursor=pointer]
+        - button "Archive project" [ref=f2e2446] [cursor=pointer]
+    - generic [ref=f2e2447]:
+      - generic [ref=f2e2448]:
+        - generic [ref=f2e2449]: task-013 Priority rename filters
+        - generic [ref=f2e2450]: 1/3 completed
+      - generic [ref=f2e2451]:
+        - button "Open project" [ref=f2e2452] [cursor=pointer]
+        - button "Archive project" [ref=f2e2453] [cursor=pointer]
+    - generic [ref=f2e2454]:
+      - generic [ref=f2e2455]:
+        - generic [ref=f2e2456]: task-013 Archived combined filters
+        - generic [ref=f2e2457]: 1/2 completed
+      - generic [ref=f2e2458]:
+        - button "Open project" [ref=f2e2459] [cursor=pointer]
+        - button "Archive project" [ref=f2e2460] [cursor=pointer]
+    - generic [ref=f2e2461]:
+      - generic [ref=f2e2462]:
+        - generic [ref=f2e2463]: task-013 Priority ownership
+        - generic [ref=f2e2464]: 0/2 completed
+      - generic [ref=f2e2465]:
+        - button "Open project" [ref=f2e2466] [cursor=pointer]
+        - button "Archive project" [ref=f2e2467] [cursor=pointer]
+    - generic [ref=f2e2468]:
+      - generic [ref=f2e2469]:
+        - generic [ref=f2e2470]: task-013 Priority other owner
+        - generic [ref=f2e2471]: 0/1 completed
+      - generic [ref=f2e2472]:
+        - button "Open project" [ref=f2e2473] [cursor=pointer]
+        - button "Archive project" [ref=f2e2474] [cursor=pointer]
+    - generic [ref=f2e2475]:
+      - generic [ref=f2e2476]:
+        - generic [ref=f2e2477]: task-013 Priority completion
+        - generic [ref=f2e2478]: 1/2 completed
+      - generic [ref=f2e2479]:
+        - button "Open project" [ref=f2e2480] [cursor=pointer]
+        - button "Archive project" [ref=f2e2481] [cursor=pointer]
+    - generic [ref=f2e2482]:
+      - generic [ref=f2e2483]:
+        - generic [ref=f2e2484]: task-013 Priority archive
+        - generic [ref=f2e2485]: 0/1 completed
+      - generic [ref=f2e2486]:
+        - button "Open project" [ref=f2e2487] [cursor=pointer]
+        - button "Archive project" [ref=f2e2488] [cursor=pointer]
+    - generic [ref=f2e2489]:
+      - generic [ref=f2e2490]:
+        - generic [ref=f2e2491]: task-013 Return holding
+        - generic [ref=f2e2492]: 0/0 completed
+      - generic [ref=f2e2493]:
+        - button "Open project" [ref=f2e2494] [cursor=pointer]
+        - button "Archive project" [ref=f2e2495] [cursor=pointer]
+    - generic [ref=f2e2496]:
+      - generic [ref=f2e2497]:
+        - generic [ref=f2e2498]: task-013 Return owner
+        - generic [ref=f2e2499]: 1/4 completed
+      - generic [ref=f2e2500]:
+        - button "Open project" [ref=f2e2501] [cursor=pointer]
+        - button "Archive project" [ref=f2e2502] [cursor=pointer]
+    - generic [ref=f2e2503]:
+      - generic [ref=f2e2504]:
+        - generic [ref=f2e2505]: task-013 Return identity holding
+        - generic [ref=f2e2506]: 0/0 completed
+      - generic [ref=f2e2507]:
+        - button "Open project" [ref=f2e2508] [cursor=pointer]
+        - button "Archive project" [ref=f2e2509] [cursor=pointer]
+    - generic [ref=f2e2510]:
+      - generic [ref=f2e2511]:
+        - generic [ref=f2e2512]: task-013 Returned owner renamed
+        - generic [ref=f2e2513]: 0/3 completed
+      - generic [ref=f2e2514]:
+        - button "Open project" [ref=f2e2515] [cursor=pointer]
+        - button "Archive project" [ref=f2e2516] [cursor=pointer]
+    - generic [ref=f2e2517]:
+      - generic [ref=f2e2518]:
+        - generic [ref=f2e2519]: task-013 Position second owner
+        - generic [ref=f2e2520]: 0/2 completed
+      - generic [ref=f2e2521]:
+        - button "Open project" [ref=f2e2522] [cursor=pointer]
+        - button "Archive project" [ref=f2e2523] [cursor=pointer]
+    - generic [ref=f2e2524]:
+      - generic [ref=f2e2525]:
+        - generic [ref=f2e2526]: task-013 Position third owner
+        - generic [ref=f2e2527]: 0/0 completed
+      - generic [ref=f2e2528]:
+        - button "Open project" [ref=f2e2529] [cursor=pointer]
+        - button "Archive project" [ref=f2e2530] [cursor=pointer]
+    - generic [ref=f2e2531]:
+      - generic [ref=f2e2532]:
+        - generic [ref=f2e2533]: task-013 Position first owner
+        - generic [ref=f2e2534]: 0/4 completed
+      - generic [ref=f2e2535]:
+        - button "Open project" [ref=f2e2536] [cursor=pointer]
+        - button "Archive project" [ref=f2e2537] [cursor=pointer]
+    - generic [ref=f2e2538]:
+      - generic [ref=f2e2539]:
+        - generic [ref=f2e2540]: task-013 Search Mixed first
+        - generic [ref=f2e2541]: 0/0 completed
+      - generic [ref=f2e2542]:
+        - button "Open project" [ref=f2e2543] [cursor=pointer]
+        - button "Archive project" [ref=f2e2544] [cursor=pointer]
+    - generic [ref=f2e2545]:
+      - generic [ref=f2e2546]:
+        - generic [ref=f2e2547]: task-013 Search unrelated
+        - generic [ref=f2e2548]: 0/0 completed
+      - generic [ref=f2e2549]:
+        - button "Open project" [ref=f2e2550] [cursor=pointer]
+        - button "Archive project" [ref=f2e2551] [cursor=pointer]
+    - generic [ref=f2e2552]:
+      - generic [ref=f2e2553]:
+        - generic [ref=f2e2554]: task-013 Search mixed last
+        - generic [ref=f2e2555]: 0/0 completed
+      - generic [ref=f2e2556]:
+        - button "Open project" [ref=f2e2557] [cursor=pointer]
+        - button "Archive project" [ref=f2e2558] [cursor=pointer]
+    - generic [ref=f2e2559]:
+      - generic [ref=f2e2560]:
+        - generic [ref=f2e2561]: task-013 Search double gap
+        - generic [ref=f2e2562]: 0/0 completed
+      - generic [ref=f2e2563]:
+        - button "Open project" [ref=f2e2564] [cursor=pointer]
+        - button "Archive project" [ref=f2e2565] [cursor=pointer]
+    - generic [ref=f2e2566]:
+      - generic [ref=f2e2567]:
+        - generic [ref=f2e2568]: task-013 Search double sentinel
+        - generic [ref=f2e2569]: 0/0 completed
+      - generic [ref=f2e2570]:
+        - button "Open project" [ref=f2e2571] [cursor=pointer]
+        - button "Archive project" [ref=f2e2572] [cursor=pointer]
+    - generic [ref=f2e2573]:
+      - generic [ref=f2e2574]:
+        - generic [ref=f2e2575]: task-013 Search task intersections
+        - generic [ref=f2e2576]: 1/6 completed
+      - generic [ref=f2e2577]:
+        - button "Open project" [ref=f2e2578] [cursor=pointer]
+        - button "Archive project" [ref=f2e2579] [cursor=pointer]
+    - generic [ref=f2e2580]:
+      - generic [ref=f2e2581]:
+        - generic [ref=f2e2582]: task-013 Search internal spacing
+        - generic [ref=f2e2583]: 0/2 completed
+      - generic [ref=f2e2584]:
+        - button "Open project" [ref=f2e2585] [cursor=pointer]
+        - button "Archive project" [ref=f2e2586] [cursor=pointer]
+    - generic [ref=f2e2587]:
+      - generic [ref=f2e2588]:
+        - generic [ref=f2e2589]: task-013 Alpha create
+        - generic [ref=f2e2590]: 0/0 completed
+      - generic [ref=f2e2591]:
+        - button "Open project" [ref=f2e2592] [cursor=pointer]
+        - button "Archive project" [ref=f2e2593] [cursor=pointer]
+    - generic [ref=f2e2594]:
+      - generic [ref=f2e2595]:
+        - generic [ref=f2e2596]: task-013 Blank validation sentinel
+        - generic [ref=f2e2597]: 0/0 completed
+      - generic [ref=f2e2598]:
+        - button "Open project" [ref=f2e2599] [cursor=pointer]
+        - button "Archive project" [ref=f2e2600] [cursor=pointer]
+    - generic [ref=f2e2601]:
+      - generic [ref=f2e2602]:
+        - generic [ref=f2e2603]: task-013 Order first
+        - generic [ref=f2e2604]: 0/0 completed
+      - generic [ref=f2e2605]:
+        - button "Open project" [ref=f2e2606] [cursor=pointer]
+        - button "Archive project" [ref=f2e2607] [cursor=pointer]
+    - generic [ref=f2e2608]:
+      - generic [ref=f2e2609]:
+        - generic [ref=f2e2610]: task-013 Order second
+        - generic [ref=f2e2611]: 0/0 completed
+      - generic [ref=f2e2612]:
+        - button "Open project" [ref=f2e2613] [cursor=pointer]
+        - button "Archive project" [ref=f2e2614] [cursor=pointer]
+    - generic [ref=f2e2615]:
+      - generic [ref=f2e2616]:
+        - generic [ref=f2e2617]: task-013 Task reload
+        - generic [ref=f2e2618]: 0/1 completed
+      - generic [ref=f2e2619]:
+        - button "Open project" [ref=f2e2620] [cursor=pointer]
+        - button "Archive project" [ref=f2e2621] [cursor=pointer]
+    - generic [ref=f2e2622]:
+      - generic [ref=f2e2623]:
+        - generic [ref=f2e2624]: task-013 Task invalid
+        - generic [ref=f2e2625]: 0/0 completed
+      - generic [ref=f2e2626]:
+        - button "Open project" [ref=f2e2627] [cursor=pointer]
+        - button "Archive project" [ref=f2e2628] [cursor=pointer]
+    - generic [ref=f2e2629]:
+      - generic [ref=f2e2630]:
+        - generic [ref=f2e2631]: task-013 Task owner
+        - generic [ref=f2e2632]: 0/1 completed
+      - generic [ref=f2e2633]:
+        - button "Open project" [ref=f2e2634] [cursor=pointer]
+        - button "Archive project" [ref=f2e2635] [cursor=pointer]
+    - generic [ref=f2e2636]:
+      - generic [ref=f2e2637]:
+        - generic [ref=f2e2638]: task-013 Other project
+        - generic [ref=f2e2639]: 0/0 completed
+      - generic [ref=f2e2640]:
+        - button "Open project" [ref=f2e2641] [cursor=pointer]
+        - button "Archive project" [ref=f2e2642] [cursor=pointer]
+    - generic [ref=f2e2643]:
+      - generic [ref=f2e2644]:
+        - generic [ref=f2e2645]: task-013 Task filters
+        - generic [ref=f2e2646]: 0/2 completed
+      - generic [ref=f2e2647]:
+        - button "Open project" [ref=f2e2648] [cursor=pointer]
+        - button "Archive project" [ref=f2e2649] [cursor=pointer]
+    - generic [ref=f2e2650]:
+      - generic [ref=f2e2651]:
+        - generic [ref=f2e2652]: task-013 Archive lifecycle
+        - generic [ref=f2e2653]: 0/0 completed
+      - generic [ref=f2e2654]:
+        - button "Open project" [ref=f2e2655] [cursor=pointer]
+        - button "Archive project" [ref=f2e2656] [cursor=pointer]
+    - generic [ref=f2e2657]:
+      - generic [ref=f2e2658]:
+        - generic [ref=f2e2659]: task-013 Archive tasks
+        - generic [ref=f2e2660]: 1/1 completed
+      - generic [ref=f2e2661]:
+        - button "Open project" [ref=f2e2662] [cursor=pointer]
+        - button "Archive project" [ref=f2e2663] [cursor=pointer]
+    - generic [ref=f2e2664]:
+      - generic [ref=f2e2665]:
+        - generic [ref=f2e2666]: task-013 Summary project
+        - generic [ref=f2e2667]: 1/2 completed
+      - generic [ref=f2e2668]:
+        - button "Open project" [ref=f2e2669] [cursor=pointer]
+        - button "Archive project" [ref=f2e2670] [cursor=pointer]
+    - generic [ref=f2e2671]:
+      - generic [ref=f2e2672]:
+        - generic [ref=f2e2673]: task-013 Transfer restart origin
+        - generic [ref=f2e2674]: 0/0 completed
+      - generic [ref=f2e2675]:
+        - button "Open project" [ref=f2e2676] [cursor=pointer]
+        - button "Archive project" [ref=f2e2677] [cursor=pointer]
+    - generic [ref=f2e2678]:
+      - generic [ref=f2e2679]:
+        - generic [ref=f2e2680]: task-013 Identity updated
+        - generic [ref=f2e2681]: 1/1 completed
+      - generic [ref=f2e2682]:
+        - button "Open project" [ref=f2e2683] [cursor=pointer]
+        - button "Archive project" [ref=f2e2684] [cursor=pointer]
+    - generic [ref=f2e2685]:
+      - generic [ref=f2e2686]:
+        - generic [ref=f2e2687]: task-013 Identity second
+        - generic [ref=f2e2688]: 0/0 completed
+      - generic [ref=f2e2689]:
+        - button "Open project" [ref=f2e2690] [cursor=pointer]
+        - button "Archive project" [ref=f2e2691] [cursor=pointer]
+    - generic [ref=f2e2692]:
+      - generic [ref=f2e2693]:
+        - generic [ref=f2e2694]: task-013 Rename invalid
+        - generic [ref=f2e2695]: 0/0 completed
+      - generic [ref=f2e2696]:
+        - button "Open project" [ref=f2e2697] [cursor=pointer]
+        - button "Archive project" [ref=f2e2698] [cursor=pointer]
+    - generic [ref=f2e2699]:
+      - generic [ref=f2e2700]:
+        - generic [ref=f2e2701]: task-013 Rename archive
+        - generic [ref=f2e2702]: 0/0 completed
+      - generic [ref=f2e2703]:
+        - button "Open project" [ref=f2e2704] [cursor=pointer]
+        - button "Archive project" [ref=f2e2705] [cursor=pointer]
+    - generic [ref=f2e2706]:
+      - generic [ref=f2e2707]:
+        - generic [ref=f2e2708]: task-013 Task rename identity
+        - generic [ref=f2e2709]: 1/2 completed
+      - generic [ref=f2e2710]:
+        - button "Open project" [ref=f2e2711] [cursor=pointer]
+        - button "Archive project" [ref=f2e2712] [cursor=pointer]
+    - generic [ref=f2e2713]:
+      - generic [ref=f2e2714]:
+        - generic [ref=f2e2715]: task-013 Task rename invalid
+        - generic [ref=f2e2716]: 0/1 completed
+      - generic [ref=f2e2717]:
+        - button "Open project" [ref=f2e2718] [cursor=pointer]
+        - button "Archive project" [ref=f2e2719] [cursor=pointer]
+    - generic [ref=f2e2720]:
+      - generic [ref=f2e2721]:
+        - generic [ref=f2e2722]: task-013 Task rename archive
+        - generic [ref=f2e2723]: 0/1 completed
+      - generic [ref=f2e2724]:
+        - button "Open project" [ref=f2e2725] [cursor=pointer]
+        - button "Archive project" [ref=f2e2726] [cursor=pointer]
+    - generic [ref=f2e2727]:
+      - generic [ref=f2e2728]:
+        - generic [ref=f2e2729]: task-014 Defaults independent
+        - generic [ref=f2e2730]: 0/1 completed
+      - generic [ref=f2e2731]:
+        - button "Open project" [ref=f2e2732] [cursor=pointer]
+        - button "Archive project" [ref=f2e2733] [cursor=pointer]
+    - generic [ref=f2e2734]:
+      - generic [ref=f2e2735]:
+        - generic [ref=f2e2736]: task-014 Defaults inheritance
+        - generic [ref=f2e2737]: 1/4 completed
+      - generic [ref=f2e2738]:
+        - button "Open project" [ref=f2e2739] [cursor=pointer]
+        - button "Archive project" [ref=f2e2740] [cursor=pointer]
+    - generic [ref=f2e2741]:
+      - generic [ref=f2e2742]:
+        - generic [ref=f2e2743]: task-014 Defaults renamed
+        - generic [ref=f2e2744]: 0/2 completed
+      - generic [ref=f2e2745]:
+        - button "Open project" [ref=f2e2746] [cursor=pointer]
+        - button "Archive project" [ref=f2e2747] [cursor=pointer]
+    - generic [ref=f2e2748]:
+      - generic [ref=f2e2749]:
+        - generic [ref=f2e2750]: task-014 Calendar persistence
+        - generic [ref=f2e2751]: 0/1 completed
+      - generic [ref=f2e2752]:
+        - button "Open project" [ref=f2e2753] [cursor=pointer]
+        - button "Archive project" [ref=f2e2754] [cursor=pointer]
+    - generic [ref=f2e2755]:
+      - generic [ref=f2e2756]:
+        - generic [ref=f2e2757]: task-014 Calendar validation
+        - generic [ref=f2e2758]: 0/1 completed
+      - generic [ref=f2e2759]:
+        - button "Open project" [ref=f2e2760] [cursor=pointer]
+        - button "Archive project" [ref=f2e2761] [cursor=pointer]
+    - generic [ref=f2e2762]:
+      - generic [ref=f2e2763]:
+        - generic [ref=f2e2764]: task-014 Calendar independence
+        - generic [ref=f2e2765]: 2/3 completed
+      - generic [ref=f2e2766]:
+        - button "Open project" [ref=f2e2767] [cursor=pointer]
+        - button "Archive project" [ref=f2e2768] [cursor=pointer]
+    - generic [ref=f2e2769]:
+      - generic [ref=f2e2770]:
+        - generic [ref=f2e2771]: task-014 Calendar second owner
+        - generic [ref=f2e2772]: 0/1 completed
+      - generic [ref=f2e2773]:
+        - button "Open project" [ref=f2e2774] [cursor=pointer]
+        - button "Archive project" [ref=f2e2775] [cursor=pointer]
+    - generic [ref=f2e2776]:
+      - generic [ref=f2e2777]:
+        - generic [ref=f2e2778]: task-014 Calendar archival
+        - generic [ref=f2e2779]: 0/1 completed
+      - generic [ref=f2e2780]:
+        - button "Open project" [ref=f2e2781] [cursor=pointer]
+        - button "Archive project" [ref=f2e2782] [cursor=pointer]
+    - generic [ref=f2e2783]:
+      - generic [ref=f2e2784]:
+        - generic [ref=f2e2785]: task-014 Range boundaries
+        - generic [ref=f2e2786]: 0/5 completed
+      - generic [ref=f2e2787]:
+        - button "Open project" [ref=f2e2788] [cursor=pointer]
+        - button "Archive project" [ref=f2e2789] [cursor=pointer]
+    - generic [ref=f2e2790]:
+      - generic [ref=f2e2791]:
+        - generic [ref=f2e2792]: task-014 Range intersections
+        - generic [ref=f2e2793]: 0/4 completed
+      - generic [ref=f2e2794]:
+        - button "Open project" [ref=f2e2795] [cursor=pointer]
+        - button "Archive project" [ref=f2e2796] [cursor=pointer]
+    - generic [ref=f2e2797]:
+      - generic [ref=f2e2798]:
+        - generic [ref=f2e2799]: task-014 Range validation
+        - generic [ref=f2e2800]: 0/2 completed
+      - generic [ref=f2e2801]:
+        - button "Open project" [ref=f2e2802] [cursor=pointer]
+        - button "Archive project" [ref=f2e2803] [cursor=pointer]
+    - generic [ref=f2e2804]:
+      - generic [ref=f2e2805]:
+        - generic [ref=f2e2806]: task-014 Range archival
+        - generic [ref=f2e2807]: 0/2 completed
+      - generic [ref=f2e2808]:
+        - button "Open project" [ref=f2e2809] [cursor=pointer]
+        - button "Archive project" [ref=f2e2810] [cursor=pointer]
+    - generic [ref=f2e2811]:
+      - generic [ref=f2e2812]:
+        - generic [ref=f2e2813]: task-014 Range owner renamed
+        - generic [ref=f2e2814]: 0/3 completed
+      - generic [ref=f2e2815]:
+        - button "Open project" [ref=f2e2816] [cursor=pointer]
+        - button "Archive project" [ref=f2e2817] [cursor=pointer]
+    - generic [ref=f2e2818]:
+      - generic [ref=f2e2819]:
+        - generic [ref=f2e2820]: task-014 Transfer target
+        - generic [ref=f2e2821]: 1/3 completed
+      - generic [ref=f2e2822]:
+        - button "Open project" [ref=f2e2823] [cursor=pointer]
+        - button "Archive project" [ref=f2e2824] [cursor=pointer]
+    - generic [ref=f2e2825]:
+      - generic [ref=f2e2826]:
+        - generic [ref=f2e2827]: task-014 Transfer source
+        - generic [ref=f2e2828]: 0/1 completed
+      - generic [ref=f2e2829]:
+        - button "Open project" [ref=f2e2830] [cursor=pointer]
+        - button "Archive project" [ref=f2e2831] [cursor=pointer]
+    - generic [ref=f2e2832]:
+      - generic [ref=f2e2833]:
+        - generic [ref=f2e2834]: task-014 Filtered transfer target
+        - generic [ref=f2e2835]: 0/2 completed
+      - generic [ref=f2e2836]:
+        - button "Open project" [ref=f2e2837] [cursor=pointer]
+        - button "Archive project" [ref=f2e2838] [cursor=pointer]
+    - generic [ref=f2e2839]:
+      - generic [ref=f2e2840]:
+        - generic [ref=f2e2841]: task-014 Filtered transfer source
+        - generic [ref=f2e2842]: 1/5 completed
+      - generic [ref=f2e2843]:
+        - button "Open project" [ref=f2e2844] [cursor=pointer]
+        - button "Archive project" [ref=f2e2845] [cursor=pointer]
+    - generic [ref=f2e2846]:
+      - generic [ref=f2e2847]:
+        - generic [ref=f2e2848]: task-014 Options first
+        - generic [ref=f2e2849]: 0/0 completed
+      - generic [ref=f2e2850]:
+        - button "Open project" [ref=f2e2851] [cursor=pointer]
+        - button "Archive project" [ref=f2e2852] [cursor=pointer]
+    - generic [ref=f2e2853]:
+      - generic [ref=f2e2854]:
+        - generic [ref=f2e2855]: task-014 Options second
+        - generic [ref=f2e2856]: 0/0 completed
+      - generic [ref=f2e2857]:
+        - button "Open project" [ref=f2e2858] [cursor=pointer]
+        - button "Archive project" [ref=f2e2859] [cursor=pointer]
+    - generic [ref=f2e2860]:
+      - generic [ref=f2e2861]:
+        - generic [ref=f2e2862]: task-014 Options owner
+        - generic [ref=f2e2863]: 0/1 completed
+      - generic [ref=f2e2864]:
+        - button "Open project" [ref=f2e2865] [cursor=pointer]
+        - button "Archive project" [ref=f2e2866] [cursor=pointer]
+    - generic [ref=f2e2867]:
+      - generic [ref=f2e2868]:
+        - generic [ref=f2e2869]: task-014 Read-only transfer target
+        - generic [ref=f2e2870]: 0/1 completed
+      - generic [ref=f2e2871]:
+        - button "Open project" [ref=f2e2872] [cursor=pointer]
+        - button "Archive project" [ref=f2e2873] [cursor=pointer]
+    - generic [ref=f2e2874]:
+      - generic [ref=f2e2875]:
+        - generic [ref=f2e2876]: task-014 Read-only transfer owner
+        - generic [ref=f2e2877]: 0/2 completed
+      - generic [ref=f2e2878]:
+        - button "Open project" [ref=f2e2879] [cursor=pointer]
+        - button "Archive project" [ref=f2e2880] [cursor=pointer]
+    - generic [ref=f2e2881]:
+      - generic [ref=f2e2882]:
+        - generic [ref=f2e2883]: task-014 Priority intersection
+        - generic [ref=f2e2884]: 1/4 completed
+      - generic [ref=f2e2885]:
+        - button "Open project" [ref=f2e2886] [cursor=pointer]
+        - button "Archive project" [ref=f2e2887] [cursor=pointer]
+    - generic [ref=f2e2888]:
+      - generic [ref=f2e2889]:
+        - generic [ref=f2e2890]: task-014 Priority live filters
+        - generic [ref=f2e2891]: 1/4 completed
+      - generic [ref=f2e2892]:
+        - button "Open project" [ref=f2e2893] [cursor=pointer]
+        - button "Archive project" [ref=f2e2894] [cursor=pointer]
+    - generic [ref=f2e2895]:
+      - generic [ref=f2e2896]:
+        - generic [ref=f2e2897]: task-014 Priority rename filters
+        - generic [ref=f2e2898]: 1/3 completed
+      - generic [ref=f2e2899]:
+        - button "Open project" [ref=f2e2900] [cursor=pointer]
+        - button "Archive project" [ref=f2e2901] [cursor=pointer]
+    - generic [ref=f2e2902]:
+      - generic [ref=f2e2903]:
+        - generic [ref=f2e2904]: task-014 Archived combined filters
+        - generic [ref=f2e2905]: 1/2 completed
+      - generic [ref=f2e2906]:
+        - button "Open project" [ref=f2e2907] [cursor=pointer]
+        - button "Archive project" [ref=f2e2908] [cursor=pointer]
+    - generic [ref=f2e2909]:
+      - generic [ref=f2e2910]:
+        - generic [ref=f2e2911]: task-014 Priority ownership
+        - generic [ref=f2e2912]: 0/2 completed
+      - generic [ref=f2e2913]:
+        - button "Open project" [ref=f2e2914] [cursor=pointer]
+        - button "Archive project" [ref=f2e2915] [cursor=pointer]
+    - generic [ref=f2e2916]:
+      - generic [ref=f2e2917]:
+        - generic [ref=f2e2918]: task-014 Priority other owner
+        - generic [ref=f2e2919]: 0/1 completed
+      - generic [ref=f2e2920]:
+        - button "Open project" [ref=f2e2921] [cursor=pointer]
+        - button "Archive project" [ref=f2e2922] [cursor=pointer]
+    - generic [ref=f2e2923]:
+      - generic [ref=f2e2924]:
+        - generic [ref=f2e2925]: task-014 Priority completion
+        - generic [ref=f2e2926]: 1/2 completed
+      - generic [ref=f2e2927]:
+        - button "Open project" [ref=f2e2928] [cursor=pointer]
+        - button "Archive project" [ref=f2e2929] [cursor=pointer]
+    - generic [ref=f2e2930]:
+      - generic [ref=f2e2931]:
+        - generic [ref=f2e2932]: task-014 Priority archive
+        - generic [ref=f2e2933]: 0/1 completed
+      - generic [ref=f2e2934]:
+        - button "Open project" [ref=f2e2935] [cursor=pointer]
+        - button "Archive project" [ref=f2e2936] [cursor=pointer]
+    - generic [ref=f2e2937]:
+      - generic [ref=f2e2938]:
+        - generic [ref=f2e2939]: task-014 Return holding
+        - generic [ref=f2e2940]: 0/0 completed
+      - generic [ref=f2e2941]:
+        - button "Open project" [ref=f2e2942] [cursor=pointer]
+        - button "Archive project" [ref=f2e2943] [cursor=pointer]
+    - generic [ref=f2e2944]:
+      - generic [ref=f2e2945]:
+        - generic [ref=f2e2946]: task-014 Return owner
+        - generic [ref=f2e2947]: 1/4 completed
+      - generic [ref=f2e2948]:
+        - button "Open project" [ref=f2e2949] [cursor=pointer]
+        - button "Archive project" [ref=f2e2950] [cursor=pointer]
+    - generic [ref=f2e2951]:
+      - generic [ref=f2e2952]:
+        - generic [ref=f2e2953]: task-014 Return identity holding
+        - generic [ref=f2e2954]: 0/0 completed
+      - generic [ref=f2e2955]:
+        - button "Open project" [ref=f2e2956] [cursor=pointer]
+        - button "Archive project" [ref=f2e2957] [cursor=pointer]
+    - generic [ref=f2e2958]:
+      - generic [ref=f2e2959]:
+        - generic [ref=f2e2960]: task-014 Returned owner renamed
+        - generic [ref=f2e2961]: 0/3 completed
+      - generic [ref=f2e2962]:
+        - button "Open project" [ref=f2e2963] [cursor=pointer]
+        - button "Archive project" [ref=f2e2964] [cursor=pointer]
+    - generic [ref=f2e2965]:
+      - generic [ref=f2e2966]:
+        - generic [ref=f2e2967]: task-014 Position second owner
+        - generic [ref=f2e2968]: 0/2 completed
+      - generic [ref=f2e2969]:
+        - button "Open project" [ref=f2e2970] [cursor=pointer]
+        - button "Archive project" [ref=f2e2971] [cursor=pointer]
+    - generic [ref=f2e2972]:
+      - generic [ref=f2e2973]:
+        - generic [ref=f2e2974]: task-014 Position third owner
+        - generic [ref=f2e2975]: 0/0 completed
+      - generic [ref=f2e2976]:
+        - button "Open project" [ref=f2e2977] [cursor=pointer]
+        - button "Archive project" [ref=f2e2978] [cursor=pointer]
+    - generic [ref=f2e2979]:
+      - generic [ref=f2e2980]:
+        - generic [ref=f2e2981]: task-014 Position first owner
+        - generic [ref=f2e2982]: 0/4 completed
+      - generic [ref=f2e2983]:
+        - button "Open project" [ref=f2e2984] [cursor=pointer]
+        - button "Archive project" [ref=f2e2985] [cursor=pointer]
+    - generic [ref=f2e2986]:
+      - generic [ref=f2e2987]:
+        - generic [ref=f2e2988]: task-014 Whitespace retained owner
+        - generic [ref=f2e2989]: 0/2 completed
+      - generic [ref=f2e2990]:
+        - button "Open project" [ref=f2e2991] [cursor=pointer]
+        - button "Archive project" [ref=f2e2992] [cursor=pointer]
+    - generic [ref=f2e2993]:
+      - generic [ref=f2e2994]:
+        - generic [ref=f2e2995]: task-014 Whitespace Saved first
+        - generic [ref=f2e2996]: 0/0 completed
+      - generic [ref=f2e2997]:
+        - button "Open project" [ref=f2e2998] [cursor=pointer]
+        - button "Archive project" [ref=f2e2999] [cursor=pointer]
+    - generic [ref=f2e3000]:
+      - generic [ref=f2e3001]:
+        - generic [ref=f2e3002]: task-014 Whitespace Saved second
+        - generic [ref=f2e3003]: 0/0 completed
+      - generic [ref=f2e3004]:
+        - button "Open project" [ref=f2e3005] [cursor=pointer]
+        - button "Archive project" [ref=f2e3006] [cursor=pointer]
+    - generic [ref=f2e3007]:
+      - generic [ref=f2e3008]:
+        - generic [ref=f2e3009]: task-014 Whitespace unrelated sentinel
+        - generic [ref=f2e3010]: 0/0 completed
+      - generic [ref=f2e3011]:
+        - button "Open project" [ref=f2e3012] [cursor=pointer]
+        - button "Archive project" [ref=f2e3013] [cursor=pointer]
+    - generic [ref=f2e3014]:
+      - generic [ref=f2e3015]:
+        - generic [ref=f2e3016]: task-014 Search Mixed first
+        - generic [ref=f2e3017]: 0/0 completed
+      - generic [ref=f2e3018]:
+        - button "Open project" [ref=f2e3019] [cursor=pointer]
+        - button "Archive project" [ref=f2e3020] [cursor=pointer]
+    - generic [ref=f2e3021]:
+      - generic [ref=f2e3022]:
+        - generic [ref=f2e3023]: task-014 Search unrelated
+        - generic [ref=f2e3024]: 0/0 completed
+      - generic [ref=f2e3025]:
+        - button "Open project" [ref=f2e3026] [cursor=pointer]
+        - button "Archive project" [ref=f2e3027] [cursor=pointer]
+    - generic [ref=f2e3028]:
+      - generic [ref=f2e3029]:
+        - generic [ref=f2e3030]: task-014 Search mixed last
+        - generic [ref=f2e3031]: 0/0 completed
+      - generic [ref=f2e3032]:
+        - button "Open project" [ref=f2e3033] [cursor=pointer]
+        - button "Archive project" [ref=f2e3034] [cursor=pointer]
+    - generic [ref=f2e3035]:
+      - generic [ref=f2e3036]:
+        - generic [ref=f2e3037]: task-014 Search double gap
+        - generic [ref=f2e3038]: 0/0 completed
+      - generic [ref=f2e3039]:
+        - button "Open project" [ref=f2e3040] [cursor=pointer]
+        - button "Archive project" [ref=f2e3041] [cursor=pointer]
+    - generic [ref=f2e3042]:
+      - generic [ref=f2e3043]:
+        - generic [ref=f2e3044]: task-014 Search double sentinel
+        - generic [ref=f2e3045]: 0/0 completed
+      - generic [ref=f2e3046]:
+        - button "Open project" [ref=f2e3047] [cursor=pointer]
+        - button "Archive project" [ref=f2e3048] [cursor=pointer]
+    - generic [ref=f2e3049]:
+      - generic [ref=f2e3050]:
+        - generic [ref=f2e3051]: task-014 Search task intersections
+        - generic [ref=f2e3052]: 1/6 completed
+      - generic [ref=f2e3053]:
+        - button "Open project" [ref=f2e3054] [cursor=pointer]
+        - button "Archive project" [ref=f2e3055] [cursor=pointer]
+    - generic [ref=f2e3056]:
+      - generic [ref=f2e3057]:
+        - generic [ref=f2e3058]: task-014 Search internal spacing
+        - generic [ref=f2e3059]: 0/2 completed
+      - generic [ref=f2e3060]:
+        - button "Open project" [ref=f2e3061] [cursor=pointer]
+        - button "Archive project" [ref=f2e3062] [cursor=pointer]
+    - generic [ref=f2e3063]:
+      - generic [ref=f2e3064]:
+        - generic [ref=f2e3065]: task-014 Alpha create
+        - generic [ref=f2e3066]: 0/0 completed
+      - generic [ref=f2e3067]:
+        - button "Open project" [ref=f2e3068] [cursor=pointer]
+        - button "Archive project" [ref=f2e3069] [cursor=pointer]
+    - generic [ref=f2e3070]:
+      - generic [ref=f2e3071]:
+        - generic [ref=f2e3072]: task-014 Blank validation sentinel
+        - generic [ref=f2e3073]: 0/0 completed
+      - generic [ref=f2e3074]:
+        - button "Open project" [ref=f2e3075] [cursor=pointer]
+        - button "Archive project" [ref=f2e3076] [cursor=pointer]
+    - generic [ref=f2e3077]:
+      - generic [ref=f2e3078]:
+        - generic [ref=f2e3079]: task-014 Order first
+        - generic [ref=f2e3080]: 0/0 completed
+      - generic [ref=f2e3081]:
+        - button "Open project" [ref=f2e3082] [cursor=pointer]
+        - button "Archive project" [ref=f2e3083] [cursor=pointer]
+    - generic [ref=f2e3084]:
+      - generic [ref=f2e3085]:
+        - generic [ref=f2e3086]: task-014 Order second
+        - generic [ref=f2e3087]: 0/0 completed
+      - generic [ref=f2e3088]:
+        - button "Open project" [ref=f2e3089] [cursor=pointer]
+        - button "Archive project" [ref=f2e3090] [cursor=pointer]
+    - generic [ref=f2e3091]:
+      - generic [ref=f2e3092]:
+        - generic [ref=f2e3093]: task-014 Task reload
+        - generic [ref=f2e3094]: 0/1 completed
+      - generic [ref=f2e3095]:
+        - button "Open project" [ref=f2e3096] [cursor=pointer]
+        - button "Archive project" [ref=f2e3097] [cursor=pointer]
+    - generic [ref=f2e3098]:
+      - generic [ref=f2e3099]:
+        - generic [ref=f2e3100]: task-014 Task invalid
+        - generic [ref=f2e3101]: 0/0 completed
+      - generic [ref=f2e3102]:
+        - button "Open project" [ref=f2e3103] [cursor=pointer]
+        - button "Archive project" [ref=f2e3104] [cursor=pointer]
+    - generic [ref=f2e3105]:
+      - generic [ref=f2e3106]:
+        - generic [ref=f2e3107]: task-014 Task owner
+        - generic [ref=f2e3108]: 0/1 completed
+      - generic [ref=f2e3109]:
+        - button "Open project" [ref=f2e3110] [cursor=pointer]
+        - button "Archive project" [ref=f2e3111] [cursor=pointer]
+    - generic [ref=f2e3112]:
+      - generic [ref=f2e3113]:
+        - generic [ref=f2e3114]: task-014 Other project
+        - generic [ref=f2e3115]: 0/0 completed
+      - generic [ref=f2e3116]:
+        - button "Open project" [ref=f2e3117] [cursor=pointer]
+        - button "Archive project" [ref=f2e3118] [cursor=pointer]
+    - generic [ref=f2e3119]:
+      - generic [ref=f2e3120]:
+        - generic [ref=f2e3121]: task-014 Task filters
+        - generic [ref=f2e3122]: 0/2 completed
+      - generic [ref=f2e3123]:
+        - button "Open project" [ref=f2e3124] [cursor=pointer]
+        - button "Archive project" [ref=f2e3125] [cursor=pointer]
+    - generic [ref=f2e3126]:
+      - generic [ref=f2e3127]:
+        - generic [ref=f2e3128]: task-014 Archive lifecycle
+        - generic [ref=f2e3129]: 0/0 completed
+      - generic [ref=f2e3130]:
+        - button "Open project" [ref=f2e3131] [cursor=pointer]
+        - button "Archive project" [ref=f2e3132] [cursor=pointer]
+    - generic [ref=f2e3133]:
+      - generic [ref=f2e3134]:
+        - generic [ref=f2e3135]: task-014 Archive tasks
+        - generic [ref=f2e3136]: 1/1 completed
+      - generic [ref=f2e3137]:
+        - button "Open project" [ref=f2e3138] [cursor=pointer]
+        - button "Archive project" [ref=f2e3139] [cursor=pointer]
+    - generic [ref=f2e3140]:
+      - generic [ref=f2e3141]:
+        - generic [ref=f2e3142]: task-014 Summary project
+        - generic [ref=f2e3143]: 1/2 completed
+      - generic [ref=f2e3144]:
+        - button "Open project" [ref=f2e3145] [cursor=pointer]
+        - button "Archive project" [ref=f2e3146] [cursor=pointer]
+    - generic [ref=f2e3147]:
+      - generic [ref=f2e3148]:
+        - generic [ref=f2e3149]: task-014 Transfer restart origin
+        - generic [ref=f2e3150]: 0/0 completed
+      - generic [ref=f2e3151]:
+        - button "Open project" [ref=f2e3152] [cursor=pointer]
+        - button "Archive project" [ref=f2e3153] [cursor=pointer]
+    - generic [ref=f2e3154]:
+      - generic [ref=f2e3155]:
+        - generic [ref=f2e3156]: task-014 Identity updated
+        - generic [ref=f2e3157]: 1/1 completed
+      - generic [ref=f2e3158]:
+        - button "Open project" [ref=f2e3159] [cursor=pointer]
+        - button "Archive project" [ref=f2e3160] [cursor=pointer]
+    - generic [ref=f2e3161]:
+      - generic [ref=f2e3162]:
+        - generic [ref=f2e3163]: task-014 Identity second
+        - generic [ref=f2e3164]: 0/0 completed
+      - generic [ref=f2e3165]:
+        - button "Open project" [ref=f2e3166] [cursor=pointer]
+        - button "Archive project" [ref=f2e3167] [cursor=pointer]
+    - generic [ref=f2e3168]:
+      - generic [ref=f2e3169]:
+        - generic [ref=f2e3170]: task-014 Rename invalid
+        - generic [ref=f2e3171]: 0/0 completed
+      - generic [ref=f2e3172]:
+        - button "Open project" [ref=f2e3173] [cursor=pointer]
+        - button "Archive project" [ref=f2e3174] [cursor=pointer]
+  - generic [ref=f2e3175]:
+    - generic [ref=f2e3176]:
+      - text: Project name
+      - textbox "Project name" [ref=f2e3177]
+    - button "Create project" [ref=f2e3178] [cursor=pointer]
+```
+
+# Test source
+
+```ts
+  153 |     await expect(projectRow(page, 'Summary project').getByTestId('project-summary')).toHaveText('1/2 completed');
+  154 |   });
+  155 | }
+  156 | 
+  157 | test('011 seed process-restart persistence checks', async ({ page }) => {
+  158 |   await createProject(page, 'Persistence sentinel');
+  159 |   if (stage >= 2) {
+  160 |     await openProject(page, 'Persistence sentinel');
+  161 |     if(stage>=11) {
+  162 |       await createProject(page,'Transfer restart origin');await openProject(page,'Transfer restart origin');await createTask(page,'Remember me');
+  163 |       await taskRow(page,'Remember me').getByRole('combobox',{name:'Destination project',exact:true}).selectOption({label:projectName('Persistence sentinel')});
+  164 |       await taskRow(page,'Remember me').getByRole('button',{name:'Move task',exact:true}).click();
+  165 |       await expect(taskRow(page,'Remember me')).toHaveCount(0);
+  166 |       await page.goto('/');await openProject(page,'Persistence sentinel');await expect(taskRow(page,'Remember me')).toBeVisible();
+  167 |     } else {await createTask(page, 'Remember me');}
+  168 |     await page.getByRole('checkbox', { name: 'Complete Remember me', exact: true }).check();
+  169 |     await expectPersistedCompletion(page, 'Persistence sentinel', 'Remember me', true);
+  170 |     if (stage >= 6) {
+  171 |       await taskRow(page, 'Remember me').getByRole('combobox', {name:'Task priority', exact:true}).selectOption({label:'High'});
+  172 |       await expectPersistedPriority(page, 'Persistence sentinel', 'Remember me', 'High');
+  173 |     }
+  174 |     if (stage >= 5) {
+  175 |       await taskRow(page, 'Remember me').getByRole('textbox', { name: 'New task title', exact: true }).fill('Memory kept');
+  176 |       await taskRow(page, 'Remember me').getByRole('button', { name: 'Rename task', exact: true }).click();
+  177 |       await expect(page.getByRole('checkbox', { name: 'Complete Memory kept', exact: true })).toBeChecked();
+  178 |     }
+  179 |   }
+  180 |   if (stage >= 4) {
+  181 |     await page.getByRole('textbox', { name: 'New project name', exact: true }).fill(projectName('Persistence renamed'));
+  182 |     await page.getByRole('button', { name: 'Rename project', exact: true }).click();
+  183 |     await expect(page.getByRole('heading', { name: projectName('Persistence renamed'), exact: true }).first()).toBeVisible();
+  184 |   }
+  185 |   if (stage >= 9) {
+  186 |     const dateRow=taskRow(page,'Memory kept');
+  187 |     await dateRow.getByRole('textbox',{name:'Task due date',exact:true}).fill('2028-02-29');
+  188 |     await dateRow.getByRole('button',{name:'Save due date',exact:true}).click();
+  189 |     const dateObserver=await page.context().newPage();
+  190 |     try {
+  191 |       await expect.poll(async()=>{await dateObserver.goto('/');await openProject(dateObserver,'Persistence renamed');return taskRow(dateObserver,'Memory kept').getByRole('textbox',{name:'Task due date',exact:true}).inputValue();},{timeout:5000}).toBe('2028-02-29');
+  192 |     } finally {await dateObserver.close();}
+  193 |   }
+  194 |   if (stage >= 8) {
+  195 |     await page.getByRole('combobox', {name:'Default task priority', exact:true}).selectOption({label:'Low'});
+  196 |     const observer=await page.context().newPage();
+  197 |     try {
+  198 |       await expect.poll(async()=>{await observer.goto('/');await openProject(observer,'Persistence renamed');return observer.getByRole('combobox',{name:'Default task priority',exact:true}).locator('option:checked').textContent();},{timeout:5000}).toBe('Low');
+  199 |     } finally {await observer.close();}
+  200 |   }
+  201 |   if (stage >= 3) {
+  202 |     await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  203 |     await projectRow(page, stage >= 4 ? 'Persistence renamed' : 'Persistence sentinel').getByRole('button', { name: 'Archive project', exact: true }).click();
+  204 |     await expect(projectRow(page, stage >= 4 ? 'Persistence renamed' : 'Persistence sentinel')).toHaveCount(0);
+  205 |   }
+  206 | });
+  207 | 
+  208 | if (stage >= 4) {
+  209 |   test('013 rename preserves project URL, task state, summary and creation order', async ({ page }) => {
+  210 |     await createProject(page, 'Identity first');
+  211 |     await createProject(page, 'Identity second');
+  212 |     await openProject(page, 'Identity first');
+  213 |     const originalPath = new URL(page.url()).pathname;
+  214 |     await createTask(page, 'Identity task');
+  215 |     await page.getByRole('checkbox', { name: 'Complete Identity task', exact: true }).check();
+  216 |     await expectPersistedCompletion(page, 'Identity first', 'Identity task', true);
+  217 |     await page.getByRole('textbox', { name: 'New project name', exact: true }).fill('  ' + projectName('Identity updated') + '  ');
+  218 |     await page.getByRole('button', { name: 'Rename project', exact: true }).click();
+  219 |     await expect(page.getByRole('heading', { name: projectName('Identity updated'), exact: true }).first()).toBeVisible();
+  220 |     expect(new URL(page.url()).pathname).toBe(originalPath);
+  221 |     await page.reload();
+  222 |     await expect(page.getByRole('heading', { name: projectName('Identity updated'), exact: true }).first()).toBeVisible();
+  223 |     await expect(page.getByRole('checkbox', { name: 'Complete Identity task', exact: true })).toBeChecked();
+  224 |     await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  225 |     await expect(projectRow(page, 'Identity first')).toHaveCount(0);
+  226 |     await expect(projectRow(page, 'Identity updated').getByTestId('project-summary')).toHaveText('1/1 completed');
+  227 |     const rows = await page.getByTestId('project-row').filter({ visible: true }).allTextContents();
+  228 |     expect(rows.findIndex(t => t.includes(projectName('Identity updated')))).toBeLessThan(rows.findIndex(t => t.includes(projectName('Identity second'))));
+  229 |     await openProject(page, 'Identity updated');
+  230 |     expect(new URL(page.url()).pathname).toBe(originalPath);
+  231 |   });
+  232 | 
+  233 |   test('014 blank rename preserves original name', async ({ page }) => {
+  234 |     await createProject(page, 'Rename invalid');
+  235 |     await openProject(page, 'Rename invalid');
+  236 |     await page.getByRole('textbox', { name: 'New project name', exact: true }).fill('   ');
+  237 |     await page.getByRole('button', { name: 'Rename project', exact: true }).click();
+  238 |     await expect(requiredAlert(page, 'Project name is required')).toContainText('Project name is required');
+  239 |     await page.reload();
+  240 |     await expect(page.getByRole('heading', { name: projectName('Rename invalid'), exact: true }).first()).toBeVisible();
+  241 |   });
+  242 | 
+  243 |   test('015 archived rename controls become available after restoration', async ({ page }) => {
+  244 |     await createProject(page, 'Rename archive');
+  245 |     await projectRow(page, 'Rename archive').getByRole('button', { name: 'Archive project', exact: true }).click();
+  246 |     await expect(projectRow(page, 'Rename archive')).toHaveCount(0);
+  247 |     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Archived' });
+  248 |     await openProject(page, 'Rename archive');
+  249 |     await expect(page.getByRole('textbox', { name: 'New project name', exact: true })).toBeDisabled();
+  250 |     await expect(page.getByRole('button', { name: 'Rename project', exact: true })).toBeDisabled();
+  251 |     await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  252 |     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Archived' });
+> 253 |     await projectRow(page, 'Rename archive').getByRole('button', { name: 'Restore project', exact: true }).click();await expect(projectRow(page, 'Rename archive').getByRole('button', { name: 'Restore project', exact: true })).toHaveCount(0);
+      |                                                                                                            ^ Error: locator.click: Test timeout of 20000ms exceeded.
+  254 |     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Active' });
+  255 |     await openProject(page, 'Rename archive');
+  256 |     await expect(page.getByRole('textbox', { name: 'New project name', exact: true })).toBeEnabled();
+  257 |     await expect(page.getByRole('button', { name: 'Rename project', exact: true })).toBeEnabled();
+  258 |   });
+  259 | }
+  260 | 
+  261 | if (stage >= 5) {
+  262 |   test('016 task rename preserves completion, order, filter membership and summary', async ({ page }) => {
+  263 |     await createProject(page, 'Task rename identity');
+  264 |     await openProject(page, 'Task rename identity');
+  265 |     await createTask(page, 'Name initial');
+  266 |     await createTask(page, 'Name second');
+  267 |     await page.getByRole('checkbox', { name: 'Complete Name initial', exact: true }).check();
+  268 |     await expectPersistedCompletion(page, 'Task rename identity', 'Name initial', true);
+  269 |     await taskRow(page, 'Name initial').getByRole('textbox', { name: 'New task title', exact: true }).fill('  Name updated  ');
+  270 |     await taskRow(page, 'Name initial').getByRole('button', { name: 'Rename task', exact: true }).click();
+  271 |     await expect(page.getByRole('checkbox', { name: 'Complete Name updated', exact: true })).toBeChecked();
+  272 |     await page.reload();
+  273 |     await expect(page.getByRole('checkbox', { name: 'Complete Name updated', exact: true })).toBeChecked();
+  274 |     const rows = await page.getByTestId('task-row').filter({ visible: true }).allTextContents();
+  275 |     expect(rows.findIndex(t => t.includes('Name updated'))).toBeLessThan(rows.findIndex(t => t.includes('Name second')));
+  276 |     await page.getByRole('combobox', { name: 'Task filter', exact: true }).selectOption({ label: 'Open' });
+  277 |     await expect(taskRow(page, 'Name updated')).toHaveCount(0);
+  278 |     await expect(taskRow(page, 'Name second')).toBeVisible();
+  279 |     await page.getByRole('combobox', { name: 'Task filter', exact: true }).selectOption({ label: 'Completed' });
+  280 |     await expect(taskRow(page, 'Name updated')).toBeVisible();
+  281 |     await expect(taskRow(page, 'Name second')).toHaveCount(0);
+  282 |     await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  283 |     await expect(projectRow(page, 'Task rename identity').getByTestId('project-summary')).toHaveText('1/2 completed');
+  284 |   });
+  285 |   test('017 blank task rename preserves the original title', async ({ page }) => {
+  286 |     await createProject(page, 'Task rename invalid');
+  287 |     await openProject(page, 'Task rename invalid');
+  288 |     await createTask(page, 'Kept title');
+  289 |     await taskRow(page, 'Kept title').getByRole('textbox', { name: 'New task title', exact: true }).fill('   ');
+  290 |     await taskRow(page, 'Kept title').getByRole('button', { name: 'Rename task', exact: true }).click();
+  291 |     await expect(requiredAlert(page, 'Task title is required')).toContainText('Task title is required');
+  292 |     await page.reload();
+  293 |     await expect(page.getByRole('checkbox', { name: 'Complete Kept title', exact: true })).toBeVisible();
+  294 |     await expect(page.getByTestId('task-row').filter({ visible: true })).toHaveCount(1);
+  295 |   });
+  296 |   test('018 archived task rename controls become enabled after restoration', async ({ page }) => {
+  297 |     await createProject(page, 'Task rename archive');
+  298 |     await openProject(page, 'Task rename archive');
+  299 |     await createTask(page, 'Archived title');
+  300 |     await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  301 |     await projectRow(page, 'Task rename archive').getByRole('button', { name: 'Archive project', exact: true }).click();
+  302 |     await expect(projectRow(page, 'Task rename archive')).toHaveCount(0);
+  303 |     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Archived' });
+  304 |     await openProject(page, 'Task rename archive');
+  305 |     await expect(taskRow(page, 'Archived title').getByRole('textbox', { name: 'New task title', exact: true })).toBeDisabled();
+  306 |     await expect(taskRow(page, 'Archived title').getByRole('button', { name: 'Rename task', exact: true })).toBeDisabled();
+  307 |     await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  308 |     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Archived' });
+  309 |     await projectRow(page, 'Task rename archive').getByRole('button', { name: 'Restore project', exact: true }).click();await expect(projectRow(page, 'Task rename archive').getByRole('button', { name: 'Restore project', exact: true })).toHaveCount(0);
+  310 |     await page.getByRole('combobox', { name: 'Project filter', exact: true }).selectOption({ label: 'Active' });
+  311 |     await openProject(page, 'Task rename archive');
+  312 |     await expect(taskRow(page, 'Archived title').getByRole('textbox', { name: 'New task title', exact: true })).toBeEnabled();
+  313 |     await expect(taskRow(page, 'Archived title').getByRole('button', { name: 'Rename task', exact: true })).toBeEnabled();
+  314 |   });
+  315 | }
+  316 | 
+```

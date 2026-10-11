@@ -1,0 +1,125 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: move-task.spec.mjs >> 041 destination choices use active current project names in creation order
+- Location: runs/instruction-effects/eval-014/tasks/task-011/suite/move-task.spec.mjs:37:2
+
+# Error details
+
+```
+Error: expect(received).toContain(expected) // indexOf
+
+Expected value: "task-011 Options first"
+Received array: []
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=f3e1]:
+  - banner [ref=f3e2]: Workboard
+  - main [ref=f3e3]:
+    - button "Projects" [ref=f3e4] [cursor=pointer]
+    - heading "task-011 Options owner" [level=1] [ref=f3e5]
+    - generic [ref=f3e6]:
+      - textbox "New project name" [ref=f3e7]: task-011 Options owner
+      - button "Rename project" [ref=f3e8] [cursor=pointer]
+    - generic [ref=f3e9]:
+      - text: Default task priority
+      - combobox "Default task priority" [ref=f3e10]:
+        - option "Low"
+        - option "Normal" [selected]
+        - option "High"
+    - generic [ref=f3e11]:
+      - textbox "Task title" [ref=f3e12]
+      - button "Create task" [active] [ref=f3e13] [cursor=pointer]
+    - generic [ref=f3e14]:
+      - text: Task filter
+      - combobox "Task filter" [ref=f3e15]:
+        - option "All" [selected]
+        - option "Open"
+        - option "Completed"
+    - generic [ref=f3e16]:
+      - text: Priority filter
+      - combobox "Priority filter" [ref=f3e17]:
+        - option "All" [selected]
+        - option "Low"
+        - option "Normal"
+        - option "High"
+    - generic [ref=f3e18]:
+      - text: Due from
+      - textbox "Due from" [ref=f3e19]
+    - generic [ref=f3e20]:
+      - text: Due through
+      - textbox "Due through" [ref=f3e21]
+    - button "Apply due range" [ref=f3e22] [cursor=pointer]
+    - generic [ref=f3e24]:
+      - generic [ref=f3e25]: Options task
+      - checkbox "Complete Options task" [ref=f3e27]
+      - textbox "New task title" [ref=f3e28]: Options task
+      - button "Rename task" [ref=f3e29] [cursor=pointer]
+      - combobox "Task priority" [ref=f3e30]:
+        - option "Low"
+        - option "Normal" [selected]
+        - option "High"
+      - textbox "Task due date" [ref=f3e31]
+      - button "Save due date" [ref=f3e32] [cursor=pointer]
+```
+
+# Test source
+
+```ts
+  1  | import {test,expect} from '@playwright/test';
+  2  | import {stage,projectName,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedCompletion,expectPersistedPriority} from './helpers.mjs';
+  3  | const destination=(page,title)=>taskRow(page,title).getByRole('combobox',{name:'Destination project',exact:true});
+  4  | const move=(page,title)=>taskRow(page,title).getByRole('button',{name:'Move task',exact:true});
+  5  | const sentinel={'Transfer source':'Source remaining','Transfer target':'Target first','Filtered transfer source':'Filtered first','Filtered transfer target':'Filtered target sentinel','Read-only transfer owner':'Undated owner sentinel','Read-only transfer target':'Undated target sentinel'};
+  6  | async function persistedLocation(page,source,target,title,sourceSummary){
+  7  |  const observer=await page.context().newPage();try{await expect.poll(async()=>{await observer.goto('/');await openProject(observer,target);await expect(taskRow(observer,sentinel[target])).toBeVisible();const count=await taskRow(observer,title).count();if(count!==1)return [count,-1];await observer.goto('/');if(sourceSummary)await expect(projectRow(observer,source).getByTestId('project-summary')).toHaveText(sourceSummary);await openProject(observer,source);await expect(taskRow(observer,sentinel[source])).toBeVisible();return [count,await taskRow(observer,title).count()];},{timeout:5000}).toEqual([1,0]);}finally{await observer.close();}
+  8  | }
+  9  | async function setDate(page,project,title,value){
+  10 |  await taskRow(page,title).getByRole('textbox',{name:'Task due date',exact:true}).fill(value);await taskRow(page,title).getByRole('button',{name:'Save due date',exact:true}).click();
+  11 |  const observer=await page.context().newPage();try{await expect.poll(async()=>{await observer.goto('/');await openProject(observer,project);return taskRow(observer,title).getByRole('textbox',{name:'Task due date',exact:true}).inputValue();},{timeout:5000}).toBe(value);}finally{await observer.close();}
+  12 | }
+  13 | test.beforeEach(async({context})=>{await isolateBrowser(context);});
+  14 | if(stage>=11){
+  15 |  test('039 moving a task preserves data and destination order without inheriting defaults',async({page})=>{
+  16 |   await createProject(page,'Transfer target');await openProject(page,'Transfer target');await createTask(page,'Target first');await createTask(page,'Target second');
+  17 |   await page.getByRole('combobox',{name:'Default task priority',exact:true}).selectOption({label:'Low'});
+  18 |   const observer=await page.context().newPage();try{await expect.poll(async()=>{await observer.goto('/');await openProject(observer,'Transfer target');return observer.getByRole('combobox',{name:'Default task priority',exact:true}).locator('option:checked').textContent();},{timeout:5000}).toBe('Low');}finally{await observer.close();}
+  19 |   await createProject(page,'Transfer source');await openProject(page,'Transfer source');await createTask(page,'Transferred complete');await createTask(page,'Source remaining');
+  20 |   await taskRow(page,'Transferred complete').getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,'Transfer source','Transferred complete','High');await page.getByRole('checkbox',{name:'Complete Transferred complete',exact:true}).check();await expectPersistedCompletion(page,'Transfer source','Transferred complete',true);await setDate(page,'Transfer source','Transferred complete','2032-02-29');
+  21 |   await destination(page,'Transferred complete').selectOption({label:projectName('Transfer target')});await move(page,'Transferred complete').click();await persistedLocation(page,'Transfer source','Transfer target','Transferred complete','0/1 completed');await expect(taskRow(page,'Transferred complete')).toHaveCount(0);await expect(taskRow(page,'Source remaining')).toBeVisible();
+  22 |   await page.getByRole('button',{name:'Projects',exact:true}).click();await expect(projectRow(page,'Transfer source').getByTestId('project-summary')).toHaveText('0/1 completed');await expect(projectRow(page,'Transfer target').getByTestId('project-summary')).toHaveText('1/3 completed');await openProject(page,'Transfer target');
+  23 |   const targetRows=page.getByTestId('task-row').filter({visible:true});await expect(targetRows).toHaveCount(3);for(const [i,title] of ['Target first','Target second','Transferred complete'].entries())await expect(targetRows.nth(i).getByRole('checkbox',{name:'Complete '+title,exact:true})).toBeVisible();await expect(page.getByRole('checkbox',{name:'Complete Transferred complete',exact:true})).toBeChecked();await expect(taskRow(page,'Transferred complete').getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('High');await expect(taskRow(page,'Transferred complete').getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2032-02-29');
+  24 |   await page.reload();await expect(taskRow(page,'Transferred complete')).toBeVisible();
+  25 |  });
+  26 |  test('040 moving under combined filters retains source range and independent data',async({page})=>{
+  27 |   await createProject(page,'Filtered transfer target');await openProject(page,'Filtered transfer target');await createTask(page,'Filtered target sentinel');await createProject(page,'Filtered transfer source');await openProject(page,'Filtered transfer source');
+  28 |   for(const title of ['Filtered first','Filtered moving','Filtered last']){await createTask(page,title);await taskRow(page,title).getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,'Filtered transfer source',title,'High');await setDate(page,'Filtered transfer source',title,'2033-01-01');}
+  29 |   await createTask(page,'Filtered outside range');await taskRow(page,'Filtered outside range').getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,'Filtered transfer source','Filtered outside range','High');await setDate(page,'Filtered transfer source','Filtered outside range','2034-01-01');
+  30 |   await createTask(page,'Filtered completed guard');await taskRow(page,'Filtered completed guard').getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,'Filtered transfer source','Filtered completed guard','High');await page.getByRole('checkbox',{name:'Complete Filtered completed guard',exact:true}).check();await expectPersistedCompletion(page,'Filtered transfer source','Filtered completed guard',true);await createTask(page,'Filtered normal guard');
+  31 |   await page.getByRole('combobox',{name:'Task filter',exact:true}).selectOption({label:'Open'});await expect(taskRow(page,'Filtered completed guard')).toHaveCount(0);await expect(taskRow(page,'Filtered normal guard')).toBeVisible();await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(5);await page.getByRole('combobox',{name:'Priority filter',exact:true}).selectOption({label:'High'});await expect(taskRow(page,'Filtered normal guard')).toHaveCount(0);await expect(taskRow(page,'Filtered outside range')).toBeVisible();await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(4);await page.getByRole('textbox',{name:'Due from',exact:true}).fill('2033-01-01');await page.getByRole('textbox',{name:'Due through',exact:true}).fill('2033-01-01');await page.getByRole('button',{name:'Apply due range',exact:true}).click();
+  32 |   await expect(taskRow(page,'Filtered outside range')).toHaveCount(0);await expect(taskRow(page,'Filtered moving')).toBeVisible();await expect(page.getByTestId('task-row').filter({visible:true})).toHaveCount(3);
+  33 |   await destination(page,'Filtered moving').selectOption({label:projectName('Filtered transfer target')});await move(page,'Filtered moving').click();await persistedLocation(page,'Filtered transfer source','Filtered transfer target','Filtered moving','1/5 completed');
+  34 |   await expect(page.getByRole('combobox',{name:'Task filter',exact:true}).locator('option:checked')).toHaveText('Open');await expect(page.getByRole('combobox',{name:'Priority filter',exact:true}).locator('option:checked')).toHaveText('High');await expect(page.getByRole('textbox',{name:'Due from',exact:true})).toHaveValue('2033-01-01');await expect(page.getByRole('textbox',{name:'Due through',exact:true})).toHaveValue('2033-01-01');
+  35 |   const filteredRows=page.getByTestId('task-row').filter({visible:true});await expect(filteredRows).toHaveCount(2);for(const [i,title] of ['Filtered first','Filtered last'].entries())await expect(filteredRows.nth(i).getByRole('checkbox',{name:'Complete '+title,exact:true})).toBeVisible();
+  36 |  });
+  37 |  test('041 destination choices use active current project names in creation order',async({page})=>{
+  38 |   await createProject(page,'Options first');await createProject(page,'Options hidden');await projectRow(page,'Options hidden').getByRole('button',{name:'Archive project',exact:true}).click();await expect(projectRow(page,'Options hidden')).toHaveCount(0);await createProject(page,'Options second');await createProject(page,'Options owner');await openProject(page,'Options owner');await createTask(page,'Options task');
+> 39 |   const names=await destination(page,'Options task').locator('option').allTextContents();expect(names).toContain(projectName('Options first'));expect(names).toContain(projectName('Options second'));expect(names).not.toContain(projectName('Options owner'));expect(names).not.toContain(projectName('Options hidden'));expect(names.indexOf(projectName('Options first'))).toBeLessThan(names.indexOf(projectName('Options second')));
+     |                                                                                                        ^ Error: expect(received).toContain(expected) // indexOf
+  40 |  });
+  41 |  test('042 archived source moves are disabled restoration allows moving an undated task',async({page})=>{
+  42 |   await createProject(page,'Read-only transfer target');await openProject(page,'Read-only transfer target');await createTask(page,'Undated target sentinel');await createProject(page,'Read-only transfer owner');await openProject(page,'Read-only transfer owner');await createTask(page,'Undated transfer');await createTask(page,'Undated owner sentinel');await page.getByRole('button',{name:'Projects',exact:true}).click();await projectRow(page,'Read-only transfer owner').getByRole('button',{name:'Archive project',exact:true}).click();await expect(projectRow(page,'Read-only transfer owner')).toHaveCount(0);await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});await openProject(page,'Read-only transfer owner');await expect(destination(page,'Undated transfer')).toBeDisabled();await expect(move(page,'Undated transfer')).toBeDisabled();
+  43 |   await page.getByRole('button',{name:'Projects',exact:true}).click();await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Archived'});await projectRow(page,'Read-only transfer owner').getByRole('button',{name:'Restore project',exact:true}).click();await expect(projectRow(page,'Read-only transfer owner').getByRole('button',{name:'Restore project',exact:true})).toHaveCount(0);await page.getByRole('combobox',{name:'Project filter',exact:true}).selectOption({label:'Active'});await openProject(page,'Read-only transfer owner');await expect(destination(page,'Undated transfer')).toBeEnabled();await expect(move(page,'Undated transfer')).toBeEnabled();await destination(page,'Undated transfer').selectOption({label:projectName('Read-only transfer target')});await move(page,'Undated transfer').click();await persistedLocation(page,'Read-only transfer owner','Read-only transfer target','Undated transfer','0/1 completed');await page.goto('/');await openProject(page,'Read-only transfer target');await expect(taskRow(page,'Undated transfer').getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('');await expect(taskRow(page,'Undated transfer').getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('Normal');await expect(page.getByRole('checkbox',{name:'Complete Undated transfer',exact:true})).not.toBeChecked();
+  44 |   await destination(page,'Undated transfer').selectOption({label:projectName('Read-only transfer owner')});await move(page,'Undated transfer').click();await persistedLocation(page,'Read-only transfer target','Read-only transfer owner','Undated transfer','0/1 completed');
+  45 |  });
+  46 | }
+  47 | 
+```
