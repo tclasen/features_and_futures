@@ -217,12 +217,50 @@ ${escapeHtml(task.notes)}</textarea>
       </li>`;
     }).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
     <script>
-      // Let the native checkbox interaction finish before navigation can remove
-      // its row under Open/Completed filters. Coalesce rapid toggles per form.
-      function deferCompletionSubmit(form) {
-        clearTimeout(form.completionSubmitTimer);
-        form.completionSubmitTimer = setTimeout(() => form.requestSubmit(), 150);
+      // Save checkbox changes in order before any later form can navigate away
+      // (especially Delete task). Delay only navigation, not persistence, so
+      // native checkbox interactions can finish even when the row is filtered out.
+      let completionSave = null;
+      let completionNavigationTimer;
+      let navigationVersion = 0;
+      function showCompletionError() {
+        const alert = document.createElement('p');
+        alert.setAttribute('role', 'alert');
+        alert.textContent = 'Could not save task completion. Reload and try again.';
+        document.querySelector('main').prepend(alert);
       }
+      function deferCompletionSubmit(form) {
+        const body = new URLSearchParams(new FormData(form));
+        const version = ++navigationVersion;
+        clearTimeout(completionNavigationTimer);
+        completionSave = (completionSave || Promise.resolve()).then(async () => {
+          const response = await fetch(form.action, { method: 'POST', body });
+          if (!response.ok) throw new Error('Completion save failed');
+          return response.url;
+        });
+        // A failed save must also prevent subsequent actions from racing ahead.
+        completionSave.catch(() => {});
+        completionNavigationTimer = setTimeout(async () => {
+          try {
+            const url = await completionSave;
+            if (version === navigationVersion) window.location.assign(url);
+          } catch {
+            if (version === navigationVersion) showCompletionError();
+          }
+        }, 150);
+      }
+      document.addEventListener('submit', async (event) => {
+        if (!completionSave) return;
+        event.preventDefault();
+        clearTimeout(completionNavigationTimer);
+        const version = ++navigationVersion;
+        try {
+          await completionSave;
+          if (version === navigationVersion) HTMLFormElement.prototype.submit.call(event.target);
+        } catch {
+          if (version === navigationVersion) showCompletionError();
+        }
+      });
     </script>
   `);
 }
