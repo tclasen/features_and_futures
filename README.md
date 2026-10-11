@@ -9,7 +9,7 @@ npm start
 The server binds to `0.0.0.0` on `PORT` (default `8080`). Set `DB_PATH` to
 the SQLite file to use; the default is `data/workboard.sqlite`. Parent
 directories are created automatically. Keep this file across restarts to
-preserve project names and IDs.
+preserve project names, IDs, tasks, and completion state.
 
 ```sh
 PORT=8080 DB_PATH=/tmp/workboard.sqlite npm start
@@ -18,4 +18,6 @@ npm test
 
 `GET /health` returns `{"status":"ok"}`. Projects are created with trimmed,
 nonempty names and displayed in creation order. Project pages use persistent
-IDs at `/projects/<id>`. Forms and navigation work without client scripting.
+IDs at `/projects/<id>`. Each project has tasks with trimmed, nonempty titles,
+saved completion state, and All/Open/Completed filters in creation order.
+Small browser event handlers submit filter and checkbox changes using forms.

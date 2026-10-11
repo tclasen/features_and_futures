@@ -5,6 +5,16 @@ import { projectsPage, projectPage, notFoundPage } from './views.js';
 
 const projects = openProjects(process.env.DB_PATH || 'data/workboard.sqlite');
 const stylesheet = readFileSync(new URL('./public/styles.css', import.meta.url));
+const formScript = readFileSync(new URL('./public/forms.js', import.meta.url));
+
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function redirect(response, location) {
+  response.writeHead(303, { Location: location });
+  response.end();
+}
 
 function send(response, status, type, body) {
   response.writeHead(status, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' });
@@ -28,12 +38,16 @@ async function readForm(request) {
 
 const server = createServer(async (request, response) => {
   try {
-    const path = new URL(request.url, 'http://localhost').pathname;
+    const url = new URL(request.url, 'http://localhost');
+    const path = url.pathname;
     if (request.method === 'GET' && path === '/health') {
       return send(response, 200, 'application/json', JSON.stringify({ status: 'ok' }));
     }
     if (request.method === 'GET' && path === '/styles.css') {
       return send(response, 200, 'text/css; charset=utf-8', stylesheet);
+    }
+    if (request.method === 'GET' && path === '/forms.js') {
+      return send(response, 200, 'text/javascript; charset=utf-8', formScript);
     }
     if (request.method === 'GET' && path === '/') {
       return send(response, 200, 'text/html; charset=utf-8', projectsPage(projects.list()));
@@ -44,13 +58,35 @@ const server = createServer(async (request, response) => {
         return send(response, 400, 'text/html; charset=utf-8',
           projectsPage(projects.list(), 'Project name is required'));
       }
-      response.writeHead(303, { Location: '/' });
-      return response.end();
+      return redirect(response, '/');
     }
     const match = path.match(/^\/projects\/([1-9]\d*)$/);
     if (request.method === 'GET' && match && Number.isSafeInteger(Number(match[1]))) {
       const project = projects.find(Number(match[1]));
-      if (project) return send(response, 200, 'text/html; charset=utf-8', projectPage(project));
+      if (project) {
+        const filter = taskFilter(url.searchParams.get('filter'));
+        return send(response, 200, 'text/html; charset=utf-8',
+          projectPage(project, projects.listTasks(project.id, filter), filter));
+      }
+    }
+    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/completion)?$/);
+    if (request.method === 'POST' && taskMatch &&
+        Number.isSafeInteger(Number(taskMatch[1])) &&
+        (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
+      const project = projects.find(Number(taskMatch[1]));
+      if (project) {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        if (taskMatch[2]) {
+          if (!projects.setTaskCompleted(project.id, Number(taskMatch[2]), form.has('completed'))) {
+            return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
+          }
+        } else if (!projects.createTask(project.id, form.get('title') || '')) {
+          return send(response, 400, 'text/html; charset=utf-8',
+            projectPage(project, projects.listTasks(project.id, filter), filter, 'Task title is required'));
+        }
+        return redirect(response, `/projects/${project.id}?filter=${filter}`);
+      }
     }
     send(response, 404, 'text/html; charset=utf-8', notFoundPage());
   } catch (error) {
