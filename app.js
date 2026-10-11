@@ -54,27 +54,42 @@ function projectList(projects, filter, error = '') {
 
 const taskFilters = ['All', 'Open', 'Completed'];
 const taskPriorities = ['Low', 'Normal', 'High'];
+const priorityFilters = ['All', ...taskPriorities];
 
-function readTaskFilter(value) {
-  return taskFilters.includes(value) ? value : 'All';
+function readTaskFilters(parameters) {
+  const completion = parameters.get('filter');
+  const priority = parameters.get('priorityFilter');
+  return {
+    completion: taskFilters.includes(completion) ? completion : 'All',
+    priority: priorityFilters.includes(priority) ? priority : 'All',
+  };
 }
 
-function projectPath(projectId, filter) {
-  return `/projects/${projectId}${filter === 'All' ? '' : `?filter=${filter}`}`;
+function projectPath(projectId, filters) {
+  const parameters = new URLSearchParams();
+  if (filters.completion !== 'All') parameters.set('filter', filters.completion);
+  if (filters.priority !== 'All') parameters.set('priorityFilter', filters.priority);
+  const query = parameters.toString();
+  return `/projects/${projectId}${query ? `?${query}` : ''}`;
 }
 
-function projectPage(project, tasks, filter, error = '') {
+function taskFilterFields(filters) {
+  return `<input type="hidden" name="filter" value="${filters.completion}">
+      <input type="hidden" name="priorityFilter" value="${filters.priority}">`;
+}
+
+function projectPage(project, tasks, filters, error = '') {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <form method="post" action="/projects/${project.id}/rename" class="create-form project-rename">
-      <input type="hidden" name="filter" value="${filter}">
+      ${taskFilterFields(filters)}
       <label for="new-project-name">New project name</label>
       <div class="input-group"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
       <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
     </form>
     <form method="post" action="/projects/${project.id}/tasks" class="create-form task-create">
-      <input type="hidden" name="filter" value="${filter}">
+      ${taskFilterFields(filters)}
       <label for="task-title">Task title</label>
       <div class="input-group"><input id="task-title" name="title" type="text">
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button></div>
@@ -83,25 +98,29 @@ function projectPage(project, tasks, filter, error = '') {
     <form method="get" action="/projects/${project.id}" class="task-filter">
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
-        ${taskFilters.map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+        ${taskFilters.map((option) => `<option${filters.completion === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
+        ${priorityFilters.map((option) => `<option${filters.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
     <section aria-label="Tasks" class="project-list">
       ${tasks.map((task) => `<div data-testid="task-row" class="task-row">
         <span>${escapeHtml(task.title)}</span>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
-          <input type="hidden" name="filter" value="${filter}">
+          ${taskFilterFields(filters)}
           <input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
-          <input type="hidden" name="filter" value="${filter}">
+          ${taskFilterFields(filters)}
           <label for="task-priority-${task.id}">Task priority</label>
           <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${taskPriorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
           </select>
         </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename">
-          <input type="hidden" name="filter" value="${filter}">
+          ${taskFilterFields(filters)}
           <label for="new-task-title-${task.id}">New task title</label>
           <div class="input-group"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
@@ -157,14 +176,16 @@ export function createWorkboardServer(databasePath) {
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
-    WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id`);
+    WHERE project_id = ? AND (? IS NULL OR completed = ?)
+      AND (? IS NULL OR priority = ?) ORDER BY id`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
-  function tasksFor(projectId, filter) {
-    const completed = filter === 'All' ? null : Number(filter === 'Completed');
-    return listTasks.all(projectId, completed, completed);
+  function tasksFor(projectId, filters) {
+    const completed = filters.completion === 'All' ? null : Number(filters.completion === 'Completed');
+    const priority = filters.priority === 'All' ? null : filters.priority;
+    return listTasks.all(projectId, completed, completed, priority, priority);
   }
 
   const server = createServer(async (request, response) => {
@@ -209,18 +230,18 @@ export function createWorkboardServer(databasePath) {
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
         if (project) {
           if (request.method === 'GET' && url.pathname === `/projects/${id}`) {
-            const filter = readTaskFilter(url.searchParams.get('filter'));
-            return send(200, projectPage(project, tasksFor(id, filter), filter));
+            const filters = readTaskFilters(url.searchParams);
+            return send(200, projectPage(project, tasksFor(id, filters), filters));
           }
           if (request.method === 'POST' && url.pathname !== `/projects/${id}`) {
             const form = await readForm(request);
-            const filter = readTaskFilter(form.get('filter'));
+            const filters = readTaskFilters(form);
             if (project.archived) {
-              return send(409, projectPage(project, tasksFor(id, filter), filter, 'Archived project is read-only'));
+              return send(409, projectPage(project, tasksFor(id, filters), filters, 'Archived project is read-only'));
             }
             if (url.pathname === `/projects/${id}/rename`) {
               const name = (form.get('name') ?? '').trim();
-              if (!name) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Project name is required'));
+              if (!name) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Project name is required'));
               renameProject.run(name, id);
             } else if (match[2]) {
               const taskId = Number(match[2]);
@@ -230,12 +251,12 @@ export function createWorkboardServer(databasePath) {
               let result;
               if (match[3] === 'rename') {
                 const title = (form.get('title') ?? '').trim();
-                if (!title) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task title is required'));
+                if (!title) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task title is required'));
                 result = renameTask.run(title, taskId, id);
               } else if (match[3] === 'priority') {
                 const priority = form.get('priority');
                 if (!taskPriorities.includes(priority)) {
-                  return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task priority is invalid'));
+                  return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task priority is invalid'));
                 }
                 result = updatePriority.run(priority, taskId, id);
               } else {
@@ -244,10 +265,10 @@ export function createWorkboardServer(databasePath) {
               if (!result.changes) return send(404, page('Not found', '<h1>Task not found</h1>'));
             } else {
               const title = (form.get('title') ?? '').trim();
-              if (!title) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task title is required'));
+              if (!title) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task title is required'));
               insertTask.run(id, title);
             }
-            response.writeHead(303, { Location: projectPath(id, filter) });
+            response.writeHead(303, { Location: projectPath(id, filters) });
             return response.end();
           }
         }

@@ -38,3 +38,9 @@ and new tasks. Priority changes are saved automatically and persist across
 restarts without changing task order, completion, ownership, or summaries.
 Renaming preserves priority. Archived projects disable priority edits until
 restored; the server also rejects direct edits to archived tasks.
+The Priority filter (All/Low/Normal/High) combines with the Task filter: tasks
+must match both, and matching tasks retain creation order. Both selections stay
+in place when either filter changes or a task is edited; completion and priority
+changes immediately update the matching rows. Filters also work in archived
+projects. Opening a project from the list starts both filters at All. Filters
+are page state stored in the URL and never change task data or summary counts.
