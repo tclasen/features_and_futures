@@ -37,12 +37,17 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, (SELECT default_priority FROM projects WHERE id = ?))");
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'sort_order')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  database.exec('UPDATE tasks SET sort_order = id');
+}
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, (SELECT default_priority FROM projects WHERE id = ?), COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1))");
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1) WHERE id = ? AND project_id = ?');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -108,7 +113,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, JSON.stringify({ error: 'Invalid request' }));
     }
   }
-  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+  const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+)(\/move)?)?$/);
   if (taskRoute) {
     const projectId = Number(taskRoute[1]);
     if (!getProject.get(projectId)) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
@@ -120,8 +125,22 @@ const server = http.createServer(async (req, res) => {
         const title = String(JSON.parse(body).title ?? '').trim();
         if (getProject.get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-        const result = createTask.run(projectId, title, projectId);
+        const result = createTask.run(projectId, title, projectId, projectId);
         return send(res, 201, JSON.stringify(listTasks.all(projectId).find(task => task.id === Number(result.lastInsertRowid))));
+      } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
+    }
+    if (req.method === 'PATCH' && taskRoute[2] && taskRoute[3]) {
+      try {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const destinationId = Number(JSON.parse(body).destinationProjectId);
+        const source = getProject.get(projectId);
+        const destination = getProject.get(destinationId);
+        if (source.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+        if (!destination || destination.archived || destinationId === projectId) return send(res, 400, JSON.stringify({ error: 'Invalid destination project' }));
+        const result = moveTask.run(destinationId, destinationId, Number(taskRoute[2]), projectId);
+        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        return send(res, 200, JSON.stringify({ success: true }));
       } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
     }
     if (req.method === 'PATCH' && taskRoute[2]) {

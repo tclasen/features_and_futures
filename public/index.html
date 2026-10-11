@@ -96,6 +96,8 @@
         const response = await fetch(`/api/projects/${project.id}/tasks`);
         if (!response.ok) throw new Error('Could not load tasks');
         const tasks = await response.json();
+        const projects = await loadProjects();
+        const destinations = projects.filter(item => !item.archived && item.id !== project.id);
         const list = app.querySelector('#tasks'); list.replaceChildren();
         for (const task of tasks.filter(item =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(item.completed)) &&
@@ -140,7 +142,19 @@
             if (!response.ok) { alert.textContent = 'Due date must be a valid YYYY-MM-DD date'; return; }
             alert.textContent = ''; await renderTasks();
           });
-          label.append(checkbox); row.append(title, renameInput, renameButton, priorityLabel, priority, dueDateInput, saveDueDate, label); list.append(row);
+          const destination = document.createElement('select'); destination.setAttribute('aria-label', 'Destination project');
+          for (const item of destinations) {
+            const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; destination.append(option);
+          }
+          const moveButton = document.createElement('button'); moveButton.type = 'button'; moveButton.textContent = 'Move task';
+          destination.disabled = Boolean(project.archived) || destinations.length === 0;
+          moveButton.disabled = destination.disabled;
+          moveButton.addEventListener('click', async () => {
+            const response = await fetch(`/api/projects/${project.id}/tasks/${task.id}/move`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(destination.value) }) });
+            if (!response.ok) { alert.textContent = 'Unable to move task'; return; }
+            alert.textContent = ''; await renderTasks();
+          });
+          label.append(checkbox); row.append(title, renameInput, renameButton, priorityLabel, priority, dueDateInput, saveDueDate, destination, moveButton, label); list.append(row);
         }
       }
       filter.addEventListener('change', () => renderTasks().catch(() => { alert.textContent = 'Unable to load tasks'; }));
