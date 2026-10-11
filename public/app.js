@@ -27,6 +27,14 @@ async function render() {
     app.append(back);
     if (!project) { app.append(element('p', { role: 'alert' }, 'Project not found')); return; }
     app.append(element('h1', {}, project.name));
+    const downloadProject = element('button', { type: 'button' }, 'Download project');
+    downloadProject.addEventListener('click', () => {
+      const link = element('a', { href: `/api/projects/${encodeURIComponent(match[1])}/export`, download: 'workboard-project.json' });
+      document.body.append(link);
+      link.click();
+      link.remove();
+    });
+    app.append(downloadProject);
     if (project.archived) app.append(element('p', {}, 'Archived project'));
     const renameForm = element('form');
     const renameLabel = element('label', { for: 'new-project-name' }, 'New project name');
