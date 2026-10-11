@@ -92,3 +92,13 @@ Due-range checks cover inclusive and one-sided boundaries, undated tasks, every
 completion/priority combination, invalid calendar dates and reversed ranges,
 unapplied text, edit-triggered membership changes, selection retention, archived
 filtering, empty initial boundaries, and accessible controls.
+
+Each task row provides Destination project and Move task controls. Destinations are
+other active projects in project creation order, using their current names. Moving
+appends the task to the destination while preserving its identity, title, completion,
+priority, and due date. The source page stays open with all its filters retained;
+both project summaries reflect current ownership. Archived projects cannot send or
+receive tasks, and moving is disabled when no destination is available. Moves and
+the resulting task order persist across restarts. Move checks cover saved data,
+ordering, summaries, repeat moves, archived restrictions, empty destinations,
+filter retention, error recovery, and persistence.

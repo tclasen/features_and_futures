@@ -52,6 +52,9 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks)
+  WHERE project_id = ? AND id = ?`);
 const assets = new Map([
   ['/', ['public/index.html', 'text/html; charset=utf-8']],
   ['/dates.js', ['public/dates.js', 'text/javascript; charset=utf-8']],
@@ -126,6 +129,15 @@ const server = http.createServer(async (request, response) => {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJson(request);
         if (findProject.get(projectId).archived) return json(response, 409, { error: 'Archived project is read-only' });
+        if (input && Object.hasOwn(input, 'destination_project_id')) {
+          const destination = typeof input.destination_project_id === 'string'
+            ? findProject.get(input.destination_project_id) : null;
+          if (!destination || destination.id === projectId || destination.archived) {
+            return json(response, 400, { error: 'Destination must be another active project' });
+          }
+          moveTask.run(destination.id, projectId, taskId);
+          return json(response, 200, taskResult(findTask.get(destination.id, taskId)));
+        }
         if (input && Object.hasOwn(input, 'due_date')) {
           const dueDate = typeof input.due_date === 'string' ? input.due_date.trim() : null;
           if (dueDate === null || !validDueDate(dueDate)) {

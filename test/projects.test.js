@@ -429,3 +429,69 @@ test('due dates validate calendar days and persist independently through edits, 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('moves append tasks, preserve data and summaries, reject archived projects, and survive restart', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'moves-'));
+  let server;
+  try {
+    const databasePath = resolve(directory, 'moves.sqlite');
+    server = await start(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(server.url + '/api/projects' + path, {
+        method, ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const source = await api('', 'POST', { name: 'Source' }, 201);
+    const destination = await api('', 'POST', { name: 'Destination' }, 201);
+    const sourcePath = `/${source.id}`;
+    const destinationPath = `/${destination.id}`;
+    // Create the moved task first to ensure moving really changes its order.
+    const moved = await api(sourcePath + '/tasks', 'POST', { title: 'Moved' }, 201);
+    const remaining = await api(sourcePath + '/tasks', 'POST', { title: 'Remaining' }, 201);
+    const existing = await api(destinationPath + '/tasks', 'POST', { title: 'Existing' }, 201);
+    const taskPath = sourcePath + '/tasks/' + moved.id;
+    await api(taskPath, 'PATCH', { completed: true });
+    await api(taskPath, 'PATCH', { priority: 'High' });
+    const saved = await api(taskPath, 'PATCH', { due_date: '0001-01-01' });
+    await api(destinationPath, 'PATCH', { default_task_priority: 'Low' });
+    for (const id of [source.id, 'missing', null]) {
+      await api(taskPath, 'PATCH', { destination_project_id: id }, 400);
+    }
+    await api(destinationPath, 'PATCH', { archived: true });
+    await api(taskPath, 'PATCH', { destination_project_id: destination.id }, 400);
+    await api(destinationPath, 'PATCH', { archived: false });
+    await api(sourcePath, 'PATCH', { archived: true });
+    await api(taskPath, 'PATCH', { destination_project_id: destination.id }, 409);
+    await api(sourcePath, 'PATCH', { archived: false });
+    assert.deepEqual(await api(taskPath, 'PATCH', { destination_project_id: destination.id }), saved);
+    assert.deepEqual(await api(sourcePath + '/tasks'), [remaining]);
+    assert.deepEqual(await api(destinationPath + '/tasks'), [existing, saved]);
+    const afterMove = await api(destinationPath + '/tasks', 'POST', { title: 'After move' }, 201);
+    assert.equal(afterMove.priority, 'Low');
+    assert.deepEqual(await api(destinationPath + '/tasks'), [existing, saved, afterMove]);
+    const summaries = await api('');
+    assert.deepEqual(summaries.map(p => [p.completed, p.total]), [[0, 1], [1, 3]]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await api(destinationPath + '/tasks'), [existing, saved, afterMove]);
+    assert.deepEqual(await api(''), summaries);
+    await api(destinationPath + '/tasks/' + moved.id, 'PATCH', { destination_project_id: source.id });
+    assert.deepEqual(await api(sourcePath + '/tasks'), [remaining, saved]);
+    // Blank dates also survive moving independently.
+    await api(sourcePath + '/tasks/' + remaining.id, 'PATCH', { destination_project_id: destination.id });
+    assert.deepEqual(await api(destinationPath + '/tasks'), [existing, afterMove, remaining]);
+    await api(taskPath, 'PATCH', { title: 'Renamed after move' });
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await api(sourcePath + '/tasks'), [{ ...saved, title: 'Renamed after move' }]);
+    assert.deepEqual(await api(destinationPath + '/tasks'), [existing, afterMove, remaining]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

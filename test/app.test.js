@@ -50,6 +50,7 @@ test('project rename validates, updates the heading, preserves the URL and tasks
     document,
     window: { location },
     fetch: async (path, options) => {
+      if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
       if (!options) {
         const body = path.endsWith('/tasks')
           ? [{ id: 'task', title: 'Existing task', completed: true, priority: 'Normal' }]
@@ -115,6 +116,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
     document: { querySelector: element, createElement: () => new Element() },
     window: { location: { pathname: '/projects/example' } },
     fetch: async (path, options) => {
+      if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
       let body;
       if (!options) {
         body = path.endsWith('/tasks') ? structuredClone(savedTasks) : { id: 'example', name: 'Example' };
@@ -310,6 +312,7 @@ test('archived project UI disables task changes while keeping filters usable', a
     document: { querySelector: element, createElement: () => new Element() },
     window: { location: { pathname: '/projects/one' } },
     fetch: async (path, options) => {
+      if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
       if (options) writes++;
       const body = path.endsWith('/tasks') ? [
         { id: 'a', title: 'Open task', completed: false, priority: 'Low' },
@@ -375,6 +378,7 @@ test('combined filters retain selections and creation order across task edits an
       document: { querySelector: element, createElement: () => new Element() },
       window: { location: { pathname: '/projects/example' } },
       fetch: async (path, options) => {
+        if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
         if (!options) {
           const body = path.endsWith('/tasks') ? structuredClone(savedTasks)
             : { id: 'example', name: 'Example', archived };
@@ -493,6 +497,7 @@ test('default priority saves without changing filters or existing rows and loads
       document: { querySelector: element, createElement: () => new Element() },
       window: { location: { pathname: '/projects/example' } },
       fetch: async (path, options) => {
+        if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
         let body;
         if (!options) body = path.endsWith('/tasks') ? savedTasks : project;
         else {
@@ -592,6 +597,7 @@ test('due-date controls preserve filters, saved values, and archived restriction
       document: { querySelector: element, createElement: () => new Element() },
       window: { location: { pathname: '/projects/example' } },
       fetch: async (path, options) => {
+        if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
         if (!options) return { ok: true, json: async () => path.endsWith('/tasks')
           ? structuredClone(tasks) : { id: 'example', name: 'Example', archived } };
         writes++;
@@ -686,6 +692,7 @@ test('due ranges intersect filters inclusively, validate without changing member
       document: { querySelector: element, createElement: () => new Element() },
       window: { location: { pathname: '/projects/example' } },
       fetch: async (path, options) => {
+        if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
         assert.equal(options, undefined, 'Filtering must not write saved data');
         return { ok: true, json: async () => path.endsWith('/tasks')
           ? structuredClone(savedTasks)
@@ -782,6 +789,7 @@ test('task edits re-evaluate the applied range and preserve selections through c
     document: { querySelector: element, createElement: () => new Element() },
     window: { location: { pathname: '/projects/example' } },
     fetch: async (path, options) => {
+      if (path === '/api/projects' && !options) return { ok: true, json: async () => [] };
       let body;
       if (!options) {
         body = path.endsWith('/tasks') ? structuredClone(tasks)
@@ -873,4 +881,86 @@ test('due-range textboxes and button have the required accessible labels', async
     assert.ok(html.includes(`<input id="${id}" type="text"`));
   }
   assert.match(html, /<button type="submit">Apply due range<\/button>/);
+});
+
+test('move controls list eligible destinations and preserve source filters, with disabled and error states', async () => {
+  const source = await appSource();
+  const projects = [
+    { id: 'example', name: 'Source', archived: false },
+    { id: 'first', name: 'Renamed destination', archived: false },
+    { id: 'archived', name: 'Archived', archived: true },
+    { id: 'last', name: 'Last', archived: false },
+  ];
+  for (const mode of ['active', 'archived', 'no destinations']) {
+    const elements = new Map();
+    const element = selector => {
+      if (!elements.has(selector)) elements.set(selector, new Element());
+      return elements.get(selector);
+    };
+    for (const form of ['#project-form', '#task-form', '#rename-form']) element(form).button = new Element();
+    element('#task-filter').value = 'all';
+    element('#priority-filter').value = 'all';
+    const tasks = ['First', 'Second', 'Third'].map((title, index) => ({
+      id: String(index), title, completed: false, priority: 'High', due_date: '2024-03-01',
+    }));
+    const writes = [];
+    let fail = true;
+    const location = { pathname: '/projects/example' };
+    await runInNewContext(source, {
+      document: { querySelector: element, createElement: () => new Element() },
+      window: { location },
+      fetch: async (path, options) => {
+        if (!options) return { ok: true, json: async () => path === '/api/projects'
+          ? structuredClone(mode === 'no destinations' ? projects.slice(0, 1) : projects)
+          : path.endsWith('/tasks') ? structuredClone(tasks)
+          : { ...projects[0], archived: mode === 'archived', default_task_priority: 'Normal' } };
+        writes.push({ path, body: JSON.parse(options.body) });
+        return { ok: !fail, json: async () => fail ? { error: 'Move failed' } : tasks[1] };
+      },
+    });
+    const rows = () => element('#task-list').children;
+    const move = rows()[1].children[5];
+    const [select, button] = move.children;
+    assert.equal(select.attributes['aria-label'], 'Destination project');
+    assert.equal(button.textContent, 'Move task');
+    assert.deepEqual(select.children.map(option => [option.value, option.textContent]),
+      mode === 'no destinations' ? [] : [['first', 'Renamed destination'], ['last', 'Last']]);
+    assert.equal(select.disabled, mode !== 'active');
+    assert.equal(button.disabled, mode !== 'active');
+    if (mode !== 'active') {
+      await move.dispatch('submit');
+      assert.equal(writes.length, 0);
+      continue;
+    }
+    element('#task-filter').value = 'open';
+    await element('#task-filter').dispatch('change');
+    element('#priority-filter').value = 'High';
+    await element('#priority-filter').dispatch('change');
+    element('#due-from').value = '2024-03-01';
+    element('#due-through').value = '2024-03-31';
+    await element('#due-range-form').dispatch('submit');
+    const currentMove = rows()[1].children[5];
+    currentMove.children[0].value = 'last';
+    await currentMove.dispatch('submit');
+    assert.equal(element('#task-alert').textContent, 'Move failed');
+    assert.equal(currentMove.children[0].disabled, false);
+    assert.equal(currentMove.children[1].disabled, false);
+    assert.equal(rows().length, 3);
+    fail = false;
+    await currentMove.dispatch('submit');
+    assert.deepEqual(writes[1], {
+      path: '/api/projects/example/tasks/1', body: { destination_project_id: 'last' },
+    });
+    assert.deepEqual(rows().map(row => row.children[1].textContent), ['First', 'Third']);
+    assert.equal(element('#task-filter').value, 'open');
+    assert.equal(element('#priority-filter').value, 'High');
+    assert.equal(element('#due-from').value, '2024-03-01');
+    assert.equal(element('#due-through').value, '2024-03-31');
+    assert.equal(location.pathname, '/projects/example');
+    assert.equal(location.href, undefined);
+    // The applied range still filters when a combobox changes after moving.
+    element('#priority-filter').value = 'all';
+    await element('#priority-filter').dispatch('change');
+    assert.equal(rows().length, 2);
+  }
 });

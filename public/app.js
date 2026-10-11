@@ -287,7 +287,42 @@ function renderTasks() {
       }
     });
     dueDateForm.append(dueDateInput, dueDateButton);
-    row.append(checkbox, title, taskRenameForm, priority, dueDateForm);
+    const moveForm = document.createElement('form');
+    moveForm.className = 'create-fields';
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    const eligibleProjects = projects.filter(project => !project.archived && project.id !== projectId);
+    for (const project of eligibleProjects) {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    const moveButton = document.createElement('button');
+    moveButton.type = 'submit';
+    moveButton.textContent = 'Move task';
+    destination.disabled = moveButton.disabled = archived || !eligibleProjects.length;
+    moveForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (archived || !eligibleProjects.length) return;
+      destination.disabled = moveButton.disabled = true;
+      showTaskAlert('');
+      try {
+        await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination_project_id: destination.value }),
+        });
+        tasks = tasks.filter(candidate => candidate.id !== task.id);
+        renderTasks();
+      } catch (error) {
+        showTaskAlert(error.message);
+      } finally {
+        destination.disabled = moveButton.disabled = archived || !eligibleProjects.length;
+      }
+    });
+    moveForm.append(destination, moveButton);
+    row.append(checkbox, title, taskRenameForm, priority, dueDateForm, moveForm);
     taskList.append(row);
   }
 }
@@ -392,6 +427,7 @@ async function initialize() {
       renameInput.disabled = archived;
       renameForm.querySelector('button').disabled = archived;
       tasks = await request(`/api/projects/${projectId}/tasks`);
+      projects = await request('/api/projects');
       renderTasks();
       document.querySelector('#task-controls').hidden = false;
       taskForm.querySelector('button').disabled = archived;
