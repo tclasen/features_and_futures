@@ -173,6 +173,22 @@ async function renderProject(id) {
         }
       });
       row.append(checkbox);
+      const priority = element('select', undefined, { 'aria-label': 'Task priority' });
+      for (const value of ['Low', 'Normal', 'High']) {
+        priority.append(element('option', value, { value }));
+      }
+      priority.value = task.priority || 'Normal';
+      priority.disabled = project.archived;
+      priority.addEventListener('change', async () => {
+        const previousPriority = task.priority || 'Normal';
+        const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ priority: priority.value }),
+        });
+        if (result.ok) task.priority = priority.value;
+        else priority.value = previousPriority;
+      });
+      row.append(priority);
       const renameForm = element('form');
       const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', autocomplete: 'off' });
       const renameButton = element('button', 'Rename task', { type: 'submit' });
