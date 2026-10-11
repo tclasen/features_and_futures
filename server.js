@@ -11,10 +11,13 @@ database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
 try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
-const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+try { database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const updateProjectDefault = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
+const findProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
@@ -28,7 +31,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -75,8 +78,9 @@ const server = createServer(async (request, response) => {
       try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return send(response, 400, { error: 'Task title is required' });
-      const task = { id: randomUUID(), projectId, title, completed: 0 };
-      insertTask.run(task.id, projectId, title, Date.now());
+      const defaultPriority = findProject.get(projectId).defaultPriority;
+      const task = { id: randomUUID(), projectId, title, completed: 0, priority: defaultPriority };
+      insertTask.run(task.id, projectId, title, Date.now(), defaultPriority);
       return send(response, 201, task);
     }
   }
@@ -131,6 +135,20 @@ const server = createServer(async (request, response) => {
     if (!name) return send(response, 400, { error: 'Project name is required' });
     updateProjectName.run(name, id);
     return send(response, 200, { id, name });
+  }
+  const defaultRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority$/);
+  if (defaultRoute && request.method === 'PATCH') {
+    const id = decodeURIComponent(defaultRoute[1]);
+    const project = findProject.get(id);
+    if (!project) return send(response, 404, { error: 'Project not found' });
+    if (project.archived) return send(response, 403, { error: 'Archived project' });
+    let input = '';
+    for await (const chunk of request) input += chunk;
+    let data;
+    try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    if (!['Low', 'Normal', 'High'].includes(data.priority)) return send(response, 400, { error: 'Invalid priority' });
+    updateProjectDefault.run(data.priority, id);
+    return send(response, 200, { ok: true });
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (archiveRoute && request.method === 'PATCH') {
