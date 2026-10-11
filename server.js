@@ -88,6 +88,26 @@ const server = http.createServer(async (req, res) => {
     setArchived.run(archiveRoute[2] === 'archive' ? 1 : 0, projectId);
     res.writeHead(204); res.end(); return;
   }
+  const moveRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (moveRoute && req.method === 'POST') {
+    const sourceId = decodeURIComponent(moveRoute[1]);
+    const taskId = decodeURIComponent(moveRoute[2]);
+    const source = getProject.get(sourceId);
+    if (!source) { res.writeHead(404); res.end('Not found'); return; }
+    if (source.archived) { res.writeHead(403); res.end('Archived project'); return; }
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const destinationId = String(JSON.parse(body).destination_id ?? '');
+      const destination = getProject.get(destinationId);
+      if (!destination || destination.archived || destinationId === sourceId) { res.writeHead(400); res.end('Invalid destination'); return; }
+      const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+      if (!task) { res.writeHead(404); res.end('Not found'); return; }
+      const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value);
+      db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+      res.writeHead(204); res.end();
+    } catch { res.writeHead(400); res.end('Invalid request'); }
+    return;
+  }
   const taskRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks(?:\/([^/]+))?$/);
   if (taskRoute) {
     const projectId = decodeURIComponent(taskRoute[1]);
