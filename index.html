@@ -26,6 +26,10 @@
     #project-view form { margin-top: 22px; }
     .task-controls { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
     .task-controls select { padding: 9px 12px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
+    .project-controls { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+    .project-controls select { padding: 9px 12px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
+    .project-actions { display: flex; align-items: center; gap: 8px; }
+    .project-actions button[data-action="archive"], .project-actions button[data-action="restore"] { background: #596579; }
     .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     #project-view button { margin-bottom: 24px; }
     @media (max-width: 480px) { main { margin-top: 36px; } form { align-items: stretch; flex-direction: column; } form button { width: 100%; } }
@@ -46,18 +50,28 @@
           <button type="submit">Create project</button>
         </form>
         <div id="form-message" role="alert" aria-live="polite"></div>
+        <div class="project-controls"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
         <section id="project-list" class="project-list" aria-label="Projects"></section>`;
       const list = app.querySelector('#project-list');
+      const filter = app.querySelector('#project-filter');
+      let projects = [];
       const loadProjects = async () => {
         const response = await fetch('/api/projects');
-        const projects = await response.json();
-        list.innerHTML = projects.map((project) => `
+        projects = await response.json();
+        renderProjects();
+      };
+      const renderProjects = () => {
+        const archived = filter.value === 'Archived';
+        list.innerHTML = projects.filter((project) => project.archived === archived).map((project) => `
           <div class="project-row" data-testid="project-row">
             <span class="project-name">${escapeText(project.name)}</span>
-            <button type="button" data-project-id="${project.id}">Open project</button>
+            <span class="project-summary" data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
+            <span class="project-actions"><button type="button" data-action="open" data-project-id="${project.id}">Open project</button>
+            <button type="button" data-action="${archived ? 'restore' : 'archive'}" data-project-id="${project.id}">${archived ? 'Restore project' : 'Archive project'}</button></span>
           </div>`).join('');
       };
       await loadProjects();
+      filter.addEventListener('change', renderProjects);
       app.querySelector('#create-project').addEventListener('submit', async (event) => {
         event.preventDefault();
         const input = app.querySelector('#project-name');
@@ -81,7 +95,9 @@
       });
       list.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-project-id]');
-        if (button) location.href = `/projects/${button.dataset.projectId}`;
+        if (!button) return;
+        if (button.dataset.action === 'open') { location.href = `/projects/${button.dataset.projectId}`; return; }
+        fetch(`/api/projects/${button.dataset.projectId}/${button.dataset.action}`, { method: 'POST' }).then(loadProjects);
       });
     }
 
@@ -92,7 +108,8 @@
       } else {
         const project = await response.json();
         app.innerHTML = `<section id="project-view"><button id="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1>
-          <form id="create-task"><label for="task-title" class="visually-hidden">Task title</label><input id="task-title" type="text" aria-label="Task title" autocomplete="off"><button type="submit">Create task</button></form>
+          ${project.archived ? '<p>Archived project</p>' : ''}
+          <form id="create-task"><label for="task-title" class="visually-hidden">Task title</label><input id="task-title" type="text" aria-label="Task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
           <div id="task-message" role="alert" aria-live="polite"></div>
           <div class="task-controls"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
           <section id="task-list" class="task-list" aria-label="Tasks"></section></section>`;
@@ -102,7 +119,7 @@
         const renderTasks = () => {
           const mode = filter.value;
           const visible = tasks.filter((task) => mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
