@@ -285,6 +285,9 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ent
       ${searchField(query)}`;
   return page(`<h1>${escapeHtml(project.name)}</h1>
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form action="/projects/${project.id}/export" method="get">
+      <button type="submit">Download project</button>
+    </form>
     ${project.archived ? '<p>Archived project</p>' : ''}
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="/projects/${project.id}/rename" method="post">
@@ -429,6 +432,36 @@ const server = http.createServer(async (request, response) => {
       const result = archiveProject.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
       if (result.changes) {
         redirect(response, listLocation(archiveMatch[2] === 'archive' ? 'Active' : 'Archived', searchQuery(form)));
+        return;
+      }
+    }
+    const exportMatch = /^\/projects\/(\d+)\/export$/.exec(path);
+    if (request.method === 'GET' && exportMatch) {
+      const project = findProject.get(exportMatch[1]);
+      if (project) {
+        const document = {
+          format: 'workboard-project',
+          version: 1,
+          project: {
+            name: project.name,
+            archived: Boolean(project.archived),
+            defaultPriority: project.default_priority,
+            tasks: listTasks.all(project.id).map(task => ({
+              title: task.title,
+              completed: Boolean(task.completed),
+              priority: task.priority,
+              dueDate: task.due_date,
+              // Export textarea line breaks as LF without changing stored notes.
+              notes: task.notes.replace(/\r\n?/g, '\n'),
+              deleted: Boolean(task.deleted),
+            })),
+          },
+        };
+        response.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="workboard-project.json"',
+        });
+        response.end(JSON.stringify(document));
         return;
       }
     }
