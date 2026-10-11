@@ -27,6 +27,8 @@
     .task-rename-form { flex: 1; margin: 0; }
     label { display: flex; align-items: center; gap: 8px; }
     .project-controls { margin: 0 0 20px; }
+    .due-range { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 12px 0 20px; }
+    .due-range label { align-items: flex-start; flex-direction: column; gap: 4px; }
     .project-actions { display: flex; align-items: center; gap: 8px; }
     .project-summary { color: #596579; white-space: nowrap; }
     button.secondary { background: #596579; }
@@ -111,6 +113,16 @@
           const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
           for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
           priorityFilterLabel.append(priorityFilter);
+          const dueRange = element('form', undefined, { class: 'due-range' });
+          const dueFromLabel = element('label', 'Due from');
+          const dueFrom = element('input', undefined, { type: 'text', 'aria-label': 'Due from', placeholder: 'YYYY-MM-DD', autocomplete: 'off' });
+          dueFromLabel.append(dueFrom);
+          const dueThroughLabel = element('label', 'Due through');
+          const dueThrough = element('input', undefined, { type: 'text', 'aria-label': 'Due through', placeholder: 'YYYY-MM-DD', autocomplete: 'off' });
+          dueThroughLabel.append(dueThrough);
+          const applyDueRange = element('button', 'Apply due range', { type: 'submit' });
+          dueRange.append(dueFromLabel, dueThroughLabel, applyDueRange);
+          let appliedDueRange = { from: '', through: '' };
           const list = element('section', undefined, { 'aria-label': 'Tasks' });
           form.addEventListener('submit', async event => {
             event.preventDefault();
@@ -127,13 +139,32 @@
             if (response.ok) {
               input.value = '';
               alert.hidden = true;
-              await loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived);
+              await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived);
             }
           });
-          filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived));
-          priorityFilter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived));
-          app.append(renameForm, form, defaultPriorityLabel, alert, filterLabel, priorityFilterLabel, list);
-          await loadTasks(project.id, list, filter.value, priorityFilter.value, project.archived);
+          filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived));
+          priorityFilter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived));
+          dueRange.addEventListener('submit', async event => {
+            event.preventDefault();
+            const from = dueFrom.value.trim();
+            const through = dueThrough.value.trim();
+            const alertMessage = app.querySelector('[role="alert"]');
+            if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+              alertMessage.textContent = 'Due range must use valid YYYY-MM-DD dates';
+              alertMessage.hidden = false;
+              return;
+            }
+            if (from && through && from > through) {
+              alertMessage.textContent = 'Due from must not be after Due through';
+              alertMessage.hidden = false;
+              return;
+            }
+            appliedDueRange = { from, through };
+            alertMessage.hidden = true;
+            await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived);
+          });
+          app.append(renameForm, form, defaultPriorityLabel, alert, filterLabel, priorityFilterLabel, dueRange, list);
+          await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived);
         } else app.append(element('h1', 'Project not found'));
         return;
       }
@@ -229,11 +260,24 @@
       }
       for (const obsolete of rows.values()) obsolete.remove();
     }
-    async function loadTasks(projectId, list, filter, priorityFilter, archived = false) {
+    function isValidDate(value) {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return false;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+    }
+    async function loadTasks(projectId, list, filter, priorityFilter, dueRange, archived = false) {
       const tasks = await fetch(`/api/projects/${projectId}/tasks`).then(response => response.json());
       const visibleTasks = tasks.filter(task =>
         (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
-        (priorityFilter === 'All' || task.priority === priorityFilter)
+        (priorityFilter === 'All' || task.priority === priorityFilter) &&
+        ((!dueRange.from && !dueRange.through) || (task.dueDate &&
+          (!dueRange.from || task.dueDate >= dueRange.from) &&
+          (!dueRange.through || task.dueDate <= dueRange.through)))
       );
       list.replaceChildren(...visibleTasks.map(task => {
         const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
@@ -244,7 +288,7 @@
           await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
           });
-          await loadTasks(projectId, list, filter, priorityFilter, archived);
+          await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
         });
         const title = element('span', task.title, { class: 'task-title' });
         const priority = element('select', undefined, { 'aria-label': 'Task priority' });
@@ -259,7 +303,7 @@
           if (!response.ok) priority.value = task.priority || 'Normal';
           else {
             task.priority = priority.value;
-            await loadTasks(projectId, list, filter, priorityFilter, archived);
+            await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
           }
         });
         const renameForm = element('form', undefined, { class: 'task-rename-form' });
@@ -286,7 +330,7 @@
           });
           if (response.ok) {
             alert.hidden = true;
-            await loadTasks(projectId, list, filter, priorityFilter, archived);
+            await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
           }
         });
         const dueDateInput = element('input', undefined, {
@@ -312,6 +356,7 @@
           const result = await response.json();
           dueDateInput.value = result.dueDate || '';
           alert.hidden = true;
+          await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
         });
         row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate);
         return row;
