@@ -37,11 +37,13 @@ test('project default migration preserves Task 007 priorities, identities, and s
       { id: 10, name: 'Archived project', archived: true, default_task_priority: 'Normal', total_count: 1, completed_count: 1 },
     ];
     const tasks = [
-      { id: 30, title: 'High completed', completed: true, priority: 'High' },
-      { id: 31, title: 'Low open', completed: false, priority: 'Low' },
+      { id: 30, title: 'High completed', completed: true, priority: 'High', due_date: '' },
+      { id: 31, title: 'Low open', completed: false, priority: 'Low', due_date: '' },
     ];
     assert.deepEqual(store.list(), projects);
     assert.deepEqual(store.tasks.list(9), tasks);
+    store.tasks.setDueDate(9, 30, ' 2000-02-29 ');
+    tasks[0].due_date = '2000-02-29';
     store.setDefaultPriority(9, 'Low');
     projects[0].default_task_priority = 'Low';
     assert.throws(() => store.setDefaultPriority(10, 'High'), /Archived project/);
@@ -49,7 +51,7 @@ test('project default migration preserves Task 007 priorities, identities, and s
     store = openProjects(path);
     assert.deepEqual(store.list(), projects);
     assert.deepEqual(store.tasks.list(9), tasks);
-    assert.deepEqual(store.tasks.list(10), [{ id: 32, title: 'Archived task', completed: true, priority: 'High' }]);
+    assert.deepEqual(store.tasks.list(10), [{ id: 32, title: 'Archived task', completed: true, priority: 'High', due_date: '' }]);
   } finally {
     store?.close();
     await rm(directory, { recursive: true, force: true });
@@ -158,8 +160,8 @@ test('priority migration defaults legacy tasks to Normal and preserves saved dat
     }
     store = openProjects(path);
     const expectedTasks = [
-      { id: 21, title: 'Renamed completed task', completed: true, priority: 'Normal' },
-      { id: 22, title: 'Open task', completed: false, priority: 'Normal' },
+      { id: 21, title: 'Renamed completed task', completed: true, priority: 'Normal', due_date: '' },
+      { id: 22, title: 'Open task', completed: false, priority: 'Normal', due_date: '' },
     ];
     const expectedProject = { id: 7, name: 'Legacy project', archived: true, default_task_priority: 'Normal', total_count: 2, completed_count: 1 };
     assert.deepEqual(store.tasks.list(7), expectedTasks);

@@ -240,7 +240,45 @@ async function renderTasks(project) {
         }
       });
       priorityControls.append(priorityLabel, prioritySelect);
-      row.append(title, checkbox, priorityControls, renameForm);
+      const dueDateForm = document.createElement('form');
+      dueDateForm.className = 'task-due-date';
+      const dueDateLabel = document.createElement('label');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      dueDateLabel.textContent = 'Task due date';
+      const dueDateInput = document.createElement('input');
+      dueDateInput.id = dueDateLabel.htmlFor;
+      dueDateInput.type = 'text';
+      dueDateInput.placeholder = 'YYYY-MM-DD';
+      dueDateInput.value = task.due_date;
+      dueDateInput.disabled = project.archived;
+      const dueDateButton = document.createElement('button');
+      dueDateButton.type = 'submit';
+      dueDateButton.textContent = 'Save due date';
+      dueDateButton.disabled = project.archived;
+      const dueDateControls = document.createElement('div');
+      dueDateControls.className = 'create-controls';
+      dueDateControls.append(dueDateInput, dueDateButton);
+      dueDateForm.append(dueDateLabel, dueDateControls);
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (project.archived) return;
+        alert.hidden = true;
+        dueDateButton.disabled = true;
+        try {
+          const updated = await request(`${endpoint}/${task.id}/due-date`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueDateInput.value }),
+          });
+          task.due_date = updated.due_date;
+          dueDateInput.value = task.due_date;
+        } catch (error) {
+          showError(alert, error.message);
+        } finally {
+          dueDateButton.disabled = project.archived;
+        }
+      });
+      row.append(title, checkbox, priorityControls, renameForm, dueDateForm);
       list.append(row);
     }
   }

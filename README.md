@@ -6,7 +6,7 @@ Requires Node.js 22.22.1. No package installation is needed.
 npm start
 ```
 
-The server binds to `0.0.0.0` on `PORT` (default `8080`). Set `DB_PATH` to the SQLite file to use (default `./data/workboard.sqlite`). Its parent directory is created automatically. Keep this file across server restarts to preserve projects, tasks, completion state, priorities, project defaults, and archive state. Existing databases are migrated automatically.
+The server binds to `0.0.0.0` on `PORT` (default `8080`). Set `DB_PATH` to the SQLite file to use (default `./data/workboard.sqlite`). Its parent directory is created automatically. Keep this file across server restarts to preserve projects, tasks, completion state, priorities, due dates, project defaults, and archive state. Existing databases are migrated automatically.
 
 ```sh
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
@@ -28,3 +28,5 @@ Each task row allows renaming with a trimmed, nonempty title. Renaming preserves
 Each task has a saved Low, Normal, or High priority, defaulting to Normal for existing tasks. New tasks inherit their project’s saved default priority. Priority changes preserve the task's other fields and project summary; renaming preserves priority. Archived projects disable priority controls and reject updates until restored. Priorities persist across reloads and server restarts.
 
 Each project page provides Default task priority with Low, Normal, and High options. Existing and new projects start at Normal. Changing the saved default affects only subsequently created tasks in that project and leaves both task filters unchanged. Archived projects show the saved default in a disabled control and reject updates until restored. Defaults survive renaming, reloads, and server restarts.
+
+Each task row provides Task due date and Save due date. Empty input clears the date; otherwise a trimmed real Gregorian date in YYYY-MM-DD format (years 0001–9999) is required. Invalid dates leave saved data unchanged. Dates persist as calendar days without timezone conversion, independently for each task. Date changes preserve both filters and other task fields. Archived projects disable date controls and reject date updates until restored.

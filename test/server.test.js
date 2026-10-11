@@ -89,6 +89,14 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     });
   }
 
+  async function setDueDate(projectId, taskId, dueDate) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}/due-date`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ due_date: dueDate }),
+    });
+  }
+
   async function listTasks(projectId) {
     const response = await fetch(`${base}/api/projects/${projectId}/tasks`);
     assert.equal(response.status, 200);
@@ -355,6 +363,46 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     assert.deepEqual(await listTasks(first.id), [...savedTasks, restoredTask]);
     assert.equal((await getProject(first.id)).completed_count, 1);
     assert.equal((await getProject(first.id)).total_count, savedTasks.length + 1);
+
+    // Date edits affect only the addressed task and survive every other edit.
+    const beforeDateTasks = await listTasks(first.id);
+    const beforeDateProject = await getProject(first.id);
+    assert.ok(beforeDateTasks.every((task) => task.due_date === ''));
+    const dateTask = beforeDateTasks[0];
+    const savedDateTask = { ...dateTask, due_date: '0004-02-29' };
+    const dateResponse = await setDueDate(first.id, dateTask.id, '  0004-02-29  ');
+    assert.equal(dateResponse.status, 200);
+    assert.deepEqual(await dateResponse.json(), savedDateTask);
+    assert.deepEqual(await listTasks(first.id), [savedDateTask, ...beforeDateTasks.slice(1)]);
+    assert.deepEqual(await getProject(first.id), beforeDateProject);
+    for (const invalidDate of ['2023-02-29', '1900-02-29', '2024-04-31', '0000-01-01', '10000-01-01', '2024-1-01', '2024-01-00', '2024-13-01', '2024-01-01T00:00:00Z', null, 20240101]) {
+      const response = await setDueDate(first.id, dateTask.id, invalidDate);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await listTasks(first.id), [savedDateTask, ...beforeDateTasks.slice(1)]);
+    }
+    assert.equal((await setDueDate(second.id, dateTask.id, '2024-01-01')).status, 404);
+    assert.equal((await setDueDate(first.id, 999999, '2024-01-01')).status, 404);
+    assert.equal((await setDueDate(999999, dateTask.id, '2024-01-01')).status, 404);
+    await renameTask(first.id, dateTask.id, 'Date preserved');
+    savedDateTask.title = 'Date preserved';
+    await setPriority(first.id, dateTask.id, 'High');
+    savedDateTask.priority = 'High';
+    await setCompleted(first.id, dateTask.id, true);
+    savedDateTask.completed = true;
+    await setArchived(first.id, true);
+    assert.equal((await setDueDate(first.id, dateTask.id, '')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(first.id), [savedDateTask, ...beforeDateTasks.slice(1)]);
+    await setArchived(first.id, false);
+    const clearedDate = await setDueDate(first.id, dateTask.id, ' \t\n ');
+    savedDateTask.due_date = '';
+    assert.equal(clearedDate.status, 200);
+    assert.deepEqual(await clearedDate.json(), savedDateTask);
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(first.id), [savedDateTask, ...beforeDateTasks.slice(1)]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
