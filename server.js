@@ -37,10 +37,22 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'dueDate')) {
   database.exec("ALTER TABLE tasks ADD COLUMN dueDate TEXT NOT NULL DEFAULT ''");
 }
-// A task's position belongs to its current project; moved tasks append at the end.
+// Preserve the current order from databases created before movement support.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
+// Remember positions even while tasks are away. Seed legacy current positions only.
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 const projectQuery = `SELECT p.id, p.name, p.archived, p.defaultTaskPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
@@ -51,11 +63,45 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
 const getTask = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-  WHERE project_id = ? AND id = ?`);
+const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
+const nextTaskPosition = database.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS position
+  FROM task_project_positions WHERE project_id = ?`);
+const rememberedPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const rememberPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE project_id = ? AND id = ?');
+
+// Keep the current position and its durable history consistent on every write.
+function transaction(operation) {
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    const result = operation();
+    database.exec('COMMIT');
+    return result;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function createTask(projectId, title, priority) {
+  return transaction(() => {
+    const position = nextTaskPosition.get(projectId).position;
+    const taskId = Number(insertTask.run(projectId, title, priority, position).lastInsertRowid);
+    rememberPosition.run(taskId, projectId, position);
+    return taskId;
+  });
+}
+
+function relocateTask(taskId, sourceId, destinationId) {
+  transaction(() => {
+    let position = rememberedPosition.get(taskId, destinationId)?.position;
+    if (position === undefined) {
+      position = nextTaskPosition.get(destinationId).position;
+      rememberPosition.run(taskId, destinationId, position);
+    }
+    moveTask.run(destinationId, position, sourceId, taskId);
+  });
+}
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET defaultTaskPriority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
@@ -131,8 +177,8 @@ const server = createServer(async (request, response) => {
         const input = await readJson(request);
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, getProject.get(projectId).defaultTaskPriority, projectId);
-        return json(response, 201, taskJson(getTask.get(projectId, Number(result.lastInsertRowid))));
+        const taskId = createTask(projectId, title, getProject.get(projectId).defaultTaskPriority);
+        return json(response, 201, taskJson(getTask.get(projectId, taskId)));
       }
       if (request.method === 'PATCH' && taskId !== null) {
         if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
@@ -147,7 +193,7 @@ const server = createServer(async (request, response) => {
           if (destination.archived || getProject.get(projectId).archived) {
             return json(response, 409, { error: 'Archived projects cannot move tasks' });
           }
-          moveTask.run(destinationId, destinationId, projectId, taskId);
+          relocateTask(taskId, projectId, destinationId);
           return json(response, 200, taskJson(getTask.get(destinationId, taskId)));
         } else if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
