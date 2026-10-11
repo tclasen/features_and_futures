@@ -25,6 +25,8 @@ const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority =
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const getTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position, t.created_at, t.rowid');
+const exportProject = db.prepare('SELECT name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
+const exportTasks = db.prepare('SELECT title, completed, priority, COALESCE(due_date, \'\') AS dueDate, COALESCE(notes, \'\') AS notes, deleted FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position, t.created_at, t.rowid');
 const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -42,6 +44,13 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const json = (status, value) => { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
   if (req.method === 'GET' && url.pathname === '/health') return json(200, { status: 'ok' });
+  const exportMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
+  if (req.method === 'GET' && exportMatch) {
+    const id = decodeURIComponent(exportMatch[1]);
+    const project = exportProject.get(id);
+    if (!project) return json(404, { error: 'Not found' });
+    return json(200, { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority, tasks: exportTasks.all(id).map(t => ({ title: t.title, completed: Boolean(t.completed), priority: t.priority || 'Normal', dueDate: t.dueDate || '', notes: String(t.notes || '').replace(/\\r\\n?/g, '\\n'), deleted: Boolean(t.deleted) })) } });
+  }
   if (req.method === 'GET' && url.pathname === '/api/projects') return json(200, getProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
   if (req.method === 'POST' && archiveMatch) {
