@@ -44,6 +44,7 @@ const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?'
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -120,6 +121,7 @@ async function handle(req, res) {
     if (!getProject.get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') return sendJson(res, 200, listTasks.all(projectId));
     if (req.method === 'POST') {
+      if (getProject.get(projectId).archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
       let payload;
       try {
         let raw = '';
@@ -140,7 +142,9 @@ async function handle(req, res) {
   if (req.method === 'PATCH' && taskMatch) {
     const projectId = decodeURIComponent(taskMatch[1]);
     const taskId = decodeURIComponent(taskMatch[2]);
-    if (!getProject.get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
     let payload;
     try {
       let raw = '';
@@ -148,6 +152,13 @@ async function handle(req, res) {
       payload = JSON.parse(raw);
     } catch {
       return sendJson(res, 400, { error: 'Invalid request body' });
+    }
+    if (typeof payload?.title === 'string') {
+      const title = payload.title.trim();
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      const result = updateTaskTitle.run(title, taskId, projectId);
+      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
+      return sendJson(res, 200, { id: taskId, title });
     }
     if (typeof payload?.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     const result = updateTask.run(payload.completed ? 1 : 0, taskId, projectId);
