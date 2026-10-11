@@ -81,8 +81,10 @@ projects and when no eligible destination exists.
 Use Project search and Search projects to find project names within the selected
 Active or Archived list. Use Task search and Search tasks to find task titles
 within the selected completion, priority, and due-range filters. Searches trim
-surrounding query whitespace and ignore ASCII letter case; internal whitespace
-remains significant. Blank queries match everything allowed by the other filters.
+surrounding query whitespace and ignore ASCII letter case. For matching only, runs
+of ASCII spaces and horizontal tabs in queries and saved names/titles count as
+one space. Saved names and titles keep their original spacing and case. Blank
+queries match everything allowed by the other filters.
 Applied searches stay selected through filter changes and task edits, including
 moves, and do not change saved data or all-task summaries. Search remains usable
 in archived projects. Opening a project from the list starts with an empty task
