@@ -57,7 +57,24 @@ async function loadTasks(projectId) {
       await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
       await loadTasks(projectId);
     });
-    row.append(title, checkbox);
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.value = task.title;
+    renameInput.disabled = checkbox.disabled;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'button';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = checkbox.disabled;
+    renameButton.addEventListener('click', async () => {
+      const alert = document.querySelector('#task-alert');
+      const newTitle = renameInput.value.trim();
+      if (!newTitle) { alert.textContent = 'Task title is required'; alert.hidden = false; return; }
+      alert.hidden = true;
+      const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+      if (response.ok) await loadTasks(projectId);
+    });
+    row.append(title, checkbox, renameInput, renameButton);
     container.append(row);
   }
 }

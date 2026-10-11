@@ -83,11 +83,18 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let data;
     try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
-    if (typeof data.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
     const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(Number(taskMatch[1]));
-    if (task && db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
-    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, Number(taskMatch[1]));
-    return result.changes ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Task not found' });
+    if (!task) return json(res, 404, { error: 'Task not found' });
+    if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
+    if (typeof data.title === 'string') {
+      const title = data.title.trim();
+      if (!title) return json(res, 400, { error: 'Task title is required' });
+      db.prepare('UPDATE tasks SET title=? WHERE id=?').run(title, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, title });
+    }
+    if (typeof data.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
+    db.prepare('UPDATE tasks SET completed=? WHERE id=?').run(data.completed ? 1 : 0, Number(taskMatch[1]));
+    return json(res, 200, { ok: true });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'PATCH' && projectMatch) {
