@@ -86,6 +86,16 @@ names show Project name is required. Successful imports open the new project,
 preserving supplied task order, exact titles, LF notes, explicit priorities, dates,
 completion, deletion, archive state and project default. Imported tasks establish
 fresh remembered positions; existing identities and projects are never merged.
+Task directory on the home page opens a read-only cross-project view. Each opening
+starts with Active project scope, All task/priority filters, empty search and due range.
+Scope, live/deleted completion filters, priority, inclusive due range and title-only
+search intersect and preserve one another. Search uses the same ASCII-case and
+horizontal-whitespace rules as project tasks; owner names and notes do not match.
+Invalid ranges show an alert without replacing the applied range. Results follow
+project creation order and each owner's stored task order, display original titles,
+owner names, completion, priority, dates and literal multiline notes, and offer only
+Open project navigation. Opening an owner starts its ordinary default project filters;
+archived owners remain read-only. Viewing and filtering never change saved data.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -116,4 +126,8 @@ Import tests cover required fields and types, late-task validation failures, inv
 calendar dates, atomic rejection and retained inputs, independent identities, exact
 text and LF notes, empty/archived imports, deletion restoration, reserved ordering,
 move/return behavior and restart persistence.
+Directory tests cover independent filter intersections and retained controls, date
+validation and boundaries, normalized title-only search, literal notes, read-only rows,
+imported and upgraded records, archived/deleted visibility, current ownership and
+remembered return ordering, default navigation, unchanged exports and restart persistence.
 Temporary files are removed afterward.
