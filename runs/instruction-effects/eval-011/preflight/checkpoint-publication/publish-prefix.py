@@ -75,7 +75,10 @@ elif args.action == 'scan':
     verified = json.loads((output/'verified.json').read_text())
     assert verified['verified'] and not clone.exists()
     target = git('rev-parse', 'HEAD')
-    assert not git('status', '--porcelain', '--untracked-files=no')
+    # The native coordinator owns this live state file. Scan the exact committed
+    # clone; refuse unrelated edits without pretending the live state is frozen.
+    changes = git('status', '--porcelain', '--untracked-files=no').splitlines()
+    assert all(line[3:] == 'runs/instruction-effects/eval-011/state.json' for line in changes), changes
     assert json.loads(git('show', target+':'+str((output/'verified.json').relative_to(repo)))) == verified
     try:
         subprocess.run(['git', 'clone', '--shared', '--single-branch', '--branch', 'main', '--quiet', str(repo), str(clone)], check=True)
