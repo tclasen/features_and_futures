@@ -11,7 +11,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Open `http://localhost:8080`. The server binds to `0.0.0.0`.
 `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`.
 Use the same database path across restarts to retain projects, tasks, completion state,
-archive state, and renamed project names. Existing databases are upgraded automatically.
+archive state, and renamed project names and task titles. Existing databases are upgraded automatically.
 `GET /health` returns `{"status":"ok"}`.
 
 Verify:
@@ -30,6 +30,11 @@ across all its tasks.
 Active project pages provide New project name and Rename project controls. Renaming
 trims the name and preserves the project's URL, creation order, tasks, and completion
 summary. Blank names show an alert. Archived projects disable renaming until restored.
+
+Each task row provides New task title and Rename task controls. Renaming trims the
+title and preserves task identity, ownership, creation order, completion state, and
+summary counts. Blank titles show an alert. Archived projects disable these controls
+until restored.
 
 The integration test uses an isolated database, exercises project and task validation,
 creation order, project isolation, and completion updates, and restarts the server to

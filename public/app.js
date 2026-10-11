@@ -146,7 +146,47 @@ function renderTasks() {
         checkbox.disabled = false;
       }
     });
-    row.append(checkbox, title);
+    const taskRenameForm = document.createElement('form');
+    taskRenameForm.className = 'create-fields';
+    taskRenameForm.noValidate = true;
+    const taskRenameInput = document.createElement('input');
+    taskRenameInput.type = 'text';
+    taskRenameInput.setAttribute('aria-label', 'New task title');
+    taskRenameInput.disabled = archived;
+    const taskRenameButton = document.createElement('button');
+    taskRenameButton.type = 'submit';
+    taskRenameButton.textContent = 'Rename task';
+    taskRenameButton.disabled = archived;
+    taskRenameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (archived) return;
+      const newTitle = taskRenameInput.value.trim();
+      if (!newTitle) {
+        showTaskAlert('Task title is required');
+        return;
+      }
+      taskRenameButton.disabled = true;
+      taskRenameInput.disabled = true;
+      showTaskAlert('');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        task.title = saved.title;
+        title.textContent = task.title;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        taskRenameInput.value = '';
+      } catch (error) {
+        showTaskAlert(error.message);
+      } finally {
+        taskRenameButton.disabled = archived;
+        taskRenameInput.disabled = archived;
+      }
+    });
+    taskRenameForm.append(taskRenameInput, taskRenameButton);
+    row.append(checkbox, title, taskRenameForm);
     taskList.append(row);
   }
 }

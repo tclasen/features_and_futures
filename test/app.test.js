@@ -119,7 +119,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
           savedTasks.push(body);
         } else {
           const task = savedTasks.find(task => path.endsWith(`/${task.id}`));
-          task.completed = input.completed;
+          Object.assign(task, input);
           body = { ...task };
         }
       }
@@ -138,11 +138,41 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.ok(rows().every(row => row.dataset.testid === 'task-row'));
   assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete First task');
   assert.equal(rows()[1].children[0].checked, true);
+  const renameRow = rows()[1];
+  const renameForm = renameRow.children[2];
+  const [renameInput, renameButton] = renameForm.children;
+  assert.equal(renameInput.attributes['aria-label'], 'New task title');
+  assert.equal(renameButton.textContent, 'Rename task');
+  assert.equal(renameInput.disabled, false);
+  assert.equal(renameButton.disabled, false);
+  for (const title of ['', ' \t ']) {
+    renameInput.value = title;
+    await renameForm.dispatch('submit');
+    assert.equal(element('#task-alert').textContent, 'Task title is required');
+    assert.equal(element('#task-alert').hidden, false);
+    assert.equal(renameRow.children[1].textContent, 'Second task');
+  }
+  assert.equal(writes.length, 0);
+  renameInput.value = '  Renamed task  ';
+  await renameForm.dispatch('submit');
+  assert.equal(writes[0].path, '/api/projects/example/tasks/two');
+  assert.deepEqual(JSON.parse(writes[0].body), { title: 'Renamed task' });
+  assert.equal(renameRow.children[1].textContent, 'Renamed task');
+  assert.equal(renameRow.children[0].attributes['aria-label'], 'Complete Renamed task');
+  assert.equal(renameRow.children[0].checked, true);
+  assert.deepEqual(titles(), ['First task', 'Renamed task', 'Third task']);
+  failNextWrite = true;
+  renameInput.value = 'Failed rename';
+  await renameForm.dispatch('submit');
+  assert.equal(renameRow.children[1].textContent, 'Renamed task');
+  assert.equal(element('#task-alert').textContent, 'Save failed');
+  assert.equal(renameInput.disabled, false);
+  assert.equal(renameButton.disabled, false);
   element('#task-title').value = ' \t ';
   await element('#task-form').dispatch('submit');
   assert.equal(element('#task-alert').textContent, 'Task title is required');
   assert.equal(element('#task-alert').hidden, false);
-  assert.equal(writes.length, 0);
+  assert.equal(writes.length, 2);
   assert.equal(rows().length, 3);
   await filter('open');
   assert.deepEqual(titles(), ['First task', 'Third task']);
@@ -153,19 +183,19 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.equal(savedTasks[0].completed, true);
   assert.deepEqual(titles(), ['Third task']);
   await filter('completed');
-  assert.deepEqual(titles(), ['First task', 'Second task']);
+  assert.deepEqual(titles(), ['First task', 'Renamed task']);
   const completedCheckbox = rows()[0].children[0];
   completedCheckbox.checked = false;
   await completedCheckbox.dispatch('change');
   assert.equal(savedTasks[0].completed, false);
-  assert.deepEqual(titles(), ['Second task']);
+  assert.deepEqual(titles(), ['Renamed task']);
   element('#task-title').value = '  Fourth task  ';
   await element('#task-form').dispatch('submit');
   assert.equal(savedTasks[3].title, 'Fourth task');
   assert.equal(savedTasks[3].completed, false);
-  assert.deepEqual(titles(), ['Second task']);
+  assert.deepEqual(titles(), ['Renamed task']);
   await filter('all');
-  assert.deepEqual(titles(), ['First task', 'Second task', 'Third task', 'Fourth task']);
+  assert.deepEqual(titles(), ['First task', 'Renamed task', 'Third task', 'Fourth task']);
   failNextWrite = true;
   const checkbox = rows()[0].children[0];
   checkbox.checked = true;
@@ -259,6 +289,9 @@ test('archived project UI disables task changes while keeping filters usable', a
   await element('#rename-form').dispatch('submit');
   assert.equal(rows().length, 2);
   assert.ok(rows().every(row => row.children[0].disabled));
+  assert.ok(rows().every(row => row.children[2].children.every(control => control.disabled)));
+  rows()[0].children[2].children[0].value = 'Blocked task rename';
+  await rows()[0].children[2].dispatch('submit');
   element('#task-filter').value = 'completed';
   await element('#task-filter').dispatch('change');
   assert.equal(rows().length, 1);
