@@ -179,7 +179,34 @@ async function renderTasks(project) {
           renameButton.disabled = Boolean(project.archived);
         }
       });
-      row.append(title, checkbox, renameForm);
+      const priority = document.createElement('select');
+      priority.setAttribute('aria-label', 'Task priority');
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = Boolean(project.archived);
+      priority.addEventListener('change', async () => {
+        priority.disabled = true;
+        app.querySelector('[role="alert"]')?.remove();
+        try {
+          const saved = await api(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          drawTasks();
+        } catch (error) {
+          priority.value = task.priority;
+          showError(error.message);
+        } finally {
+          priority.disabled = Boolean(project.archived);
+        }
+      });
+      row.append(title, checkbox, renameForm, priority);
       return row;
     }));
   }

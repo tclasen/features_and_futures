@@ -97,7 +97,9 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     const task = await taskResponse.json();
     assert.equal(task.title, 'First task');
     assert.equal(task.completed, false);
+    assert.equal(task.priority, 'Normal');
     const nextTask = await (await postTask('Next task')).json();
+    assert.equal(nextTask.priority, 'Normal');
     assert.deepEqual(await (await fetch(tasksURL)).json(), [task, nextTask]);
     assert.deepEqual(await (await fetch(otherTasksURL)).json(), []);
     assert.equal((await completeTask(`${otherTasksURL}/${task.id}`, true)).status, 404);
@@ -106,6 +108,26 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
     assert.equal((await completeTask(`${tasksURL}/${task.id}`, 'true')).status, 400);
     assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
+    const prioritize = (url, priority) => fetch(url, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    });
+    for (const priority of ['', 'high', ' High ', null, 1]) {
+      assert.equal((await prioritize(`${tasksURL}/${task.id}`, priority)).status, 400);
+      assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
+    }
+    assert.equal((await prioritize(`${otherTasksURL}/${task.id}`, 'High')).status, 404);
+    assert.equal((await prioritize(`${tasksURL}/999999`, 'High')).status, 404);
+    const highResponse = await prioritize(`${tasksURL}/${task.id}`, 'High');
+    assert.equal(highResponse.status, 200);
+    const highTask = await highResponse.json();
+    assert.deepEqual(highTask, { ...completed, priority: 'High' });
+    completed = highTask;
+    assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
+    const lowTask = await (await prioritize(`${tasksURL}/${nextTask.id}`, 'Low')).json();
+    assert.deepEqual(lowTask, { ...nextTask, priority: 'Low' });
+    Object.assign(nextTask, lowTask);
+    assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
     const renameTask = (url, title) => fetch(url, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
@@ -156,6 +178,7 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     assert.equal((await postTask('Not allowed')).status, 409);
     assert.equal((await completeTask(`${tasksURL}/${task.id}`, false)).status, 409);
     assert.equal((await renameTask(`${tasksURL}/${task.id}`, 'Forbidden task rename')).status, 409);
+    assert.equal((await prioritize(`${tasksURL}/${task.id}`, 'Normal')).status, 409);
     assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
     await stop(child);
     child = undefined;
@@ -173,6 +196,10 @@ test('projects, renames, tasks, archives, and summaries survive process restart'
     assert.deepEqual(restoredTask, { ...completed, title: 'Renamed after restoration' });
     completed = restoredTask;
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), restored);
+    const normalTask = await (await prioritize(`${tasksURL}/${task.id}`, 'Normal')).json();
+    assert.deepEqual(normalTask, { ...completed, priority: 'Normal' });
+    completed = normalTask;
+    assert.deepEqual(await (await fetch(tasksURL)).json(), [completed, nextTask]);
     const reopened = await (await completeTask(`${tasksURL}/${task.id}`, false)).json();
     assert.equal(reopened.completed, false);
     assert.deepEqual(await (await fetch(tasksURL)).json(), [reopened, nextTask]);
@@ -210,7 +237,7 @@ test('existing project databases migrate without losing IDs or tasks', async () 
       id: 7, name: 'Existing project', archived: 0, total: 1, completed: 1,
     }]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [{
-      id: 1, project_id: 7, title: 'Existing task', completed: true,
+      id: 1, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal',
     }]);
   } finally {
     if (child) await stop(child);
