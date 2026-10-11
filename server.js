@@ -28,6 +28,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const taskFilter = (value) => ['Open', 'Completed'].includes(value) ? value : 'All';
 const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
@@ -96,7 +97,7 @@ function projectsPage(error = '', enteredName = '', filter = 'Active') {
     </section>`);
 }
 
-function projectPage(project, filter = 'All', error = '', enteredTitle = '', renameError = '', enteredName = '') {
+function projectPage(project, filter = 'All', error = '', enteredTitle = '', renameError = '', enteredName = '', taskRenameError = null) {
   const tasks = listTasks.all(project.id).filter((task) =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `<h1>${escape(project.name)}</h1>
@@ -127,6 +128,13 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
           <input type="hidden" name="filter" value="${filter}">
           <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
+        </form>
+        <form class="create" action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" type="text" value="${escape(taskRenameError?.id === task.id ? taskRenameError.title : '')}"${project.archived ? ' disabled' : ''}${taskRenameError?.id === task.id ? ` aria-invalid="true" aria-describedby="task-rename-error-${task.id}"` : ''}>
+          ${taskRenameError?.id === task.id ? `<div id="task-rename-error-${task.id}" role="alert">Task title is required</div>` : ''}
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
       </div>`).join('')}
     </section>`);
@@ -188,6 +196,21 @@ const server = http.createServer(async (request, response) => {
       if (!getProject.get(archiveMatch[1])) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
       setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
       response.writeHead(303, { Location: archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived' });
+      return response.end();
+    }
+    const taskRenameMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks\/([1-9]\d*)\/rename$/);
+    if (request.method === 'POST' && taskRenameMatch) {
+      const project = getProject.get(taskRenameMatch[1]);
+      const task = project && getTask.get(taskRenameMatch[2], project.id);
+      if (!task) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
+      if (project.archived) return sendHtml(response, 403, page('Archived project', '<h1>Archived project</h1><p>Restore the project to change its tasks.</p>'));
+      const form = await readForm(request);
+      const enteredTitle = form.get('title') || '';
+      const title = enteredTitle.trim();
+      const filter = taskFilter(form.get('filter'));
+      if (!title) return sendHtml(response, 200, projectPage(project, filter, '', '', '', '', { id: task.id, title: enteredTitle }));
+      renameTask.run(title, task.id, project.id);
+      response.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       return response.end();
     }
     const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
