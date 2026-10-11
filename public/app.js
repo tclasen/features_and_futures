@@ -23,8 +23,9 @@ function showError(message) {
   alert.textContent = message;
 }
 
-async function renderTasks(projectId) {
-  const path = `/api/projects/${projectId}/tasks`;
+async function renderTasks(project) {
+  const archived = Boolean(project.archived);
+  const path = `/api/projects/${project.id}/tasks`;
   const form = element('form');
   const input = element('input', undefined, { id: 'task-title', type: 'text', autocomplete: 'off' });
   const create = element('button', 'Create task', { type: 'submit' });
@@ -45,6 +46,7 @@ async function renderTasks(projectId) {
       const row = element('div', undefined, { 'data-testid': 'task-row', class: 'project-row' });
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
       checkbox.checked = task.completed;
+      checkbox.disabled = archived;
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
         app.querySelector('[role="alert"]')?.remove();
@@ -68,9 +70,10 @@ async function renderTasks(projectId) {
   create.disabled = true;
   try { tasks = await request(path); drawTasks(); }
   catch (error) { showError(error.message); }
-  finally { create.disabled = false; }
+  finally { create.disabled = archived; }
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    if (archived) return;
     app.querySelector('[role="alert"]')?.remove();
     const title = input.value.trim();
     if (!title) { showError('Task title is required'); return; }
@@ -83,7 +86,7 @@ async function renderTasks(projectId) {
       input.value = '';
       input.focus();
     } catch (error) { showError(error.message); }
-    finally { create.disabled = false; }
+    finally { create.disabled = archived; }
   });
 }
 
@@ -98,7 +101,8 @@ async function render() {
       const project = await request(`/api/projects/${match[1]}`);
       app.append(element('h1', project.name));
       document.title = `${project.name} · Workboard`;
-      await renderTasks(project.id);
+      if (project.archived) app.append(element('p', 'Archived project'));
+      await renderTasks(project);
     } catch (error) { showError(error.message); }
     return;
   }
@@ -110,19 +114,45 @@ async function render() {
   const create = element('button', 'Create project', { type: 'submit' });
   form.append(label, input, create);
   const list = element('section', undefined, { 'aria-label': 'Projects', class: 'project-list' });
-  app.append(form, list);
+  const controls = element('div', undefined, { class: 'task-controls' });
+  const filter = element('select', undefined, { id: 'project-filter' });
+  for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
+  controls.append(element('label', 'Project filter', { for: 'project-filter' }), filter);
+  app.append(form, controls, list);
+  let projects = [];
+
+  function drawProjects() {
+    list.replaceChildren();
+    projects.filter(project => Boolean(project.archived) === (filter.value === 'Archived')).forEach(addProject);
+  }
+  filter.addEventListener('change', drawProjects);
 
   function addProject(project) {
     const row = element('div', undefined, { 'data-testid': 'project-row', class: 'project-row' });
     const open = element('button', 'Open project', { type: 'button', class: 'secondary' });
     open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(element('span', project.name), open);
+    const archive = element('button', project.archived ? 'Restore project' : 'Archive project', { type: 'button', class: 'secondary' });
+    archive.addEventListener('click', async () => {
+      archive.disabled = true;
+      app.querySelector('[role="alert"]')?.remove();
+      try {
+        Object.assign(project, await request(`/api/projects/${project.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived: !project.archived })
+        }));
+        drawProjects();
+      } catch (error) { showError(error.message); }
+      finally { archive.disabled = false; }
+    });
+    row.append(element('span', project.name),
+      element('span', `${project.completed}/${project.total} completed`, { 'data-testid': 'project-summary' }), open, archive);
     list.append(row);
   }
 
   create.disabled = true;
   try {
-    (await request('/api/projects')).forEach(addProject);
+    projects = await request('/api/projects');
+    drawProjects();
   } catch (error) { showError(error.message); }
   create.disabled = false;
 
@@ -136,7 +166,8 @@ async function render() {
       const project = await request('/api/projects', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
       });
-      addProject(project);
+      projects.push(project);
+      drawProjects();
       input.value = '';
       input.focus();
     } catch (error) { showError(error.message); }

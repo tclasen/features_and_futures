@@ -5,11 +5,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
-test('launch, project validation, creation order, routes, and restart persistence', async () => {
+test('projects, tasks, archive/restore, summaries, migration, and restart persistence', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = 18000 + Math.floor(Math.random() * 20000);
   const base = `http://127.0.0.1:${port}`;
+  const legacy = new DatabaseSync(join(dir, 'projects.sqlite'));
+  legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  legacy.close();
   let child;
   async function start() {
     child = spawn(process.execPath, ['server.js'], {
@@ -46,6 +50,9 @@ test('launch, project validation, creation order, routes, and restart persistenc
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, 0);
+    assert.equal(first.completed, 0);
+    assert.equal(first.total, 0);
     const second = await (await create('Second project')).json();
     const expected = [first, second];
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
@@ -88,6 +95,19 @@ test('launch, project validation, creation order, routes, and restart persistenc
     assert.deepEqual(await (await complete(task.id, false)).json(), task);
     task.completed = true;
     await complete(task.id, true);
+    async function archive(archived) {
+      return fetch(`${base}/api/projects/${first.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+      });
+    }
+    assert.equal((await archive('true')).status, 400);
+    first.total = 2;
+    first.completed = 1;
+    first.archived = 1;
+    assert.deepEqual(await (await archive(true)).json(), first);
+    assert.equal((await createTask('Forbidden')).status, 409);
+    assert.equal((await complete(task.id, false)).status, 409);
+    assert.deepEqual(await tasksFor(first.id), [task, nextTask]);
     await stop();
     await start();
     assert.deepEqual(await tasksFor(first.id), [task, nextTask]);
@@ -95,6 +115,16 @@ test('launch, project validation, creation order, routes, and restart persistenc
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    first.archived = 0;
+    assert.deepEqual(await (await archive(false)).json(), first);
+    assert.deepEqual(await tasksFor(first.id), [task, nextTask]);
+    task.completed = false;
+    await complete(task.id, false);
+    first.completed = 0;
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    assert.deepEqual(await tasksFor(first.id), [task, nextTask]);
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
