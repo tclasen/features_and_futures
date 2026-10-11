@@ -29,3 +29,5 @@ L055 task016 checkpoint: repeated cumulative case051 failure triggered the froze
 L055 task016 further observations: complete reports confirm cumulative051 fails in all first seven attempts; attempt006 additionally fails restoration cases054/055 ([evidence](../preflight/repair-observations/task016-b011-first-seven.json)). Abbreviated console output does not establish other cases passed. Frozen builder feedback and recovery remain unchanged; later acceptance is pending.
 
 L055 task016 first ten submissions all fail051 ([evidence](../preflight/repair-observations/task016-b011-first-ten.json)). The additional054/055 failures in006 mean ten total rejections are not ten identical full feedback fingerprints. Frozen consecutive-fingerprint recovery continues; attempt011 is pending.
+
+L055 task016 recovery after011 independently verified: rejected original restores and target matches own accepted015 ([proof](../preflight/repair-observations/recovery-verified-c2817a636d96912e.json)). All measured failures remain retained; attempt012 pending.
