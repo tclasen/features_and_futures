@@ -302,6 +302,34 @@ const page = `<!doctype html>
         option.textContent = value;
         priorityFilter.append(option);
       }
+      const dueRange = document.createElement('div');
+      dueRange.className = 'task-controls';
+      const dueFromField = document.createElement('div');
+      dueFromField.className = 'field';
+      const dueFromLabel = document.createElement('label');
+      dueFromLabel.htmlFor = 'due-from';
+      dueFromLabel.textContent = 'Due from';
+      const dueFrom = document.createElement('input');
+      dueFrom.id = 'due-from';
+      dueFrom.type = 'text';
+      dueFrom.placeholder = 'YYYY-MM-DD';
+      dueFromField.append(dueFromLabel, dueFrom);
+      const dueThroughField = document.createElement('div');
+      dueThroughField.className = 'field';
+      const dueThroughLabel = document.createElement('label');
+      dueThroughLabel.htmlFor = 'due-through';
+      dueThroughLabel.textContent = 'Due through';
+      const dueThrough = document.createElement('input');
+      dueThrough.id = 'due-through';
+      dueThrough.type = 'text';
+      dueThrough.placeholder = 'YYYY-MM-DD';
+      dueThroughField.append(dueThroughLabel, dueThrough);
+      const applyDueRange = document.createElement('button');
+      applyDueRange.type = 'button';
+      applyDueRange.textContent = 'Apply due range';
+      dueRange.append(dueFromField, dueThroughField, applyDueRange);
+      let appliedFrom = '';
+      let appliedThrough = '';
       const tasksList = document.createElement('ul');
       tasksList.id = 'tasks';
       tasksList.style.listStyle = 'none';
@@ -312,7 +340,10 @@ const page = `<!doctype html>
         tasksList.replaceChildren();
         const visible = tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
-          (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+          (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+          (!appliedFrom && !appliedThrough || Boolean(task.dueDate)) &&
+          (!appliedFrom || task.dueDate >= appliedFrom) &&
+          (!appliedThrough || task.dueDate <= appliedThrough)
         );
         for (const task of visible) {
           const row = document.createElement('li');
@@ -393,6 +424,7 @@ const page = `<!doctype html>
               tasks = tasks.map(item => item.id === updated.id ? updated : item);
               dueDate.value = updated.dueDate || '';
               error.hidden = true;
+              drawTasks();
             } catch (failure) {
               if (dueDate.value.trim()) {
                 error.textContent = 'Due date must be a valid YYYY-MM-DD date';
@@ -408,6 +440,32 @@ const page = `<!doctype html>
       }
       filter.addEventListener('change', drawTasks);
       priorityFilter.addEventListener('change', drawTasks);
+      function validDate(value) {
+        const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= monthDays[month - 1];
+      }
+      applyDueRange.addEventListener('click', () => {
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        if ((from && !validDate(from)) || (through && !validDate(through))) {
+          error.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          error.hidden = false;
+          return;
+        }
+        if (from && through && from > through) {
+          error.textContent = 'Due from must not be after Due through';
+          error.hidden = false;
+          return;
+        }
+        appliedFrom = from;
+        appliedThrough = through;
+        error.hidden = true;
+        drawTasks();
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const title = input.value.trim();
@@ -429,7 +487,7 @@ const page = `<!doctype html>
         }
       });
       drawTasks();
-      app.append(back, heading, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, tasksList);
+      app.append(back, heading, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, dueRange, tasksList);
     }
 
     if (escPath) {
