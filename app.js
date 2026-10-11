@@ -97,6 +97,7 @@ async function showProject(id) {
   appliedDueRange = { from: '', through: '' };
   dueRangeAlert.hidden = true;
   document.querySelector('#detail-heading').textContent = project.name;
+  document.querySelector('#download-project').href = `/api/projects/${encodeURIComponent(id)}/export`;
   activeProjectId = id;
   activeProjectArchived = project.archived;
   activeProjectDefaultPriority = project.defaultPriority;
