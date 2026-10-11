@@ -327,10 +327,41 @@ function matchingDirectoryTasks(scope, filter, prioritySelection, range, query) 
     .filter(task => matchesTask(task, filter, prioritySelection, range, query));
 }
 
-function directoryPage(scope, filter, prioritySelection, range, query, error = '', rangeInput = range) {
-  const tasks = matchingDirectoryTasks(scope, filter, prioritySelection, range, query);
+function directoryOrder(value) {
+  return ['Original', 'Priority', 'Due date', 'Title'].includes(value) ? value : 'Original';
+}
+
+function compareTitles(left, right) {
+  const fold = title => Array.from(title.replace(/[A-Z]/g, letter => letter.toLowerCase()), character => character.codePointAt(0));
+  const a = fold(left);
+  const b = fold(right);
+  for (let index = 0; index < Math.min(a.length, b.length); index++) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return a.length - b.length;
+}
+
+function orderDirectoryTasks(tasks, order) {
+  // Stable sorting retains Original order for equal keys; never alter stored positions.
+  if (order === 'Priority') {
+    const rank = { High: 0, Normal: 1, Low: 2 };
+    tasks.sort((a, b) => rank[a.priority] - rank[b.priority]);
+  } else if (order === 'Due date') {
+    tasks.sort((a, b) => {
+      if (!a.due_date || !b.due_date) return Number(!a.due_date) - Number(!b.due_date);
+      return a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0;
+    });
+  } else if (order === 'Title') {
+    tasks.sort((a, b) => compareTitles(a.title, b.title));
+  }
+  return tasks;
+}
+
+function directoryPage(scope, filter, prioritySelection, range, query, error = '', rangeInput = range, order = 'Original') {
+  const tasks = orderDirectoryTasks(matchingDirectoryTasks(scope, filter, prioritySelection, range, query), order);
   const editable = scope === 'Active' && filter !== 'Deleted';
-  const selections = `<input type="hidden" name="scope" value="${scope}">
+  const selections = `<input type="hidden" name="order" value="${order}">
+    <input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${prioritySelection}">`;
   const select = (label, name, values, selected) => `<label for="directory-${name}">${label}</label>
@@ -345,6 +376,7 @@ function directoryPage(scope, filter, prioritySelection, range, query, error = '
       ${select('Project scope', 'scope', ['Active', 'Archived'], scope)}
       ${select('Task filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'], filter)}
       ${select('Priority filter', 'priorityFilter', ['All', ...priorities], prioritySelection)}
+      ${select('Directory order', 'order', ['Original', 'Priority', 'Due date', 'Title'], order)}
     </form>
     <form action="/directory" method="get">
       ${selections}${rangeFields(range)}
@@ -530,7 +562,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && path === '/directory') {
       html(response, 200, directoryPage(projectFilter(url.searchParams.get('scope')),
         taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')),
-        dueRange(url.searchParams), searchQuery(url.searchParams)));
+        dueRange(url.searchParams), searchQuery(url.searchParams), '', undefined, directoryOrder(url.searchParams.get('order'))));
       return;
     }
     if (request.method === 'POST' && path === '/directory/completion') {
@@ -552,7 +584,7 @@ const server = http.createServer(async (request, response) => {
         });
       }
       const params = new URLSearchParams({ scope, filter, priorityFilter: prioritySelection,
-        dueFrom: range.from, dueThrough: range.through, search: query });
+        dueFrom: range.from, dueThrough: range.through, search: query, order: directoryOrder(form.get('order')) });
       redirect(response, `/directory?${params}`);
       return;
     }
@@ -570,10 +602,10 @@ const server = http.createServer(async (request, response) => {
         : range.from && range.through && range.from > range.through
           ? 'Due from must not be after Due through' : '';
       if (error) {
-        html(response, 200, directoryPage(scope, filter, prioritySelection, dueRange(form), searchQuery(form), error, range));
+        html(response, 200, directoryPage(scope, filter, prioritySelection, dueRange(form), searchQuery(form), error, range, directoryOrder(form.get('order'))));
       } else {
         const params = new URLSearchParams({ scope, filter, priorityFilter: prioritySelection,
-          dueFrom: range.from, dueThrough: range.through, search: searchQuery(form) });
+          dueFrom: range.from, dueThrough: range.through, search: searchQuery(form), order: directoryOrder(form.get('order')) });
         redirect(response, `/directory?${params}`);
       }
       return;
