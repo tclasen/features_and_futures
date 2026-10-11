@@ -109,10 +109,12 @@ const server = http.createServer(async (req, res) => {
         const rawDate = String(payload.dueDate ?? '').trim();
         let dueDate = null;
         if (rawDate) {
-          const match = rawDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+          const match = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
           if (!match) return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
           const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
-          const date = new Date(Date.UTC(year, month - 1, day));
+          const date = new Date(0);
+          date.setUTCHours(0, 0, 0, 0);
+          date.setUTCFullYear(year, month - 1, day);
           if (year < 1 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
           dueDate = rawDate;
         }
