@@ -148,6 +148,27 @@ const server = createServer(async (request, response) => {
     }
     return sendJson(response, 200, { updated: input.taskIds.length });
   }
+  if (request.method === 'PATCH' && url.pathname === '/api/directory/deletion') {
+    let input;
+    try { input = await readBody(request); } catch {
+      return sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    if (typeof input.deleted !== 'boolean' || !Array.isArray(input.taskIds) ||
+        input.taskIds.some((id) => !Number.isInteger(id) || id < 1)) {
+      return sendJson(response, 400, { error: 'Invalid deletion update' });
+    }
+    const update = database.prepare(`UPDATE tasks SET deleted = ? WHERE id = ?
+      AND deleted = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+    database.exec('BEGIN');
+    try {
+      for (const taskId of new Set(input.taskIds)) update.run(input.deleted ? 1 : 0, taskId, input.deleted ? 0 : 1);
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+    return sendJson(response, 200, { updated: input.taskIds.length });
+  }
   const projectExportPath = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
   if (projectExportPath && request.method === 'GET') {
     const projectId = Number(projectExportPath[1]);

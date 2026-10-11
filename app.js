@@ -158,8 +158,12 @@ async function loadDirectory() {
   emptyNotice.hidden = true;
   const completeButton = document.querySelector('#complete-visible-tasks');
   const reopenButton = document.querySelector('#reopen-visible-tasks');
+  const deleteButton = document.querySelector('#delete-visible-tasks');
+  const restoreButton = document.querySelector('#restore-visible-tasks');
   completeButton.disabled = true;
   reopenButton.disabled = true;
+  deleteButton.disabled = true;
+  restoreButton.disabled = true;
   const response = await fetch('/api/directory');
   const tasks = await response.json();
   const results = document.querySelector('#directory-results');
@@ -169,6 +173,8 @@ async function loadDirectory() {
   const priorityFilter = document.querySelector('#directory-priority-filter').value;
   const visibleOpenIds = [];
   const visibleCompletedIds = [];
+  const visibleLiveIds = [];
+  const visibleDeletedIds = [];
   results.replaceChildren();
   const matchingTasks = [];
   for (const [originalIndex, task] of tasks.entries()) {
@@ -237,7 +243,11 @@ async function loadDirectory() {
     owners.append(row);
   }
   for (const { task } of matchingTasks) {
-    if (!task.deleted) (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
+    if (task.deleted) visibleDeletedIds.push(task.id);
+    else {
+      visibleLiveIds.push(task.id);
+      (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
+    }
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.dataset.taskId = task.id; row.className = 'task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
     const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
@@ -251,6 +261,8 @@ async function loadDirectory() {
   const actionsAllowed = scope === 'Active' && taskFilter !== 'Deleted';
   completeButton.disabled = !actionsAllowed || visibleOpenIds.length === 0;
   reopenButton.disabled = !actionsAllowed || visibleCompletedIds.length === 0;
+  deleteButton.disabled = scope !== 'Active' || taskFilter === 'Deleted' || visibleLiveIds.length === 0;
+  restoreButton.disabled = scope !== 'Active' || taskFilter !== 'Deleted' || visibleDeletedIds.length === 0;
   emptyNotice.hidden = results.childElementCount !== 0;
 }
 
@@ -262,6 +274,17 @@ async function updateVisibleCompletion(completed) {
   const response = await fetch('/api/directory/completion', {
     method: 'PATCH', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ completed, taskIds }),
+  });
+  if (response.ok) await loadDirectory();
+}
+
+async function updateVisibleDeletion(deleted) {
+  const rows = [...document.querySelectorAll('[data-testid="directory-task-row"]')];
+  const taskIds = rows.map((row) => Number(row.dataset.taskId));
+  if (!taskIds.length) return;
+  const response = await fetch('/api/directory/deletion', {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deleted, taskIds }),
   });
   if (response.ok) await loadDirectory();
 }
@@ -553,6 +576,8 @@ document.querySelector('#open-directory').addEventListener('click', () => naviga
 document.querySelector('#directory-projects').addEventListener('click', () => navigate('/'));
 document.querySelector('#complete-visible-tasks').addEventListener('click', () => updateVisibleCompletion(true));
 document.querySelector('#reopen-visible-tasks').addEventListener('click', () => updateVisibleCompletion(false));
+document.querySelector('#delete-visible-tasks').addEventListener('click', () => updateVisibleDeletion(true));
+document.querySelector('#restore-visible-tasks').addEventListener('click', () => updateVisibleDeletion(false));
 for (const selector of ['#directory-project-scope', '#directory-task-filter', '#directory-priority-filter', '#directory-order']) {
   document.querySelector(selector).addEventListener('change', loadDirectory);
 }
