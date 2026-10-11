@@ -121,6 +121,7 @@ const directoryOrder = document.querySelector('#directory-order');
 const directorySearch = document.querySelector('#directory-search');
 const directoryResults = document.querySelector('#directory-results');
 const directoryEmpty = document.querySelector('#directory-empty');
+const directorySummary = document.querySelector('[data-testid="directory-summary"]');
 const completeVisibleButton = document.querySelector('#complete-visible-tasks');
 const reopenVisibleButton = document.querySelector('#reopen-visible-tasks');
 let directoryQuery = '';
@@ -146,6 +147,8 @@ async function loadDirectory() {
     if (directoryRange.through && task.dueDate > directoryRange.through) return false;
     return true;
   });
+  const completedCount = visibleDirectoryTasks.reduce((count, task) => count + (task.completed ? 1 : 0), 0);
+  directorySummary.textContent = `${completedCount}/${visibleDirectoryTasks.length} completed`;
   const originalPosition = new Map(visibleDirectoryTasks.map((task, index) => [task.id, index]));
   const priorityRank = { High: 0, Normal: 1, Low: 2 };
   const compareCodePoints = (left, right) => {
