@@ -31,7 +31,17 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+// Seed per-project ordering for tasks created before remembered positions existed.
+database.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at, rowid)
+  FROM tasks`);
+const listTasks = database.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate FROM tasks t LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(pos.position, t.created_at), t.created_at, t.rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -94,6 +104,8 @@ const server = createServer(async (request, response) => {
       const defaultPriority = findProject.get(projectId).defaultPriority;
       const task = { id: randomUUID(), projectId, title, completed: 0, priority: defaultPriority };
       insertTask.run(task.id, projectId, title, Date.now(), defaultPriority);
+      const position = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(projectId).next;
+      database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(task.id, projectId, position);
       return send(response, 201, task);
     }
   }
@@ -110,6 +122,11 @@ const server = createServer(async (request, response) => {
     if (typeof data.destinationProjectId === 'string') {
       const destination = findProject.get(data.destinationProjectId);
       if (!destination || destination.archived || data.destinationProjectId === projectId) return send(response, 400, { error: 'Invalid destination project' });
+      const remembered = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, data.destinationProjectId);
+      if (!remembered) {
+        const position = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(data.destinationProjectId).next;
+        database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, data.destinationProjectId, position);
+      }
       const latest = database.prepare('SELECT MAX(created_at) AS latest FROM tasks WHERE project_id = ?').get(data.destinationProjectId).latest;
       moveTask.run(data.destinationProjectId, Math.max(Date.now(), (latest ?? 0) + 1), taskId, projectId);
       return send(response, 200, { ok: true });
