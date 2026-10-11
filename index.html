@@ -58,7 +58,15 @@
         const filter = app.querySelector('#task-filter');
         const paintTasks = () => {
           const visible = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
-          app.querySelector('#task-list').innerHTML = visible.map(task => `<div class="row task-row" data-testid="task-row"><input type="checkbox" id="task-${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><label for="task-${task.id}">${escapeHtml(task.title)}</label></div>`).join('');
+          app.querySelector('#task-list').innerHTML = visible.map(task => `<div class="row task-row" data-testid="task-row"><input type="checkbox" id="task-${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><label for="task-${task.id}">${escapeHtml(task.title)}</label><input type="text" aria-label="New task title" data-rename-input="${task.id}" value="${escapeHtml(task.title)}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
+          app.querySelectorAll('#task-list [data-rename]').forEach(button => button.addEventListener('click', async () => {
+            const task = tasks.find(item => String(item.id) === button.dataset.rename);
+            const input = app.querySelector(`[data-rename-input="${task.id}"]`);
+            const title = input.value.trim();
+            if (!title) { app.querySelector('#message').textContent = 'Task title is required'; input.focus(); return; }
+            const response = await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+            if (response.ok) { Object.assign(task, await response.json()); app.querySelector('#message').textContent = ''; paintTasks(); }
+          }));
           app.querySelectorAll('#task-list input[type="checkbox"]').forEach(box => box.addEventListener('change', async () => {
             const task = tasks.find(item => String(item.id) === box.id.slice(5));
             const response = await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: box.checked }) });

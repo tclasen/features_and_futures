@@ -25,6 +25,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const html = await readFile(path.join(root, 'index.html'));
 
 const server = http.createServer(async (req, res) => {
@@ -67,12 +68,17 @@ const server = http.createServer(async (req, res) => {
       try {
         let body = '';
         for await (const chunk of req) body += chunk;
-        const completed = JSON.parse(body).completed;
-        if (typeof completed !== 'boolean') return send(400, JSON.stringify({ error: 'Invalid request' }));
+        const bodyValue = JSON.parse(body);
         const id = Number(taskMatch[2]);
         if (!getTask.get(id, projectId)) return send(404, JSON.stringify({ error: 'Not found' }));
         if (getProject.get(projectId).archived) return send(403, JSON.stringify({ error: 'Archived project' }));
-        updateTask.run(completed ? 1 : 0, id, projectId);
+        if (typeof bodyValue.completed === 'boolean') {
+          updateTask.run(bodyValue.completed ? 1 : 0, id, projectId);
+        } else if (typeof bodyValue.title === 'string') {
+          const title = bodyValue.title.trim();
+          if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+          renameTask.run(title, id, projectId);
+        } else return send(400, JSON.stringify({ error: 'Invalid request' }));
         return send(200, JSON.stringify(getTask.get(id, projectId)));
       } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
     }
