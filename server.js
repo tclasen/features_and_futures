@@ -116,36 +116,40 @@ const page = `<!doctype html>
       projectFilter.value = selectedFilter;
       const list = document.createElement('ul');
       list.id = 'projects';
-      for (const project of projects) {
-        const row = document.createElement('li');
-        row.dataset.testid = 'project-row';
-        const name = document.createElement('span');
-        name.className = 'project-name';
-        name.textContent = project.name;
-        const open = document.createElement('button');
-        open.type = 'button';
-        open.textContent = 'Open project';
-        open.addEventListener('click', () => { location.href = '/projects/' + encodeURIComponent(project.id); });
-        const summary = document.createElement('span');
-        summary.dataset.testid = 'project-summary';
-        summary.textContent = project.completedCount + '/' + project.totalCount + ' completed';
-        const actions = document.createElement('div');
-        actions.append(open);
-        const archive = document.createElement('button');
-        archive.type = 'button';
-        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
-        archive.addEventListener('click', async () => {
-          await request('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
-          const updated = await request('/api/projects?filter=' + selectedFilter.toLowerCase());
-          renderList(updated, selectedFilter);
-        });
-        actions.append(archive);
-        row.append(name, summary, actions);
-        list.append(row);
+      function drawProjects(items) {
+        list.replaceChildren();
+        for (const project of items) {
+          const row = document.createElement('li');
+          row.dataset.testid = 'project-row';
+          const name = document.createElement('span');
+          name.className = 'project-name';
+          name.textContent = project.name;
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = 'Open project';
+          open.addEventListener('click', () => { location.href = '/projects/' + encodeURIComponent(project.id); });
+          const summary = document.createElement('span');
+          summary.dataset.testid = 'project-summary';
+          summary.textContent = project.completedCount + '/' + project.totalCount + ' completed';
+          const actions = document.createElement('div');
+          actions.append(open);
+          const archive = document.createElement('button');
+          archive.type = 'button';
+          archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+          archive.addEventListener('click', async () => {
+            await request('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+            const updated = await request('/api/projects?filter=' + projectFilter.value.toLowerCase());
+            drawProjects(updated);
+          });
+          actions.append(archive);
+          row.append(name, summary, actions);
+          list.append(row);
+        }
       }
+      drawProjects(projects);
       projectFilter.addEventListener('change', async () => {
         const selected = projectFilter.value;
-        renderList(await request('/api/projects?filter=' + selected.toLowerCase()), selected);
+        drawProjects(await request('/api/projects?filter=' + selected.toLowerCase()));
       });
       form.addEventListener('submit', async event => {
         event.preventDefault();
@@ -158,10 +162,10 @@ const page = `<!doctype html>
         }
         error.hidden = true;
         try {
-          const created = await request('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-          projects.push({ ...created, archived: false, completedCount: 0, totalCount: 0 });
+          await request('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          const updated = await request('/api/projects?filter=' + projectFilter.value.toLowerCase());
           input.value = '';
-          renderList(projects);
+          drawProjects(updated);
         } catch {
           error.textContent = 'Unable to create project';
           error.hidden = false;
