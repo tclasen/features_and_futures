@@ -35,6 +35,12 @@ Task filter (All/Open/Completed) and Priority filter (All/Low/Normal/High) combi
 without resetting each other. Edits immediately re-evaluate matching rows while preserving
 both selections and creation order. Filters remain usable on archived projects and never
 change the completion summary. Opening from the project list starts both filters at All.
+Due from and Due through apply an inclusive date range with Apply due range. Blank
+boundaries are unbounded; with both blank, undated tasks also match. Otherwise only
+dated tasks in the range match. The range intersects both selectors, survives edits
+and selector changes, and remains usable in archived projects. Invalid calendar dates
+or reversed boundaries show an alert without replacing the applied range. Reopening
+from the project list resets the range to empty; filters never alter saved task data.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -49,5 +55,6 @@ creation order, escaped names and titles, navigation, project ownership, task
 filters and completion, archive/restore, summaries, project and task renaming and identity preservation, database migration, health,
 task priorities, project-default migration and inheritance, edits, isolation, combined filters and selection preservation,
 due-date migration, calendar validation, clearing and isolation, archive restrictions,
+inclusive due ranges, combined membership, invalid-range preservation, edit re-evaluation,
 and persistence across server restarts.
 Temporary files are removed afterward.
