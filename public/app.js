@@ -7,6 +7,8 @@ const input = document.querySelector('#project-name');
 const alert = document.querySelector('#alert');
 const list = document.querySelector('#project-list');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#project-search-form');
+const projectSearch = document.querySelector('#project-search');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
 const renameAlert = document.querySelector('#rename-alert');
@@ -15,6 +17,8 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const taskSearchForm = document.querySelector('#task-search-form');
+const taskSearch = document.querySelector('#task-search');
 const dueRangeForm = document.querySelector('#due-range-form');
 const dueFrom = document.querySelector('#due-from');
 const dueThrough = document.querySelector('#due-through');
@@ -28,6 +32,27 @@ let projects = [];
 let tasks = [];
 let appliedDueFrom = '';
 let appliedDueThrough = '';
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
+
+function matchesSearch(text, query) {
+  const fold = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return fold(text).includes(fold(query));
+}
+
+projectSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedProjectQuery = projectSearch.value.trim();
+  projectSearch.value = appliedProjectQuery;
+  renderProjects();
+});
+
+taskSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedTaskQuery = taskSearch.value.trim();
+  taskSearch.value = appliedTaskQuery;
+  renderTasks();
+});
 
 dueRangeForm.addEventListener('submit', event => {
   event.preventDefault();
@@ -101,7 +126,8 @@ function addProject(project) {
 
 function renderProjects() {
   list.replaceChildren();
-  projects.filter(project => project.archived === (projectFilter.value === 'archived')).forEach(addProject);
+  projects.filter(project => project.archived === (projectFilter.value === 'archived')
+    && matchesSearch(project.name, appliedProjectQuery)).forEach(addProject);
 }
 
 projectFilter.addEventListener('change', renderProjects);
@@ -147,6 +173,7 @@ function showTaskAlert(message) {
 function renderTasks() {
   taskList.replaceChildren();
   for (const task of tasks) {
+    if (!matchesSearch(task.title, appliedTaskQuery)) continue;
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
     if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
@@ -215,6 +242,7 @@ function renderTasks() {
         title.textContent = task.title;
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         taskRenameInput.value = '';
+        if (!matchesSearch(task.title, appliedTaskQuery)) renderTasks();
       } catch (error) {
         showTaskAlert(error.message);
       } finally {

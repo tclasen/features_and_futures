@@ -109,3 +109,14 @@ filter retention, error recovery, and persistence. Return-order checks cover mig
 of sparse existing positions, reverse returns, new tasks while originals are away,
 multiple visited projects, current fields after edits elsewhere, project renaming,
 archive/restore, completion summaries, and repeated process restarts.
+
+Project search and Search projects apply a trimmed substring query to project names,
+intersecting the Active/Archived filter. Task search and Search tasks use the same
+rules for task titles and intersect completion, priority, and the applied due range.
+Only ASCII letter case is ignored; internal query whitespace remains significant.
+Search retains the other filters and all-task summaries. Task edits, renames,
+creation, and moves immediately refresh membership without resetting search.
+Search works on archived projects while editing remains disabled. Opening a project
+or returning to Projects starts with an empty search. Search interaction checks cover
+these intersections, query rules, retained selections, edit-triggered membership,
+archived controls, and empty queries on new page loads.

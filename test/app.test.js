@@ -30,6 +30,222 @@ class Element {
   async dispatch(name) { await this.listeners[name]({ preventDefault() {} }); }
 }
 
+async function searchApp(pathname, projects, tasks = []) {
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  for (const form of ['#project-form', '#task-form', '#rename-form']) element(form).button = new Element();
+  element('#project-filter').value = 'active';
+  element('#task-filter').value = 'all';
+  element('#priority-filter').value = 'all';
+  const location = { pathname };
+  const writes = [];
+  await runInNewContext(await appSource(), {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location },
+    fetch: async (path, options) => {
+      let body;
+      if (!options) {
+        body = path === '/api/projects' ? projects : path.endsWith('/tasks')
+          ? tasks : projects.find(project => path.endsWith('/' + project.id));
+      } else {
+        const change = JSON.parse(options.body);
+        writes.push({ path, change });
+        if (options.method === 'POST') {
+          if (path.endsWith('/tasks')) {
+            body = { id: `task-${tasks.length}`, ...change, completed: false,
+              priority: projects[0].default_task_priority, due_date: '' };
+            tasks.push(body);
+          } else {
+            body = { id: `project-${projects.length}`, ...change, archived: false, completed: 0, total: 0 };
+            projects.push(body);
+          }
+        } else {
+          body = path.includes('/tasks/') ? tasks.find(task => path.endsWith('/' + task.id))
+            : projects.find(project => path.endsWith('/' + project.id));
+          Object.assign(body, change);
+        }
+      }
+      return { ok: true, json: async () => structuredClone(body) };
+    },
+  });
+  const search = async (kind, query) => {
+    element(`#${kind}-search`).value = query;
+    await element(`#${kind}-search-form`).dispatch('submit');
+  };
+  return { element, location, writes, search };
+}
+
+test('project search applies ASCII substring rules and intersects archive state without changing summaries', async () => {
+  const projects = [
+    { id: 'a', name: 'Alpha  TEAM', archived: false, completed: 2, total: 3 },
+    { id: 'b', name: 'Other', archived: false, completed: 0, total: 0 },
+    { id: 'c', name: 'alpha team', archived: false, completed: 1, total: 1 },
+    { id: 'd', name: 'Älpha TEAM', archived: false, completed: 0, total: 0 },
+    { id: 'e', name: 'ALPHA archived', archived: true, completed: 1, total: 2 },
+  ];
+  const { element, search, writes, location } = await searchApp('/', projects);
+  const rows = () => element('#project-list').children;
+  const names = () => rows().map(row => row.children[0].textContent);
+  const filter = async value => {
+    element('#project-filter').value = value;
+    await element('#project-filter').dispatch('change');
+  };
+  assert.equal(element('#project-search').value, '');
+  await search('project', ' \tALpHa \n');
+  assert.deepEqual(names(), ['Alpha  TEAM', 'alpha team']);
+  assert.equal(rows()[0].children[1].textContent, '2/3 completed');
+  assert.equal(element('#project-search').value, 'ALpHa');
+  // Draft text is not applied by changing another filter.
+  element('#project-search').value = 'Other';
+  await filter('archived');
+  assert.deepEqual(names(), ['ALPHA archived']);
+  await filter('active');
+  assert.deepEqual(names(), ['Alpha  TEAM', 'alpha team']);
+  await search('project', 'alpha  team');
+  assert.deepEqual(names(), ['Alpha  TEAM']);
+  await search('project', 'älpha');
+  assert.deepEqual(names(), []);
+  await search('project', 'ÄLPHA');
+  assert.deepEqual(names(), ['Älpha TEAM']);
+  await search('project', 'alpha');
+  assert.equal(writes.length, 0);
+  await rows()[0].children[3].dispatch('click');
+  assert.deepEqual(names(), ['alpha team']);
+  await filter('archived');
+  assert.deepEqual(names(), ['Alpha  TEAM', 'ALPHA archived']);
+  await rows()[0].children[3].dispatch('click');
+  await filter('active');
+  element('#project-name').value = 'Unrelated new project';
+  await element('#project-form').dispatch('submit');
+  assert.deepEqual(names(), ['Alpha  TEAM', 'alpha team']);
+  await search('project', ' \t ');
+  assert.deepEqual(names(), ['Alpha  TEAM', 'Other', 'alpha team', 'Älpha TEAM', 'Unrelated new project']);
+  await rows()[0].children[2].dispatch('click');
+  assert.equal(location.href, '/projects/a');
+  const fresh = await searchApp('/', projects);
+  assert.equal(fresh.element('#project-search').value, '');
+  assert.equal(fresh.element('#project-list').children.length, 5);
+});
+
+test('task search retains intersecting filters through edits, creation, default changes, and moves', async () => {
+  const projects = [
+    { id: 'a', name: 'Source', archived: false, default_task_priority: 'Normal' },
+    { id: 'b', name: 'Destination', archived: false, default_task_priority: 'Low' },
+  ];
+  const tasks = [
+    { id: 'one', title: 'Alpha  TASK', completed: false, priority: 'High', due_date: '2024-03-01' },
+    { id: 'two', title: 'alpha task', completed: true, priority: 'High', due_date: '2024-03-31' },
+    { id: 'three', title: 'Other', completed: false, priority: 'High', due_date: '2024-03-15' },
+    { id: 'four', title: 'Alpha undated', completed: false, priority: 'Low', due_date: '' },
+  ];
+  const { element, search, writes, location } = await searchApp('/projects/a', projects, tasks);
+  const rows = () => element('#task-list').children;
+  const titles = () => rows().map(row => row.children[1].textContent);
+  const changeFilter = async (id, value) => {
+    element(id).value = value;
+    await element(id).dispatch('change');
+  };
+  await search('task', ' \tAlPHA\n ');
+  assert.deepEqual(titles(), ['Alpha  TASK', 'alpha task', 'Alpha undated']);
+  await search('task', 'alpha  task');
+  assert.deepEqual(titles(), ['Alpha  TASK']);
+  await search('task', 'alpha');
+  await changeFilter('#task-filter', 'open');
+  await changeFilter('#priority-filter', 'High');
+  element('#due-from').value = '2024-03-01';
+  element('#due-through').value = '2024-03-31';
+  await element('#due-range-form').dispatch('submit');
+  assert.deepEqual(titles(), ['Alpha  TASK']);
+  const assertSelections = () => {
+    assert.equal(element('#task-filter').value, 'open');
+    assert.equal(element('#priority-filter').value, 'High');
+    assert.equal(element('#due-from').value, '2024-03-01');
+    assert.equal(element('#due-through').value, '2024-03-31');
+    assert.equal(element('#task-search').value, 'alpha');
+  };
+  const rename = rows()[0].children[2];
+  rename.children[0].value = 'ALPHA renamed';
+  await rename.dispatch('submit');
+  assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete ALPHA renamed');
+  assertSelections();
+  rename.children[0].value = 'No longer matches';
+  await rename.dispatch('submit');
+  assert.deepEqual(titles(), []);
+  assert.equal(tasks[0].priority, 'High');
+  assert.equal(tasks[0].due_date, '2024-03-01');
+  await changeFilter('#default-task-priority', 'High');
+  assertSelections();
+  element('#task-title').value = 'Alpha new';
+  await element('#task-form').dispatch('submit');
+  assert.deepEqual(titles(), []); // New task matches search, but lacks a due date.
+  await search('task', ' \t ');
+  assert.deepEqual(titles(), ['No longer matches', 'Other']);
+  const dateForm = rows()[0].children[4];
+  dateForm.children[0].value = '2024-04-01';
+  await dateForm.dispatch('submit');
+  assert.deepEqual(titles(), ['Other']);
+  await search('task', 'other');
+  const priority = rows()[0].children[3];
+  priority.value = 'Low';
+  await priority.dispatch('change');
+  assert.deepEqual(titles(), []);
+  await changeFilter('#priority-filter', 'Low');
+  assert.deepEqual(titles(), ['Other']);
+  rows()[0].children[0].checked = true;
+  await rows()[0].children[0].dispatch('change');
+  assert.deepEqual(titles(), []);
+  await changeFilter('#task-filter', 'completed');
+  assert.deepEqual(titles(), ['Other']);
+  const move = rows()[0].children[5];
+  move.children[0].value = 'b';
+  await move.dispatch('submit');
+  assert.deepEqual(titles(), []);
+  assert.equal(element('#task-search').value, 'other');
+  assert.equal(element('#task-filter').value, 'completed');
+  assert.equal(element('#priority-filter').value, 'Low');
+  assert.equal(element('#due-from').value, '2024-03-01');
+  assert.equal(element('#due-through').value, '2024-03-31');
+  assert.equal(location.pathname, '/projects/a');
+  assert.ok(writes.every(write => !Object.hasOwn(write.change, 'query')));
+  await element('#back-button').dispatch('click');
+  assert.equal(location.href, '/');
+  const fresh = await searchApp('/projects/a', projects, tasks);
+  assert.equal(fresh.element('#task-search').value, '');
+  assert.equal(fresh.element('#due-from').value, '');
+  assert.equal(fresh.element('#due-through').value, '');
+});
+
+test('search controls have accessible labels and remain usable in archived projects', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const [kind, label, button] of [
+    ['project', 'Project search', 'Search projects'], ['task', 'Task search', 'Search tasks'],
+  ]) {
+    assert.ok(html.includes(`<label for="${kind}-search">${label}</label>`));
+    assert.ok(html.includes(`<input id="${kind}-search" type="text"`));
+    assert.ok(html.includes(`<button type="submit">${button}</button>`));
+  }
+  const tasks = ['Älpha task', 'älpha task', 'Other'].map((title, i) => ({
+    id: String(i), title, completed: false, priority: 'Normal', due_date: '',
+  }));
+  const { element, search, writes } = await searchApp('/projects/a', [
+    { id: 'a', name: 'Archived', archived: true, default_task_priority: 'High' },
+    { id: 'b', name: 'Active destination', archived: false },
+  ], tasks);
+  await search('task', 'ÄLPHA');
+  assert.deepEqual(element('#task-list').children.map(row => row.children[1].textContent), ['Älpha task']);
+  await search('task', ' \n ');
+  assert.equal(element('#task-list').children.length, 3);
+  for (const row of element('#task-list').children) {
+    assert.equal(row.children[0].disabled, true);
+    assert.equal(row.children[3].disabled, true);
+    for (const index of [2, 4, 5]) assert.ok(row.children[index].children.every(control => control.disabled));
+  }
+  assert.equal(writes.length, 0);
+});
+
 test('project rename validates, updates the heading, preserves the URL and tasks, and reports save failures', async () => {
   const source = await appSource();
   const elements = new Map();
