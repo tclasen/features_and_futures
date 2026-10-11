@@ -34,6 +34,10 @@ function asciiLower(value) {
   return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
+function normalizeSearchText(value) {
+  return asciiLower(value.replace(/[ \t]+/g, ' '));
+}
+
 function isValidDueDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
@@ -84,9 +88,9 @@ function projectRow(project) {
 
 async function renderProjects() {
   const projects = await request(`/api/projects?archived=${projectFilter.value === 'archived'}`);
-  const query = asciiLower(appliedProjectSearch);
+  const query = normalizeSearchText(appliedProjectSearch);
   projectContainer.replaceChildren(...projects
-    .filter((project) => asciiLower(project.name).includes(query))
+    .filter((project) => normalizeSearchText(project.name).includes(query))
     .map(projectRow));
 }
 
@@ -146,8 +150,8 @@ async function renderTasks() {
       return (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
         && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
     });
-  const query = asciiLower(appliedTaskSearch);
-  const searchedTasks = visibleTasks.filter((task) => asciiLower(task.title).includes(query));
+  const query = normalizeSearchText(appliedTaskSearch);
+  const searchedTasks = visibleTasks.filter((task) => normalizeSearchText(task.title).includes(query));
   taskContainer.replaceChildren(...searchedTasks.map((task) => {
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
