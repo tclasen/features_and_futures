@@ -122,22 +122,31 @@ function page(title, content) {
   @media (max-width: 600px) { main { margin: 16px; padding: 20px; } .project { align-items: flex-start; flex-direction: column; } }
 </style></head><body><main>${content}</main>
 <script>
-  // Keep checkbox actions in the current document until the click has finished.
-  // In particular, a completion edit can remove its own row from a filtered list.
+  // Preserve the current controls and DOM while saving completion. Replacing
+  // main with a response snapshot can overwrite edits made while fetch runs.
+  const completionSaves = new WeakMap();
   document.addEventListener('change', async event => {
     const checkbox = event.target;
     if (!checkbox.matches('input[data-save-completion]')) return;
     const form = checkbox.form;
+    const row = checkbox.closest('[data-task-id]');
+    const save = {};
+    completionSaves.set(checkbox, save);
     const body = new URLSearchParams(new FormData(form));
+    // A filtered-out checkbox must remain attached through the click action.
     const settled = new Promise(resolve => setTimeout(resolve, 150));
     try {
-      const response = await fetch(form.action, { method: 'POST', body });
+      const response = await fetch(form.action, { method: 'POST', body, keepalive: true });
+      if (!response.ok) throw new Error('Completion save failed');
       const html = await response.text();
       await settled;
+      if (completionSaves.get(checkbox) !== save || !row.isConnected) return;
       const updated = new DOMParser().parseFromString(html, 'text/html');
-      document.querySelector('main').replaceWith(updated.querySelector('main'));
-      history.replaceState(null, '', response.url);
+      if (!updated.querySelector('[data-task-id="' + row.dataset.taskId + '"]')) {
+        row.remove();
+      }
     } catch (error) {
+      if (completionSaves.get(checkbox) !== save || !row.isConnected) return;
       checkbox.checked = !checkbox.checked;
       const alert = document.createElement('p');
       alert.setAttribute('role', 'alert');
@@ -302,7 +311,7 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
       <button type="submit">Search tasks</button>
     </form>
     <section class="tasks" aria-label="Tasks">${tasks.length ? tasks.map(task => `
-      <div class="task" data-testid="task-row">
+      <div class="task" data-testid="task-row" data-task-id="${task.id}">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
