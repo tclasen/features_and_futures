@@ -11,6 +11,9 @@ const taskList = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
+const renameForm = document.querySelector('#rename-project-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameAlert = document.querySelector('#rename-alert');
 let activeProjectId = null;
 let activeProjectArchived = false;
 
@@ -66,6 +69,8 @@ async function showProject(id) {
   activeProjectId = id;
   activeProjectArchived = project.archived;
   archivedNotice.hidden = !activeProjectArchived;
+  renameInput.disabled = activeProjectArchived;
+  renameForm.querySelector('button').disabled = activeProjectArchived;
   taskForm.querySelectorAll('input, button').forEach((control) => { control.disabled = activeProjectArchived; });
   listView.hidden = true;
   detailView.hidden = false;
@@ -153,6 +158,28 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = renameInput.value.trim();
+  if (!name) {
+    renameAlert.textContent = 'Project name is required';
+    renameAlert.hidden = false;
+    return;
+  }
+  renameAlert.hidden = true;
+  const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    renameAlert.textContent = 'Unable to rename project';
+    renameAlert.hidden = false;
+    return;
+  }
+  document.querySelector('#detail-heading').textContent = name;
+  renameInput.value = '';
+});
 taskFilter.addEventListener('change', refreshTasks);
 projectFilter.addEventListener('change', async () => renderProjects(await fetchProjects()));
 taskForm.addEventListener('submit', async (event) => {

@@ -76,6 +76,26 @@ const server = createServer(async (request, response) => {
   }
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (request.method === 'PATCH' && projectMatch) {
+    const projectId = Number(projectMatch[1]);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(response, 404, { error: 'Project not found' });
+    if (project.archived) return json(response, 409, { error: 'Archived projects cannot be renamed' });
+
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    try {
+      const input = JSON.parse(body);
+      const name = typeof input.name === 'string' ? input.name.trim() : '';
+      if (!name) return json(response, 400, { error: 'Project name is required' });
+      database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+      return json(response, 200, { id: projectId, name });
+    } catch (error) {
+      if (error instanceof SyntaxError) return json(response, 400, { error: 'Invalid JSON' });
+      throw error;
+    }
+  }
+
   if (request.method === 'GET' && projectMatch) {
     const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (project) project.archived = Boolean(project.archived);
