@@ -35,6 +35,43 @@ function projectList(projects, error = '') {
     </section>`);
 }
 
+const taskFilters = ['All', 'Open', 'Completed'];
+
+function readTaskFilter(value) {
+  return taskFilters.includes(value) ? value : 'All';
+}
+
+function projectPath(projectId, filter) {
+  return `/projects/${projectId}${filter === 'All' ? '' : `?filter=${filter}`}`;
+}
+
+function projectPage(project, tasks, filter, error = '') {
+  return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
+    <form method="get" action="/"><button type="submit">Projects</button></form>
+    <form method="post" action="/projects/${project.id}/tasks" class="create-form task-create">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="task-title">Task title</label>
+      <div class="input-group"><input id="task-title" name="title" type="text">
+      <button type="submit">Create task</button></div>
+    </form>
+    ${error ? `<p role="alert" class="alert">${escapeHtml(error)}</p>` : ''}
+    <form method="get" action="/projects/${project.id}" class="task-filter">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${taskFilters.map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+    </form>
+    <section aria-label="Tasks" class="project-list">
+      ${tasks.map((task) => `<div data-testid="task-row" class="task-row">
+        <span>${escapeHtml(task.title)}</span>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+        </form>
+      </div>`).join('')}
+    </section>`);
+}
+
 async function readForm(request) {
   const chunks = [];
   let size = 0;
@@ -57,9 +94,25 @@ export function createWorkboardServer(databasePath) {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
   )`);
+  database.exec(`PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id, id)`);
   const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
   const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const listTasks = database.prepare(`SELECT id, title, completed FROM tasks
+    WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id`);
+  const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+  function tasksFor(projectId, filter) {
+    const completed = filter === 'All' ? null : Number(filter === 'Completed');
+    return listTasks.all(projectId, completed, completed);
+  }
 
   const server = createServer(async (request, response) => {
     function send(status, body, type = 'text/html; charset=utf-8') {
@@ -85,13 +138,33 @@ export function createWorkboardServer(databasePath) {
         response.writeHead(303, { Location: '/' });
         return response.end();
       }
-      const match = /^\/projects\/([1-9]\d*)$/.exec(url.pathname);
-      if (request.method === 'GET' && match) {
+      const match = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(url.pathname);
+      if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
         if (project) {
-          return send(200, page(project.name, `<h1>${escapeHtml(project.name)}</h1>
-            <form method="get" action="/"><button type="submit">Projects</button></form>`));
+          if (request.method === 'GET' && url.pathname === `/projects/${id}`) {
+            const filter = readTaskFilter(url.searchParams.get('filter'));
+            return send(200, projectPage(project, tasksFor(id, filter), filter));
+          }
+          if (request.method === 'POST' && url.pathname !== `/projects/${id}`) {
+            const form = await readForm(request);
+            const filter = readTaskFilter(form.get('filter'));
+            if (match[2]) {
+              const taskId = Number(match[2]);
+              if (!Number.isSafeInteger(taskId)) {
+                return send(404, page('Not found', '<h1>Task not found</h1>'));
+              }
+              const result = updateCompletion.run(Number(form.get('completed') === '1'), taskId, id);
+              if (!result.changes) return send(404, page('Not found', '<h1>Task not found</h1>'));
+            } else {
+              const title = (form.get('title') ?? '').trim();
+              if (!title) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task title is required'));
+              insertTask.run(id, title);
+            }
+            response.writeHead(303, { Location: projectPath(id, filter) });
+            return response.end();
+          }
         }
       }
       send(404, page('Not found', '<h1>Page not found</h1><a href="/">Projects</a>'));
