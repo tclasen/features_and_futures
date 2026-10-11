@@ -251,15 +251,21 @@ ${escapeHtml(task.notes)}</textarea>
         const version = ++updateVersion;
         clearTimeout(completionRefreshTimer);
         completionSave = (completionSave || Promise.resolve()).then(async () => {
-          const response = await fetch(form.action, { method: 'POST', body, keepalive: true });
+          const response = await fetch(form.action, {
+            method: 'POST', body, keepalive: true, headers: { Accept: 'application/json' },
+          });
           if (!response.ok) throw new Error('Completion save failed');
+          await response.json();
         });
         // A failed save must also prevent subsequent actions from racing ahead.
         completionSave.catch(() => {});
         completionRefreshTimer = setTimeout(async () => {
           try {
             await completionSave;
-            if (version === updateVersion) refreshCompletionRows();
+            if (version === updateVersion) {
+              refreshCompletionRows();
+              completionSave = null;
+            }
           } catch {
             if (version === updateVersion) showCompletionError();
           }
@@ -268,13 +274,16 @@ ${escapeHtml(task.notes)}</textarea>
       document.addEventListener('submit', async (event) => {
         if (!completionSave) return;
         event.preventDefault();
+        // Capture the form during dispatch; DOM event targets are not a durable
+        // reference for an asynchronous continuation.
+        const form = event.target;
         clearTimeout(completionRefreshTimer);
-        const version = ++updateVersion;
+        ++updateVersion;
         try {
           await completionSave;
-          if (version === updateVersion) HTMLFormElement.prototype.submit.call(event.target);
+          HTMLFormElement.prototype.submit.call(form);
         } catch {
-          if (version === updateVersion) showCompletionError();
+          showCompletionError();
         }
       });
     </script>

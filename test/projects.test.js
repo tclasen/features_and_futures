@@ -73,6 +73,13 @@ test('tasks validate, filter, stay isolated, and persist completion across resta
     assert.ok(html.indexOf('First task</span>') < html.indexOf('&lt;b&gt;Second'));
     assert.doesNotMatch(html, / checked/);
     const taskPaths = [...html.matchAll(/action="(\/projects\/[a-zA-Z0-9-]+\/tasks\/[a-zA-Z0-9-]+)"/g)].map((match) => match[1]);
+    const completionSave = await fetch(`${server.url}${taskPaths[0]}`, {
+      method: 'POST', body: new URLSearchParams({ completed: '1' }),
+      headers: { Accept: 'application/json' }, redirect: 'manual',
+    });
+    assert.equal(completionSave.status, 200);
+    assert.deepEqual(await completionSave.json(), { status: 'ok' });
+    assert.equal(completionSave.headers.get('location'), null);
     assert.equal((await post(taskPaths[0], { completed: '1' })).status, 303);
     const completed = await get(`${paths[0]}?filter=Completed`);
     assert.match(completed, /value="1" aria-label="Complete First task" checked/);

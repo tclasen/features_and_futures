@@ -49,13 +49,16 @@ function browserHarness() {
   runInNewContext(completionPage().match(/<script>([\s\S]*?)<\/script>/)[1], context);
   return {
     context, timers, requests, navigations, submissions, alerts,
-    submit(form) {
+    submit(form, expectedPrevention = true) {
       let prevented = false;
-      const result = onSubmit({ target: form, preventDefault() { prevented = true; } });
-      assert.equal(prevented, true);
+      const event = { target: form, preventDefault() { prevented = true; } };
+      const result = onSubmit(event);
+      // The asynchronous handler must not rely on the dispatched event later.
+      event.target = null;
+      assert.equal(prevented, expectedPrevention);
       return result;
     },
-    resolve(index = 0, ok = true) { requests[index].resolve({ ok, url: '/projects/project?filter=Completed' }); },
+    resolve(index = 0, ok = true) { requests[index].resolve({ ok, json: async () => ({ status: 'ok' }) }); },
     runTimer() {
       const [id, callback] = [...timers.entries()][0];
       timers.delete(id);
@@ -196,6 +199,19 @@ test('failed completion saves show an alert and do not permit a later action', a
   assert.deepEqual(browser.submissions, []);
   assert.equal(browser.alerts.length, 1);
   assert.match(browser.alerts[0], /Could not save task completion/);
+});
+
+test('settled completion saves release later native navigation and editing forms', async () => {
+  const browser = browserHarness();
+  browser.context.deferCompletionSubmit(completionForm());
+  await flush();
+  assert.equal(browser.requests[0].options.headers.Accept, 'application/json');
+  browser.resolve();
+  await browser.runTimer();
+  for (const action of ['/', '/projects/project?filter=Open', '/projects/project/tasks/task/priority']) {
+    await browser.submit({ action }, false);
+  }
+  assert.deepEqual(browser.submissions, [], 'native submits need no asynchronous interception once saved');
 });
 
 test('archived and deleted completion checkboxes remain disabled', () => {

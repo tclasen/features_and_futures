@@ -581,7 +581,12 @@ const server = http.createServer(async (request, response) => {
         }
         createTask(randomUUID(), project.id, title, project.default_task_priority);
       }
-      redirect(response, projectLocation(project, filter, priority));
+      if (taskMatch[2] && !taskMatch[3] && request.headers.accept === 'application/json') {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ status: 'ok' }));
+      } else {
+        redirect(response, projectLocation(project, filter, priority));
+      }
       return;
     }
     sendHtml(response, 404, renderNotFound());
