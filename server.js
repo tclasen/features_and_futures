@@ -40,6 +40,16 @@ if (!taskColumns.some(column => column.name === 'sort_order')) {
   db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
   db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
 }
+// Keep a task's slot in every project it has visited so a later return can
+// restore its former position. Existing tasks start with their current order.
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort_order)
+  SELECT id, project_id, sort_order FROM tasks`);
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -137,7 +147,9 @@ const server = createServer(async (req, res) => {
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       const sortOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next);
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, sortOrder);
-      return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
+      const taskId = Number(result.lastInsertRowid);
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(taskId, projectId, sortOrder);
+      return sendJson(res, 201, { id: taskId, projectId, title, completed: false, priority: project.default_priority });
     } catch {
       return sendJson(res, 400, { error: 'Invalid request' });
     }
@@ -155,7 +167,12 @@ const server = createServer(async (req, res) => {
         const destinationId = Number(payload.destinationProjectId);
         const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
         if (!destination || destination.archived || destinationId === Number(task.projectId)) return sendJson(res, 400, { error: 'Invalid destination project' });
-        const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next);
+        let position = db.prepare('SELECT sort_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId)?.sort_order;
+        if (position === undefined) {
+          position = Number(db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM task_project_positions WHERE project_id = ?').get(destinationId).next);
+          db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(taskId, destinationId, position);
+        }
+        const nextOrder = position;
         db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
         return sendJson(res, 200, { id: taskId, projectId: destinationId });
       }
