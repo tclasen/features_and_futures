@@ -33,9 +33,10 @@ Each task can also be renamed within its row. New titles are trimmed and blank
 titles are rejected. Renaming preserves task order, ownership, completion state,
 and filter membership. Task rename controls are disabled while the project is
 archived, and renamed titles persist across restarts.
-Each task has a Low/Normal/High priority, defaulting to Normal for both existing
-and new tasks. Priority changes are saved automatically and persist across
-restarts without changing task order, completion, ownership, or summaries.
+Each task has a Low/Normal/High priority. Tasks without a saved priority migrate
+to Normal; new tasks inherit their project's saved default. Priority changes are
+saved automatically and persist across restarts without changing task order,
+completion, ownership, or summaries.
 Renaming preserves priority. Archived projects disable priority edits until
 restored; the server also rejects direct edits to archived tasks.
 The Priority filter (All/Low/Normal/High) combines with the Task filter: tasks
@@ -44,3 +45,9 @@ in place when either filter changes or a task is edited; completion and priority
 changes immediately update the matching rows. Filters also work in archived
 projects. Opening a project from the list starts both filters at All. Filters
 are page state stored in the URL and never change task data or summary counts.
+Each project has a Default task priority (Low/Normal/High), initially Normal.
+Changes save automatically and apply only to tasks created afterward in that
+project. Defaults persist across restarts, renaming, archival, and restoration.
+Changing a default preserves both filters, existing tasks, and summary counts.
+Archived projects show their saved default with the control disabled; the server
+also rejects direct changes until restoration.

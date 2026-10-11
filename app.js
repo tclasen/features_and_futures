@@ -88,6 +88,13 @@ function projectPage(project, tasks, filters, error = '') {
       <div class="input-group"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
       <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
     </form>
+    <form method="post" action="/projects/${project.id}/default-priority" class="default-priority">
+      ${taskFilterFields(filters)}
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+        ${taskPriorities.map((priority) => `<option${project.default_priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+      </select>
+    </form>
     <form method="post" action="/projects/${project.id}/tasks" class="create-form task-create">
       ${taskFilterFields(filters)}
       <label for="task-title">Task title</label>
@@ -155,6 +162,10 @@ export function createWorkboardServer(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
   }
+  // A project default affects only future tasks; existing task priorities stay intact.
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+  }
   database.exec(`PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,14 +182,15 @@ export function createWorkboardServer(databasePath) {
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id`);
-  const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const findProject = database.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+  const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
   const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?) ORDER BY id`);
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -224,7 +236,7 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -243,6 +255,12 @@ export function createWorkboardServer(databasePath) {
               const name = (form.get('name') ?? '').trim();
               if (!name) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Project name is required'));
               renameProject.run(name, id);
+            } else if (url.pathname === `/projects/${id}/default-priority`) {
+              const priority = form.get('priority');
+              if (!taskPriorities.includes(priority)) {
+                return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task priority is invalid'));
+              }
+              updateDefaultPriority.run(priority, id);
             } else if (match[2]) {
               const taskId = Number(match[2]);
               if (!Number.isSafeInteger(taskId)) {
@@ -266,7 +284,7 @@ export function createWorkboardServer(databasePath) {
             } else {
               const title = (form.get('title') ?? '').trim();
               if (!title) return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task title is required'));
-              insertTask.run(id, title);
+              insertTask.run(id, title, project.default_priority);
             }
             response.writeHead(303, { Location: projectPath(id, filters) });
             return response.end();
