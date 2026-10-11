@@ -43,7 +43,80 @@ async function stop(child) {
   await exit;
 }
 
-test('moves append, preserve all task data and summaries, and persist through repeated moves', async () => {
+test('remembered positions migrate, reserve absent slots, and restore reverse-order returns after restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-positions-'));
+  const database = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  // Simulate Task 011 data whose current order differs from task ID order.
+  const legacy = new DatabaseSync(database);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Original'), ('Second'), ('Third');
+    INSERT INTO tasks (project_id, title, position) VALUES (1, 'Later', 20), (1, 'Earlier', 10);`);
+  legacy.close();
+  let running;
+  try {
+    running = await start(port, database);
+    const get = async path => (await fetch(`${running.base}${path}`)).json();
+    const mutate = async (path, method, body) => {
+      const response = await fetch(`${running.base}${path}`, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      assert.equal(response.ok, true, await response.clone().text());
+      return response.json();
+    };
+    const tasks = project => `/api/projects/${project}/tasks`;
+    const move = (source, id, destination) => mutate(`${tasks(source)}/${id}/move`, 'POST', {
+      destination_project_id: destination,
+    });
+    const ids = async project => (await get(tasks(project))).map(task => task.id);
+    assert.deepEqual(await ids(1), [2, 1]);
+    await move(1, 2, 2);
+    await move(1, 1, 2);
+    const newTask = await mutate(tasks(1), 'POST', { title: 'After reserved positions' });
+    await mutate('/api/projects/1', 'PATCH', { name: 'Renamed original' });
+    await mutate('/api/projects/1', 'PATCH', { archived: true });
+    await stop(running.child);
+    running = await start(port, database);
+    const rejected = await fetch(`${running.base}${tasks(2)}/1/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destination_project_id: 1 }),
+    });
+    assert.equal(rejected.status, 409);
+    await mutate('/api/projects/1', 'PATCH', { archived: false });
+    await mutate(`${tasks(2)}/1`, 'PATCH', { title: 'Latest title' });
+    await mutate(`${tasks(2)}/1`, 'PATCH', { completed: true });
+    await mutate(`${tasks(2)}/1`, 'PATCH', { priority: 'High' });
+    await mutate(`${tasks(2)}/1`, 'PATCH', { due_date: '2028-02-29' });
+    // Return in reverse order, with another project visited along the way.
+    await move(2, 1, 3);
+    await move(3, 1, 1);
+    await move(2, 2, 1);
+    assert.deepEqual(await ids(1), [2, 1, newTask.id]);
+    assert.deepEqual((await get(tasks(1)))[1], {
+      id: 1, title: 'Latest title', completed: true, priority: 'High', due_date: '2028-02-29',
+    });
+    // Each destination remembers its own order, even if all tasks leave it.
+    const secondNew = await mutate(tasks(2), 'POST', { title: 'Second new' });
+    await move(1, 1, 2);
+    await move(1, 2, 2);
+    assert.deepEqual(await ids(2), [2, 1, secondNew.id]);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await ids(2), [2, 1, secondNew.id]);
+    await move(2, 1, 1);
+    await move(2, 2, 1);
+    assert.deepEqual(await ids(1), [2, 1, newTask.id]);
+    assert.equal((await get('/api/projects/1')).completed, 1);
+    assert.equal((await get('/api/projects/2')).total, 1);
+  } finally {
+    if (running && running.child.exitCode === null) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('moves append on first arrival, restore prior positions, and preserve task data and summaries', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
   const database = join(directory, 'projects.sqlite');
   const port = await availablePort();
@@ -101,11 +174,11 @@ test('moves append, preserve all task data and summaries, and persist through re
     assert.deepEqual(await get(sourceTasks), [remaining]);
     await move(destinationTasks, first.id, source.id);
     await move(destinationTasks, existing.id, source.id);
-    assert.deepEqual(await get(sourceTasks), [remaining, saved, existing]);
+    assert.deepEqual(await get(sourceTasks), [saved, remaining, existing]);
     assert.deepEqual(await get(destinationTasks), [newlyCreated]);
     await stop(running.child);
     running = await start(port, database);
-    assert.deepEqual(await get(sourceTasks), [remaining, saved, existing]);
+    assert.deepEqual(await get(sourceTasks), [saved, remaining, existing]);
     assert.deepEqual(await get(sourcePath), { ...source, total: 3, completed: 1 });
     assert.deepEqual(await get(destinationPath), { ...destination, default_priority: 'Low', total: 1 });
   } finally {

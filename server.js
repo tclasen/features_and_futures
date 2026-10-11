@@ -36,17 +36,46 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
-// Keep IDs stable while allowing moved tasks to append to their new project.
+// Legacy ordering column is retained for migration compatibility.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id;');
 }
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+// Positions remain reserved even while a task belongs to another project.
+// Seed the current order of pre-existing tasks; older moves cannot be inferred.
+if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_positions'").get()) {
+  db.exec(`BEGIN;
+CREATE TABLE task_positions (
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (project_id, task_id),
+  UNIQUE (project_id, position)
+);
+INSERT INTO task_positions (project_id, task_id, position)
+  SELECT project_id, id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY position, id) FROM tasks;
+COMMIT;`);
+}
+const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+  FROM tasks t JOIN task_positions p ON p.project_id = t.project_id AND p.task_id = t.id
+  WHERE t.project_id = ? ORDER BY p.position`);
 const findTask = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-  WHERE project_id = ? AND id = ?`);
+const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const rememberPosition = db.prepare(`INSERT INTO task_positions (project_id, task_id, position)
+  SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?
+  ON CONFLICT (project_id, task_id) DO NOTHING`);
+const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ? AND id = ?');
+
+function transaction(action) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = action();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -125,7 +154,10 @@ const server = http.createServer(async (request, response) => {
       const destination = findProject.get(destinationId);
       if (!destination) return json(response, 404, { error: 'Destination project not found' });
       if (destination.archived) return json(response, 409, { error: 'Destination project is archived' });
-      moveTask.run(destinationId, destinationId, projectId, taskId);
+      transaction(() => {
+        rememberPosition.run(destinationId, taskId, destinationId);
+        moveTask.run(destinationId, projectId, taskId);
+      });
       return json(response, 200, taskJson(findTask.get(destinationId, taskId)));
     }
     const tasksMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
@@ -144,7 +176,11 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const title = typeof body?.title === 'string' ? body.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, project.default_priority, projectId);
+        const result = transaction(() => {
+          const inserted = insertTask.run(projectId, title, project.default_priority);
+          rememberPosition.run(projectId, inserted.lastInsertRowid, projectId);
+          return inserted;
+        });
         return json(response, 201, taskJson(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (taskId !== null && request.method === 'PATCH') {
