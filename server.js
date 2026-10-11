@@ -10,13 +10,15 @@ CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL 
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const getProjects = db.prepare(`SELECT p.id, p.name, p.archived, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completed, COUNT(t.id) AS total FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const getTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const getTasks = db.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -111,6 +113,28 @@ const server = http.createServer(async (req, res) => {
     if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(400, { error: 'Invalid priority' });
     const result = updatePriority.run(body.priority, decodeURIComponent(priorityMatch[2]), projectId);
     return result.changes ? json(200, { status: 'ok' }) : json(404, { error: 'Not found' });
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/due-date$/);
+  if (req.method === 'PATCH' && dueDateMatch) {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    const projectId = decodeURIComponent(dueDateMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return json(404, { error: 'Not found' });
+    if (project.archived) return json(403, { error: 'Archived project' });
+    const value = String(body.dueDate ?? '').trim();
+    let date = null;
+    if (value) {
+      const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!match) return json(400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const [, y, m, d] = match, year = Number(y), month = Number(m), day = Number(d);
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (year < 1 || month < 1 || month > 12 || day < 1 || day > lengths[month - 1]) return json(400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      date = value;
+    }
+    const result = updateDueDate.run(date, decodeURIComponent(dueDateMatch[2]), projectId);
+    return result.changes ? json(200, { status: 'ok', dueDate: date }) : json(404, { error: 'Not found' });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (req.method === 'PATCH' && taskMatch) {
