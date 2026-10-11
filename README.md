@@ -87,7 +87,8 @@ preserving supplied task order, exact titles, LF notes, explicit priorities, dat
 completion, deletion, archive state and project default. Imported tasks establish
 fresh remembered positions; existing identities and projects are never merged.
 Task directory on the home page opens a cross-project view with read-only rows. Each opening
-starts with Active project scope, All task/priority filters, empty search and due range.
+starts with Active project scope, All task/priority filters, empty search and due range,
+and Directory order Original.
 Scope, live/deleted completion filters, priority, inclusive due range and title-only
 search intersect and preserve one another. Search uses the same ASCII-case and
 horizontal-whitespace rules as project tasks; owner names and notes do not match.
@@ -102,6 +103,11 @@ filters. Each action is disabled when no matching task needs that change, and bo
 are disabled in Archived scope or the Deleted filter. Results and summaries reflect
 saved completion, including after restart. Empty resolved results announce No matching
 tasks; this announcement is hidden while a new directory request is loading.
+Directory order can instead sort the entire result by Priority (High, Normal, Low),
+Due date (ascending, undated last), or Title (ASCII-folded Unicode code point order).
+Ties retain Original order. Ordering remains selected through filters, searches,
+due-range validation and bulk actions; it never changes stored order, exports or
+remembered positions.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -139,4 +145,7 @@ remembered return ordering, default navigation, unchanged exports and restart pe
 Bulk directory tests cover cross-project filter targeting, disabled actions, forged
 archived/deleted requests, unchanged fields and positions, refreshed summaries,
 empty-result announcements, movement and real server restart persistence.
+Directory ordering tests cover stable cross-project ties, Unicode code point title
+comparison, literal title whitespace, date ordering, retained action state, archived
+and deleted views, unchanged exports and Original defaults.
 Temporary files are removed afterward.
