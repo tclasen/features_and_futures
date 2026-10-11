@@ -1557,3 +1557,128 @@ test('search intersects filters, survives edits and moves, and resets at navigat
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('notes migrate without data loss and preserve plain text, filters, ownership, order, and archived restrictions', async () => {
+  const directory = await mkdtemp(join(process.cwd(), '.workboard-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
+      default_priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+      due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, position) VALUES
+      (1, 'Matching legacy', 1, 'High', '2026-10-11', 7),
+      (1, 'Another task', 0, 'Normal', '', 8),
+      (2, 'Destination task', 0, 'Low', '', 1);
+    CREATE TABLE task_project_positions (task_id INTEGER NOT NULL,
+      project_id INTEGER NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id));
+    INSERT INTO task_project_positions SELECT id, project_id, position FROM tasks;`);
+  const originalTasks = legacy.prepare('SELECT * FROM tasks ORDER BY id').all();
+  const originalPositions = legacy.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all();
+  legacy.close();
+  const savedTasks = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return database.prepare('SELECT * FROM tasks ORDER BY id').all().map((task) => ({ ...task }));
+    } finally {
+      database.close();
+    }
+  };
+  let running;
+  try {
+    running = await start(databasePath);
+    const get = async (path) => (await fetch(`${running.baseUrl}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${running.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const titles = (html) => [...html.matchAll(/data-testid="task-row"[^>]*>\s*<span>(.*?)<\/span>/g)]
+      .map((match) => match[1]);
+    const notesForm = (html, projectId, taskId) => [...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)]
+      .find((match) => match[1] === `/projects/${projectId}/tasks/${taskId}/notes`)?.[2];
+    assert.deepEqual(savedTasks(), originalTasks.map((task) => ({ ...task, notes: '' })));
+    await post('/projects/1/tasks', { title: 'New task' });
+    assert.equal(savedTasks()[3].notes, '');
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-01', dueThrough: '2026-10-31', search: 'matching' };
+    const path = `/projects/1?${new URLSearchParams(filters)}`;
+    const before = await get(path);
+    const form = notesForm(before, 1, 1);
+    assert.match(form, /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(form, /<textarea id="task-notes-1" name="notes" rows="4">\n<\/textarea>/);
+    assert.match(form, /<button type="submit">Save notes<\/button>/);
+    const fields = Object.fromEntries([...form.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)]
+      .map((match) => [match[1], match[2]]));
+    assert.deepEqual(fields, filters);
+    const notes = '\n  Leading spaces\nUnicode: 雪 café 🙂\n</textarea><script>alert("literal")</script> &\nTrailing spaces  \n';
+    const listBefore = await get('/');
+    const save = await post('/projects/1/tasks/1/notes', { ...fields, notes });
+    assert.equal(save.status, 303);
+    assert.equal(save.headers.get('location'), path);
+    const saved = await get(path);
+    assert.deepEqual(titles(saved), ['Matching legacy']);
+    assert.equal(await get('/'), listBefore);
+    const escaped = notes.replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[character]);
+    assert.ok(notesForm(saved, 1, 1).includes(`>\n${escaped}</textarea>`));
+    assert.doesNotMatch(saved, /<script>/);
+    assert.deepEqual(savedTasks().slice(0, 3), originalTasks.map((task, index) => ({ ...task, notes: index === 0 ? notes : '' })));
+    // Notes never participate in task or project name searches.
+    assert.deepEqual(titles(await get('/projects/1?search=Unicode')), []);
+    assert.doesNotMatch(await get('/?search=Unicode'), /data-testid="project-row"/);
+    assert.equal((await post('/projects/2/tasks/1/notes', { notes: 'wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/notes', { notes: 'missing' })).status, 404);
+    await post('/projects/1/tasks/1/rename', { ...filters, title: 'Matching renamed' });
+    await post('/projects/1/rename', { ...filters, name: 'Renamed source' });
+    assert.equal(savedTasks()[0].notes, notes);
+    const moved = await post('/projects/1/tasks/1/move', { ...filters, destinationProject: '2' });
+    assert.equal(moved.headers.get('location'), path);
+    assert.deepEqual(titles(await get(path)), []);
+    assert.deepEqual(titles(await get('/projects/2')), ['Destination task', 'Matching renamed']);
+    assert.ok(notesForm(await get('/projects/2'), 2, 1).includes(escaped));
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(titles(await get('/projects/1')), ['Matching renamed', 'Another task', 'New task']);
+    const database = new DatabaseSync(databasePath);
+    try {
+      assert.deepEqual(database.prepare('SELECT * FROM task_project_positions WHERE NOT (task_id = 1 AND project_id = 2) AND task_id != 4 ORDER BY task_id, project_id').all(), originalPositions);
+    } finally {
+      database.close();
+    }
+    await running.stop();
+    running = undefined;
+    running = await start(databasePath);
+    assert.equal(savedTasks()[0].notes, notes);
+    assert.ok(notesForm(await get(path), 1, 1).includes(escaped));
+    await post('/projects/1/archive');
+    const archived = await get(path);
+    const archivedForm = notesForm(archived, 1, 1);
+    assert.match(archivedForm, /<textarea[^>]* disabled>/);
+    assert.match(archivedForm, /<button type="submit" disabled>Save notes<\/button>/);
+    assert.ok(archivedForm.includes(escaped));
+    assert.equal((await post('/projects/1/tasks/1/notes', { ...filters, notes: 'blocked' })).status, 409);
+    assert.equal(savedTasks()[0].notes, notes);
+    await running.stop();
+    running = undefined;
+    running = await start(databasePath);
+    assert.equal(await get(path), archived);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(notesForm(await get(path), 1, 1), /disabled/);
+    for (const value of ['  \n\t  ', '']) {
+      const response = await post('/projects/1/tasks/1/notes', { ...filters, notes: value });
+      assert.equal(response.headers.get('location'), path);
+      assert.equal(savedTasks()[0].notes, value);
+      assert.deepEqual(titles(await get(path)), ['Matching renamed']);
+    }
+    await running.stop();
+    running = undefined;
+    running = await start(databasePath);
+    assert.equal(savedTasks()[0].notes, '');
+    assert.match(notesForm(await get(path), 1, 1), /rows="4">\n<\/textarea>/);
+  } finally {
+    if (running) await running.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

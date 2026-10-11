@@ -115,6 +115,8 @@ function taskFilterFields(filters) {
 }
 
 function projectPage(project, tasks, filters, error = '', destinations = []) {
+  // HTML strips the first newline after a textarea's opening tag. Include a
+  // separate newline before the escaped notes to preserve leading line breaks.
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
@@ -196,6 +198,13 @@ function projectPage(project, tasks, filters, error = '', destinations = []) {
           <div class="input-group"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/notes" class="task-notes">
+          ${taskFilterFields(filters)}
+          <label for="task-notes-${task.id}">Task notes</label>
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+        </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/move" class="task-move">
           ${taskFilterFields(filters)}
           <label for="destination-project-${task.id}">Destination project</label>
@@ -253,6 +262,9 @@ export function createWorkboardServer(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  }
   // Older databases ordered by ID; Task 011 used a current-position column.
   // Retain that legacy column only to seed remembered positions below.
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
@@ -284,7 +296,7 @@ export function createWorkboardServer(databasePath) {
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-  const listTasks = database.prepare(`SELECT tasks.id, title, completed, priority, due_date FROM tasks
+  const listTasks = database.prepare(`SELECT tasks.id, title, completed, priority, due_date, notes FROM tasks
     JOIN task_project_positions AS positions ON positions.task_id = tasks.id AND positions.project_id = tasks.project_id
     WHERE tasks.project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?)
@@ -325,6 +337,7 @@ export function createWorkboardServer(databasePath) {
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+  const updateNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
   function tasksFor(projectId, filters) {
     const completed = filters.completion === 'All' ? null : Number(filters.completion === 'Completed');
     const priority = filters.priority === 'All' ? null : filters.priority;
@@ -382,7 +395,7 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/due-range|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/due-range|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move))?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -447,6 +460,8 @@ export function createWorkboardServer(databasePath) {
                   return send(400, renderProjectPage(project, filters, 'Due date must be a valid YYYY-MM-DD date'));
                 }
                 result = updateDueDate.run(dueDate, taskId, id);
+              } else if (match[3] === 'notes') {
+                result = updateNotes.run(form.get('notes') ?? '', taskId, id);
               } else {
                 result = updateCompletion.run(Number(form.get('completed') === '1'), taskId, id);
               }

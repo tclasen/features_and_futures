@@ -89,3 +89,10 @@ and due-range filters without changing stored data or all-task summaries. Search
 and other applied filters are retained through edits and moves, and search remains
 usable in archived projects. Queries are page state in the URL; opening a project
 from the list or returning through Projects starts with an empty query.
+Each task has optional multiline Task notes and a Save notes button. Notes are
+saved verbatim as plain text, including whitespace, Unicode, and literal markup;
+empty text clears them. They persist through restarts, renaming, moves, and
+remembered-order restoration. Notes do not affect title search or other filters,
+and saving retains all applied filters and summary counts. Archived projects
+display notes with editing disabled and reject direct saves until restored.
+Existing databases initialize notes to empty without changing other task data.
