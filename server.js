@@ -42,6 +42,18 @@ if (!taskColumns.some((column) => column.name === 'sort_order')) {
   database.exec('UPDATE tasks SET sort_order = id');
 }
 database.exec('PRAGMA foreign_keys = ON');
+// Keep a task's position in every project it has visited. The task's current
+// project can change, but these rows preserve its place for a later return.
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, sort_order FROM tasks;
+`);
 
 const indexHtml = await readFile(path.join(root, 'index.html'));
 const clientJs = await readFile(path.join(root, 'app.js'));
@@ -118,7 +130,9 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId));
+    return sendJson(res, 200, database.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+      FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+      WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.sort_order), t.id`).all(projectId));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -131,8 +145,9 @@ const server = createServer(async (req, res) => {
     const project = database.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(res, 403, { error: 'Archived project' });
-    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+    const nextOrder = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
     const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, nextOrder);
+    database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, nextOrder);
     return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: 0, priority: project.default_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -149,8 +164,16 @@ const server = createServer(async (req, res) => {
     const destinationId = Number(data.destinationProjectId);
     const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
     if (source.archived || !destination || destination.archived || destinationId === Number(task.project_id)) return sendJson(res, 400, { error: 'Invalid destination project' });
-    const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
-    database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
+    const remembered = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+    let destinationPosition;
+    if (remembered) {
+      destinationPosition = remembered.position;
+    } else {
+      destinationPosition = database.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS value
+        FROM task_project_positions WHERE project_id = ?`).get(destinationId).value;
+      database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, destinationPosition);
+    }
+    database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, destinationPosition, taskId);
     return sendJson(res, 200, { id: taskId, projectId: destinationId });
   }
   if (taskMatch && req.method === 'PATCH') {
