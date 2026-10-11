@@ -117,6 +117,7 @@ async function showRoute() {
 const directoryScope = document.querySelector('#directory-scope');
 const directoryTaskFilter = document.querySelector('#directory-task-filter');
 const directoryPriority = document.querySelector('#directory-priority');
+const directoryOrder = document.querySelector('#directory-order');
 const directorySearch = document.querySelector('#directory-search');
 const directoryResults = document.querySelector('#directory-results');
 const directoryEmpty = document.querySelector('#directory-empty');
@@ -145,6 +146,27 @@ async function loadDirectory() {
     if (directoryRange.through && task.dueDate > directoryRange.through) return false;
     return true;
   });
+  const originalPosition = new Map(visibleDirectoryTasks.map((task, index) => [task.id, index]));
+  const priorityRank = { High: 0, Normal: 1, Low: 2 };
+  const compareCodePoints = (left, right) => {
+    const a = Array.from(left), b = Array.from(right);
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      const difference = a[i].codePointAt(0) - b[i].codePointAt(0);
+      if (difference) return difference;
+    }
+    return a.length - b.length;
+  };
+  if (directoryOrder.value === 'Priority') {
+    visibleDirectoryTasks.sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || originalPosition.get(a.id) - originalPosition.get(b.id));
+  } else if (directoryOrder.value === 'Due date') {
+    visibleDirectoryTasks.sort((a, b) => {
+      if (!a.dueDate && b.dueDate) return 1;
+      if (a.dueDate && !b.dueDate) return -1;
+      return (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0) || originalPosition.get(a.id) - originalPosition.get(b.id);
+    });
+  } else if (directoryOrder.value === 'Title') {
+    visibleDirectoryTasks.sort((a, b) => compareCodePoints(asciiLower(a.title), asciiLower(b.title)) || originalPosition.get(a.id) - originalPosition.get(b.id));
+  }
   directoryResults.replaceChildren();
   for (const task of visibleDirectoryTasks) {
     const row = document.createElement('div');
@@ -186,7 +208,7 @@ async function updateVisibleDirectoryTasks(completed) {
 completeVisibleButton.addEventListener('click', () => updateVisibleDirectoryTasks(true));
 reopenVisibleButton.addEventListener('click', () => updateVisibleDirectoryTasks(false));
 
-for (const control of [directoryScope, directoryTaskFilter, directoryPriority]) control.addEventListener('change', loadDirectory);
+for (const control of [directoryScope, directoryTaskFilter, directoryPriority, directoryOrder]) control.addEventListener('change', loadDirectory);
 document.querySelector('#directory-search-form').addEventListener('submit', (event) => { event.preventDefault(); directoryQuery = directorySearch.value.trim(); loadDirectory(); });
 document.querySelector('#directory-apply-range').addEventListener('click', () => {
   const alert = document.querySelector('#directory-alert');
@@ -198,6 +220,7 @@ document.querySelector('#directory-apply-range').addEventListener('click', () =>
 });
 document.querySelector('#directory-button').addEventListener('click', () => {
   directoryScope.value = 'Active'; directoryTaskFilter.value = 'All'; directoryPriority.value = 'All';
+  directoryOrder.value = 'Original';
   directorySearch.value = ''; directoryQuery = ''; directoryRange = { from: '', through: '' };
   document.querySelector('#directory-due-from').value = ''; document.querySelector('#directory-due-through').value = '';
   history.pushState({}, '', '/directory'); showRoute();
