@@ -174,6 +174,7 @@ async function showTasks(projectId, archived) {
         checkbox.disabled = true;
         renameInput.disabled = true;
         renameButton.disabled = true;
+        priority.disabled = true;
         app.querySelector('[role="alert"]')?.remove();
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
@@ -215,7 +216,22 @@ async function showTasks(projectId, archived) {
         }
         await saveTask({ title });
       });
-      row.append(checkbox, element('span', task.title), renameForm);
+      const priorityLabel = element('label', 'Task priority');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      const priority = element('select');
+      priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', value);
+        option.value = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = archived || saving.has(task.id);
+      priority.addEventListener('change', () => {
+        if (archived || saving.has(task.id)) return;
+        return saveTask({ priority: priority.value });
+      });
+      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority);
       return row;
     }));
   }

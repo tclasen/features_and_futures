@@ -24,6 +24,10 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+// Preserve existing task data while assigning the default priority.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const projectQuery = `SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
@@ -32,11 +36,12 @@ const getProject = database.prepare(`${projectQuery} WHERE p.id = ? GROUP BY p.i
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 
 function projectJson(project) {
   return { ...project, archived: Boolean(project.archived) };
@@ -116,6 +121,11 @@ const server = createServer(async (request, response) => {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
           renameTask.run(title, projectId, taskId);
+        } else if (input && Object.hasOwn(input, 'priority')) {
+          if (!['Low', 'Normal', 'High'].includes(input.priority)) {
+            return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
+          }
+          setTaskPriority.run(input.priority, projectId, taskId);
         } else {
           if (typeof input?.completed !== 'boolean') {
             return json(response, 400, { error: 'Completed must be a boolean' });

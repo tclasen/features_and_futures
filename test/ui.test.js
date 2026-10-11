@@ -97,8 +97,8 @@ test('project list: active default, archive/restore, summaries, and creation in 
 test('archived project is read-only while task filters still work', async () => {
   const app = new Node('main');
   const tasks = [
-    { id: 1, title: 'Open task', completed: false },
-    { id: 2, title: 'Done task', completed: true },
+    { id: 1, title: 'Open task', completed: false, priority: 'Low' },
+    { id: 2, title: 'Done task', completed: true, priority: 'High' },
   ];
   runInNewContext(source, {
     document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
@@ -128,6 +128,11 @@ test('archived project is read-only while task filters still work', async () => 
   assert.equal(list.children.length, 2);
   assert.ok(list.children.every((row) => row.children[0].disabled));
   for (const row of list.children) {
+    const priority = row.children[4];
+    assert.equal(priority.disabled, true);
+    assert.equal(priority.value, tasks.find((task) => task.title === row.children[1].textContent).priority);
+    priority.value = 'Normal';
+    await priority.fire('change');
     const rename = row.children[2];
     assert.equal(rename.children[1].disabled, true);
     assert.equal(rename.children[2].disabled, true);
@@ -158,7 +163,7 @@ test('project task UI: labels, validation, completion, and filters in creation o
       if (path === '/api/projects/1') data = { id: 1, name: 'Example' };
       else if (!options) data = tasks.map((task) => ({ ...task }));
       else if (options.method === 'POST') {
-        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false };
+        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: 'Normal' };
         tasks.push({ ...data });
       } else {
         const task = tasks.find((task) => path.endsWith(`/${task.id}`));
@@ -194,6 +199,18 @@ test('project task UI: labels, validation, completion, and filters in creation o
   const titles = () => list.children.map((row) => row.children[1].textContent);
   assert.deepEqual(titles(), ['First', 'Second']);
   assert.ok(list.children.every((row) => row.dataset.testid === 'task-row'));
+  const priorityLabel = list.children[0].children[3];
+  let priority = list.children[0].children[4];
+  assert.equal(priorityLabel.textContent, 'Task priority');
+  assert.equal(priorityLabel.htmlFor, priority.id);
+  assert.deepEqual(priority.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(priority.value, 'Normal');
+  assert.equal(priority.disabled, false);
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.equal(tasks[0].priority, 'High');
+  assert.equal(tasks[1].priority, 'Normal');
+  assert.deepEqual(titles(), ['First', 'Second']);
   let checkbox = list.children[0].children[0];
   assert.equal(checkbox.attributes['aria-label'], 'Complete First');
   assert.equal(checkbox.checked, false);
@@ -239,6 +256,14 @@ test('project task UI: labels, validation, completion, and filters in creation o
   assert.equal(filter.value, 'Completed');
   assert.equal(list.children[0].children[0].checked, true);
   assert.equal(list.children[0].children[0].attributes['aria-label'], 'Complete Renamed task');
+  priority = list.children[0].children[4];
+  assert.equal(priority.value, 'High');
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.equal(filter.value, 'Completed');
+  assert.deepEqual(titles(), ['Renamed task']);
+  assert.equal(list.children[0].children[0].checked, true);
+  assert.equal(list.children[0].children[4].value, 'Low');
   filter.value = 'Open';
   await filter.fire('change');
   assert.deepEqual(titles(), ['Second']);
