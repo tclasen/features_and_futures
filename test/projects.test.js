@@ -31,6 +31,99 @@ async function stop(child) {
   await exited;
 }
 
+test('combined filters preserve selections, re-evaluate edits and work when archived', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let running;
+  try {
+    running = await start(dbPath);
+    let base = running.base;
+    const post = (path, values = {}) => fetch(`${base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = path => fetch(`${base}${path}`).then(response => response.text());
+    const titles = text => [...text.matchAll(/<span class="task-title">([^<]*)<\/span>/g)].map(match => match[1]);
+    await post('/projects', { name: 'Filters' });
+    const tasks = [];
+    for (const priority of ['Low', 'Normal', 'High']) {
+      for (const completed of [false, true]) {
+        const id = tasks.length + 1;
+        const title = `${priority} ${completed ? 'done' : 'open'}`;
+        await post('/projects/1/tasks', { title });
+        await post(`/projects/1/tasks/${id}/priority`, { priority });
+        if (completed) await post(`/projects/1/tasks/${id}/completion`, { completed: '1' });
+        tasks.push({ title, priority, completed });
+      }
+    }
+    const summary = await html('/');
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const text = await html(`/projects/1?filter=${filter}&priorityFilter=${priority}`);
+        assert.deepEqual(titles(text), tasks.filter(task =>
+          (filter === 'All' || task.completed === (filter === 'Completed')) &&
+          (priority === 'All' || task.priority === priority)).map(task => task.title));
+        const filterForm = text.match(/<form class="filter-form"[\s\S]*?<\/form>/)[0];
+        assert.match(filterForm, /<label for="priority-filter">Priority filter<\/label>/);
+        assert.ok(filterForm.includes(['All', 'Low', 'Normal', 'High'].map(value =>
+          `<option${value === priority ? ' selected' : ''}>${value}</option>`).join('')));
+        assert.ok(filterForm.includes(`<option selected>${filter}</option>`));
+        assert.match(filterForm, /onchange="this.form.requestSubmit\(\)"/);
+        for (const form of text.matchAll(/<form[^>]*method="post"[\s\S]*?<\/form>/g)) {
+          assert.ok(form[0].includes(`name="filter" value="${filter}"`));
+          assert.ok(form[0].includes(`name="priorityFilter" value="${priority}"`));
+        }
+      }
+    }
+    assert.equal(await html('/'), summary);
+    const selection = { filter: 'Open', priorityFilter: 'High' };
+    const path = '/projects/1?filter=Open&priorityFilter=High';
+    let response = await post('/projects/1/tasks/5/rename', { ...selection, title: '  Renamed  ' });
+    assert.equal(response.headers.get('location'), path);
+    assert.deepEqual(titles(await html(path)), ['Renamed']);
+    assert.match(await html(path), /aria-label="Complete Renamed"/);
+    assert.equal(await html('/'), summary);
+    response = await post('/projects/1/tasks/5/rename', { ...selection, title: '  ' });
+    assert.equal(response.status, 400);
+    const error = await response.text();
+    assert.match(error, /Task title is required/);
+    assert.match(error, /<option selected>Open<\/option>/);
+    assert.match(error, /<option selected>High<\/option>/);
+    response = await post('/projects/1/tasks/5/priority', { ...selection, priority: 'Low' });
+    assert.equal(response.headers.get('location'), path);
+    assert.deepEqual(titles(await html(path)), []);
+    assert.equal(await html('/'), summary);
+    await post('/projects/1/tasks/5/priority', { ...selection, priority: 'High' });
+    response = await post('/projects/1/tasks/5/completion', { ...selection, completed: '1' });
+    assert.equal(response.headers.get('location'), path);
+    assert.deepEqual(titles(await html(path)), []);
+    assert.deepEqual(titles(await html('/projects/1?filter=Completed&priorityFilter=High')), ['Renamed', 'High done']);
+    const saved = await html('/projects/1?filter=Completed&priorityFilter=High');
+    await stop(running.child);
+    running = undefined;
+    running = await start(dbPath);
+    base = running.base;
+    assert.equal(await html('/projects/1?filter=Completed&priorityFilter=High'), saved);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1?filter=Completed&priorityFilter=High');
+    assert.deepEqual(titles(archived), ['Renamed', 'High done']);
+    const filterForm = archived.match(/<form class="filter-form"[\s\S]*?<\/form>/)[0];
+    assert.ok(!filterForm.includes('disabled'));
+    for (const row of archived.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)) {
+      assert.match(row[1], /name="completed"[\s\S]*? disabled/);
+      assert.match(row[1], /name="priority" disabled/);
+      assert.match(row[1], /name="title"[^>]* disabled/);
+      assert.match(row[1], /<button type="submit" disabled>Rename task/);
+    }
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1?filter=Completed&priorityFilter=High'), saved);
+    const initial = await html('/projects/1');
+    assert.match(initial, /id="priority-filter"[^>]*>\s*<option selected>All<\/option>/);
+  } finally {
+    if (running) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('priorities migrate, remain independent and persist through rename and archive', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
   const dbPath = join(directory, 'workboard.sqlite');

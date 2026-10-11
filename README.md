@@ -27,4 +27,6 @@ completion summaries, migration from the previous database schema, and project
 and task renaming with stable identity, validation, persistence, and archived
 restrictions. Priority checks cover Normal defaults for migrated and new tasks,
 independent edits, validation, ownership, rename preservation, restart persistence,
-and archive/restore restrictions.
+and archive/restore restrictions. Combined-filter checks cover every completion/priority
+combination, selection preservation, immediate re-filtering after edits, unchanged
+summaries, persistence, and usable filters on archived projects.
