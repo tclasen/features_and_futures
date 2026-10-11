@@ -260,6 +260,17 @@ const page = `<!doctype html>
       back.addEventListener('click', () => { location.href = '/'; });
       const heading = document.createElement('h1');
       heading.textContent = project.name;
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = 'Download project';
+      download.addEventListener('click', () => {
+        const link = document.createElement('a');
+        link.href = '/api/projects/' + encodeURIComponent(id) + '/export';
+        link.download = 'workboard-project.json';
+        document.body.append(link);
+        link.click();
+        link.remove();
+      });
       const renameForm = document.createElement('form');
       renameForm.noValidate = true;
       const renameField = document.createElement('div');
@@ -620,7 +631,7 @@ const page = `<!doctype html>
         }
       });
       drawTasks();
-      app.append(back, heading, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, taskSearchField, taskSearchButton, dueRange, tasksList);
+      app.append(back, heading, download, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, taskSearchField, taskSearchButton, dueRange, tasksList);
     }
 
     if (escPath) {
@@ -648,6 +659,40 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     const filter = url.searchParams.get('filter') === 'archived' ? 1 : 0;
     sendJson(response, 200, listProjects.all(filter).map(project => ({ ...project, archived: Boolean(project.archived) })));
+    return;
+  }
+  const exportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (request.method === 'GET' && exportMatch) {
+    const projectId = Number(exportMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    const tasks = listTasks.all(projectId).map(task => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: (task.notes || '').replace(/\r\n?/g, '\n'),
+      deleted: Boolean(task.deleted)
+    }));
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.defaultPriority || 'Normal',
+        tasks
+      }
+    };
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      'Cache-Control': 'no-store'
+    });
+    response.end(JSON.stringify(document));
     return;
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
