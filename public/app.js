@@ -144,7 +144,7 @@ async function showProjects() {
       create.disabled = false;
     }
   });
-  app.append(form, filters, search.form, list);
+  app.append(form, projectImportControl(), filters, search.form, list);
   // Enable creation only after the initial list has loaded, preserving ordering.
   create.disabled = true;
   try {
@@ -154,6 +154,47 @@ async function showProjects() {
   } catch (error) {
     showAlert(error.message);
   }
+}
+
+function projectImportControl() {
+  const form = element('form');
+  const jsonLabel = element('label', 'Project JSON');
+  jsonLabel.htmlFor = 'project-json';
+  const jsonInput = element('textarea');
+  jsonInput.id = jsonLabel.htmlFor;
+  jsonInput.rows = 6;
+  const nameLabel = element('label', 'Imported project name');
+  nameLabel.htmlFor = 'imported-project-name';
+  const nameInput = element('input');
+  nameInput.id = nameLabel.htmlFor;
+  nameInput.type = 'text';
+  const button = element('button', 'Import project');
+  button.type = 'submit';
+  form.append(jsonLabel, jsonInput, nameLabel, nameInput, button);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (button.disabled) return;
+    app.querySelector('[role="alert"]')?.remove();
+    const name = nameInput.value.trim();
+    if (!name) {
+      showAlert('Project name is required');
+      return;
+    }
+    button.disabled = true;
+    try {
+      const project = await api('/api/projects/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, projectJson: jsonInput.value }),
+      });
+      location.assign(`/projects/${project.id}`);
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return form;
 }
 
 async function showTasks(project) {

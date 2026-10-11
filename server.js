@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { normalizeDueDate } from './due-date.js';
+import { parseProjectImport } from './project-import.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -100,6 +101,24 @@ function createTask(projectId, title, priority) {
   });
 }
 
+const insertImportedProject = database.prepare('INSERT INTO projects (name, archived, defaultTaskPriority) VALUES (?, ?, ?)');
+const insertImportedTask = database.prepare(`INSERT INTO tasks
+  (project_id, title, completed, priority, dueDate, notes, deleted, position)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+
+function importProject(name, project) {
+  return transaction(() => {
+    const projectId = Number(insertImportedProject.run(name, Number(project.archived), project.defaultPriority).lastInsertRowid);
+    project.tasks.forEach((task, index) => {
+      const position = index + 1;
+      const taskId = Number(insertImportedTask.run(projectId, task.title, Number(task.completed),
+        task.priority, task.dueDate, task.notes, Number(task.deleted), position).lastInsertRowid);
+      rememberPosition.run(taskId, projectId, position);
+    });
+    return projectId;
+  });
+}
+
 function relocateTask(taskId, sourceId, destinationId) {
   transaction(() => {
     let position = rememberedPosition.get(taskId, destinationId)?.position;
@@ -161,18 +180,21 @@ function json(response, status, value) {
   response.end(JSON.stringify(value));
 }
 
-async function readJson(request) {
-  let body = '';
+async function readJson(request, maximumBytes = 64 * 1024) {
+  const chunks = [];
+  let bytes = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 64 * 1024) {
+    chunks.push(chunk);
+    bytes += chunk.length;
+    if (bytes > maximumBytes) {
       const error = new Error('Request body is too large');
       error.status = 413;
       throw error;
     }
   }
   try {
-    return JSON.parse(body);
+    // Decode once so a multibyte character split across HTTP chunks stays exact.
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch {
     const error = new Error('Invalid JSON');
     error.status = 400;
@@ -193,6 +215,16 @@ const server = createServer(async (request, response) => {
         const result = insertProject.run(name);
         return json(response, 201, projectJson(getProject.get(Number(result.lastInsertRowid))));
       }
+    }
+    if (request.method === 'POST' && path === '/api/projects/import') {
+      // Portable exports can contain many tasks; do not apply the single-edit size limit.
+      const input = await readJson(request, Infinity);
+      const name = typeof input?.name === 'string' ? input.name.trim() : '';
+      if (!name) return json(response, 400, { error: 'Project name is required' });
+      const project = parseProjectImport(input?.projectJson);
+      if (!project) return json(response, 400, { error: 'Invalid project JSON' });
+      const projectId = importProject(name, project);
+      return json(response, 201, projectJson(getProject.get(projectId)));
     }
     const exportMatch = path.match(/^\/api\/projects\/(\d+)\/export$/);
     if (request.method === 'GET' && exportMatch) {

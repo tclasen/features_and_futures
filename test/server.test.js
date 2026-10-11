@@ -757,3 +757,90 @@ test('portable export includes current live/deleted state in remembered order wi
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('atomic imports are independent, persistent, and establish reserved task positions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-import-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}/api/projects${path}`, {
+        method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+      });
+      return { status: response.status, data: await response.json() };
+    };
+    const original = (await request('', 'POST', { name: 'Original' })).data;
+    const savedTask = (await request(`/${original.id}/tasks`, 'POST', { title: 'Original task' })).data;
+    await request(`/${original.id}/tasks/${savedTask.id}`, 'PATCH', { notes: '  α <b>\r\nsecond  ' });
+    const portable = (await request(`/${original.id}/export`)).data;
+    portable.project.defaultPriority = 'Low';
+    portable.project.tasks[0].completed = true;
+    portable.project.tasks[0].priority = 'High';
+    portable.project.tasks[0].title = '  Kept\t title  ';
+    portable.project.tasks[0].dueDate = '0001-01-01';
+    portable.project.tasks.push({ title: 'Deleted', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: true });
+    const importDocument = (name, document) => request('/import', 'POST', { name, projectJson: document });
+    const before = (await request('')).data;
+    for (const text of ['{', 'null', JSON.stringify({ ...portable, version: 2 }), JSON.stringify({
+      ...portable, project: { ...portable.project, tasks: [...portable.project.tasks, { ...portable.project.tasks[0], dueDate: '1900-02-29' }] },
+    })]) {
+      assert.deepEqual(await importDocument('Rejected', text), { status: 400, data: { error: 'Invalid project JSON' } });
+      assert.deepEqual((await request('')).data, before);
+      assert.equal((await request(`/${original.id}/tasks`)).data.length, 1);
+    }
+    assert.deepEqual(await importDocument(' \t ', '{'), { status: 400, data: { error: 'Project name is required' } });
+    portable.project.id = original.id;
+    portable.project.tasks[0].id = savedTask.id;
+    const importedResponse = await importDocument('  Independent copy  ', JSON.stringify(portable));
+    assert.equal(importedResponse.status, 201);
+    const imported = importedResponse.data;
+    assert.notEqual(imported.id, original.id);
+    assert.equal(imported.name, 'Independent copy');
+    assert.equal(imported.totalCount, 1);
+    assert.equal(imported.completedCount, 1);
+    const path = `/${imported.id}`;
+    const tasks = (await request(`${path}/tasks`)).data;
+    assert.notEqual(tasks[0].id, savedTask.id);
+    const expected = { ...portable, project: { name: imported.name, archived: false, defaultPriority: 'Low', tasks: portable.project.tasks.map(({ id, ...task }) => task) } };
+    assert.deepEqual((await request(`${path}/export`)).data, expected);
+    const later = (await request(`${path}/tasks`, 'POST', { title: 'Later' })).data;
+    assert.equal(later.priority, 'Low');
+    assert.equal((await request(`${path}/tasks/${tasks[1].id}`, 'PATCH', { title: 'Forbidden' })).status, 409);
+    await request(`${path}/tasks/${tasks[1].id}`, 'PATCH', { deleted: false });
+    await request(`${path}/tasks/${tasks[0].id}`, 'PATCH', { destinationProjectId: original.id });
+    await request(`/${original.id}/tasks/${tasks[0].id}`, 'PATCH', { destinationProjectId: imported.id });
+    assert.deepEqual((await request(`${path}/tasks`)).data.map((task) => task.id), [tasks[0].id, tasks[1].id, later.id]);
+    await request(`${path}/tasks/${tasks[0].id}`, 'PATCH', { notes: 'Independent edit' });
+    assert.equal((await request(`/${original.id}/tasks`)).data[0].notes, '  α <b>\r\nsecond  ');
+
+    portable.project.archived = true;
+    const archived = (await importDocument('Archived copy', JSON.stringify(portable))).data;
+    const archivedTasks = (await request(`/${archived.id}/tasks`)).data;
+    assert.equal((await request(`/${archived.id}/tasks/${archivedTasks[1].id}`, 'PATCH', { deleted: false })).status, 409);
+    await request(`/${archived.id}`, 'PATCH', { archived: false });
+    await request(`/${archived.id}/tasks/${archivedTasks[1].id}`, 'PATCH', { deleted: false });
+    assert.equal((await request(`/${archived.id}`)).data.totalCount, 2);
+    const empty = (await importDocument('Empty copy', JSON.stringify({ ...portable, project: { ...portable.project, tasks: [] } }))).data;
+    assert.equal(empty.totalCount, 0);
+    const largeNotes = ' α😀<literal> '.repeat(10000) + '\r\nlast\rline ';
+    const largeDocument = structuredClone(portable);
+    largeDocument.project.tasks = [{ ...portable.project.tasks[0], notes: largeNotes }];
+    const largeResponse = await importDocument('Unicode copy', JSON.stringify(largeDocument));
+    assert.equal(largeResponse.status, 201);
+    const largePath = `/${largeResponse.data.id}/tasks`;
+    const normalizedNotes = largeNotes.replace(/\r\n?/g, '\n');
+    assert.equal((await request(largePath)).data[0].notes, normalizedNotes);
+    const snapshot = (await request('')).data;
+    const saved = (await request(`${path}/tasks`)).data;
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual((await request('')).data, snapshot);
+    assert.deepEqual((await request(`${path}/tasks`)).data, saved);
+    assert.deepEqual((await request(`/${empty.id}/tasks`)).data, []);
+    assert.equal((await request(largePath)).data[0].notes, normalizedNotes);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

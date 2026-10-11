@@ -1087,3 +1087,46 @@ for (const archived of [false, true]) {
     assert.equal(formWithLabel(reopened.app, 'Task search').children[1].value, '');
   });
 }
+
+test('home import labels, rejected-input retention, and successful navigation', async () => {
+  const app = new Node('main');
+  const writes = [];
+  const navigations = [];
+  let accepted = false;
+  runInNewContext(source, {
+    document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+    location: { pathname: '/', assign(path) { navigations.push(path); } },
+    async fetch(path, options) {
+      if (!options) return { ok: true, json: async () => [] };
+      writes.push({ path, body: JSON.parse(options.body) });
+      return { ok: accepted, json: async () => accepted ? { id: 42 } : { error: 'Invalid project JSON' } };
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const form = formWithLabel(app, 'Project JSON');
+  const [jsonLabel, jsonInput, nameLabel, nameInput, button] = form.children;
+  assert.equal(jsonInput.tag, 'textarea');
+  assert.equal(jsonLabel.htmlFor, jsonInput.id);
+  assert.equal(nameLabel.textContent, 'Imported project name');
+  assert.equal(nameLabel.htmlFor, nameInput.id);
+  assert.equal(button.textContent, 'Import project');
+  jsonInput.value = '{broken\nJSON';
+  nameInput.value = ' \t ';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  assert.equal(writes.length, 0);
+  nameInput.value = '  Imported  ';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Invalid project JSON');
+  assert.equal(jsonInput.value, '{broken\nJSON');
+  assert.equal(nameInput.value, '  Imported  ');
+  assert.equal(button.disabled, false);
+  assert.equal(app.querySelector('ul').children.length, 0);
+  assert.deepEqual(writes, [{ path: '/api/projects/import', body: { name: 'Imported', projectJson: '{broken\nJSON' } }]);
+  assert.deepEqual(navigations, []);
+  accepted = true;
+  jsonInput.value = '{"valid":"document"}';
+  await form.fire('submit');
+  assert.deepEqual(navigations, ['/projects/42']);
+  assert.equal(app.querySelector('[role="alert"]'), undefined);
+});
