@@ -155,7 +155,7 @@ test('archive migration, summaries, read-only tasks, restoration, and persistenc
     assert.equal((await post('/projects/legacy/restore')).status, 303);
     assert.doesNotMatch(await get('/?filter=Archived'), /data-testid="project-row"/);
     assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
-    assert.doesNotMatch(await get('/projects/legacy'), / disabled/);
+    assert.doesNotMatch((await get('/projects/legacy')).replace(/<form class="create task-move"[\s\S]*?<\/form>/g, ''), / disabled/);
     await post(taskPath, {});
     assert.match(await get('/'), /data-testid="project-summary">0\/2 completed/);
     await server.stop();
@@ -838,7 +838,102 @@ test('due ranges intersect filters, retain applied state through edits, and work
     assert.deepEqual(titles(await get(response.headers.get('location'))), ['End']);
     await post(`${path}/restore`);
     assert.deepEqual(titles(await get(filtered)), ['Renamed start']);
-    assert.doesNotMatch(await get(filtered), / disabled/);
+    assert.doesNotMatch((await get(filtered)).replace(/<form class="create task-move"[\s\S]*?<\/form>/g, ''), / disabled/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('moves append tasks, preserve data and filters, validate destinations, and persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const titles = (html) => [...html.matchAll(/<span>([^<]*)<\/span>/g)].map((match) => match[1]);
+    const taskPaths = (html) => [...html.matchAll(/action="([^\"]+\/tasks\/[a-zA-Z0-9-]+)"/g)].map((match) => match[1]);
+    const moveForm = (html) => html.match(/<form class="create task-move"[\s\S]*?<\/form>/)[0];
+    await post('/projects', { name: 'Source' });
+    const source = (await get('/')).match(/action="(\/projects\/[a-zA-Z0-9-]+)"/)[1];
+    await post(`${source}/tasks`, { title: 'Dated' });
+    await post(`${source}/tasks`, { title: 'Blank' });
+    await post(`${source}/tasks`, { title: 'Remaining' });
+    const [dated, blank, remaining] = taskPaths(await get(source));
+    assert.match(moveForm(await get(source)), /name="destination" disabled>[\s\S]*<button type="submit" disabled>Move task/);
+    assert.doesNotMatch(moveForm(await get(source)), /<option/);
+    for (const name of ['Destination', 'Third', 'Archived']) await post('/projects', { name });
+    const paths = [...(await get('/')).matchAll(/action="(\/projects\/[a-zA-Z0-9-]+)"/g)].map((match) => match[1]);
+    const [, destination, third, archived] = paths;
+    const destinationId = destination.split('/').at(-1);
+    await post(`${archived}/archive`);
+    await post(`${destination}/rename`, { name: '<Renamed>' });
+    const options = moveForm(await get(source));
+    assert.deepEqual([...options.matchAll(/<option value="([^\"]+)">([^<]*)<\/option>/g)].map((match) => match.slice(1)), [
+      [destinationId, '&lt;Renamed&gt;'], [third.split('/').at(-1), 'Third'],
+    ]);
+    await post(`${destination}/default-priority`, { priority: 'Low' });
+    await post(`${destination}/tasks`, { title: 'Existing one' });
+    await post(`${destination}/tasks`, { title: 'Existing two' });
+    await post(dated, { completed: '1' });
+    await post(`${dated}/priority`, { priority: 'High' });
+    await post(`${dated}/due-date`, { dueDate: '2025-03-01' });
+    await post(remaining, { completed: '1' });
+    await post(`${remaining}/priority`, { priority: 'High' });
+    await post(`${remaining}/due-date`, { dueDate: '2025-03-02' });
+    const state = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2025-03-01', dueThrough: '2025-03-03' };
+    const filtered = `${source}?${new URLSearchParams(state)}`;
+    assert.deepEqual(titles(await get(filtered)), ['Dated', 'Remaining']);
+    const before = await get(source);
+    for (const id of ['', 'missing', source.split('/').at(-1), archived.split('/').at(-1)]) {
+      assert.equal((await post(`${dated}/move`, { destination: id, ...state })).status, 422);
+      assert.equal(await get(source), before);
+    }
+    assert.equal((await post(`${dated.replace(source, third)}/move`, { destination: destinationId })).status, 404);
+    assert.equal((await post(`${source}/tasks/missing/move`, { destination: destinationId })).status, 404);
+    const response = await post(`${dated}/move`, { destination: destinationId, ...state });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), filtered);
+    assert.deepEqual(titles(await get(filtered)), ['Remaining']);
+    assert.deepEqual(titles(await get(source)), ['Blank', 'Remaining']);
+    let html = await get(destination);
+    assert.deepEqual(titles(html), ['Existing one', 'Existing two', 'Dated']);
+    assert.match(html, /aria-label="Complete Dated" checked/);
+    assert.match(html, /<option selected>High<\/option>/);
+    assert.match(html, /name="dueDate" type="text" value="2025-03-01"/);
+    const summaries = [...(await get('/')).matchAll(/data-testid="project-summary">([^<]+)/g)].map((match) => match[1]);
+    assert.deepEqual(summaries, ['1/2 completed', '1/3 completed', '0/0 completed']);
+    assert.equal((await post(`${blank}/move`, { destination: destinationId })).status, 303);
+    const movedBlank = blank.replace(source, destination);
+    assert.match((await get(destination)).match(new RegExp(`<form class="create task-due-date"[^>]*action="${movedBlank}/due-date"[\\s\\S]*?</form>`))[0], /name="dueDate" type="text" value=""/);
+    await post(`${destination}/tasks`, { title: 'Created after move' });
+    assert.deepEqual(titles(await get(destination)), ['Existing one', 'Existing two', 'Dated', 'Blank', 'Created after move']);
+    await post(`${destination}/archive`);
+    html = await get(destination);
+    assert.match(moveForm(html), /name="destination" disabled/);
+    assert.match(moveForm(html), /<button type="submit" disabled>Move task/);
+    assert.equal((await post(`${movedBlank}/move`, { destination: source.split('/').at(-1) })).status, 403);
+    assert.doesNotMatch(moveForm(await get(source)), /&lt;Renamed&gt;/);
+    await post(`${destination}/restore`);
+    assert.doesNotMatch(moveForm(await get(destination)), / disabled/);
+    const destinationBeforeRestart = await get(destination);
+    const sourceBeforeRestart = await get(filtered);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(destination), destinationBeforeRestart);
+    assert.equal(await get(filtered), sourceBeforeRestart);
+    assert.equal((await post(`${movedBlank}/move`, { destination: source.split('/').at(-1) })).status, 303);
+    assert.deepEqual(titles(await get(source)), ['Remaining', 'Blank']);
+    assert.deepEqual(titles(await get(destination)), ['Existing one', 'Existing two', 'Dated', 'Created after move']);
+    const movedDated = dated.replace(source, destination);
+    await post(`${movedDated}/move`, { destination: third.split('/').at(-1) });
+    assert.deepEqual(titles(await get(third)), ['Dated']);
+    assert.match(await get(third), /aria-label="Complete Dated" checked/);
+    assert.match(await get(third), /name="dueDate" type="text" value="2025-03-01"/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

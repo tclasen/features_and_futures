@@ -59,6 +59,13 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY position');
+// Moving assigns a fresh ordering position, while preserving the public task ID.
+// A single statement makes ownership and append order change atomically.
+const moveTask = database.prepare(`
+  UPDATE tasks SET project_id = ?, position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks)
+  WHERE project_id = ? AND id = ?
+`);
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -86,7 +93,7 @@ function renderFilteredProject(project, filter = 'All', error = '', priority = '
   const tasks = listTasks.all(project.id).filter((task) =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) && matchesDueRange(task.due_date, range));
-  return renderProject(project, tasks, filter, error, priority, range);
+  return renderProject(project, tasks, filter, error, priority, range, listDestinations.all(project.id));
 }
 
 function filteredProjectLocation(project, filter, priority, range = { from: '', through: '' }) {
@@ -235,7 +242,7 @@ const server = http.createServer(async (request, response) => {
       sendHtml(response, project ? 200 : 404, project ? renderFilteredProject(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter')), readDueRange(searchParams)) : renderNotFound());
       return;
     }
-    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority|due-date))?)?$/);
+    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority|due-date|move))?)?$/);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (!project) {
@@ -254,7 +261,14 @@ const server = http.createServer(async (request, response) => {
       }
       if (taskMatch[2]) {
         let result;
-        if (taskMatch[3] === 'rename') {
+        if (taskMatch[3] === 'move') {
+          const destination = findProject.get(form.get('destination') ?? '');
+          if (!destination || destination.archived || destination.id === project.id) {
+            sendHtml(response, 422, projectPage(project, filter, 'Choose an active destination project', priority));
+            return;
+          }
+          result = moveTask.run(destination.id, project.id, taskMatch[2]);
+        } else if (taskMatch[3] === 'rename') {
           const title = (form.get('title') ?? '').trim();
           if (!title) {
             sendHtml(response, 422, projectPage(project, filter, 'Task title is required', priority));

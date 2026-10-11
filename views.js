@@ -73,7 +73,8 @@ export function renderProjects(projects, filter = 'Active', error = '') {
   `);
 }
 
-export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }) {
+export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, destinations = []) {
+  const moveDisabled = project.archived || destinations.length === 0;
   const projectPath = `/projects/${escapeHtml(project.id)}`;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
       <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
@@ -150,6 +151,14 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
           <label for="task-due-date-${escapeHtml(task.id)}">Task due date</label>
           <input id="task-due-date-${escapeHtml(task.id)}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
+        <form class="create task-move" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/move">
+          ${filterFields}
+          <label for="destination-project-${escapeHtml(task.id)}">Destination project</label>
+          <select id="destination-project-${escapeHtml(task.id)}" name="destination"${moveDisabled ? ' disabled' : ''}>
+            ${destinations.map((destination) => `<option value="${escapeHtml(destination.id)}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
         </form>
         <form class="create task-rename" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/rename">
           ${filterFields}
