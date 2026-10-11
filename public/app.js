@@ -24,6 +24,24 @@ function showAlert(message) {
   alert.hidden = !message;
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
+function searchForm(kind, onSearch) {
+  const form = element('form', '', { class: 'search-form' });
+  const input = element('input', '', { id: `${kind}-search`, type: 'text', autocomplete: 'off' });
+  const controls = element('div', '', { class: 'controls' });
+  controls.append(input, element('button', `Search ${kind}s`, { type: 'submit' }));
+  form.append(element('label', `${kind === 'project' ? 'Project' : 'Task'} search`, { for: input.id }), controls);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    input.value = input.value.trim();
+    onSearch(asciiLower(input.value));
+  });
+  return form;
+}
+
 function validDueDate(value) {
   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -79,14 +97,20 @@ async function renderTasks(project) {
     element('label', 'Due through', { for: dueThrough.id }), dueThrough,
     element('button', 'Apply due range', { type: 'submit' }));
   const list = element('section', '', { 'aria-label': 'Tasks', class: 'tasks' });
-  app.append(form, element('p', '', { role: 'alert', hidden: '' }), filters, rangeForm, list);
+  const search = searchForm('task', query => {
+    appliedQuery = query;
+    drawTasks();
+  });
+  app.append(form, element('p', '', { role: 'alert', hidden: '' }), filters, rangeForm, search, list);
   let tasks = [];
   let destinations = [];
   let appliedFrom = '';
   let appliedThrough = '';
+  let appliedQuery = '';
   function drawTasks() {
     list.replaceChildren();
     for (const task of tasks) {
+      if (!asciiLower(task.title).includes(appliedQuery)) continue;
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       if (appliedFrom || appliedThrough) {
@@ -150,7 +174,7 @@ async function renderTasks(project) {
           }));
           showAlert('');
           drawTasks();
-          document.getElementById(`new-task-title-${task.id}`).focus();
+          document.getElementById(`new-task-title-${task.id}`)?.focus();
         } catch (error) { showAlert(error.message); }
         finally { renameButton.disabled = Boolean(project.archived); }
       });
@@ -342,12 +366,18 @@ async function render() {
   for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
   const filters = element('div', '', { class: 'filters' });
   filters.append(element('label', 'Project filter', { for: 'project-filter' }), filter);
-  app.append(form, alert, filters, list);
+  const search = searchForm('project', query => {
+    appliedQuery = query;
+    drawProjects();
+  });
+  app.append(form, alert, filters, search, list);
   let projects = [];
+  let appliedQuery = '';
   function drawProjects() {
     list.replaceChildren();
     for (const project of projects) {
-      if (Boolean(project.archived) === (filter.value === 'Archived')) {
+      if (Boolean(project.archived) === (filter.value === 'Archived') &&
+        asciiLower(project.name).includes(appliedQuery)) {
         list.append(projectRow(project, drawProjects));
       }
     }

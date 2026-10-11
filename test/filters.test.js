@@ -439,3 +439,163 @@ test('moves are disabled for archived sources and when no active destination exi
   const restored = await projectPage(false, 'Normal', undefined, [{ id: 2, name: 'Active', archived: 0 }]);
   assert.equal(restored.byId('destination-project-1').disabled, false);
 });
+
+test('task search intersects every filter, uses ASCII case only, and remains usable when archived', async () => {
+  for (const archived of [false, true]) {
+    const page = await projectPage(archived);
+    const search = page.byId('task-search');
+    const form = page.app.find(node => node.tag === 'form' && node.find(child => child.id === search.id));
+    assert.equal(search.attributes.type, 'text');
+    assert.equal(search.disabled, false);
+    assert.equal(search.value, '');
+    assert.equal(page.app.find(node => node.attributes.for === search.id).textContent, 'Task search');
+    assert.equal(form.find(node => node.tag === 'button').textContent, 'Search tasks');
+    const original = structuredClone(page.tasks);
+    search.value = '  oP  ';
+    await form.fire('submit');
+    assert.deepEqual(page.titles(), ['Low open', 'Normal open', 'High open']);
+    // Typing does not apply a new query until submitting.
+    search.value = 'completed';
+    await page.change('priority-filter', 'High');
+    assert.deepEqual(page.titles(), ['High open']);
+    page.byId('due-from').value = '2026-10-11';
+    await page.app.find(node => node.attributes.class === 'due-range-form').fire('submit');
+    assert.deepEqual(page.titles(), []);
+    await form.fire('submit');
+    assert.deepEqual(page.titles(), ['High completed']);
+    await page.change('task-filter', 'Open');
+    assert.deepEqual(page.titles(), []);
+    search.value = ' \t ';
+    await form.fire('submit');
+    assert.deepEqual(page.titles(), []);
+    await page.change('task-filter', 'Completed');
+    assert.deepEqual(page.titles(), ['High completed']);
+    assert.equal(page.byId('priority-filter').value, 'High');
+    assert.equal(page.byId('due-from').value, '2026-10-11');
+    assert.deepEqual(page.tasks, original);
+    assert.deepEqual(page.mutations, []);
+  }
+  const page = await projectPage();
+  page.byId('new-task-title-1').value = 'ÉCHO  Mixed';
+  await page.rows()[0].find(node => node.attributes.class === 'task-rename-form').fire('submit');
+  const form = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-search'));
+  for (const [query, expected] of [['écho', []], ['ÉcHo  mIX', ['ÉCHO  Mixed']], ['ÉCHO Mixed', []], ['', page.tasks.map(task => task.title)]]) {
+    page.byId('task-search').value = query;
+    await form.fire('submit');
+    assert.deepEqual(page.titles(), expected);
+  }
+});
+
+test('applied task search survives edits, creation, defaults, and movement and re-evaluates renames', async () => {
+  const page = await projectPage(false, 'Normal', undefined, [{ id: 2, name: 'Destination', archived: 0 }]);
+  const search = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-search'));
+  page.byId('task-search').value = 'HIGH';
+  await search.fire('submit');
+  await page.change('task-filter', 'Completed');
+  await page.change('priority-filter', 'High');
+  page.byId('due-from').value = '2026-10-11';
+  const range = page.app.find(node => node.attributes.class === 'due-range-form');
+  await range.fire('submit');
+  assert.deepEqual(page.titles(), ['High completed']);
+  page.byId('new-task-title-6').value = 'No longer matching';
+  await page.rows()[0].find(node => node.attributes.class === 'task-rename-form').fire('submit');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.app.querySelector('[role="alert"]').hidden, true);
+  page.byId('new-project-name').value = 'Renamed project';
+  await page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'new-project-name')).fire('submit');
+  await page.change('default-task-priority', 'High');
+  page.byId('task-title').value = 'High newly created';
+  await page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-title')).fire('submit');
+  assert.deepEqual(page.titles(), []);
+  await page.change('task-filter', 'Open');
+  page.byId('due-from').value = '';
+  await range.fire('submit');
+  assert.deepEqual(page.titles(), ['High open', 'High newly created']);
+  await page.change('task-priority-5', 'Low');
+  assert.deepEqual(page.titles(), ['High newly created']);
+  const checkbox = page.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(page.titles(), []);
+  await page.change('task-filter', 'Completed');
+  page.byId('task-due-date-7').value = '2026-10-12';
+  await page.rows()[0].find(node => node.attributes.class === 'task-due-form').fire('submit');
+  page.byId('due-from').value = '2026-10-12';
+  await range.fire('submit');
+  assert.deepEqual(page.titles(), ['High newly created']);
+  await page.rows()[0].find(node => node.attributes.class === 'task-move-form').fire('submit');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.byId('task-search').value, 'HIGH');
+  assert.equal(page.byId('task-filter').value, 'Completed');
+  assert.equal(page.byId('priority-filter').value, 'High');
+  assert.equal(page.byId('due-from').value, '2026-10-12');
+  assert.equal((await projectPage()).byId('task-search').value, '');
+});
+
+test('project search intersects archive state, preserves summaries and order, and resets on opening', async () => {
+  async function openList() {
+    const app = new Node('main');
+    const projects = [
+      { id: 1, name: 'Alpha  Team', archived: false, completed: 2, total: 3 },
+      { id: 2, name: 'ALPHA Team', archived: true, completed: 1, total: 4 },
+      { id: 3, name: 'Other', archived: false, completed: 0, total: 0 },
+      { id: 4, name: 'Last alpha  team', archived: false, completed: 5, total: 5 },
+      { id: 5, name: 'ÉCHO', archived: false, completed: 0, total: 0 },
+    ];
+    const location = { pathname: '/' };
+    const mutations = [];
+    runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
+      document: { querySelector: () => app, createElement: tag => new Node(tag) },
+      window: { location },
+      fetch: async (path, options) => {
+        let data = projects;
+        if (options?.method === 'PATCH') {
+          data = projects.find(project => project.id === Number(path.split('/').at(-1)));
+          const change = JSON.parse(options.body);
+          mutations.push(change);
+          Object.assign(data, change);
+        }
+        return { ok: true, json: async () => structuredClone(data) };
+      },
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    const byId = id => app.find(node => node.id === id);
+    const rows = () => app.find(node => node.attributes['aria-label'] === 'Projects').children;
+    const names = () => rows().map(row => row.children[0].textContent);
+    const form = app.find(node => node.tag === 'form' && node.find(child => child.id === 'project-search'));
+    const search = async query => { byId('project-search').value = query; await form.fire('submit'); };
+    return { app, byId, rows, names, form, search, projects, location, mutations };
+  }
+  const page = await openList();
+  assert.equal(page.byId('project-search').value, '');
+  assert.equal(page.app.find(node => node.attributes.for === 'project-search').textContent, 'Project search');
+  assert.equal(page.form.find(node => node.tag === 'button').textContent, 'Search projects');
+  await page.search('  ALpHa  ');
+  assert.deepEqual(page.names(), ['Alpha  Team', 'Last alpha  team']);
+  assert.deepEqual(page.rows().map(row => row.children[1].textContent), ['2/3 completed', '5/5 completed']);
+  const filter = page.byId('project-filter');
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.deepEqual(page.names(), ['ALPHA Team']);
+  await page.rows()[0].find(node => node.textContent === 'Restore project').fire('click');
+  assert.deepEqual(page.names(), []);
+  filter.value = 'Active';
+  await filter.fire('change');
+  assert.deepEqual(page.names(), ['Alpha  Team', 'ALPHA Team', 'Last alpha  team']);
+  await page.search('alpha  team');
+  assert.deepEqual(page.names(), ['Alpha  Team', 'Last alpha  team']);
+  await page.rows()[0].find(node => node.textContent === 'Archive project').fire('click');
+  assert.deepEqual(page.names(), ['Last alpha  team']);
+  await page.rows()[0].find(node => node.textContent === 'Open project').fire('click');
+  assert.equal(page.location.href, '/projects/4');
+  await page.search('écho');
+  assert.deepEqual(page.names(), []);
+  await page.search('Écho');
+  assert.deepEqual(page.names(), ['ÉCHO']);
+  await page.search(' \t ');
+  assert.deepEqual(page.names(), ['ALPHA Team', 'Other', 'Last alpha  team', 'ÉCHO']);
+  assert.deepEqual(page.mutations, [{ archived: false }, { archived: true }]);
+  const reopened = await openList();
+  assert.equal(reopened.byId('project-search').value, '');
+  assert.equal(reopened.byId('project-filter').value, 'Active');
+});

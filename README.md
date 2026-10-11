@@ -76,3 +76,14 @@ identity, title, completion, priority, and due date. The source page stays open
 with all filters retained, and both project summaries reflect the move.
 Archived projects cannot send or receive tasks. Move controls are disabled
 when the source is archived or no eligible destination exists.
+
+Use Project search and Search projects to match project names, together with
+Project filter. Use Task search and Search tasks to match task titles, together
+with completion, priority, and the applied due range. Searches trim surrounding
+query whitespace, preserve internal whitespace, and ignore ASCII letter case.
+Blank queries match everything allowed by the other filters. Editing or moving
+tasks retains the applied query and filters and immediately refreshes matching
+rows. Search also works in archived projects without enabling task edits.
+Opening either page starts with an empty search query; returning through
+Projects resets project search. Searches leave saved data and summary counts
+unchanged.
