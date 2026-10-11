@@ -1,8 +1,8 @@
-// Only ASCII letters are case-insensitive; other characters remain significant.
-function foldASCII(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+// Normalize only for matching; saved names and titles remain untouched.
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 export function matchesSearch(value, query) {
-  return foldASCII(value).includes(foldASCII(query.trim()));
+  return normalizeSearch(value).includes(normalizeSearch(query.trim()));
 }

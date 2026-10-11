@@ -386,10 +386,15 @@ async function searchTasks(f, query) {
   await f.app.querySelector('#task-search-form').fire('submit');
 }
 
-test('search uses trimmed substrings and ASCII-only case folding', () => {
+test('search collapses ASCII spaces and tabs with trimmed queries and ASCII-only case folding', () => {
   assert.ok(matchesSearch('One TWO  three', '  tWo  '));
   assert.ok(matchesSearch('One TWO  three', 'TWO  three'));
-  assert.ok(!matchesSearch('One TWO  three', 'TWO three'));
+  assert.ok(matchesSearch('One TWO  three', 'TWO three'));
+  assert.ok(matchesSearch('One TWO \t \tthree', '  two\t\tthree  '));
+  assert.ok(matchesSearch('One TWO three', 'two  \t three'));
+  for (const separator of ['\n', '\r', '\u00a0', '\u2003']) {
+    assert.ok(!matchesSearch(`One${separator}two`, 'one two'));
+  }
   assert.ok(matchesSearch('ÄBC', 'Äbc'));
   assert.ok(!matchesSearch('ÄBC', 'äbc'));
   assert.ok(matchesSearch('anything', '   '));
@@ -455,6 +460,27 @@ test('task search survives edits, creation, default changes, and movement', asyn
   assert.equal(f.app.querySelector('#due-from').value, '2025-01-01');
 });
 
+test('normalized task search retains filters and displays original titles after edits and clearing', async () => {
+  const f = await fixture();
+  const title = 'First  \t ARRIVAL';
+  const rename = f.rows()[0].children[2];
+  rename.children[1].value = title;
+  await rename.fire('submit');
+  await saveDate(f, 0, '2025-01-01');
+  await choose(f.priority, 'High');
+  await choose(f.completion, 'Open');
+  await applyRange(f, '2025-01-01', '2025-01-01');
+  await searchTasks(f, '  FIRST\t \tarrival  ');
+  assert.deepEqual(f.titles(), [title]);
+  assert.equal(f.rows()[0].children[1].attributes['aria-label'], `Complete ${title}`);
+  await searchTasks(f, '');
+  assert.deepEqual(f.titles(), [title]);
+  assert.equal(f.tasks[0].title, title);
+  assert.equal(f.priority.value, 'High');
+  assert.equal(f.completion.value, 'Open');
+  assert.equal(f.app.querySelector('#due-from').value, '2025-01-01');
+});
+
 test('archived task search remains usable and never writes task data', async () => {
   const f = await fixture(true);
   assert.ok(!f.app.querySelector('#task-search').disabled);
@@ -508,8 +534,8 @@ test('project search intersects archive filter, preserves summaries and resets o
   await choose(app.querySelector('#project-filter'), 'Active');
   assert.deepEqual(titles(), ['Alpha  ONE', 'Alpha two']);
   await search('alpha one');
-  assert.deepEqual(titles(), []);
-  await search('alpha  one');
+  assert.deepEqual(titles(), ['Alpha  ONE']);
+  await search('  alpha\t \tone  ');
   assert.deepEqual(titles(), ['Alpha  ONE']);
   await app.querySelector('#project-list').children[0].children[2].fire('click');
   assert.deepEqual(navigations, ['/projects/1']);
