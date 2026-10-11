@@ -59,3 +59,11 @@ tasks recover their remembered position there, even when several return in a
 different order. New tasks follow reserved positions of tasks currently away.
 Positions persist across restarts, project renaming, archival, and restoration.
 Moving retains the source page's filters and updates both project summaries.
+
+Project search and Search projects filter names within the selected Active or
+Archived list. Task search and Search tasks filter titles alongside completion,
+priority, and the applied due range. Searches match substrings ignoring ASCII
+letter case, trim surrounding query whitespace, and preserve internal whitespace.
+An empty query matches everything permitted by the other filters. Applied
+queries remain in effect during edits and filter changes; opening either page
+starts with an empty query. Archived projects still allow task searches.

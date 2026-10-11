@@ -1,4 +1,4 @@
-import { filterTasks, normalizeDueRange } from './task-filters.js';
+import { filterProjects, filterTasks, normalizeDueRange } from './task-filters.js';
 
 const app = document.getElementById('app');
 
@@ -83,6 +83,13 @@ async function renderProject(projectId) {
     </form>
     <p id="error" role="alert" hidden></p>
     <h2>Tasks</h2>
+    <form id="task-search-form">
+      <label for="task-search">Task search</label>
+      <div class="form-controls">
+        <input id="task-search" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </div>
+    </form>
     <label for="task-filter">Task filter</label>
     <select id="task-filter">
       <option value="all">All</option>
@@ -161,9 +168,10 @@ async function renderProject(projectId) {
   const dueFrom = document.getElementById('due-from');
   const dueThrough = document.getElementById('due-through');
   let dueRange = { from: '', through: '' };
+  let taskQuery = '';
   const list = document.getElementById('tasks');
   function drawTasks() {
-    const visible = filterTasks(tasks, filter.value, priorityFilter.value, dueRange);
+    const visible = filterTasks(tasks, filter.value, priorityFilter.value, dueRange, taskQuery);
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -337,6 +345,13 @@ async function renderProject(projectId) {
   }
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
+  document.getElementById('task-search-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const input = document.getElementById('task-search');
+    taskQuery = input.value.trim();
+    input.value = taskQuery;
+    drawTasks();
+  });
   document.getElementById('due-range-form').addEventListener('submit', event => {
     event.preventDefault();
     try {
@@ -388,6 +403,13 @@ async function render() {
     </form>
     <p id="error" role="alert" hidden></p>
     <h2>Projects</h2>
+    <form id="project-search-form">
+      <label for="project-search">Project search</label>
+      <div class="form-controls">
+        <input id="project-search" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </div>
+    </form>
     <label for="project-filter">Project filter</label>
     <select id="project-filter">
       <option value="active">Active</option>
@@ -398,8 +420,9 @@ async function render() {
   const list = document.getElementById('projects');
   const empty = document.getElementById('empty');
   const filter = document.getElementById('project-filter');
+  let projectQuery = '';
   function drawProjects() {
-    const visible = projects.filter(project => Boolean(project.archived) === (filter.value === 'archived'));
+    const visible = filterProjects(projects, filter.value, projectQuery);
     list.replaceChildren(...visible.map(project => projectRow(project, saved => {
       projects = projects.map(current => current.id === saved.id ? saved : current);
       drawProjects();
@@ -407,6 +430,13 @@ async function render() {
     empty.hidden = visible.length > 0;
   }
   filter.addEventListener('change', drawProjects);
+  document.getElementById('project-search-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const input = document.getElementById('project-search');
+    projectQuery = input.value.trim();
+    input.value = projectQuery;
+    drawProjects();
+  });
   drawProjects();
   app.querySelector('form').addEventListener('submit', async (event) => {
     event.preventDefault();
