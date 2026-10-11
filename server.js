@@ -55,6 +55,16 @@ const server = http.createServer(async (req, res) => {
     const rows = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, COALESCE(t.due_date,'') AS dueDate, COALESCE(t.notes,'') AS notes, t.deleted, p.id AS projectId, p.name AS projectName, p.archived FROM projects p JOIN tasks t ON t.project_id=p.id JOIN task_project_positions pos ON pos.task_id=t.id AND pos.project_id=p.id ORDER BY p.created_at,p.rowid,pos.position,t.created_at,t.rowid`).all();
     return json(200, rows.map(t => ({...t, completed:Boolean(t.completed), deleted:Boolean(t.deleted), archived:Boolean(t.archived)})));
   }
+  if (req.method === 'POST' && url.pathname === '/api/directory/bulk') {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    if (typeof body.completed !== 'boolean' || !Array.isArray(body.ids) || body.ids.some(id => typeof id !== 'string')) return json(400, { error: 'Invalid request' });
+    const update = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0 AND completed != ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)');
+    db.exec('BEGIN');
+    try { for (const id of new Set(body.ids)) update.run(body.completed ? 1 : 0, id, body.completed ? 1 : 0); db.exec('COMMIT'); }
+    catch (error) { db.exec('ROLLBACK'); throw error; }
+    return json(200, { status: 'ok' });
+  }
   if (req.method === 'GET' && url.pathname === '/api/projects') return json(200, getProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
   if (req.method === 'POST' && archiveMatch) {
