@@ -214,9 +214,13 @@ const page = `<!doctype html>
       const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
       for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
       priorityFilterLabel.append(priorityFilter);
+      const dueFrom = element('input', undefined, { type: 'text', 'aria-label': 'Due from', autocomplete: 'off' });
+      const dueThrough = element('input', undefined, { type: 'text', 'aria-label': 'Due through', autocomplete: 'off' });
+      const applyDueRange = element('button', 'Apply due range', { type: 'button' });
+      let appliedDueRange = { from: '', through: '' };
       const list = element('section', undefined, { class: 'project-list', 'aria-label': 'Tasks' });
       app.append(alert, renameForm, defaultPriorityLabel, form, controls, list);
-      controls.append(filterLabel, priorityFilterLabel);
+      controls.append(filterLabel, priorityFilterLabel, dueFrom, dueThrough, applyDueRange);
       let refreshSequence = 0;
       async function refresh() {
         const sequence = ++refreshSequence;
@@ -228,6 +232,9 @@ const page = `<!doctype html>
         for (const task of tasks) {
           if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
+          if (appliedDueRange.from && task.dueDate < appliedDueRange.from) continue;
+          if (appliedDueRange.through && task.dueDate > appliedDueRange.through) continue;
           const row = element('div', undefined, { class: 'task-row', 'data-testid': 'task-row' });
           const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': 'Complete ' + task.title });
           checkbox.checked = Boolean(task.completed);
@@ -290,6 +297,27 @@ const page = `<!doctype html>
       }
       filter.addEventListener('change', () => refresh().catch(showLoadError));
       priorityFilter.addEventListener('change', () => refresh().catch(showLoadError));
+      applyDueRange.addEventListener('click', async () => {
+        const fromValue = dueFrom.value.trim();
+        const throughValue = dueThrough.value.trim();
+        const from = fromValue ? canonicalDueDate(fromValue) : '';
+        const through = throughValue ? canonicalDueDate(throughValue) : '';
+        if (from === null || through === null) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          alert.hidden = false;
+          return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through';
+          alert.hidden = false;
+          return;
+        }
+        appliedDueRange = { from, through };
+        dueFrom.value = from;
+        dueThrough.value = through;
+        alert.hidden = true;
+        await refresh();
+      });
       defaultPriority.addEventListener('change', async () => {
         const value = defaultPriority.value;
         const result = await fetch('/api/projects/' + encodeURIComponent(id), {
@@ -326,7 +354,6 @@ const page = `<!doctype html>
         });
         if (!createResponse.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
         input.value = '';
-        filter.value = 'All';
         await refresh();
       });
       await refresh();
