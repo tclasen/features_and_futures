@@ -90,7 +90,23 @@ async function loadTasks(projectId) {
       const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
       await loadTasks(projectId);
     });
-    row.append(title, checkbox, renameInput, renameButton, priority);
+    const dueDate = document.createElement('input');
+    dueDate.type = 'text';
+    dueDate.setAttribute('aria-label', 'Task due date');
+    dueDate.value = task.due_date || '';
+    dueDate.disabled = checkbox.disabled;
+    const saveDate = document.createElement('button');
+    saveDate.type = 'button';
+    saveDate.textContent = 'Save due date';
+    saveDate.disabled = checkbox.disabled;
+    saveDate.addEventListener('click', async () => {
+      const alert = document.querySelector('#task-alert');
+      const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date: dueDate.value }) });
+      if (!response.ok) { alert.textContent = 'Due date must be a valid YYYY-MM-DD date'; alert.hidden = false; return; }
+      alert.hidden = true;
+      await loadTasks(projectId);
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDate);
     container.append(row);
   }
 }

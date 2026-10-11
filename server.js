@@ -19,11 +19,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+  due_date TEXT
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 const root = new URL('.', import.meta.url).pathname;
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -65,7 +67,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+    return json(res, 200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
   }
   if (tasksMatch && req.method === 'POST') {
     const projectId = Number(tasksMatch[1]);
@@ -91,6 +93,22 @@ const server = createServer(async (req, res) => {
     const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(Number(taskMatch[1]));
     if (!task) return json(res, 404, { error: 'Task not found' });
     if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
+    if (Object.hasOwn(data, 'due_date')) {
+      const raw = typeof data.due_date === 'string' ? data.due_date.trim() : '';
+      let dueDate = null;
+      if (raw) {
+        const match = raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const date = new Date(0);
+        date.setUTCHours(0, 0, 0, 0);
+        date.setUTCFullYear(year, month - 1, day);
+        if (year < 1 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        dueDate = raw;
+      }
+      db.prepare('UPDATE tasks SET due_date=? WHERE id=?').run(dueDate, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, due_date: dueDate });
+    }
     if (typeof data.priority === 'string') {
       if (!['Low', 'Normal', 'High'].includes(data.priority)) return json(res, 400, { error: 'Invalid priority' });
       db.prepare('UPDATE tasks SET priority=? WHERE id=?').run(data.priority, Number(taskMatch[1]));
