@@ -43,13 +43,18 @@ async function renderList() {
 }
 
 let projectListRequest = 0;
+const renderedProjectLists = new WeakMap();
 async function populateProjects(list, filter = 'Active') {
   const requestId = ++projectListRequest;
   const projects = await request('/api/projects');
   // Ignore responses from an earlier filter/action request so stale data cannot
   // replace the current list after a faster request has already completed.
   if (requestId !== projectListRequest) return;
-  list.replaceChildren(...projects.filter(project => Boolean(project.archived) === (filter === 'Archived')).map(project => {
+  const visibleProjects = projects.filter(project => Boolean(project.archived) === (filter === 'Archived'));
+  const signature = JSON.stringify(visibleProjects);
+  if (renderedProjectLists.get(list) === signature) return;
+  renderedProjectLists.set(list, signature);
+  list.replaceChildren(...visibleProjects.map(project => {
     const row = element('div', undefined, { 'data-testid': 'project-row' });
     const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary' });
     const open = element('button', 'Open project', { type: 'button' });
