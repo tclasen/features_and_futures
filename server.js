@@ -8,10 +8,11 @@ const root = dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || join(root, 'workboard.sqlite');
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
-db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 db.exec('PRAGMA foreign_keys = ON');
 const port = Number(process.env.PORT || 8080);
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
@@ -27,12 +28,12 @@ const server = http.createServer(async (req, res) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
-    const project = db.prepare('SELECT id, archived FROM projects WHERE id=?').get(projectId);
+    const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id=?').get(projectId);
     if (!project) return send(404, { error: 'Project not found' });
     if (req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id=? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (project.archived) return send(409, { error: 'Archived project' });
-      try { const data = await readBody(); if (typeof data.title !== 'string' || !data.title.trim()) return send(400, { error: 'Task title is required' }); const title = data.title.trim(); const result = db.prepare('INSERT INTO tasks(project_id,title) VALUES (?,?)').run(projectId, title); return send(201, { id: Number(result.lastInsertRowid), title, completed: false }); } catch { return send(400, { error: 'Invalid request' }); }
+      try { const data = await readBody(); if (typeof data.title !== 'string' || !data.title.trim()) return send(400, { error: 'Task title is required' }); const title = data.title.trim(); const result = db.prepare('INSERT INTO tasks(project_id,title,priority) VALUES (?,?,?)').run(projectId, title, project.default_priority); return send(201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority }); } catch { return send(400, { error: 'Invalid request' }); }
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -68,6 +69,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'PATCH' && projectMatch) {
     try {
       const data = await readBody();
+      if (typeof data.default_priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(data.default_priority)) return send(400, { error: 'Invalid priority' });
+        const result = db.prepare('UPDATE projects SET default_priority=? WHERE id=? AND archived=0').run(data.default_priority, Number(projectMatch[1]));
+        if (result.changes) return send(200, { default_priority: data.default_priority });
+        const project = db.prepare('SELECT id FROM projects WHERE id=?').get(Number(projectMatch[1]));
+        return project ? send(409, { error: 'Archived project' }) : send(404, { error: 'Project not found' });
+      }
       if (typeof data.name !== 'string' || !data.name.trim()) return send(400, { error: 'Project name is required' });
       const result = db.prepare('UPDATE projects SET name=? WHERE id=? AND archived=0').run(data.name.trim(), Number(projectMatch[1]));
       if (result.changes) return send(200, { name: data.name.trim() });
@@ -75,7 +83,7 @@ const server = http.createServer(async (req, res) => {
       return project ? send(409, { error: 'Archived project' }) : send(404, { error: 'Project not found' });
     } catch { return send(400, { error: 'Invalid request' }); }
   }
-  if (req.method === 'GET' && projectMatch) { const project = db.prepare('SELECT id, name, archived FROM projects WHERE id=?').get(Number(projectMatch[1])); return project ? send(200, { ...project, archived: Boolean(project.archived) }) : send(404, { error: 'Project not found' }); }
+  if (req.method === 'GET' && projectMatch) { const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id=?').get(Number(projectMatch[1])); return project ? send(200, { ...project, archived: Boolean(project.archived) }) : send(404, { error: 'Project not found' }); }
   if (req.method === 'GET') {
     const file = url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname) ? 'index.html' : url.pathname.slice(1);
     if (file.includes('..') || file.includes('\\')) return send(404, 'Not found', 'text/plain');

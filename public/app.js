@@ -78,6 +78,9 @@ async function showPage() {
   document.querySelector('#archived-notice').hidden = !project.archived;
   document.querySelector('#task-title').disabled = project.archived;
   document.querySelector('#task-form button').disabled = project.archived;
+  const defaultPriority = document.querySelector('#default-task-priority');
+  defaultPriority.value = project.default_priority || 'Normal';
+  defaultPriority.disabled = project.archived;
   await loadTasks();
 }
 
@@ -107,6 +110,10 @@ document.querySelector('#task-form').addEventListener('submit', async event => {
   const response = await fetch(`/api/projects/${activeProjectId}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
   if (!response.ok) { message.textContent = 'Task title is required'; message.hidden = false; return; }
   input.value = ''; message.hidden = true; await loadTasks();
+});
+document.querySelector('#default-task-priority').addEventListener('change', async event => {
+  const response = await fetch(`/api/projects/${activeProjectId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ default_priority: event.target.value }) });
+  if (!response.ok) { await showPage(); }
 });
 document.querySelector('#task-filter').addEventListener('change', loadTasks);
 document.querySelector('#priority-filter').addEventListener('change', loadTasks);
