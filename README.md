@@ -129,3 +129,13 @@ completion, explicit priorities, dates, notes (with LF line endings), and deleti
 state. Internal identities are always newly allocated. Deleted tasks retain their
 reserved positions for restoration and later moves/returns. Archived imports
 remain read-only until restored.
+
+Select `Task directory` on the home page to read tasks across projects. Each
+opening starts with Active project scope, All task and priority filters, and
+empty search and due range. Scope, live/deleted status, priority, inclusive date
+range and normalized title search intersect without changing saved data. Results
+follow project creation order and each project's stored task order, and show the
+original title, owner name, completion, priority, due date and literal notes.
+Directory rows contain no task editing controls. `Open project` opens the owner
+with default project filters, including archived owners; `Projects` returns home.
+Imported and upgraded tasks appear with their saved fields and public defaults.

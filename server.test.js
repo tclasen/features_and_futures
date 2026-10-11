@@ -1800,3 +1800,152 @@ test('import creates independent persistent projects with portable fields and re
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('directory intersects read-only filters, preserves literal fields, order, and saved data across restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title"[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
+    const snapshot = () => {
+      const db = new DatabaseSync(dbPath);
+      try { return ['projects', 'tasks', 'task_positions'].map((table) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()); }
+      finally { db.close(); }
+    };
+    await post('/projects', { name: 'First owner' });
+    await post('/projects', { name: 'Second owner' });
+    await post('/projects', { name: 'Archived owner' });
+    await post('/projects/1/tasks', { title: 'Needle  FIRST' });
+    await post('/projects/1/tasks', { title: 'Needle\t second' });
+    await post('/projects/1/tasks', { title: 'Undated' });
+    await post('/projects/2/tasks', { title: 'Needle third' });
+    await post('/projects/3/tasks', { title: 'Needle archived' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    const notes = '\n  literal 雪 <b>markup</b> &\n trailing  \t';
+    await post('/projects/1/tasks/1/notes', { notes });
+    await post('/projects/1/tasks/2/delete');
+    await post('/projects/3/archive');
+    // First arrival appends, and a return resumes the reserved position.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual(titles(await get('/directory')), ['Undated', 'Needle third', 'Needle  FIRST']);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    const document = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Portable', archived: false, defaultPriority: 'Low', tasks: [
+        { title: 'Imported live', completed: true, priority: 'Low', dueDate: '0001-01-01', notes: 'notes-only-match', deleted: false },
+        { title: 'Imported deleted', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: true },
+      ] },
+    };
+    await post('/projects/import', { json: JSON.stringify(document), name: 'Imported owner' });
+    const before = snapshot();
+    const home = await get('/');
+    assert.match(home, /action="\/directory"><button type="submit">Task directory/);
+    const initial = await get('/directory');
+    assert.deepEqual(titles(initial), ['Needle  FIRST', 'Undated', 'Needle third', 'Imported live']);
+    for (const [name, options] of [
+      ['scope', ['Active', 'Archived']], ['filter', ['All', 'Open', 'Completed', 'Deleted']],
+      ['priorityFilter', ['All', 'Low', 'Normal', 'High']],
+    ]) {
+      const select = initial.match(new RegExp('<select id="directory-' + name + '"[^>]*>([\\s\\S]*?)</select>'))[1];
+      assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]*)<\/option>/g)].map((m) => m[1]), options);
+      assert.ok(select.includes('<option selected>' + options[0]));
+    }
+    assert.match(initial, /data-testid="directory-project-name"[^>]*>First owner/);
+    assert.match(initial, /data-testid="directory-task-completion">Completed/);
+    assert.match(initial, /data-testid="directory-task-priority">High/);
+    assert.match(initial, /data-testid="directory-task-due-date">2024-02-29/);
+    assert.match(initial, /data-testid="directory-task-notes"[^>]*>\n  literal 雪 &lt;b&gt;markup&lt;\/b&gt; &amp;\n trailing  \t<\/div>/);
+    const rows = initial.slice(initial.indexOf('data-testid="directory-task-row"'));
+    assert.doesNotMatch(rows, /<(?:input|textarea|select)\b/);
+    assert.doesNotMatch(rows, /method="post"/);
+    assert.match(rows, /action="\/projects\/1"><button type="submit">Open project/);
+    assert.deepEqual(titles(await get('/directory?filter=Open')), ['Undated', 'Needle third']);
+    assert.deepEqual(titles(await get('/directory?filter=Completed')), ['Needle  FIRST', 'Imported live']);
+    assert.deepEqual(titles(await get('/directory?filter=Deleted')), ['Needle\t second', 'Imported deleted']);
+    assert.deepEqual(titles(await get('/directory?scope=Archived')), ['Needle archived']);
+    assert.deepEqual(titles(await get('/directory?scope=Archived&filter=Deleted')), []);
+    for (const query of ['notes-only-match', 'First owner', 'literal', '雪']) {
+      assert.deepEqual(titles(await get('/directory?searchQuery=' + encodeURIComponent(query))), []);
+    }
+    const selected = { scope: 'Active', filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', searchQuery: 'NEEDLE\t  FIRST' };
+    const selectedPath = '/directory?' + new URLSearchParams(selected);
+    assert.deepEqual(titles(await get(selectedPath)), ['Needle  FIRST']);
+    assert.deepEqual(titles(await get('/directory?dueFrom=2024-02-29')), ['Needle  FIRST']);
+    assert.deepEqual(titles(await get('/directory?dueThrough=2024-02-29')), ['Needle  FIRST', 'Imported live']);
+    const searchResponse = await post('/directory/search', { ...selected, query: '  needle\t FIRST  ' });
+    assert.equal(searchResponse.status, 303);
+    const location = new URL(searchResponse.headers.get('location'), app.url);
+    assert.equal(location.searchParams.get('searchQuery'), 'needle\t FIRST');
+    for (const key of ['filter', 'priorityFilter', 'dueFrom', 'dueThrough']) assert.equal(location.searchParams.get(key), selected[key]);
+    assert.deepEqual(titles(await get(location.pathname + location.search)), ['Needle  FIRST']);
+    for (const [from, through, message] of [
+      ['2023-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['0000-01-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-03-01', '2024-02-29', 'Due from must not be after Due through'],
+    ]) {
+      const response = await post('/directory/due-range', { ...selected, rangeFrom: from, rangeThrough: through });
+      assert.equal(response.status, 422);
+      const body = await response.text();
+      assert.ok(body.includes('role="alert">' + message));
+      assert.deepEqual(titles(body), ['Needle  FIRST']);
+      assert.match(body, /name="dueFrom" value="2024-02-29"/);
+      assert.match(body, /name="dueThrough" value="2024-02-29"/);
+      assert.match(body, /<option selected>Completed/);
+      assert.match(body, /<option selected>High/);
+    }
+    const rangeResponse = await post('/directory/due-range', { ...selected, rangeFrom: ' 0001-01-01 ', rangeThrough: ' 9999-12-31 ' });
+    const rangeLocation = new URL(rangeResponse.headers.get('location'), app.url);
+    assert.equal(rangeLocation.searchParams.get('dueFrom'), '0001-01-01');
+    assert.equal(rangeLocation.searchParams.get('dueThrough'), '9999-12-31');
+    assert.equal(rangeLocation.searchParams.get('filter'), 'Completed');
+    assert.equal(rangeLocation.searchParams.get('priorityFilter'), 'High');
+    assert.equal(rangeLocation.searchParams.get('searchQuery'), selected.searchQuery);
+    // Clearing the range includes undated tasks again without changing data.
+    const cleared = await post('/directory/due-range', { filter: 'All', rangeFrom: ' ', rangeThrough: '' });
+    assert.equal(cleared.headers.get('location'), '/directory');
+    assert.equal(await get('/directory'), initial);
+    assert.deepEqual(snapshot(), before);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(await get('/directory'), initial);
+    assert.deepEqual(snapshot(), before);
+    await post('/projects/1/tasks/3/delete');
+    assert.deepEqual(titles(await get('/directory?filter=Deleted')), ['Needle\t second', 'Undated', 'Imported deleted']);
+    await post('/projects/1/tasks/2/restore');
+    assert.deepEqual(titles(await get('/directory')), ['Needle  FIRST', 'Needle\t second', 'Needle third', 'Imported live']);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('directory includes upgraded tasks with public defaults without changing their order', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-upgrade-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Legacy');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'First', 1), (1, 'Second', 0);`);
+  db.close();
+  let app;
+  try {
+    app = await launch(dbPath);
+    const html = await (await fetch(app.url + '/directory')).text();
+    assert.deepEqual([...html.matchAll(/data-testid="directory-task-title"[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]), ['First', 'Second']);
+    assert.equal([...html.matchAll(/data-testid="directory-task-priority">Normal/g)].length, 2);
+    assert.equal([...html.matchAll(/data-testid="directory-task-due-date"><\/p>/g)].length, 2);
+    assert.equal([...html.matchAll(/data-testid="directory-task-notes"[^>]*><\/div>/g)].length, 2);
+    assert.doesNotMatch(await (await fetch(app.url + '/directory?filter=Deleted')).text(), /data-testid="directory-task-row"/);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
