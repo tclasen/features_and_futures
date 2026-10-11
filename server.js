@@ -66,8 +66,8 @@ function validDate(value) {
   return day <= days[month - 1];
 }
 
-function send(response, status, body, type = 'application/json; charset=utf-8') {
-  response.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+function send(response, status, body, type = 'application/json; charset=utf-8', downloadName = null) {
+  response.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', ...(downloadName ? { 'Content-Disposition': `attachment; filename="${downloadName}"` } : {}) });
   response.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
 }
 
@@ -215,6 +215,26 @@ const server = createServer(async (request, response) => {
     if (typeof data.archived !== 'boolean') return send(response, 400, { error: 'Invalid archive state' });
     updateArchive.run(data.archived ? 1 : 0, id);
     return send(response, 200, { ok: true });
+  }
+  const exportRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
+  if (request.method === 'GET' && exportRoute) {
+    const projectId = decodeURIComponent(exportRoute[1]);
+    const project = findProject.get(projectId);
+    if (!project) return send(response, 404, { error: 'Project not found' });
+    const tasks = listTasks.all(projectId).map(task => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: String(task.notes || '').replace(/\\r\\n?/g, '\\n'),
+      deleted: Boolean(task.deleted)
+    }));
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority || 'Normal', tasks }
+    };
+    return send(response, 200, document, 'application/json; charset=utf-8', 'workboard-project.json');
   }
   const detail = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
   if (request.method === 'GET' && detail) {
