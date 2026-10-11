@@ -13,6 +13,7 @@ const taskForm = document.querySelector('#create-task-form');
 const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const taskContainer = document.querySelector('#tasks');
 const archivedNotice = document.querySelector('#archived-notice');
 let activeProjectId = null;
@@ -64,10 +65,15 @@ async function renderRoute() {
   if (!match) {
     listSection.hidden = false;
     detailSection.hidden = true;
+    activeProjectId = null;
     await renderProjects();
     return;
   }
   const project = await request(`/api/projects/${match[1]}`);
+  if (activeProjectId !== match[1]) {
+    taskFilter.value = 'All';
+    priorityFilter.value = 'All';
+  }
   activeProjectId = match[1];
   activeProjectArchived = Boolean(project.archived);
   detailTitle.textContent = project.name;
@@ -87,7 +93,8 @@ async function renderTasks() {
   const tasks = await request(`/api/projects/${activeProjectId}/tasks`);
   const visibleTasks = tasks.filter((task) => taskFilter.value === 'All'
     || (taskFilter.value === 'Open' && !task.completed)
-    || (taskFilter.value === 'Completed' && task.completed));
+    || (taskFilter.value === 'Completed' && task.completed))
+    .filter((task) => priorityFilter.value === 'All' || task.priority === priorityFilter.value);
   taskContainer.replaceChildren(...visibleTasks.map((task) => {
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
@@ -129,6 +136,7 @@ async function renderTasks() {
           method: 'PATCH', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ priority: priority.value }),
         });
+        await renderTasks();
       } catch (error) { showTaskError(error); }
     });
     priorityLabel.append(priority);
@@ -238,6 +246,7 @@ taskForm.addEventListener('submit', async (event) => {
   } catch (error) { showTaskError(error); }
 });
 taskFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
+priorityFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
 projectFilter.addEventListener('change', () => renderProjects().catch(showError));
 window.addEventListener('popstate', () => renderRoute().catch(showError));
 renderRoute().catch(showError);
