@@ -94,6 +94,14 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
     }
   }
+  const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (taskRenameMatch && request.method === 'PATCH') {
+    const body = await readBody(request);
+    const title = typeof body?.title === 'string' ? body.title.trim() : '';
+    if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+    const result = db.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(title, Number(taskRenameMatch[1]));
+    return result.changes ? sendJson(response, 200, { ok: true, title }) : sendJson(response, 404, { error: 'Task not found or project archived' });
+  }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
     const body = await readBody(request);
