@@ -18,6 +18,10 @@ function asciiLower(value) {
   return value.replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
 }
 
+function normalizeSearch(value) {
+  return asciiLower(value).replace(/[ \t]+/g, ' ');
+}
+
 async function renderList() {
   let appliedSearch = '';
   app.replaceChildren();
@@ -69,7 +73,7 @@ async function renderList() {
     const projects = await request('/api/projects');
     list.replaceChildren();
     for (const project of projects.filter((item) => Boolean(item.archived) === (filter.value === 'archived') &&
-      asciiLower(item.name).includes(asciiLower(appliedSearch)))) {
+      normalizeSearch(item.name).includes(normalizeSearch(appliedSearch)))) {
     const row = element('article', 'project-row');
     row.dataset.testid = 'project-row';
     row.append(element('span', 'project-name', project.name));
@@ -313,7 +317,7 @@ async function renderProject(id, viewState = {}) {
     const visible = tasks.filter((task) =>
       (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed)) &&
       (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
-      asciiLower(task.title).includes(asciiLower(appliedTaskSearch)) &&
+      normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch)) &&
       ((!appliedRange.from && !appliedRange.through) || (Boolean(task.dueDate) &&
         (!appliedRange.from || task.dueDate >= appliedRange.from) &&
         (!appliedRange.through || task.dueDate <= appliedRange.through))));
