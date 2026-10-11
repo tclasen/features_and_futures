@@ -43,7 +43,7 @@ test('search composes with filters, folds only ASCII, retains edit state, and re
     await post('/projects/2/archive');
     assert.deepEqual(rowNames(await list({ search: '  ALPHA  ' }), 'project'), ['Alpha One']);
     assert.deepEqual(rowNames(await list({ filter: 'Archived', search: 'alpha' }), 'project'), ['ALPHA  Two']);
-    assert.deepEqual(rowNames(await list({ filter: 'Archived', search: 'alpha two' }), 'project'), []);
+    assert.deepEqual(rowNames(await list({ filter: 'Archived', search: 'alpha two' }), 'project'), ['ALPHA  Two']);
     assert.deepEqual(rowNames(await list({ search: 'älpha' }), 'project'), []);
     assert.deepEqual(rowNames(await list({ search: '   ' }), 'project'), ['Alpha One', 'Beta', 'Älpha']);
     let html = await list({ search: 'alpha' });
@@ -66,7 +66,7 @@ test('search composes with filters, folds only ASCII, retains edit state, and re
         assert.match(form[0], /name="dueFrom" value="2024-02-29"/);
       }
     }
-    assert.deepEqual(rowNames(await get('/projects/1?search=alpha%20second'), 'task'), []);
+    assert.deepEqual(rowNames(await get('/projects/1?search=alpha%20second'), 'task'), ['alpha  second']);
     assert.deepEqual(rowNames(await get('/projects/1?search=%C3%A4lpha'), 'task'), []);
     assert.deepEqual(rowNames(await get('/projects/1?search=alpha'), 'task'), ['Alpha first', 'alpha  second']);
     const apply = await fetch(`${server.url}/projects/1/due-range?${new URLSearchParams({ ...state, from: '2024-02-29', through: '2024-02-29' })}`, { redirect: 'manual' });
@@ -111,6 +111,46 @@ test('search composes with filters, folds only ASCII, retains edit state, and re
     assert.deepEqual(rowNames(html, 'task'), ['Alpha renamed', 'alpha  second', 'Beta', 'ÄLPHA', 'Alpha new']);
     assert.match(html, /action="\/" method="get"><button type="submit">Projects/);
     assert.match(await get('/'), /id="project-search" name="search" type="text" value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('spaces and tabs normalize only for matching, including after restart and archive', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-spaces-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await start(databasePath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = (path, data = {}) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(data), redirect: 'manual',
+    });
+    const projectName = 'AlPhA \t  Team';
+    const title = 'FiRsT\t \t  Task';
+    await post('/projects', { name: projectName });
+    await post('/projects/1/tasks', { title });
+    // Other internal whitespace and non-ASCII case must not normalize.
+    await post('/projects', { name: 'Alpha\u00a0Team' });
+    await post('/projects/1/tasks', { title: 'First\u00a0Task' });
+    const listPath = '/?' + new URLSearchParams({ search: ' \tALPHA\t \tTEAM  ' });
+    const taskPath = '/projects/1?' + new URLSearchParams({ search: '  FIRST  \tTASK\t ' });
+    const check = async () => {
+      assert.deepEqual(rowNames(await get(listPath), 'project'), [projectName]);
+      assert.deepEqual(rowNames(await get(taskPath), 'task'), [title]);
+      assert.deepEqual(rowNames(await get('/'), 'project'), [projectName, 'Alpha\u00a0Team']);
+      assert.deepEqual(rowNames(await get('/projects/1'), 'task'), [title, 'First\u00a0Task']);
+    };
+    await check();
+    await server.stop();
+    server = await start(databasePath);
+    await check();
+    await post('/projects/1/archive');
+    assert.deepEqual(rowNames(await get(listPath + '&filter=Archived'), 'project'), [projectName]);
+    assert.deepEqual(rowNames(await get(taskPath), 'task'), [title]);
+    await post('/projects/1/restore');
+    await check();
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

@@ -146,10 +146,11 @@ function rangeError(range) {
   return '';
 }
 
-// Fold ASCII letters only; non-ASCII characters and internal whitespace are significant.
+// Normalize only for matching; keep stored and displayed names/titles unchanged.
 function searchMatches(value, query) {
-  const fold = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
-  return fold(value).includes(fold(query));
+  const normalize = text => text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function searchQuery(params) {
