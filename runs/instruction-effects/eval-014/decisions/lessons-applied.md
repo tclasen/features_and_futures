@@ -13,3 +13,5 @@ Closed-prefix verification: L062 records two preserved PM controller adaptation 
 L062 adoption verified: `scripts/verify-closed-prefix.py` uses immutable closed-round audit inputs and derived attempt counts. The two-round actual restore and three no-overwrite/run/path guards pass; evidence is `preflight/originals-closed-rounds-002-1319100e879c20a6`. Use this parameterized control at subsequent checkpoints.
 
 L026 reverified through task009: both retained infrastructure originals restore independently; request009/b010/attempt001 has HTTP200 and missing terminal usage, with cause unknown. Preserve unknown expenditure and original attempt exposure under the frozen fresh-context recovery policy. Evidence: `preflight/incident-audits/verified-015af1904e129de6.json`.
+
+L060 prospective30 fixture closed: eight full99 variants and sixteen synthetic lifecycle probes pass with exact input closure; ten positive and ten genuine-fault controls plus forty phase listings are verified. `research-v014/decisions/next-round-preparation/readiness-002.json` records remaining common020/readiness/inspection and per-round native gates. Future21–30 remain unfrozen and undispatched.
