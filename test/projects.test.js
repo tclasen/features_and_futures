@@ -3,10 +3,17 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: validation, ownership, completion, routing, and restart persistence', async () => {
+test('projects and tasks: validation, ownership, completion, archive, summaries, and restart persistence', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
+  // Start with the previous schema to exercise the archive-column migration.
+  const legacy = new DatabaseSync(`${directory}/projects.sqlite`);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));`);
+  legacy.close();
   let child;
   let origin;
   async function start() {
@@ -44,6 +51,9 @@ test('projects and tasks: validation, ownership, completion, routing, and restar
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
   });
   const tasks = async projectId => (await get(`/api/projects/${projectId}/tasks`)).json();
+  const archiveProject = (projectId, archived) => fetch(`${origin}/api/projects/${projectId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
+  });
   try {
     await start();
     const health = await get('/health');
@@ -60,6 +70,9 @@ test('projects and tasks: validation, ownership, completion, routing, and restar
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, 0);
+    assert.equal(first.completed, 0);
+    assert.equal(first.total, 0);
     const second = await (await create('Second project')).json();
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
@@ -96,6 +109,18 @@ test('projects and tasks: validation, ownership, completion, routing, and restar
     firstTask = await completedResponse.json();
     assert.equal(firstTask.completed, true);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    Object.assign(first, { total: 2, completed: 1 });
+    Object.assign(second, { total: 1 });
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    assert.equal((await archiveProject(first.id, 'true')).status, 400);
+    assert.equal((await archiveProject(999999, true)).status, 404);
+    const archivedResponse = await archiveProject(first.id, true);
+    assert.equal(archivedResponse.status, 200);
+    first.archived = 1;
+    assert.deepEqual(await archivedResponse.json(), first);
+    assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
+    assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     await start();
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
@@ -103,12 +128,19 @@ test('projects and tasks: validation, ownership, completion, routing, and restar
     assert.equal((await get(`/projects/${first.id}`)).status, 200);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     assert.deepEqual(await tasks(second.id), [otherTask]);
+    assert.equal((await createTask(first.id, 'Still blocked after restart')).status, 409);
+    const restoredResponse = await archiveProject(first.id, false);
+    assert.equal(restoredResponse.status, 200);
+    first.archived = 0;
+    assert.deepEqual(await restoredResponse.json(), first);
     const reopenedResponse = await completeTask(first.id, firstTask.id, false);
     assert.equal(reopenedResponse.status, 200);
     firstTask = await reopenedResponse.json();
     assert.equal(firstTask.completed, false);
+    first.completed = 0;
     await stop();
     await start();
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     const thirdTask = await (await createTask(first.id, 'Third task')).json();
     assert.ok(thirdTask.id > otherTask.id);
@@ -117,6 +149,50 @@ test('projects and tasks: validation, ownership, completion, routing, and restar
     assert.ok(third.id > second.id);
   } finally {
     await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('migration preserves existing project IDs, tasks, and completion state', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data/migration-'));
+  const dbPath = `${directory}/legacy.sqlite`;
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));
+    INSERT INTO projects VALUES (42, 'Existing project');
+    INSERT INTO tasks VALUES (71, 42, 'Existing completed task', 1);
+    INSERT INTO tasks VALUES (72, 42, 'Existing open task', 0);`);
+  legacy.close();
+  const child = spawn(process.execPath, ['server.js'], {
+    env: { ...process.env, PORT: '0', DB_PATH: dbPath }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  try {
+    const origin = await new Promise((resolveReady, reject) => {
+      let output = '';
+      const timeout = setTimeout(() => reject(new Error('Server startup timed out')), 5000);
+      child.once('error', error => { clearTimeout(timeout); reject(error); });
+      child.once('exit', code => { clearTimeout(timeout); reject(new Error(`Server exited: ${code}`)); });
+      child.stdout.on('data', chunk => {
+        output += chunk;
+        const match = output.match(/listening on port (\d+)/);
+        if (match) { clearTimeout(timeout); resolveReady(`http://127.0.0.1:${match[1]}`); }
+      });
+    });
+    assert.deepEqual(await (await fetch(`${origin}/api/projects`)).json(), [
+      { id: 42, name: 'Existing project', archived: 0, total: 2, completed: 1 },
+    ]);
+    assert.deepEqual(await (await fetch(`${origin}/api/projects/42/tasks`)).json(), [
+      { id: 71, title: 'Existing completed task', completed: true },
+      { id: 72, title: 'Existing open task', completed: false },
+    ]);
+  } finally {
+    if (child.exitCode === null) {
+      const exited = new Promise(resolveExit => child.once('exit', resolveExit));
+      child.kill('SIGTERM');
+      await exited;
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });
