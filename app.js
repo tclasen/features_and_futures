@@ -199,7 +199,7 @@ async function refreshTasks() {
       priority.append(option);
     }
     priority.value = task.priority;
-    priority.disabled = isDeleted;
+    priority.disabled = activeProjectArchived || isDeleted;
     priority.addEventListener('change', async () => {
       const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
         method: 'PATCH',
