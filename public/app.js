@@ -34,6 +34,18 @@ async function loadProjects() {
   }
 }
 
+let appliedDueRange = { from: '', through: '' };
+
+function validCalendarDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 async function loadTasks(projectId) {
   const response = await fetch(`/api/projects/${projectId}/tasks`);
   if (!response.ok) return;
@@ -45,6 +57,11 @@ async function loadTasks(projectId) {
   for (const task of tasks) {
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+    if (appliedDueRange.from || appliedDueRange.through) {
+      if (!task.due_date) continue;
+      if (appliedDueRange.from && task.due_date < appliedDueRange.from) continue;
+      if (appliedDueRange.through && task.due_date > appliedDueRange.through) continue;
+    }
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -114,6 +131,10 @@ async function loadTasks(projectId) {
 async function render() {
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (match) {
+    appliedDueRange = { from: '', through: '' };
+    document.querySelector('#due-from').value = '';
+    document.querySelector('#due-through').value = '';
+    document.querySelector('#range-alert').hidden = true;
     const response = await fetch(`/api/projects/${match[1]}`);
     if (response.ok) {
       const project = await response.json();
@@ -173,6 +194,26 @@ document.querySelector('#default-task-priority').addEventListener('change', asyn
   if (!match) return;
   const response = await fetch(`/api/projects/${match[1]}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_priority: event.target.value }) });
   if (!response.ok) render();
+});
+document.querySelector('#due-range-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const alert = document.querySelector('#range-alert');
+  const from = document.querySelector('#due-from').value.trim();
+  const through = document.querySelector('#due-through').value.trim();
+  if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+    alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+    alert.hidden = false;
+    return;
+  }
+  if (from && through && from > through) {
+    alert.textContent = 'Due from must not be after Due through';
+    alert.hidden = false;
+    return;
+  }
+  alert.hidden = true;
+  appliedDueRange = { from, through };
+  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+  if (match) await loadTasks(match[1]);
 });
 document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
