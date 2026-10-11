@@ -23,7 +23,7 @@ npm test
 ```
 
 Each project page supports task creation, completion checkboxes, and an All/Open/Completed
-filter. A Priority filter offers All, Low, Normal, and High, initially All. Tasks must
+filter for live tasks, plus a Deleted option. A Priority filter offers All, Low, Normal, and High, initially All. Tasks must
 match both filters and remain in creation order. Changing either filter or editing
 a task keeps both selections; completion and priority edits immediately refresh the
 matching rows. Both filters work in archived projects and leave summary counts unchanged.
@@ -31,7 +31,7 @@ New tasks are open, and both project names and task titles are trimmed.
 The project list starts with Active projects and can show Archived projects. Archive
 and restore preserve tasks; archived project pages allow viewing and filtering but
 disable task creation and completion changes. Each project row summarizes completion
-across all its tasks.
+across all its live tasks.
 
 Active project pages provide New project name and Rename project controls. Renaming
 trims the name and preserves the project's URL, creation order, tasks, and completion
@@ -133,3 +133,15 @@ add empty notes without changing existing task fields or remembered positions.
 Notes checks cover migration, verbatim text, clearing, independent task data,
 filter retention, search exclusion, movement, return order, archive/restore, and
 process restarts.
+
+Each live task provides Delete task; deleted tasks appear only under Deleted and
+provide Restore task. Deletion preserves all saved fields, ownership, and remembered
+positions while excluding the task from completion summaries. Restoration reuses
+the reserved position, including before tasks created later. Both actions retain
+search and all filters. Deleted tasks show their saved fields with editing and
+moving disabled until restored. Archived projects disable deletion and restoration
+while allowing filtered reading. Database upgrades mark earlier tasks live; deletion
+state persists through reloads, restarts, and project archival/restoration.
+Deletion checks cover migration, reserved ordering, summaries, all saved fields,
+filter retention, disabled editing, archived restrictions, moves after restoration,
+and server restarts.

@@ -1265,3 +1265,61 @@ test('notes save verbatim, retain intersecting filters, exclude notes from searc
   assert.equal(restoredNotes.children[0].value, tasks[0].notes);
   assert.ok(restoredNotes.children.every(control => !control.disabled));
 });
+
+test('deletion retains filters, deleted rows are read-only, and restoration recovers live order', async () => {
+  const projects = [
+    { id: 'a', name: 'Source', archived: false, default_task_priority: 'Normal' },
+    { id: 'b', name: 'Destination', archived: false },
+  ];
+  const tasks = ['Alpha first', 'Alpha second', 'Other'].map((title, i) => ({
+    id: String(i), title, completed: i === 0, priority: 'High',
+    due_date: '2024-02-29', notes: '  Saved\nnotes  ', deleted: false,
+  }));
+  const original = structuredClone(tasks);
+  const { element, search } = await searchApp('/projects/a', projects, tasks);
+  const rows = () => element('#task-list').children;
+  const filter = async value => {
+    element('#task-filter').value = value;
+    await element('#task-filter').dispatch('change');
+  };
+  await search('task', 'alpha');
+  element('#priority-filter').value = 'High';
+  await element('#priority-filter').dispatch('change');
+  element('#due-from').value = '2024-02-29';
+  element('#due-through').value = '2024-02-29';
+  await element('#due-range-form').dispatch('submit');
+  assert.equal(rows()[0].children[7].textContent, 'Delete task');
+  await rows()[0].children[7].dispatch('click');
+  assert.deepEqual(rows().map(row => row.children[1].textContent), ['Alpha second']);
+  for (const value of ['all', 'open', 'completed']) {
+    await filter(value);
+    assert.ok(rows().every(row => row.children[1].textContent !== 'Alpha first'));
+  }
+  await filter('deleted');
+  assert.equal(rows().length, 1);
+  const row = rows()[0];
+  assert.equal(row.children[7].textContent, 'Restore task');
+  assert.equal(row.children[6].children[0].value, original[0].notes);
+  for (const index of [0, 3]) assert.equal(row.children[index].disabled, true);
+  for (const index of [2, 4, 5, 6]) {
+    assert.ok(row.children[index].children.every(control => control.disabled));
+  }
+  await row.children[7].dispatch('click');
+  assert.equal(rows().length, 0);
+  assert.equal(element('#task-filter').value, 'deleted');
+  assert.equal(element('#priority-filter').value, 'High');
+  assert.equal(element('#due-from').value, '2024-02-29');
+  assert.equal(element('#due-through').value, '2024-02-29');
+  assert.equal(element('#task-search').value, 'alpha');
+  await filter('all');
+  assert.deepEqual(rows().map(row => row.children[1].textContent), ['Alpha first', 'Alpha second']);
+  assert.deepEqual(tasks, original);
+  projects[0].archived = true;
+  tasks[0].deleted = true;
+  const archived = await searchApp('/projects/a', projects, tasks);
+  archived.element('#task-filter').value = 'deleted';
+  await archived.element('#task-filter').dispatch('change');
+  assert.equal(archived.element('#task-list').children[0].children[7].disabled, true);
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<option value="completed">Completed<\/option>\s*<option value="deleted">Deleted<\/option>/);
+});

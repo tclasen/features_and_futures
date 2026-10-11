@@ -174,6 +174,8 @@ function showTaskAlert(message) {
 function renderTasks() {
   taskList.replaceChildren();
   for (const task of tasks) {
+    if (Boolean(task.deleted) !== (taskFilter.value === 'deleted')) continue;
+    const readOnly = archived || Boolean(task.deleted);
     if (!matchesSearch(task.title, appliedTaskQuery)) continue;
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
@@ -189,11 +191,12 @@ function renderTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
-    checkbox.disabled = archived;
+    checkbox.disabled = readOnly;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     const title = document.createElement('span');
     title.textContent = task.title;
     checkbox.addEventListener('change', async () => {
+      if (readOnly) return;
       checkbox.disabled = true;
       showTaskAlert('');
       try {
@@ -208,7 +211,7 @@ function renderTasks() {
         checkbox.checked = task.completed;
         showTaskAlert(error.message);
       } finally {
-        checkbox.disabled = false;
+        checkbox.disabled = readOnly;
       }
     });
     const taskRenameForm = document.createElement('form');
@@ -217,14 +220,14 @@ function renderTasks() {
     const taskRenameInput = document.createElement('input');
     taskRenameInput.type = 'text';
     taskRenameInput.setAttribute('aria-label', 'New task title');
-    taskRenameInput.disabled = archived;
+    taskRenameInput.disabled = readOnly;
     const taskRenameButton = document.createElement('button');
     taskRenameButton.type = 'submit';
     taskRenameButton.textContent = 'Rename task';
-    taskRenameButton.disabled = archived;
+    taskRenameButton.disabled = readOnly;
     taskRenameForm.addEventListener('submit', async event => {
       event.preventDefault();
-      if (archived) return;
+      if (readOnly) return;
       const newTitle = taskRenameInput.value.trim();
       if (!newTitle) {
         showTaskAlert('Task title is required');
@@ -247,14 +250,14 @@ function renderTasks() {
       } catch (error) {
         showTaskAlert(error.message);
       } finally {
-        taskRenameButton.disabled = archived;
-        taskRenameInput.disabled = archived;
+        taskRenameButton.disabled = readOnly;
+        taskRenameInput.disabled = readOnly;
       }
     });
     taskRenameForm.append(taskRenameInput, taskRenameButton);
     const priority = document.createElement('select');
     priority.setAttribute('aria-label', 'Task priority');
-    priority.disabled = archived;
+    priority.disabled = readOnly;
     for (const value of ['Low', 'Normal', 'High']) {
       const option = document.createElement('option');
       option.value = value;
@@ -263,7 +266,7 @@ function renderTasks() {
     }
     priority.value = task.priority;
     priority.addEventListener('change', async () => {
-      if (archived) return;
+      if (readOnly) return;
       priority.disabled = true;
       showTaskAlert('');
       try {
@@ -278,7 +281,7 @@ function renderTasks() {
         showTaskAlert(error.message);
       } finally {
         priority.value = task.priority;
-        priority.disabled = archived;
+        priority.disabled = readOnly;
       }
     });
     const dueDateForm = document.createElement('form');
@@ -288,14 +291,14 @@ function renderTasks() {
     dueDateInput.type = 'text';
     dueDateInput.setAttribute('aria-label', 'Task due date');
     dueDateInput.value = task.due_date || '';
-    dueDateInput.disabled = archived;
+    dueDateInput.disabled = readOnly;
     const dueDateButton = document.createElement('button');
     dueDateButton.type = 'submit';
     dueDateButton.textContent = 'Save due date';
-    dueDateButton.disabled = archived;
+    dueDateButton.disabled = readOnly;
     dueDateForm.addEventListener('submit', async event => {
       event.preventDefault();
-      if (archived) return;
+      if (readOnly) return;
       dueDateInput.disabled = true;
       dueDateButton.disabled = true;
       showTaskAlert('');
@@ -311,8 +314,8 @@ function renderTasks() {
       } catch (error) {
         showTaskAlert(error.message);
       } finally {
-        dueDateInput.disabled = archived;
-        dueDateButton.disabled = archived;
+        dueDateInput.disabled = readOnly;
+        dueDateButton.disabled = readOnly;
       }
     });
     dueDateForm.append(dueDateInput, dueDateButton);
@@ -330,10 +333,10 @@ function renderTasks() {
     const moveButton = document.createElement('button');
     moveButton.type = 'submit';
     moveButton.textContent = 'Move task';
-    destination.disabled = moveButton.disabled = archived || !eligibleProjects.length;
+    destination.disabled = moveButton.disabled = readOnly || !eligibleProjects.length;
     moveForm.addEventListener('submit', async event => {
       event.preventDefault();
-      if (archived || !eligibleProjects.length) return;
+      if (readOnly || !eligibleProjects.length) return;
       destination.disabled = moveButton.disabled = true;
       showTaskAlert('');
       try {
@@ -347,7 +350,7 @@ function renderTasks() {
       } catch (error) {
         showTaskAlert(error.message);
       } finally {
-        destination.disabled = moveButton.disabled = archived || !eligibleProjects.length;
+        destination.disabled = moveButton.disabled = readOnly || !eligibleProjects.length;
       }
     });
     moveForm.append(destination, moveButton);
@@ -357,14 +360,14 @@ function renderTasks() {
     notesInput.setAttribute('aria-label', 'Task notes');
     notesInput.rows = 4;
     notesInput.value = task.notes || '';
-    notesInput.disabled = archived;
+    notesInput.disabled = readOnly;
     const notesButton = document.createElement('button');
     notesButton.type = 'submit';
     notesButton.textContent = 'Save notes';
-    notesButton.disabled = archived;
+    notesButton.disabled = readOnly;
     notesForm.addEventListener('submit', async event => {
       event.preventDefault();
-      if (archived) return;
+      if (readOnly) return;
       notesInput.disabled = notesButton.disabled = true;
       showTaskAlert('');
       try {
@@ -378,11 +381,33 @@ function renderTasks() {
       } catch (error) {
         showTaskAlert(error.message);
       } finally {
-        notesInput.disabled = notesButton.disabled = archived;
+        notesInput.disabled = notesButton.disabled = readOnly;
       }
     });
     notesForm.append(notesInput, notesButton);
-    row.append(checkbox, title, taskRenameForm, priority, dueDateForm, moveForm, notesForm);
+    const deletionButton = document.createElement('button');
+    deletionButton.type = 'button';
+    deletionButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+    deletionButton.disabled = archived;
+    deletionButton.addEventListener('click', async () => {
+      if (archived) return;
+      deletionButton.disabled = true;
+      showTaskAlert('');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deleted: !task.deleted }),
+        });
+        Object.assign(task, saved);
+        renderTasks();
+      } catch (error) {
+        showTaskAlert(error.message);
+      } finally {
+        deletionButton.disabled = archived;
+      }
+    });
+    row.append(checkbox, title, taskRenameForm, priority, dueDateForm, moveForm, notesForm, deletionButton);
     taskList.append(row);
   }
 }
