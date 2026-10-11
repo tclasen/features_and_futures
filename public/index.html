@@ -22,13 +22,14 @@
   <script>
     const app = document.querySelector('#app');
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    const normalizeSearch = value => String(value).replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
 
     async function showProjects(navigate = true) {
       if (navigate && location.pathname !== '/') history.pushState({}, '', '/');
       const archived = new URLSearchParams(location.search).get('filter') === 'Archived';
       const query = (new URLSearchParams(location.search).get('q') || '').trim();
       const projects = (await fetch(`/api/projects?archived=${archived}`).then(response => response.json()))
-        .filter(project => project.name.replace(/[A-Z]/g, c => c.toLowerCase()).includes(query.replace(/[A-Z]/g, c => c.toLowerCase())));
+        .filter(project => normalizeSearch(project.name).includes(normalizeSearch(query)));
       app.innerHTML = `<h1>Workboard</h1>
         <form id="create-form"><label>Project name<input name="name" aria-label="Project name"></label><button type="submit">Create project</button></form>
         <p id="alert" role="alert" aria-live="polite"></p>
@@ -122,7 +123,7 @@
         const shown = tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
           (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
-          task.title.replace(/[A-Z]/g, c => c.toLowerCase()).includes(appliedTaskQuery.replace(/[A-Z]/g, c => c.toLowerCase())) &&
+          normalizeSearch(task.title).includes(normalizeSearch(appliedTaskQuery)) &&
           ((!appliedFrom && !appliedThrough) || (Boolean(task.dueDate) && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough))));
         list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}${locked ? ' disabled' : ''}><label>New task title<input aria-label="New task title" data-rename-title="${task.id}"${locked ? ' disabled' : ''}></label><button type="button" data-rename-task="${task.id}"${locked ? ' disabled' : ''}>Rename task</button><label>Task priority<select aria-label="Task priority" data-priority="${task.id}"${locked ? ' disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select></label><label>Task due date<input type="text" aria-label="Task due date" placeholder="YYYY-MM-DD" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}"${locked ? ' disabled' : ''}></label><button type="button" data-save-due="${task.id}"${locked ? ' disabled' : ''}>Save due date</button><label>Destination project<select aria-label="Destination project" data-destination="${task.id}"${locked || !destinations.length ? ' disabled' : ''}>${destinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}</select></label><button type="button" data-move-task="${task.id}"${locked || !destinations.length ? ' disabled' : ''}>Move task</button></li>`).join('');
         list.querySelectorAll('[data-rename-task]').forEach(button => button.addEventListener('click', async () => {
