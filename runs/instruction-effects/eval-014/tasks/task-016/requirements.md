@@ -1,0 +1,9 @@
+## Requirement016: reversible task deletion and restoration
+
+Dependencies: all requirements through015 remain cumulative. This explicitly revises the existing task filters: `All`, `Open` and `Completed` contain only live tasks. Add a fourth `Task filter` option named `Deleted` after those three options. It shows deleted tasks in the same project, intersecting the existing priority, due range and title search controls. Existing and newly created tasks begin live.
+
+Every live task row provides `Delete task`. In an active project, deleting a task removes it from live lists and the project's completion summary, retains the current filters/search/range, and keeps all its title, completion, priority, due date, notes, ownership and remembered project positions. Deletion persists through reloads and server restarts. A project with no live tasks has summary `0/0 completed` even when it contains deleted tasks.
+
+Deleted rows provide `Restore task`. Restoring in an active project returns the original task to its prior place in that project, before tasks created after that position was reserved. All saved fields and positions remain unchanged, including completion and explicit priority when the project's default has changed. Restoring while the Deleted filter is selected leaves that filter selected, so the restored row disappears from it. Restored tasks re-enter the existing live filters and summary according to their stored fields.
+
+Deleted rows retain the existing title, completion, priority, due date, notes and move controls for reading, all disabled. They cannot move until restored. Archived projects allow the Deleted filter and ordinary search/range controls for reading, while Delete task and Restore task are disabled. Archiving and restoring a project never changes which tasks are deleted. Upgrades preserve all earlier task data as live and retain the earlier behaviors for tasks that have not been deleted.
