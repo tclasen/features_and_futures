@@ -171,6 +171,7 @@ const page = `<!doctype html>
       const applyRange = document.createElement('button'); applyRange.type = 'button'; applyRange.textContent = 'Apply due range';
       const rangeAlert = document.createElement('p'); rangeAlert.setAttribute('role', 'alert'); rangeAlert.hidden = true;
       const list = document.createElement('section'); list.id = 'tasks';
+      let refreshVersion = 0;
       function isCalendarDate(value) {
         const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
         if (!match) return false;
@@ -191,9 +192,16 @@ const page = `<!doctype html>
         refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; });
       });
       async function refreshTasks() {
-        const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks');
+        const version = ++refreshVersion;
+        const [result, projectsResult] = await Promise.all([
+          fetch('/api/projects/' + encodeURIComponent(id) + '/tasks'),
+          loadProjects('Active')
+        ]);
+        if (version !== refreshVersion) return;
         if (!result.ok) throw new Error('Could not load tasks');
-        const tasks = await result.json(); list.replaceChildren();
+        const tasks = await result.json();
+        const eligible = projectsResult;
+        list.replaceChildren();
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -242,10 +250,9 @@ const page = `<!doctype html>
             if (!update.ok) { renameAlert.textContent = 'Could not rename task'; renameAlert.hidden = false; return; }
             await refreshTasks();
           });
-          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert, dueLabel, dueButton, dueAlert); list.append(row);
+          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert, dueLabel, dueButton, dueAlert);
           const destinationLabel = document.createElement('label'); destinationLabel.textContent = 'Destination project';
           const destination = document.createElement('select'); destination.setAttribute('aria-label', 'Destination project');
-          const eligible = await loadProjects('Active');
           const destinations = eligible.filter(item => String(item.id) !== String(id));
           for (const item of destinations) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; destination.append(option); }
           const move = document.createElement('button'); move.type = 'button'; move.textContent = 'Move task';
@@ -255,6 +262,7 @@ const page = `<!doctype html>
             if (result.ok) await refreshTasks();
           });
           destinationLabel.append(destination); row.append(destinationLabel, move);
+          list.append(row);
         }
       }
       filter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
