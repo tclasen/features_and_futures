@@ -39,6 +39,7 @@ test('filtered checkbox edits save without navigation or disconnecting the inter
     // adapter. Removing/replacing the control would break the retained-node assertion.
     const checkbox = { checked: false, disabled: false };
     const row = { hidden: false, testId: 'task-row',
+      setAttribute(name, value) { assert.equal(name, 'data-testid'); this.testId = value; },
       removeAttribute(name) { assert.equal(name, 'data-testid'); this.testId = null; } };
     const section = { children: [row],
       querySelector(selector) {
@@ -64,13 +65,19 @@ test('filtered checkbox edits save without navigation or disconnecting the inter
       FormData: class {
         constructor() { return Object.entries({ ...selection, ...(checkbox.checked ? { completed: '1' } : {}) }); }
       },
-      DOMParser: class {
-        parseFromString(html) {
-          lastResponse = html;
-          return { querySelector: (selector) => html.includes(selector.slice(1, -1)) };
+      fetch: async (url, options) => {
+        // Assert that the browser gets a direct, bounded response, rather than
+        // relying on a redirected page or a mocked HTML parser for membership.
+        if (selection.filter === 'Open' || selection.filter === 'Completed') {
+          assert.equal(row.hidden, true, 'excluded rows hide before the save resolves');
+          assert.equal(row.testId, null);
         }
+        const response = await fetch(url, { ...options, redirect: 'manual' });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+        lastResponse = await response.clone().json();
+        return response;
       },
-      fetch,
     };
     runInNewContext(script, context);
     let prevented = false;
@@ -83,10 +90,12 @@ test('filtered checkbox edits save without navigation or disconnecting the inter
     assert.equal(row.hidden, true);
     assert.equal(row.testId, null);
     assert.equal(section.children[1].textContent, 'No tasks to show.');
-    assert.match(lastResponse, /<option selected>Completed/);
-    assert.match(lastResponse, /<option selected>High/);
+    assert.deepEqual(lastResponse, { completed: false, visible: false });
+    const retainedPage = await (await fetch(app.url + path)).text();
+    assert.match(retainedPage, /<option selected>Completed/);
+    assert.match(retainedPage, /<option selected>High/);
     for (const [name, value] of Object.entries(selection)) {
-      assert.ok(lastResponse.includes('name="' + name + '" value="' + value + '"'));
+      assert.ok(retainedPage.includes('name="' + name + '" value="' + value + '"'));
     }
     const expected = structuredClone(before);
     expected.project.tasks[0].completed = false;
@@ -109,6 +118,7 @@ test('filtered checkbox edits save without navigation or disconnecting the inter
       assert.equal(checkbox.checked, true);
       assert.equal(row.hidden, filter === 'Open');
       assert.equal(row.parentElement, section);
+      assert.deepEqual(lastResponse, { completed: true, visible: filter === 'All' });
     }
     // A failed save restores the input and reports an accessible error without hiding it.
     runInNewContext(script, { ...context, fetch: async () => { throw new Error('offline'); } });
@@ -117,6 +127,7 @@ test('filtered checkbox edits save without navigation or disconnecting the inter
     assert.equal(checkbox.checked, true);
     assert.equal(checkbox.disabled, false);
     assert.equal(row.hidden, false);
+    assert.equal(row.testId, 'task-row');
     assert.equal(alert.role, 'alert');
     assert.match(alert.textContent, /Could not save task completion/);
   } finally {

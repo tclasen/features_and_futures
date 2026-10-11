@@ -70,7 +70,7 @@ const rememberedPosition = db.prepare('SELECT position FROM task_positions WHERE
 const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
 const updateTaskProject = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
-const findTask = db.prepare('SELECT id, deleted FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
@@ -953,6 +953,15 @@ const server = http.createServer(async (req, res) => {
           : { changes: 0 };
         if (!result.changes) {
           html(res, 404, page('Task not found', '<h1>Task not found</h1>'));
+          return;
+        }
+        if (req.headers.accept === 'application/json') {
+          const saved = findTask.get(taskNumber, id);
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({
+            completed: Boolean(saved.completed),
+            visible: Boolean(matchesTask(saved, filter, selectedPriority, range, search)),
+          }));
           return;
         }
       } else {

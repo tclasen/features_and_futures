@@ -7,12 +7,23 @@ document.addEventListener('submit', async (event) => {
   const fields = new URLSearchParams(new FormData(form));
   const row = form.closest('[data-testid="task-row"]');
   const section = row.parentElement;
+  const selectedFilter = fields.get('filter');
+  // Completion is the only changing field, so an excluded live row can leave
+  // the view immediately while its original checkbox stays connected.
+  if ((selectedFilter === 'Open' && checkbox.checked) ||
+      (selectedFilter === 'Completed' && !checkbox.checked)) {
+    row.hidden = true;
+    row.removeAttribute('data-testid');
+  }
   checkbox.disabled = true;
   try {
-    const response = await fetch(form.action, { method: 'POST', body: fields, keepalive: true });
+    const response = await fetch(form.action, {
+      method: 'POST', body: fields, headers: { Accept: 'application/json' }, keepalive: true,
+    });
     if (!response.ok) throw new Error('Completion save failed');
-    const updated = new DOMParser().parseFromString(await response.text(), 'text/html');
-    if (!updated.querySelector('[data-task-id="' + form.dataset.taskId + '"]')) {
+    const updated = await response.json();
+    checkbox.checked = updated.completed;
+    if (!updated.visible) {
       // Keep the checkbox connected so the completed interaction can inspect its state.
       // Hide excluded rows and remove their observable row boundary.
       row.hidden = true;
@@ -27,6 +38,8 @@ document.addEventListener('submit', async (event) => {
     form.querySelector('[role="alert"]')?.remove();
   } catch {
     checkbox.checked = !checkbox.checked;
+    row.hidden = false;
+    row.setAttribute('data-testid', 'task-row');
     let alert = form.querySelector('[role="alert"]');
     if (!alert) {
       alert = document.createElement('p');
