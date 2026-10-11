@@ -80,7 +80,7 @@ const server = http.createServer(async (req, res) => {
         let body = ''; for await (const chunk of req) body += chunk;
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Task title is required' })); return; }
-        const task = { id: randomUUID(), title, completed: 0 };
+        const task = { id: randomUUID(), title, completed: 0, priority: 'Normal' };
         createTask.run(task.id, projectId, title, Date.now());
         res.writeHead(201, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(task)); return;
       } catch { res.writeHead(400); res.end('Invalid request'); return; }
