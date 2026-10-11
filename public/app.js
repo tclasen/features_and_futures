@@ -247,6 +247,29 @@ async function renderTasks() {
       } catch (error) { showTaskError(error); }
     });
     dueDateForm.append(dueDateInput, dueDateButton);
+    const notesForm = document.createElement('form');
+    notesForm.className = 'task-notes-form';
+    const notesInput = document.createElement('textarea');
+    notesInput.value = task.notes ?? '';
+    notesInput.setAttribute('aria-label', 'Task notes');
+    notesInput.disabled = activeProjectArchived;
+    const notesButton = document.createElement('button');
+    notesButton.type = 'submit';
+    notesButton.textContent = 'Save notes';
+    notesButton.disabled = activeProjectArchived;
+    notesForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await request(`/api/projects/${activeProjectId}/tasks/${task.id}/notes`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ notes: notesInput.value }),
+        });
+        taskAlert.hidden = true;
+        await renderTasks();
+      } catch (error) { showTaskError(error); }
+    });
+    notesForm.append(notesInput, notesButton);
     const destinationLabel = document.createElement('label');
     destinationLabel.textContent = 'Destination project';
     const destinationSelect = document.createElement('select');
@@ -273,7 +296,7 @@ async function renderTasks() {
         await renderTasks();
       } catch (error) { showTaskError(error); }
     });
-    row.append(label, priorityLabel, rename, dueDateForm, destinationLabel, moveButton);
+    row.append(label, priorityLabel, rename, dueDateForm, notesForm, destinationLabel, moveButton);
     return row;
   }));
 }
