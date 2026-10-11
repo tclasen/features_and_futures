@@ -35,7 +35,7 @@ test('notes migrate without changing existing data and survive edits, moves, arc
     };
     const titles = (body) => [...body.matchAll(/<span>([^<]*)<\/span>/g)].map((match) => match[1]);
     const notesControl = (body, id) => body.match(new RegExp('<textarea id="task-notes-' + id + '"[^>]*>[\\s\\S]*?</textarea>'))[0];
-    assert.deepEqual(savedRows().map(({ notes, ...row }) => row), originalTasks);
+    assert.deepEqual(savedRows().map(({ notes, deleted, ...row }) => row), originalTasks);
     assert.deepEqual(savedRows().map((row) => row.notes), ['', '']);
     assert.match(await get('/projects/1'), /<label for="task-notes-1">Task notes<\/label>/);
     assert.match(notesControl(await get('/projects/1'), 1), />\n<\/textarea>/);
@@ -47,7 +47,7 @@ test('notes migrate without changing existing data and survive edits, moves, arc
     assert.equal(response.status, 303);
     assert.equal(response.headers.get('location'), selectedPath);
     assert.equal(savedRows()[0].notes, notes);
-    assert.deepEqual(savedRows().map(({ notes, ...row }) => row), originalTasks);
+    assert.deepEqual(savedRows().map(({ notes, deleted, ...row }) => row), originalTasks);
     const filtered = await get(selectedPath);
     assert.deepEqual(titles(filtered), ['Matching title']);
     assert.match(notesControl(filtered, 1), />\n\n  Leading and trailing  \n雪 😀 café/);
@@ -1417,6 +1417,127 @@ test('search matches normalized substrings and intersects filters while edits re
     assert.equal((await post('/projects/999/search', { query: 'needle' })).status, 404);
     const escaped = await post('/projects/1/search', { query: '<script>"&' });
     assert.match(await get(escaped.headers.get('location')), /value="&lt;script&gt;&quot;&amp;"/);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('deletion migrates live data, intersects filters, blocks edits, and restores reserved positions across restarts', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-deletion-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  const oldDb = new DatabaseSync(dbPath);
+  oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+    CREATE TABLE task_positions (task_id INTEGER NOT NULL REFERENCES tasks(id), project_id INTEGER NOT NULL REFERENCES projects(id), position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id));
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, position) VALUES
+      (1, 'Needle  FIRST', 1, 'High', '2024-02-29', '  notes\n雪 <b>literal</b>  ', 10),
+      (1, 'Needle second', 0, 'Low', '', '', 20), (1, 'Last', 0, 'Normal', '', '', 30);
+    INSERT INTO task_positions VALUES (1, 1, 10), (2, 1, 20), (3, 1, 30);`);
+  const original = oldDb.prepare('SELECT * FROM tasks ORDER BY id').all().map((row) => ({ ...row }));
+  oldDb.close();
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const titles = (body) => [...body.matchAll(/<span>([^<]*)<\/span>/g)].map((match) => match[1]);
+    const rows = () => {
+      const database = new DatabaseSync(dbPath);
+      try { return database.prepare('SELECT * FROM tasks ORDER BY id').all().map((row) => ({ ...row })); }
+      finally { database.close(); }
+    };
+    const summaries = async (path = '/') => [...(await get(path)).matchAll(/data-testid="project-summary">([^<]*)</g)].map((match) => match[1]);
+    assert.deepEqual(rows().map(({ deleted, ...row }) => row), original);
+    assert.deepEqual(rows().map((row) => row.deleted), [0, 0, 0]);
+    assert.deepEqual(await summaries(), ['1/3 completed', '0/0 completed']);
+    const filterControl = (await get('/projects/1')).match(/<select id="task-filter"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.deepEqual([...filterControl.matchAll(/<option(?: selected)?>([^<]*)<\/option>/g)].map((m) => m[1]), ['All', 'Open', 'Completed', 'Deleted']);
+    const selected = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', searchQuery: 'needle first' };
+    const selectedPath = '/projects/1?' + new URLSearchParams(selected);
+    const deletedSelected = { ...selected, filter: 'Deleted' };
+    const deletedPath = '/projects/1?' + new URLSearchParams(deletedSelected);
+    assert.deepEqual(titles(await get(selectedPath)), ['Needle  FIRST']);
+    const deletion = await post('/projects/1/tasks/1/delete', selected);
+    assert.equal(deletion.status, 303);
+    assert.equal(deletion.headers.get('location'), selectedPath);
+    assert.deepEqual(titles(await get(selectedPath)), []);
+    assert.deepEqual(await summaries(), ['0/2 completed', '0/0 completed']);
+    await post('/projects/1/tasks/2/delete');
+    await post('/projects/1/tasks/3/delete');
+    for (const filter of ['All', 'Open', 'Completed']) {
+      assert.deepEqual(titles(await get('/projects/1?filter=' + filter)), []);
+    }
+    assert.deepEqual(await summaries(), ['0/0 completed', '0/0 completed']);
+    assert.deepEqual(rows().map(({ deleted, ...row }) => row), original);
+    assert.deepEqual(titles(await get('/projects/1?filter=Deleted')), ['Needle  FIRST', 'Needle second', 'Last']);
+    const deletedPage = await get(deletedPath);
+    assert.deepEqual(titles(deletedPage), ['Needle  FIRST']);
+    const row = deletedPage.slice(deletedPage.indexOf('<div class="task" data-testid="task-row">'));
+    for (const control of row.matchAll(/<(?:input|textarea|select)\b[^>]*>/g)) {
+      if (!/type="hidden"/.test(control[0])) assert.match(control[0], / disabled/);
+    }
+    for (const button of ['Rename task', 'Move task', 'Save due date', 'Save notes']) assert.ok(row.includes('disabled>' + button));
+    assert.match(row, /<button type="submit">Restore task/);
+    assert.match(row, /notes\n雪 &lt;b&gt;literal&lt;\/b&gt;  /);
+    assert.doesNotMatch(row, />Delete task/);
+    for (const [suffix, fields] of [
+      ['', { completed: '0' }], ['/rename', { title: 'Changed' }], ['/priority', { priority: 'Low' }],
+      ['/due-date', { dueDate: '' }], ['/notes', { notes: 'Changed' }], ['/move', { destination: '2' }],
+    ]) assert.equal((await post('/projects/1/tasks/1' + suffix, fields)).status, 409);
+    assert.deepEqual(rows().map(({ deleted, ...row }) => row), original);
+    for (const suffix of ['delete', 'restore']) {
+      assert.equal((await post('/projects/2/tasks/1/' + suffix)).status, 404);
+      assert.equal((await post('/projects/1/tasks/999/' + suffix)).status, 404);
+    }
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'New after deletion' });
+    assert.equal(rows()[3].deleted, 0);
+    const beforeRestart = await get(deletedPath);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(await get(deletedPath), beforeRestart);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1?filter=Deleted');
+    assert.deepEqual(titles(archived), ['Needle  FIRST', 'Needle second', 'Last']);
+    assert.match(archived, /disabled>Restore task/);
+    assert.match(await get('/projects/1'), /disabled>Delete task/);
+    for (const id of ['task-filter', 'priority-filter', 'due-from', 'due-through', 'task-search']) {
+      assert.doesNotMatch(archived, new RegExp('id="' + id + '"[^>]*disabled'));
+    }
+    assert.equal((await post('/projects/1/tasks/1/restore', deletedSelected)).status, 409);
+    assert.equal((await post('/projects/1/tasks/4/delete')).status, 409);
+    assert.deepEqual(await summaries('/?filter=Archived'), ['0/1 completed']);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1?filter=Deleted'), archived);
+    await post('/projects/1/restore');
+    // Restore in reverse order; original positions precede new tasks.
+    await post('/projects/1/tasks/3/restore', { filter: 'Deleted' });
+    await post('/projects/1/tasks/2/restore', { filter: 'Deleted' });
+    const restoration = await post('/projects/1/tasks/1/restore', deletedSelected);
+    assert.equal(restoration.headers.get('location'), deletedPath);
+    assert.deepEqual(titles(await get(deletedPath)), []);
+    assert.deepEqual(titles(await get('/projects/1')), ['Needle  FIRST', 'Needle second', 'Last', 'New after deletion']);
+    assert.deepEqual(titles(await get(selectedPath)), ['Needle  FIRST']);
+    assert.deepEqual(rows().slice(0, 3).map(({ deleted, ...row }) => row), original);
+    assert.deepEqual(await summaries(), ['1/4 completed', '0/0 completed']);
+    // Restored tasks can move and still return to the original reserved position.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/delete');
+    assert.deepEqual(titles(await get('/projects/1?filter=Deleted')), []);
+    assert.deepEqual(titles(await get('/projects/2?filter=Deleted')), ['Needle  FIRST']);
+    await post('/projects/2/tasks/1/restore', { filter: 'Deleted' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    const saved = await get('/projects/1');
+    await app.stop();
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), saved);
+    assert.deepEqual(titles(saved), ['Needle  FIRST', 'Needle second', 'Last', 'New after deletion']);
+    assert.deepEqual(rows().slice(0, 3).map(({ deleted, ...row }) => row), original);
   } finally {
     if (app) await app.stop();
     await rm(dir, { recursive: true, force: true });
