@@ -120,7 +120,7 @@ const server = http.createServer(async (request, response) => {
     const body = await readBody(request);
     let dueDate = typeof body?.dueDate === 'string' ? body.dueDate.trim() : '';
     if (dueDate) {
-      const match = dueDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      const match = dueDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!match) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
       const [, year, month, day] = match;
       const y = Number(year), m = Number(month), d = Number(day);
@@ -128,8 +128,10 @@ const server = http.createServer(async (request, response) => {
       const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
       if (y < 1 || m < 1 || m > 12 || d < 1 || d > days[m - 1]) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
     } else dueDate = null;
-    const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(dueDate, Number(dueDateMatch[1]));
-    return result.changes ? sendJson(response, 200, { ok: true, dueDate }) : sendJson(response, 404, { error: 'Task not found or project archived' });
+    const task = db.prepare('SELECT t.id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.archived = 0').get(Number(dueDateMatch[1]));
+    if (!task) return sendJson(response, 404, { error: 'Task not found or project archived' });
+    db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, task.id);
+    return sendJson(response, 200, { ok: true, dueDate });
   }
   const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
   if (taskRenameMatch && request.method === 'PATCH') {
