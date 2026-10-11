@@ -1,3 +1,5 @@
+import { filterTasks } from './task-filters.js';
+
 const app = document.querySelector('#app');
 
 async function request(path, options) {
@@ -79,6 +81,15 @@ async function renderTasks(project) {
         <option value="completed">Completed</option>
       </select>
     </div>
+    <div class="task-filter">
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter">
+        <option value="all">All</option>
+        <option value="Low">Low</option>
+        <option value="Normal">Normal</option>
+        <option value="High">High</option>
+      </select>
+    </div>
     <div id="tasks"></div>
   `;
   app.append(section);
@@ -86,16 +97,15 @@ async function renderTasks(project) {
   const input = section.querySelector('input');
   const button = form.querySelector('button');
   const alert = section.querySelector('[role="alert"]');
-  const filter = section.querySelector('select');
+  const filter = section.querySelector('#task-filter');
+  const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('#tasks');
   const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = [];
 
   function displayTasks() {
     list.replaceChildren();
-    for (const task of tasks) {
-      if (filter.value === 'open' && task.completed) continue;
-      if (filter.value === 'completed' && !task.completed) continue;
+    for (const task of filterTasks(tasks, filter.value, priorityFilter.value)) {
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
       row.className = 'task-row';
@@ -192,7 +202,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ priority: prioritySelect.value }),
           });
           task.priority = updated.priority;
-          prioritySelect.value = task.priority;
+          displayTasks();
         } catch (error) {
           prioritySelect.value = task.priority;
           showError(alert, error.message);
@@ -207,6 +217,7 @@ async function renderTasks(project) {
   }
 
   filter.addEventListener('change', displayTasks);
+  priorityFilter.addEventListener('change', displayTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (project.archived) return;

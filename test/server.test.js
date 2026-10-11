@@ -143,6 +143,10 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
       assert.match(await response.text(), /<script type="module" src="\/app.js">/);
     }
     assert.equal((await fetch(`${base}/app.js`)).status, 200);
+    const filtersAsset = await fetch(`${base}/task-filters.js`);
+    assert.equal(filtersAsset.status, 200);
+    assert.match(filtersAsset.headers.get('content-type'), /text\/javascript/);
+    assert.match(await filtersAsset.text(), /export function filterTasks/);
     assert.equal((await fetch(`${base}/style.css`)).status, 200);
     const malformed = await fetch(`${base}/api/projects`, { method: 'POST', body: '{' });
     assert.equal(malformed.status, 400);
