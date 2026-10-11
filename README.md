@@ -147,3 +147,15 @@ notes (with LF line endings), deletion state, project default, and archive state
 Additional JSON properties cannot supply internal IDs or remembered positions.
 Imported tasks follow the same editing, restoration, movement, and persistence
 rules as other tasks. Import form bodies support up to 10 MiB.
+
+Task directory on the home page opens `/directory`, a read-only cross-project
+view. Each opening starts with Active project scope, All task and priority filters,
+and empty search and due range. Scope, live/deleted status, priority, inclusive
+due boundaries, and title-only search intersect using the same rules as project
+pages. Applying one control preserves the others; invalid ranges retain the
+previous applied range and matching rows. Results follow project creation order
+and each project's stored task order. Original titles, owner names, completion,
+priority, dates, and literal multiline notes are displayed without editing controls.
+Open project uses the owner's bare URL to reset project-page filters; Projects
+returns to the home page with its default filters. Viewing and filtering never
+write project or task data.

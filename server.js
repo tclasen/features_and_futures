@@ -2,12 +2,13 @@ import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { projectListPage, projectPage } from './views.js';
+import { projectListPage, projectPage, taskDirectoryPage } from './views.js';
+import { matchesTask } from './task-filters.js';
 import { projectExport } from './project-export.js';
 import { parseProjectImport } from './project-import.js';
 import { normalizeSearch, matchesSearch } from './search.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
-import { normalizeDueDate, normalizeDueRange, matchesDueRange } from './task-dates.js';
+import { normalizeDueDate, normalizeDueRange } from './task-dates.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -84,6 +85,12 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listDirectoryTasks = database.prepare(`
+  SELECT tasks.*, projects.name AS project_name
+  FROM tasks JOIN projects ON projects.id = tasks.project_id
+  WHERE projects.archived = ?
+  ORDER BY projects.id, tasks.position, tasks.id
+`);
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))
@@ -182,14 +189,24 @@ function renderProjects(filter, error = '', search = '', importForm = {}) {
 }
 
 function renderProject(project, filter, priority, errors = {}, range = { from: '', through: '' }, search = '') {
-  const tasks = listTasks.all(project.id).filter((task) => (
-    (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted
-      && (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')))
-    && (priority === 'All' || task.priority === priority)
-    && matchesDueRange(task.due_date, range)
-    && matchesSearch(task.title, search)
-  ));
+  const tasks = listTasks.all(project.id).filter((task) => matchesTask(task, filter, priority, range, search));
   return projectPage(project, tasks, filter, priority, errors, range, listDestinations.all(project.id), search);
+}
+
+function directoryState(parameters) {
+  return {
+    scope: projectFilter(parameters.get('scope')),
+    filter: taskFilter(parameters.get('filter')),
+    priority: priorityFilter(parameters.get('priorityFilter')),
+    range: appliedDueRange(parameters),
+    search: normalizeSearch(parameters.get('search')),
+  };
+}
+
+function renderDirectory(state, errors = {}) {
+  const tasks = listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+    .filter((task) => matchesTask(task, state.filter, state.priority, state.range, state.search));
+  return taskDirectoryPage(tasks, state, errors);
 }
 
 function redirect(response, location) {
@@ -225,6 +242,25 @@ const server = createServer(async (request, response) => {
       send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     } else if (request.method === 'GET' && pathname === '/') {
       send(response, 200, renderProjects(projectFilter(searchParams.get('filter')), '', normalizeSearch(searchParams.get('search'))));
+    } else if (request.method === 'GET' && pathname === '/directory') {
+      send(response, 200, renderDirectory(directoryState(searchParams)));
+    } else if (request.method === 'POST' && pathname === '/directory/due-range') {
+      const form = await readForm(request);
+      const state = directoryState(form);
+      const range = normalizeDueRange(form.get('rangeFrom') || '', form.get('rangeThrough') || '');
+      if (range.error) {
+        send(response, 400, renderDirectory(state, {
+          dueRange: range.error,
+          rangeFrom: form.get('rangeFrom') || '',
+          rangeThrough: form.get('rangeThrough') || '',
+        }));
+        return;
+      }
+      const query = new URLSearchParams({
+        scope: state.scope, filter: state.filter, priorityFilter: state.priority,
+        dueFrom: range.from, dueThrough: range.through, search: state.search,
+      });
+      redirect(response, `/directory?${query}`);
     } else if (request.method === 'POST' && pathname === '/projects/import') {
       const form = await readForm(request, 10 * 1024 * 1024);
       const json = form.get('json') ?? '';

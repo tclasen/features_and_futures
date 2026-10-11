@@ -47,6 +47,7 @@ function page(title, content) {
     .task-rename { margin-top: 16px; }
     .task-rename label { display: block; margin-bottom: 8px; }
     .task-rename input { width: 100%; margin-bottom: 12px; }
+    .directory-field { white-space: pre-wrap; overflow-wrap: anywhere; }
     @media (max-width: 520px) { main { margin-top: 32px; } .form-controls { flex-direction: column; } .project-row { padding: 16px; } }
   </style>
 </head>
@@ -58,6 +59,7 @@ export function projectListPage(projects, error = '', filter = 'Active', search 
   const searchInput = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
   return page('Projects', `
     <h1>Workboard</h1>
+    <form method="get" action="/directory"><button type="submit">Task directory</button></form>
     <form class="create-form task-create" method="post" action="/projects/import">
       ${searchInput}
       <input type="hidden" name="filter" value="${filter}">
@@ -99,6 +101,51 @@ export function projectListPage(projects, error = '', filter = 'Active', search 
         <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
         <form method="get" action="/projects/${project.id}"><button type="submit">Open project</button></form>
         <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}">${searchInput}<button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button></form>
+      </div>`).join('')}
+    </div>`);
+}
+
+export function taskDirectoryPage(tasks, state, errors = {}) {
+  const { scope, filter, priority, range, search } = state;
+  const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+  const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority);
+  const boundaries = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
+  const options = (values, selected) => values.map((value) => `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('');
+  return page('Task directory', `<h1>Task directory</h1>
+    <form method="get" action="/"><button type="submit">Projects</button></form>
+    <form class="task-filter" method="get" action="/directory">
+      ${boundaries}${hidden('search', search)}
+      <label for="project-scope">Project scope</label>
+      <select id="project-scope" name="scope" onchange="this.form.requestSubmit()">${options(['Active', 'Archived'], scope)}</select>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">${options(['All', 'Open', 'Completed', 'Deleted'], filter)}</select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${options(['All', ...TASK_PRIORITIES], priority)}</select>
+    </form>
+    <form class="task-filter" method="post" action="/directory/due-range">
+      ${selections}${boundaries}${hidden('search', search)}
+      ${errors.dueRange ? `<p role="alert">${escapeHtml(errors.dueRange)}</p>` : ''}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(errors.rangeFrom ?? range.from)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(errors.rangeThrough ?? range.through)}">
+      <button type="submit">Apply due range</button>
+    </form>
+    <form class="task-filter" method="get" action="/directory">
+      ${selections}${boundaries}
+      <label for="directory-search">Directory search</label>
+      <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}">
+      <button type="submit">Search directory</button>
+    </form>
+    <div class="projects">
+      ${tasks.map((task) => `<div class="task-row" data-testid="directory-task-row">
+        <div class="directory-field" data-testid="directory-task-title">${escapeHtml(task.title)}</div>
+        <div class="directory-field" data-testid="directory-project-name">${escapeHtml(task.project_name)}</div>
+        <div data-testid="directory-task-completion">${task.completed ? 'Completed' : 'Open'}</div>
+        <div data-testid="directory-task-priority">${escapeHtml(task.priority)}</div>
+        <div data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</div>
+        <div class="directory-field" data-testid="directory-task-notes">${escapeHtml(task.notes)}</div>
+        <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
       </div>`).join('')}
     </div>`);
 }
