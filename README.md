@@ -18,6 +18,8 @@ create tasks, toggle their completion, and filter by All, Open, or Completed.
 Project URLs can be reloaded directly. Projects and tasks persist in SQLite.
 The project list defaults to Active and can show Archived projects. Archive or
 restore a project from its row; its completion summary includes all its tasks.
+The selected project filter is kept within the browser session across reloads
+and returning from a project page. New browser sessions start with Active.
 Archived project pages allow viewing and filtering tasks, with task creation and
 completion changes disabled. Archiving preserves tasks and their completion state.
 `GET /health`
@@ -31,3 +33,5 @@ The integration test checks blank-name validation, trimming, creation order,
 project routes, health, task validation and project isolation, completion updates,
 archive/restore, completion summaries, archived-project write protection,
 saved state after server restarts, and migration of existing SQLite data.
+Browser-script regression tests use a DOM adapter to check filter retention,
+archived-page controls, and switching filters during archive/restore requests.

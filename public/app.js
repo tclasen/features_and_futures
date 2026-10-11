@@ -40,7 +40,7 @@ function projectRow(project, onUpdate) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ archived: !project.archived }),
       });
-      if (row.isConnected) onUpdate(saved);
+      onUpdate(saved);
     } catch (error) {
       if (row.isConnected) alertMessage(error.message);
     } finally {
@@ -183,15 +183,25 @@ async function render() {
     const submit = form.querySelector('button');
     const filter = app.querySelector('select');
     let projects = [];
+    // A fresh browser session starts with Active; reloads and Projects navigation
+    // keep the user's current view, including while opening archived projects.
+    try {
+      if (sessionStorage.getItem('project-filter') === 'Archived') filter.value = 'Archived';
+    } catch { /* The list still works when browser storage is unavailable. */ }
     function displayProjects() {
       list.replaceChildren(...projects
         .filter(project => project.archived === (filter.value === 'Archived'))
         .map(project => projectRow(project, saved => {
           projects = projects.map(item => item.id === saved.id ? saved : item);
-          displayProjects();
+          if (list.isConnected) displayProjects();
         })));
     }
-    filter.addEventListener('change', displayProjects);
+    filter.addEventListener('change', () => {
+      try {
+        sessionStorage.setItem('project-filter', filter.value);
+      } catch { /* Filtering does not depend on storage availability. */ }
+      displayProjects();
+    });
     // Wait for the initial list before allowing creation, keeping creation order stable.
     submit.disabled = true;
     form.addEventListener('submit', async (event) => {
