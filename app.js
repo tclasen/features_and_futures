@@ -10,6 +10,9 @@ const taskAlert = document.querySelector('#task-alert');
 const taskContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
+let appliedDueRange = { from: '', through: '' };
 const defaultTaskPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
 const renameForm = document.querySelector('#rename-form');
@@ -67,6 +70,9 @@ async function showRoute() {
     return showRoute();
   }
   const project = await response.json();
+  appliedDueRange = { from: '', through: '' };
+  dueFromInput.value = '';
+  dueThroughInput.value = '';
   document.querySelector('#detail-name').textContent = project.name;
   document.querySelector('#archived-notice').hidden = !project.archived;
   renameInput.value = project.name;
@@ -127,6 +133,9 @@ async function loadTasks(projectId, archived = false) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
     if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
+    if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
+    if (appliedDueRange.from && task.dueDate < appliedDueRange.from) continue;
+    if (appliedDueRange.through && task.dueDate > appliedDueRange.through) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -193,6 +202,7 @@ async function loadTasks(projectId, archived = false) {
         taskAlert.hidden = true;
         const saved = await response.json();
         dueDate.value = saved.dueDate || '';
+        await loadTasks(projectId, archived);
       } else {
         const error = await response.json();
         taskAlert.textContent = error.error || 'Unable to save due date';
@@ -211,7 +221,7 @@ async function loadTasks(projectId, archived = false) {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ completed: checkbox.checked }),
       });
-      await loadTasks(projectId);
+      await loadTasks(projectId, archived);
     });
     label.append(checkbox);
     row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, label);
@@ -242,6 +252,37 @@ taskForm.addEventListener('submit', async (event) => {
 taskFilter.addEventListener('change', () => {
   const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
   if (projectId) fetch(`/api/projects/${projectId}`).then((response) => response.json()).then((project) => loadTasks(Number(projectId), project.archived));
+});
+
+function validCalendarDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
+document.querySelector('#apply-due-range').addEventListener('click', async () => {
+  const from = dueFromInput.value.trim();
+  const through = dueThroughInput.value.trim();
+  if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+    taskAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+    taskAlert.hidden = false;
+    return;
+  }
+  if (from && through && from > through) {
+    taskAlert.textContent = 'Due from must not be after Due through';
+    taskAlert.hidden = false;
+    return;
+  }
+  appliedDueRange = { from, through };
+  taskAlert.hidden = true;
+  const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
+  if (!projectId) return;
+  const response = await fetch(`/api/projects/${projectId}`);
+  if (response.ok) await loadTasks(Number(projectId), (await response.json()).archived);
 });
 priorityFilter.addEventListener('change', () => {
   const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
