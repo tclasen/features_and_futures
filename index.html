@@ -132,6 +132,8 @@
         let appliedDueFrom = '';
         let appliedDueThrough = '';
         const defaultPriority = app.querySelector('#default-task-priority');
+        const projectsResponse = await fetch('/api/projects');
+        const activeProjects = projectsResponse.ok ? (await projectsResponse.json()).filter((item) => !item.archived && item.id !== project.id) : [];
         let tasks = [];
         const renderTasks = () => {
           const mode = filter.value;
@@ -141,7 +143,7 @@
             (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed)) &&
             (selectedPriority === 'All' || task.priority === selectedPriority) &&
             (!hasDueRange || (task.due_date && (!appliedDueFrom || task.due_date >= appliedDueFrom) && (!appliedDueThrough || task.due_date <= appliedDueThrough))));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button></div>`).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -215,6 +217,22 @@
           renderTasks();
         });
         list.addEventListener('click', async (event) => {
+          const moveButton = event.target.closest('button[data-move-task-id]');
+          if (moveButton) {
+            const taskId = Number(moveButton.dataset.moveTaskId);
+            const destination = list.querySelector(`select[data-destination-task-id="${taskId}"]`);
+            const result = await fetch(`/api/tasks/${taskId}/move`, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ destination_project_id: Number(destination.value) })
+            });
+            if (!result.ok) {
+              app.querySelector('#task-message').textContent = (await result.json()).error || 'Could not move task';
+              return;
+            }
+            app.querySelector('#task-message').textContent = '';
+            await loadTasks();
+            return;
+          }
           const dueDateButton = event.target.closest('button[data-save-due-date-task-id]');
           if (dueDateButton) {
             const taskId = Number(dueDateButton.dataset.saveDueDateTaskId);
