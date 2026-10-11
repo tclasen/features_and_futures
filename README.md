@@ -2,8 +2,11 @@
 
 The project list provides Project search and Search projects; project pages
 provide Task search and Search tasks. Applying a query trims surrounding
-whitespace and matches name/title substrings ignoring ASCII letter case, while
-preserving internal whitespace and non-ASCII case. Blank queries match all rows.
+whitespace and matches name/title substrings ignoring ASCII letter case and
+treating runs of ASCII spaces and horizontal tabs as one space in both queries
+and names/titles. Other internal whitespace and non-ASCII case remain significant.
+Normalization is only for matching: saved and displayed names/titles retain their
+original spacing and case. Blank queries match all rows.
 Project search intersects Active/Archived; task search intersects completion,
 priority, and the applied due range. Filters and edits retain applied queries,
 and task edits immediately re-evaluate membership. Search preserves stored data,
@@ -122,6 +125,6 @@ Move checks cover schema migration, appending older tasks after newer destinatio
 tasks, restoring independent positions on reverse-order returns, creation and first
 arrivals while tasks are absent, saved values and summaries, restart
 persistence, archive protection, destination options, and source filter retention.
-Search checks cover ASCII matching, significant internal spaces, blank queries,
+Search checks cover ASCII matching, space/tab normalization, blank queries,
 archive and task-filter intersections, query retention during edits and movement,
 and reset when returning to the list or opening a project.

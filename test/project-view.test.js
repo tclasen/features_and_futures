@@ -930,7 +930,37 @@ async function search(app, kind, query) {
 }
 const visibleNames = app => rows(app).map(row => row.children[0].textContent);
 
-test('project search applies literal ASCII substring matching, intersects archive filter and resets on return', async () => {
+test('search normalizes stored space/tab runs without rewriting data or collapsing other whitespace', async () => {
+  const names = ['MiXeD \t\t  Name', 'mixed\tname', 'Mixed\u00a0Name', 'Mixed\nName'];
+  const projects = names.map((name, index) => ({ ...project(), id: index + 1, name }));
+  const pending = { tasks: names.map((title, index) => ({
+    id: index + 1, project_id: 1, title, completed: false, priority: 'Normal', due_date: '',
+  })) };
+  const savedProjects = structuredClone(projects);
+  const savedTasks = structuredClone(pending.tasks);
+  for (let reload = 0; reload < 2; reload++) {
+    const app = await browser(new Map(), projects, pending);
+    for (const query of ['mixed name', ' MIXED\t \tname ', 'mixed   name']) {
+      await search(app, 'project', query);
+      assert.deepEqual(visibleNames(app), names.slice(0, 2));
+    }
+    await search(app, 'project', '');
+    assert.deepEqual(visibleNames(app), names);
+    await control(rows(app)[0], 'Open project').emit('click');
+    await settled();
+    for (const query of ['mixed name', '\tMIXED\t \tNAME\t', 'mixed   name']) {
+      await search(app, 'task', query);
+      assert.deepEqual(visibleNames(app), names.slice(0, 2));
+      assert.equal(rows(app)[0].querySelector('input').attributes['aria-label'], `Complete ${names[0]}`);
+    }
+    await search(app, 'task', '');
+    assert.deepEqual(visibleNames(app), names);
+    assert.deepEqual(projects, savedProjects);
+    assert.deepEqual(pending.tasks, savedTasks);
+  }
+});
+
+test('project search normalizes spaces and tabs, intersects archive filter and resets on return', async () => {
   const projects = [
     { ...project(), name: 'Alpha  PLAN' },
     { ...project(), id: 2, name: 'Alpha plan', total_count: 3, completed_count: 2 },
@@ -947,9 +977,11 @@ test('project search applies literal ASCII substring matching, intersects archiv
   assert.equal(app.querySelector('#project-search').value, 'pLaN');
   await filter(app, 'Active');
   await search(app, 'project', 'alpha plan');
-  assert.deepEqual(visibleNames(app), ['Alpha plan']);
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN', 'Alpha plan']);
   await search(app, 'project', 'alpha  plan');
-  assert.deepEqual(visibleNames(app), ['Alpha  PLAN']);
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN', 'Alpha plan']);
+  await search(app, 'project', ' \tALPHA \t\t plan\t ');
+  assert.deepEqual(visibleNames(app), ['Alpha  PLAN', 'Alpha plan']);
   await search(app, 'project', 'ä');
   assert.deepEqual(visibleNames(app), []);
   await search(app, 'project', 'Ä');
@@ -983,8 +1015,10 @@ test('task search intersects all filters, retains queries during edits and movem
   await control(rows(app)[0], 'Open project').emit('click');
   await settled();
   await search(app, 'task', 'plan one');
-  assert.deepEqual(visibleNames(app), []);
+  assert.deepEqual(visibleNames(app), ['Plan  ONE']);
   await search(app, 'task', 'plan  one');
+  assert.deepEqual(visibleNames(app), ['Plan  ONE']);
+  await search(app, 'task', ' \tPLAN\t \tONE ');
   assert.deepEqual(visibleNames(app), ['Plan  ONE']);
   await search(app, 'task', '  pLaN  ');
   assert.deepEqual(visibleNames(app), ['Plan  ONE', 'Plan two', 'Plan three', 'Ä Plan']);

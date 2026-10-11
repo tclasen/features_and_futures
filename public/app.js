@@ -20,9 +20,9 @@ function navigate(path) {
   render();
 }
 
-// Search folds ASCII letters only; other characters and internal spaces are literal.
+// Normalize only search keys; keep saved names and titles untouched.
 function searchKey(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 function validRangeDate(value) {
