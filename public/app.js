@@ -144,7 +144,7 @@ function taskRenameForm(project, task, endpoint, onRename) {
   return form;
 }
 
-function taskPriorityControl(project, task, endpoint) {
+function taskPriorityControl(project, task, endpoint, onPriorityChange) {
   const label = element('label', 'Task priority');
   const select = element('select');
   select.id = `task-priority-${task.id}`;
@@ -166,6 +166,7 @@ function taskPriorityControl(project, task, endpoint) {
       });
       task.priority = updated.priority;
       app.querySelector('[role="alert"]')?.remove();
+      onPriorityChange();
     } catch (error) {
       showError(error.message);
     } finally {
@@ -201,9 +202,18 @@ async function renderTasks(project) {
     option.value = name;
     filter.append(option);
   }
+  const priorityFilterLabel = element('label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select');
+  priorityFilter.id = 'priority-filter';
+  for (const name of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', name);
+    option.value = name;
+    priorityFilter.append(option);
+  }
   const filterControls = element('div');
   filterControls.className = 'task-filter';
-  filterControls.append(filterLabel, filter);
+  filterControls.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
   app.append(form, filterControls, list);
@@ -214,6 +224,7 @@ async function renderTasks(project) {
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       const row = element('li');
       row.dataset.testid = 'task-row';
       const checkbox = element('input');
@@ -241,11 +252,12 @@ async function renderTasks(project) {
       });
       row.append(element('span', task.title), checkbox,
         taskRenameForm(project, task, endpoint, displayTasks),
-        taskPriorityControl(project, task, endpoint));
+        taskPriorityControl(project, task, endpoint, displayTasks));
       list.append(row);
     }
   }
   filter.addEventListener('change', displayTasks);
+  priorityFilter.addEventListener('change', displayTasks);
   displayTasks();
 
   form.addEventListener('submit', async event => {
