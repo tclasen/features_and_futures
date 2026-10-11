@@ -68,7 +68,7 @@ test('due dates validate Gregorian days, migrate, preserve task data and survive
       const response = await save(`  ${date}  `);
       assert.equal(response.status, 303);
       assert.equal(response.headers.get('location'), path);
-      assert.equal(await html(path), original.replace('type="text" value=""', `type="text" value="${date}"`));
+      assert.equal(await html(path), original.replace(dateInput(original, 1), dateInput(original, 1).replace('value=""', `value="${date}"`)));
       assert.equal(await html('/'), summary);
     }
     const saved = await html(path);

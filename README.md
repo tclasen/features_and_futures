@@ -35,3 +35,7 @@ tasks and filters, validation, and persistence through renaming and archive/rest
 Due-date checks cover empty defaults and migration, strict Gregorian validation (including
 leap years and year boundaries), trimming and clearing, independent ownership, unchanged
 filters and summaries, rename preservation, restart persistence, and archive/restore.
+Due-range checks cover inclusive and unbounded boundaries, undated tasks, intersections
+with completion and priority filters, invalid applications preserving the applied range,
+selection retention and immediate re-filtering across edits, and archived filtering.
+Reopening a project from the list resets all task filters and due-range boundaries.
