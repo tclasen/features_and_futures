@@ -266,7 +266,7 @@ const server = createServer(async (request, response) => {
     const project = findProject.get(decodeURIComponent(detail[1]));
     return project ? send(response, 200, project) : send(response, 404, { error: 'Project not found' });
   }
-  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/[^/]+\/?$/.test(url.pathname))) {
+  if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/[^/]+\/?$/.test(url.pathname))) {
     try { return send(response, 200, await readFile(join(root, 'public', 'index.html'), 'utf8'), 'text/html; charset=utf-8'); }
     catch { return send(response, 500, 'Application unavailable', 'text/plain; charset=utf-8'); }
   }
