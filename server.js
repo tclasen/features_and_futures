@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { renderProjects, renderProject, renderNotFound } from './views.js';
+import { renderProjects, renderProject, renderDirectory, renderNotFound } from './views.js';
 import { isValidDueDate, dueRangeError, matchesDueRange } from './dates.js';
 import { normalizeSearch, matchesSearch } from './search.js';
 import { exportProject } from './export.js';
@@ -86,6 +86,14 @@ const listTasks = database.prepare(`
   FROM tasks JOIN task_project_positions AS ordering
     ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
   WHERE tasks.project_id = ? ORDER BY ordering.position
+`);
+const listDirectoryTasks = database.prepare(`
+  SELECT tasks.title, tasks.completed, tasks.priority, tasks.due_date, tasks.notes, tasks.deleted,
+    projects.id AS project_id, projects.name AS project_name
+  FROM tasks JOIN projects ON projects.id = tasks.project_id
+  JOIN task_project_positions AS ordering
+    ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
+  WHERE projects.archived = ? ORDER BY projects.position, ordering.position
 `);
 const findTask = database.prepare('SELECT deleted FROM tasks WHERE project_id = ? AND id = ?');
 const updateTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
@@ -180,12 +188,31 @@ function readDueRange(params) {
   return dueRangeError(from, through) ? { from: '', through: '' } : { from, through };
 }
 
-function renderFilteredProject(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, query = '') {
-  const tasks = listTasks.all(project.id).filter((task) =>
-    (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
-      (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))) &&
+function matchesTask(task, filter, priority, range, query) {
+  return (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
+    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))) &&
     (priority === 'All' || task.priority === priority) && matchesDueRange(task.due_date, range) &&
-    matchesSearch(task.title, query));
+    matchesSearch(task.title, query);
+}
+
+function directoryState(params) {
+  return {
+    scope: projectFilter(params.get('scope')),
+    filter: taskFilter(params.get('filter')),
+    priority: priorityFilter(params.get('priorityFilter')),
+    range: readDueRange(params),
+    query: normalizeSearch(params.get('query')),
+  };
+}
+
+function directoryPage(state, error = '') {
+  const tasks = listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+    .filter((task) => matchesTask(task, state.filter, state.priority, state.range, state.query));
+  return renderDirectory(tasks, state, error);
+}
+
+function renderFilteredProject(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, query = '') {
+  const tasks = listTasks.all(project.id).filter((task) => matchesTask(task, filter, priority, range, query));
   return renderProject(project, tasks, filter, error, priority, range, listDestinations.all(project.id), query);
 }
 
@@ -245,6 +272,26 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && pathname === '/') {
       sendHtml(response, 200, projectsPage(projectFilter(searchParams.get('filter')), '', normalizeSearch(searchParams.get('query'))));
+      return;
+    }
+    if (request.method === 'GET' && pathname === '/directory') {
+      sendHtml(response, 200, directoryPage(directoryState(searchParams)));
+      return;
+    }
+    if (request.method === 'POST' && pathname === '/directory/due-range') {
+      const form = await readForm(request);
+      const state = directoryState(form);
+      const from = (form.get('rangeFrom') ?? '').trim();
+      const through = (form.get('rangeThrough') ?? '').trim();
+      const error = dueRangeError(from, through);
+      if (error) {
+        sendHtml(response, 422, directoryPage(state, error));
+        return;
+      }
+      redirect(response, `/directory?${new URLSearchParams({
+        scope: state.scope, filter: state.filter, priorityFilter: state.priority,
+        dueFrom: from, dueThrough: through, query: state.query,
+      })}`);
       return;
     }
     if (request.method === 'POST' && pathname === '/imports/projects') {

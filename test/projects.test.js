@@ -1480,3 +1480,92 @@ test('imports validate atomically, create independent identities, and preserve f
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory intersects read-only filters, preserves order and data, and resets navigation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title">([^<]*)<\/div>/g)].map((match) => match[1]);
+    const task = (title, extra = {}) => ({ title, completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false, ...extra });
+    const importCopy = async (name, archived, tasks) => {
+      const response = await post('/imports/projects', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'High', tasks },
+      }) });
+      return response.headers.get('location');
+    };
+    const first = await importCopy('Owner Ω <b>', false, [
+      task('Alpha  \t ONE', { completed: true, priority: 'High', dueDate: '2024-02-29', notes: '  <b>Ω</b>\nline\n ' }),
+      task('Removed', { deleted: true, priority: 'High', dueDate: '2024-03-01' }),
+      task('Undated', { notes: 'Alpha ONE' }),
+    ]);
+    const second = await importCopy('Alpha ONE', false, [task('Second'), task('Deleted second', { deleted: true })]);
+    await importCopy('Archive', true, [task('Archived live'), task('Archived deleted', { deleted: true })]);
+    const snapshot = async () => Promise.all([first, second].map(async (path) => (await fetch(`${server.url}${path}/export`)).json()));
+    const before = await snapshot();
+    assert.match(await get('/'), /action="\/directory"><button type="submit">Task directory/);
+    let html = await get('/directory');
+    assert.deepEqual(titles(html), ['Alpha  \t ONE', 'Undated', 'Second']);
+    assert.match(html, /data-testid="directory-project-name">Owner Ω &lt;b&gt;/);
+    assert.match(html, /directory-task-completion">Completed/);
+    assert.match(html, /directory-task-priority">High/);
+    assert.match(html, /directory-task-due-date">2024-02-29/);
+    assert.match(html, /directory-task-notes"[^>]*>  &lt;b&gt;Ω&lt;\/b&gt;\nline\n <\/div>/);
+    assert.doesNotMatch(html, /<textarea|<input[^>]*type="checkbox"|>Move task|>Save notes|>Delete task|>Restore task/);
+    assert.match(html, new RegExp(`action="${first}">\\s*<button type="submit">Open project`));
+    const state = new URLSearchParams({ scope: 'Active', filter: 'Completed', priorityFilter: 'High', query: '  aLPHA\t one  ', dueFrom: '2024-02-29', dueThrough: '2024-02-29' });
+    html = await get(`/directory?${state}`);
+    assert.deepEqual(titles(html), ['Alpha  \t ONE']);
+    assert.match(html, /<option selected>Completed/);
+    assert.match(html, /<option selected>High/);
+    state.set('dueFrom', '2024-03-01'); state.set('dueThrough', '');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), []);
+    state.set('filter', 'All'); state.set('priorityFilter', 'All'); state.set('query', ''); state.set('dueFrom', '');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), ['Alpha  \t ONE', 'Undated', 'Second']);
+    state.set('filter', 'Deleted');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), ['Removed', 'Deleted second']);
+    state.set('scope', 'Archived');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), ['Archived deleted']);
+    state.set('filter', 'All');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), ['Archived live']);
+    state.set('scope', 'Active'); state.set('query', 'Owner');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), []);
+    state.set('query', 'Alpha one');
+    assert.deepEqual(titles(await get(`/directory?${state}`)), ['Alpha  \t ONE']);
+    state.set('query', ''); state.set('filter', 'Completed'); state.set('priorityFilter', 'High');
+    state.set('dueFrom', '2024-02-29'); state.set('dueThrough', '2024-02-29');
+    for (const [from, through, message] of [
+      ['2023-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-03-01', '2024-02-29', 'Due from must not be after Due through'],
+    ]) {
+      const response = await post('/directory/due-range', { ...Object.fromEntries(state), rangeFrom: from, rangeThrough: through });
+      assert.equal(response.status, 422);
+      html = await response.text();
+      assert.match(html, new RegExp(`role="alert">${message}`));
+      assert.deepEqual(titles(html), ['Alpha  \t ONE']);
+      assert.match(html, /name="dueFrom" value="2024-02-29"/);
+    }
+    const applied = await post('/directory/due-range', { ...Object.fromEntries(state), rangeFrom: ' 2024-02-29 ', rangeThrough: '' });
+    assert.equal(applied.status, 303);
+    assert.deepEqual(titles(await get(applied.headers.get('location'))), ['Alpha  \t ONE']);
+    assert.deepEqual(await snapshot(), before);
+    html = await get('/directory');
+    assert.match(html, /<option selected>Active/);
+    assert.match(html, /id="directory-search"[^>]*value=""/);
+    assert.match(html, /id="due-from"[^>]*value=""/);
+    assert.match(await get(first), /<option selected>All/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/directory'), html);
+    assert.deepEqual(await snapshot(), before);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

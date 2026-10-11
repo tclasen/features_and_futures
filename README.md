@@ -34,6 +34,12 @@ Every project page provides `Download project`, including archived projects. `GE
 
 The home page provides `Project JSON`, `Imported project name`, and `Import project`. Paste a version-1 portable export and supply a nonblank name override. `POST /imports/projects` validates every required field and every task before writing, then creates a new independent project with fresh identities in one SQLite transaction and opens it. The override is trimmed; imported nonblank titles are preserved exactly, and notes line endings become LF. Archive state, default priority, live/deleted task order and all task fields are retained. Additional properties cannot set internal identities or positions. Malformed documents display `Invalid project JSON`; blank overrides display `Project name is required`. Both failures preserve submitted fields and leave all data unchanged. Imported copies use the same archive restrictions, task restoration, movement and remembered-order rules as ordinary projects.
 
+## Task directory
+
+`Task directory` on the home page opens `/directory`, a read-only view across projects. Each opening starts with Active project scope, All task and priority filters, and empty due range and title search. Scope, live/deleted completion, priority, inclusive due range, and normalized title-only search intersect without modifying data. Invalid ranges preserve the applied range and results. Rows show the original owner, title, completion, priority, due date, and literal multiline notes, in project creation order and remembered task order. `Open project` opens the owner with default project filters; `Projects` returns to the home page. Archived and deleted tasks remain readable without editable row controls.
+
+Directory integration tests cover imported live/deleted tasks, active/archived scopes, combined filters, title-only matching, exact escaped notes, invalid-range preservation, default navigation, unchanged exports, and restart behavior.
+
 ## Verify
 
 ```sh
