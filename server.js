@@ -200,6 +200,8 @@ function directoryState(params) {
   return {
     scope: projectFilter(params.get('scope')),
     order: directoryOrder(params.get('order')),
+    visiblePriority: ['Low', 'Normal', 'High'].includes(params.get('visiblePriority'))
+      ? params.get('visiblePriority') : 'Normal',
     filter: taskFilter(params.get('filter')),
     priority: priorityFilter(params.get('priorityFilter')),
     range: readDueRange(params),
@@ -220,6 +222,7 @@ function directoryPage(state, error = '') {
 function directoryLocation(state) {
   return `/directory?${new URLSearchParams({
     scope: state.scope, filter: state.filter, priorityFilter: state.priority, order: state.order,
+    visiblePriority: state.visiblePriority,
     dueFrom: state.range.from, dueThrough: state.range.through, query: state.query,
   })}`;
 }
@@ -232,6 +235,15 @@ function setDirectoryCompletion(state, completed) {
       if (Boolean(task.completed) !== completed) {
         updateTask.run(Number(completed), task.project_id, task.id);
       }
+    }
+  });
+}
+
+function setDirectoryPriority(state, priority) {
+  transaction(() => {
+    // Resolve all matches before editing: a changed priority may leave the view.
+    for (const task of directoryTasks(state)) {
+      updateTaskPriority.run(priority, task.project_id, task.id);
     }
   });
 }
@@ -331,6 +343,22 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       setDirectoryDeletion(state, deleted);
+      redirect(response, directoryLocation(state));
+      return;
+    }
+    if (request.method === 'POST' && pathname === '/directory/priority') {
+      const form = await readForm(request);
+      const state = directoryState(form);
+      if (state.scope !== 'Active' || state.filter === 'Deleted') {
+        sendHtml(response, 403, directoryPage(state, 'Only live tasks in active projects can be changed'));
+        return;
+      }
+      const priority = form.get('visiblePriority');
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        sendHtml(response, 422, directoryPage(state, 'Invalid task priority'));
+        return;
+      }
+      setDirectoryPriority(state, priority);
       redirect(response, directoryLocation(state));
       return;
     }

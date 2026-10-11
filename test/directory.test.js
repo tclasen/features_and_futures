@@ -22,7 +22,7 @@ test('directory hides its old empty announcement during navigation and restores 
     },
     window: { addEventListener: (type, listener) => { listeners[type] = listener; } },
   });
-  for (const path of ['/directory', '/directory/due-range', '/directory/complete', '/directory/reopen', '/directory/delete', '/directory/restore']) {
+  for (const path of ['/directory', '/directory/due-range', '/directory/complete', '/directory/reopen', '/directory/delete', '/directory/restore', '/directory/priority']) {
     listeners.submit({ target: { action: `http://localhost${path}` } });
     assert.equal(empty.hidden, true);
     listeners.pageshow();

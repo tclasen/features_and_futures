@@ -265,7 +265,7 @@ ${escapeHtml(task.notes)}</textarea>
   `);
 }
 
-export function renderDirectory(tasks, { scope, filter, priority, range, query, order = 'Original' }, error = '') {
+export function renderDirectory(tasks, { scope, filter, priority, range, query, order = 'Original', visiblePriority = 'Normal' }, error = '') {
   const completedCount = tasks.filter((task) => task.completed).length;
   // Group by identity, not name; task display order may span all owners.
   const ownersById = new Map();
@@ -285,13 +285,16 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query, 
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
   const canDelete = canEdit && tasks.length > 0;
+  const canSetPriority = canEdit && tasks.length > 0;
   const canRestore = scope === 'Active' && filter === 'Deleted' && tasks.length > 0;
+  const visiblePriorityField = `<input type="hidden" name="visiblePriority" value="${escapeHtml(visiblePriority)}">`;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
-  const selections = `<input type="hidden" name="order" value="${escapeHtml(order)}">
+  const filterSelections = `<input type="hidden" name="order" value="${escapeHtml(order)}">
     <input type="hidden" name="scope" value="${escapeHtml(scope)}">
     <input type="hidden" name="filter" value="${escapeHtml(filter)}">
     <input type="hidden" name="priorityFilter" value="${escapeHtml(priority)}">`;
+  const selections = `${visiblePriorityField}${filterSelections}`;
   const select = (label, id, name, options, selected) => `
     <label for="${id}">${label}</label>
     <select id="${id}" name="${name}" onchange="this.form.requestSubmit()">
@@ -302,7 +305,7 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query, 
     <form method="get" action="/"><button type="submit">Projects</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="task-filter" method="get" action="/directory">
-      ${rangeFields}
+      ${visiblePriorityField}${rangeFields}
       <input type="hidden" name="query" value="${escapeHtml(query)}">
       ${select('Project scope', 'project-scope', 'scope', ['Active', 'Archived'], scope)}
       ${select('Task filter', 'task-filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'], filter)}
@@ -344,6 +347,15 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query, 
       ${selections}${rangeFields}
       <input type="hidden" name="query" value="${escapeHtml(query)}">
       <button type="submit"${canRestore ? '' : ' disabled'}>Restore visible tasks</button>
+    </form>
+    <form class="create" method="post" action="/directory/priority">
+      ${filterSelections}${rangeFields}
+      <input type="hidden" name="query" value="${escapeHtml(query)}">
+      <label for="visible-tasks-priority">Visible tasks priority</label>
+      <select id="visible-tasks-priority" name="visiblePriority">
+        ${['Low', 'Normal', 'High'].map((value) => `<option${value === visiblePriority ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+      <button type="submit"${canSetPriority ? '' : ' disabled'}>Set visible priority</button>
     </form>
     <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     <ul class="projects" aria-label="Matching projects">${owners.map((owner) => `

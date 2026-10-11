@@ -1931,6 +1931,96 @@ test('directory ordering spans projects, retains view state, and leaves exports 
   }
 });
 
+test('directory bulk priority changes only matching live tasks and persists across restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-priority-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const task = (title, extra = {}) => ({ title, completed: false, priority: 'High',
+      dueDate: '2024-02-29', notes: '  Ω <literal>\nend ', deleted: false, ...extra });
+    const importCopy = async (archived, tasks) => {
+      const response = await post('/imports/projects', { name: 'Same owner', json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name: 'Source', archived, defaultPriority: 'Low', tasks },
+      }) });
+      return response.headers.get('location');
+    };
+    const first = await importCopy(false, [task('Match  \t ONE'), task('Match one done', { completed: true }),
+      task('Match one deleted', { deleted: true }), task('Match one low', { priority: 'Low' }),
+      task('Match one undated', { dueDate: '' }), task('Match one early', { dueDate: '2024-02-28' }), task('Other')]);
+    const second = await importCopy(false, [task('Match one second')]);
+    await importCopy(true, [task('Match one archived')]);
+    const snapshot = () => {
+      const db = new DatabaseSync(databasePath);
+      try {
+        return {
+          projects: db.prepare('SELECT * FROM projects ORDER BY position').all(),
+          tasks: db.prepare('SELECT * FROM tasks ORDER BY position').all().map((row) => ({ ...row })),
+          positions: db.prepare('SELECT * FROM task_project_positions ORDER BY project_id, position').all(),
+        };
+      } finally { db.close(); }
+    };
+    const before = snapshot();
+    const state = { scope: 'Active', filter: 'Open', priorityFilter: 'High', order: 'Priority',
+      query: ' mATCH\t one ', dueFrom: '2024-02-29', dueThrough: '2024-02-29', visiblePriority: 'Normal' };
+    for (const visiblePriority of [undefined, '', 'Urgent', 'high']) {
+      const invalid = { ...state, visiblePriority };
+      if (visiblePriority === undefined) delete invalid.visiblePriority;
+      assert.equal((await post('/directory/priority', invalid)).status, 422);
+    }
+    for (const restricted of [{ ...state, scope: 'Archived' }, { ...state, filter: 'Deleted' }]) {
+      assert.equal((await post('/directory/priority', restricted)).status, 403);
+      assert.match(await get(`/directory?${new URLSearchParams(restricted)}`), /disabled>Set visible priority/);
+    }
+    assert.deepEqual(snapshot(), before);
+    const fresh = await get('/directory');
+    assert.match(fresh, /<label for="visible-tasks-priority">Visible tasks priority<\/label>/);
+    assert.match(fresh, /<select id="visible-tasks-priority"[^>]*>\s*<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    const response = await post('/directory/priority', state);
+    assert.equal(response.status, 303);
+    const location = response.headers.get('location');
+    for (const [key, value] of Object.entries(state)) {
+      assert.equal(new URL(location, server.url).searchParams.get(key), key === 'query' ? value.trim() : value);
+    }
+    const empty = await get(location);
+    assert.match(empty, /directory-summary">0\/0 completed/);
+    assert.match(empty, /No matching tasks/);
+    assert.doesNotMatch(empty, /data-testid="directory-owner-row"/);
+    for (const label of ['Set visible priority', 'Complete visible tasks', 'Reopen visible tasks', 'Delete visible tasks', 'Restore visible tasks']) {
+      assert.ok(empty.includes(`disabled>${label}`));
+    }
+    const after = snapshot();
+    assert.deepEqual(after.projects, before.projects);
+    assert.deepEqual(after.positions, before.positions);
+    assert.deepEqual(after.tasks, before.tasks.map((row) => ['Match  \t ONE', 'Match one second'].includes(row.title)
+      ? { ...row, priority: 'Normal' } : row));
+    await post('/directory/priority', { ...state, visiblePriority: 'Low' }); // Empty result is a no-op.
+    assert.deepEqual(snapshot(), after);
+    const normal = await get(`/directory?${new URLSearchParams({ ...state, priorityFilter: 'Normal' })}`);
+    assert.match(normal, /directory-summary">0\/2 completed/);
+    assert.equal((normal.match(/directory-owner-row/g) ?? []).length, 2);
+    const moved = after.tasks[0];
+    await post(`${first}/tasks/${moved.id}/move`, { destination: second.split('/').at(-1) });
+    await post(`${second}/tasks/${moved.id}/move`, { destination: first.split('/').at(-1) });
+    assert.deepEqual(snapshot().tasks, after.tasks);
+    const final = snapshot();
+    const exported = await get(`${first}/export`);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), final);
+    assert.equal(await get(`${first}/export`), exported);
+    assert.equal(await get(`/directory?${new URLSearchParams({ ...state, priorityFilter: 'Normal' })}`), normal);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('directory bulk deletion and restoration preserve identities, fields, intersections and reserved order', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-delete-'));
   const databasePath = join(directory, 'workboard.sqlite');
