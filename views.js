@@ -133,6 +133,12 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
           </select>
           <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save priority</button></noscript>
         </form>
+        <form class="create task-due-date" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/due-date">
+          ${filterFields}
+          <label for="task-due-date-${escapeHtml(task.id)}">Task due date</label>
+          <input id="task-due-date-${escapeHtml(task.id)}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
         <form class="create task-rename" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/rename">
           ${filterFields}
           <label for="new-task-title-${escapeHtml(task.id)}">New task title</label>

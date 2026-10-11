@@ -648,3 +648,82 @@ test('combined filters retain selections and re-evaluate edits without changing 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('due dates migrate, validate, clear, and persist independently with archive protection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
+    CREATE TABLE tasks (position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, project_id TEXT NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (id, name) VALUES ('first', 'First'), ('second', 'Second');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES ('old', 'first', 'Existing', 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const taskPath = '/projects/first/tasks/old';
+    const fields = { filter: 'Completed', priorityFilter: 'Normal' };
+    const filteredPath = '/projects/first?filter=Completed&priorityFilter=Normal';
+    const dateInput = /id="task-due-date-old" name="dueDate" type="text" value="([^"]*)"/;
+    assert.equal((await get('/projects/first')).match(dateInput)[1], '');
+    await post('/projects/first/tasks', { title: 'New' });
+    assert.equal((await get('/projects/first')).match(/name="dueDate" type="text" value=""/g).length, 2);
+    const summary = await get('/');
+    let response = await post(`${taskPath}/due-date`, { ...fields, dueDate: '  2000-02-29  ' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), filteredPath);
+    let html = await get(filteredPath);
+    assert.equal(html.match(dateInput)[1], '2000-02-29');
+    assert.match(html, /<option selected>Completed/);
+    assert.match(html, /id="priority-filter"[\s\S]*?<option selected>Normal/);
+    assert.equal((await get('/projects/first')).match(/name="dueDate" type="text" value=""/g).length, 1);
+    assert.equal(await get('/'), summary);
+    for (const dueDate of ['1900-02-29', '2025-04-31', '0000-01-01', '10000-01-01', '2025-1-01', '<script>']) {
+      response = await post(`${taskPath}/due-date`, { ...fields, dueDate });
+      assert.equal(response.status, 422);
+      const invalid = await response.text();
+      assert.match(invalid, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.equal(invalid.match(dateInput)[1], '2000-02-29');
+      assert.equal(await get(filteredPath), html);
+    }
+    assert.equal((await post('/projects/second/tasks/old/due-date', { dueDate: '2025-01-01' })).status, 404);
+    await post(`${taskPath}/rename`, { ...fields, title: 'Renamed' });
+    html = await get(filteredPath);
+    assert.match(html, /Complete Renamed" checked/);
+    assert.equal(html.match(dateInput)[1], '2000-02-29');
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(filteredPath), html);
+    await post('/projects/first/archive');
+    const archived = await get(filteredPath);
+    assert.match(archived, /name="dueDate" type="text" value="2000-02-29" disabled/);
+    assert.match(archived, /<button type="submit" disabled>Save due date/);
+    assert.equal((await post(`${taskPath}/due-date`, { dueDate: '' })).status, 403);
+    assert.equal(await get(filteredPath), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(filteredPath), archived);
+    await post('/projects/first/restore');
+    assert.equal(await get(filteredPath), html);
+    for (const dueDate of ['', '  \t ']) {
+      await post(`${taskPath}/due-date`, { ...fields, dueDate: '9999-12-31' });
+      response = await post(`${taskPath}/due-date`, { ...fields, dueDate });
+      assert.equal(response.headers.get('location'), filteredPath);
+      assert.equal((await get(filteredPath)).match(dateInput)[1], '');
+    }
+    html = await get(filteredPath);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(filteredPath), html);
+    assert.equal(await get('/'), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
