@@ -18,6 +18,11 @@ On a project page, create tasks, toggle their completion checkboxes, and use
 `Task filter` to view All, Open, or Completed tasks. Projects and tasks persist
 in the configured SQLite file across server restarts.
 
+Use `Project filter` to switch between Active and Archived projects. Project
+rows show completion totals and let you archive or restore a project. Archived
+projects remain readable with working task filters; task creation and completion
+changes are disabled until restoration. Existing databases migrate automatically.
+
 Run the integration checks with:
 
 ```sh

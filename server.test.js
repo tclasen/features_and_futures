@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 async function launch(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -152,6 +153,88 @@ test('tasks validate, stay in their project, filter, toggle, and survive restart
     app = undefined;
     app = await launch(dbPath);
     assert.equal(await get('/projects/1'), reopened);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('archive migration, summaries, read-only tasks, restoration, and restart persistence', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  // Simulate the database produced before archive support was added.
+  const oldDb = new DatabaseSync(dbPath);
+  oldDb.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    INSERT INTO projects (name) VALUES ('Existing project');`);
+  oldDb.close();
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const rows = (body) => [...body.matchAll(/data-testid="project-summary">([^<]+)/g)].map((match) => match[1]);
+    const initial = await get('/');
+    assert.match(initial, /Existing project/);
+    assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(initial, /<option selected>Active<\/option>\s*<option>Archived<\/option>/);
+    assert.deepEqual(rows(initial), ['0/0 completed']);
+    await post('/projects', { name: 'Second project' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    await post('/projects/1/tasks', { title: 'Open task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    assert.deepEqual(rows(await get('/')), ['1/2 completed', '0/0 completed']);
+    await get('/projects/1?filter=Completed');
+    assert.deepEqual(rows(await get('/')), ['1/2 completed', '0/0 completed']);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+    const archive = await post('/projects/1/archive');
+    assert.equal(archive.status, 303);
+    assert.equal(archive.headers.get('location'), '/');
+    assert.doesNotMatch(await get('/'), /Existing project/);
+    const archived = await get('/?filter=Archived');
+    assert.match(archived, /Existing project/);
+    assert.match(archived, /<option selected>Archived<\/option>/);
+    assert.match(archived, />Open project<\/button>/);
+    assert.match(archived, />Restore project<\/button>/);
+    assert.doesNotMatch(archived, />Archive project<\/button>/);
+    assert.deepEqual(rows(archived), ['1/2 completed']);
+    const detail = await get('/projects/1');
+    assert.match(detail, /Archived project/);
+    assert.match(detail, /<button type="submit" disabled>Create task<\/button>/);
+    assert.match(detail, /aria-label="Complete Done task" checked disabled/);
+    assert.match(detail, /aria-label="Complete Open task" disabled/);
+    assert.equal((detail.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.doesNotMatch(await get('/projects/1?filter=Open'), /Complete Done task/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /Complete Open task/);
+    assert.equal((await post('/projects/1/tasks', { title: 'Forbidden task' })).status, 409);
+    assert.equal((await post('/projects/1/tasks/1', { completed: '0' })).status, 409);
+    assert.equal(await get('/projects/1'), detail);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/?filter=Archived'), archived);
+    assert.equal(await get('/projects/1'), detail);
+    assert.doesNotMatch(await get('/'), /Existing project/);
+    const restore = await post('/projects/1/restore');
+    assert.equal(restore.status, 303);
+    assert.equal(restore.headers.get('location'), '/?filter=Archived');
+    assert.doesNotMatch(await get('/?filter=Archived'), /data-testid="project-row"/);
+    const active = await get('/');
+    assert.ok(active.indexOf('Existing project') < active.indexOf('Second project'));
+    assert.deepEqual(rows(active), ['1/2 completed', '0/0 completed']);
+    const restored = await get('/projects/1');
+    assert.doesNotMatch(restored, /Archived project| disabled/);
+    assert.match(restored, /aria-label="Complete Done task" checked/);
+    await post('/projects/1/tasks/2', { completed: '1' });
+    await post('/projects/1/tasks', { title: 'After restore' });
+    assert.deepEqual(rows(await get('/')), ['2/3 completed', '0/0 completed']);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.deepEqual(rows(await get('/')), ['2/3 completed', '0/0 completed']);
+    assert.match(await get('/projects/1'), /Complete After restore/);
+    assert.doesNotMatch(await get('/projects/1'), /Archived project| disabled/);
   } finally {
     if (app) await app.stop();
     await rm(dir, { recursive: true, force: true });
