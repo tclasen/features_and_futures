@@ -71,3 +71,7 @@ L065 observed: task025/b004/attempt002 fails before inference with oversized Pi 
 - L065 verified: preserve pre-inference launch and byte-identical prior feedback; pinned Pi file-to-argv preload has verified native context equivalence. Retain original timing; record unavailable model delivery explicitly, no synthetic receipts. Native recovery pending. See preflight/launch-incidents/task025-b004-attempt002/recovery-verified.json and revision preflight/pi-prompt-transport002/independently-verified.json.
 
 - L065 actual native adoption verified: task025 b004 attempt003 first request carries full unchanged988066-byte retry prompt; HTTP200 and native counters observed. Acceptance pending. L062 PM preflight failures retained and corrected through exact image discovery, zstd decode and absolute archive paths; both owned diagnostic sandboxes removed.
+
+- L062 prospective031039 focused coverage fully verified: nine closed original fixtures, including039 three four-case render positives and22 selected fault controls. Broader140/reset/restore fixture and actual native lifecycle remain separate gates.
+
+- L062 broader002 first launch EPERM retained: no browser/model execution; unchanged fixture rerun with authorized local-network execution. Behavioral verification remains pending.
