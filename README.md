@@ -20,3 +20,5 @@ Project pages support task creation, saved completion checkboxes, and All/Open/C
 The project list defaults to Active and can show Archived projects. Archive and restore preserve all tasks. Archived project pages allow viewing and filtering tasks while task creation and completion controls are disabled; the server also rejects these changes. Each project row shows completed/total counts across all its tasks.
 
 Active project pages allow renaming with a trimmed, nonempty name. Names persist without changing project URLs, list order, tasks, or summaries. Archived projects cannot be renamed until restored; both the browser controls and server enforce this restriction.
+
+Each task row allows renaming with a trimmed, nonempty title. Renaming preserves ownership, creation order, completion state, filter membership, and project summaries. The completion checkbox label follows the saved title. Archived projects disable task rename controls and reject title updates until restored. Task titles persist across reloads and server restarts.

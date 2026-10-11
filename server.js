@@ -49,9 +49,9 @@ const server = createServer(async (request, response) => {
       }
       return json(response, 201, projects.create(body.name));
     }
-    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/title)?)?$/);
     if (tasksMatch) {
-      const [, projectId, taskId] = tasksMatch;
+      const [, projectId, taskId, titlePath] = tasksMatch;
       const project = projects.get(projectId);
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (!taskId && request.method === 'GET') {
@@ -69,6 +69,10 @@ const server = createServer(async (request, response) => {
       }
       if (taskId && request.method === 'PATCH') {
         const body = await readJson(request);
+        if (titlePath) {
+          const task = projects.tasks.rename(projectId, taskId, body?.title);
+          return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
+        }
         if (typeof body?.completed !== 'boolean') {
           return json(response, 400, { error: 'Completion must be a boolean' });
         }

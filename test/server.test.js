@@ -73,6 +73,14 @@ test('projects, tasks, renames, archive state, and summaries persist across serv
     });
   }
 
+  async function renameTask(projectId, taskId, title) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}/title`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+  }
+
   async function listTasks(projectId) {
     const response = await fetch(`${base}/api/projects/${projectId}/tasks`);
     assert.equal(response.status, 200);
@@ -163,6 +171,27 @@ test('projects, tasks, renames, archive state, and summaries persist across serv
     const firstWithTasks = { ...first, total_count: 2, completed_count: 1 };
     const secondWithTasks = { ...second, total_count: 1 };
     assert.deepEqual(await getProject(first.id), firstWithTasks);
+    for (const title of ['', ' \t\n ', null, 123]) {
+      const response = await renameTask(first.id, firstTask.id, title);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+      assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
+    }
+    assert.equal((await renameTask(second.id, firstTask.id, 'Wrong project')).status, 404);
+    assert.equal((await renameTask(first.id, 999999, 'Missing task')).status, 404);
+    assert.equal((await renameTask(999999, firstTask.id, 'Missing project')).status, 404);
+    const renamedTaskResponse = await renameTask(first.id, firstTask.id, '  Renamed <task> & team  ');
+    assert.equal(renamedTaskResponse.status, 200);
+    firstTask.title = 'Renamed <task> & team';
+    completedTask.title = firstTask.title;
+    assert.deepEqual(await renamedTaskResponse.json(), completedTask);
+    const renamedOpenResponse = await renameTask(first.id, secondTask.id, '  Renamed open task  ');
+    assert.equal(renamedOpenResponse.status, 200);
+    secondTask.title = 'Renamed open task';
+    assert.deepEqual(await renamedOpenResponse.json(), secondTask);
+    assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
+    assert.deepEqual(await listTasks(second.id), [otherTask]);
+    assert.deepEqual(await getProject(first.id), firstWithTasks);
     for (const name of ['', ' \t\n ', null, 123]) {
       const response = await rename(first.id, name);
       assert.equal(response.status, 400);
@@ -183,6 +212,9 @@ test('projects, tasks, renames, archive state, and summaries persist across serv
     assert.deepEqual(await (await setArchived(first.id, true)).json(), { ...firstWithTasks, archived: true });
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await setCompleted(first.id, firstTask.id, false)).status, 409);
+    const archivedTaskRename = await renameTask(first.id, firstTask.id, 'Blocked task rename');
+    assert.equal(archivedTaskRename.status, 409);
+    assert.deepEqual(await archivedTaskRename.json(), { error: 'Archived project cannot be changed' });
     const archivedRename = await rename(first.id, 'Blocked rename');
     assert.equal(archivedRename.status, 409);
     assert.deepEqual(await archivedRename.json(), { error: 'Archived project cannot be changed' });
@@ -196,6 +228,13 @@ test('projects, tasks, renames, archive state, and summaries persist across serv
     assert.deepEqual(await listTasks(second.id), [otherTask]);
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.deepEqual(await (await setArchived(first.id, false)).json(), firstWithTasks);
+    const restoredTaskRename = await renameTask(first.id, firstTask.id, '  Restored task  ');
+    assert.equal(restoredTaskRename.status, 200);
+    firstTask.title = 'Restored task';
+    completedTask.title = firstTask.title;
+    assert.deepEqual(await restoredTaskRename.json(), completedTask);
+    assert.deepEqual(await listTasks(first.id), [completedTask, secondTask]);
+    assert.deepEqual(await getProject(first.id), firstWithTasks);
     const restoredRename = await rename(first.id, '  Restored project  ');
     assert.equal(restoredRename.status, 200);
     firstWithTasks.name = 'Restored project';

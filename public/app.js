@@ -124,7 +124,51 @@ async function renderTasks(project) {
           checkbox.disabled = project.archived;
         }
       });
-      row.append(title, checkbox);
+      const renameForm = document.createElement('form');
+      renameForm.className = 'task-rename';
+      const renameLabel = document.createElement('label');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      renameLabel.textContent = 'New task title';
+      const renameInput = document.createElement('input');
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.type = 'text';
+      renameInput.autocomplete = 'off';
+      renameInput.value = task.title;
+      renameInput.disabled = project.archived;
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename task';
+      renameButton.disabled = project.archived;
+      const renameControls = document.createElement('div');
+      renameControls.className = 'create-controls';
+      renameControls.append(renameInput, renameButton);
+      renameForm.append(renameLabel, renameControls);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (project.archived) return;
+        alert.hidden = true;
+        if (!renameInput.value.trim()) {
+          showError(alert, 'Task title is required');
+          return;
+        }
+        renameButton.disabled = true;
+        try {
+          const updated = await request(`${endpoint}/${task.id}/title`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: renameInput.value }),
+          });
+          task.title = updated.title;
+          title.textContent = task.title;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          renameInput.value = task.title;
+        } catch (error) {
+          showError(alert, error.message);
+        } finally {
+          renameButton.disabled = project.archived;
+        }
+      });
+      row.append(title, checkbox, renameForm);
       list.append(row);
     }
   }
