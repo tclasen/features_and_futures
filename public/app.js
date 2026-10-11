@@ -501,6 +501,9 @@ async function initialize() {
     try {
       const project = await request(`/api/projects/${match[1]}`);
       projectId = project.id;
+      const download = document.querySelector('#download-project');
+      download.href = `/api/projects/${encodeURIComponent(projectId)}/export`;
+      download.hidden = false;
       archived = Boolean(project.archived);
       savedDefaultTaskPriority = project.default_task_priority;
       defaultTaskPriority.value = savedDefaultTaskPriority;

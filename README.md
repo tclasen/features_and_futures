@@ -145,3 +145,15 @@ state persists through reloads, restarts, and project archival/restoration.
 Deletion checks cover migration, reserved ordering, summaries, all saved fields,
 filter retention, disabled editing, archived restrictions, moves after restoration,
 and server restarts.
+
+Every project page provides Download project, including archived and empty projects.
+It downloads UTF-8 JSON as `workboard-project.json` from
+`GET /api/projects/<project-id>/export`. Version 1 of the `workboard-project`
+format contains the project's name, archive state, default priority, and all its
+current live and deleted tasks in stored relative order, regardless of UI filters.
+Tasks contain title, completion, explicit priority, due date, notes, and deletion
+state. Exported notes normalize CRLF and CR to LF; saved notes remain unchanged.
+Export does not modify data, remembered positions, or the current view. Checks cover
+older database defaults, empty projects, task ownership and return order, deleted
+and archived tasks, Unicode and literal markup, response download headers, unchanged
+stored data, and restart persistence.

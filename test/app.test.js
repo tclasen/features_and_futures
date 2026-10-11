@@ -1323,3 +1323,31 @@ test('deletion retains filters, deleted rows are read-only, and restoration reco
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.match(html, /<option value="completed">Completed<\/option>\s*<option value="deleted">Deleted<\/option>/);
 });
+
+test('project download stays available with archived or empty filtered views and retains controls', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<a id="download-project" download="workboard-project.json" hidden>Download project<\/a>/);
+  for (const archived of [false, true]) {
+    const projects = [{ id: 'a', name: 'Project', archived, default_task_priority: 'Normal' }];
+    const tasks = [{ id: 't', title: 'Deleted task', completed: true, priority: 'High',
+      due_date: '2024-02-29', notes: 'saved', deleted: true }];
+    const { element, search, writes } = await searchApp('/projects/a', projects, tasks);
+    element('#task-filter').value = 'deleted';
+    await element('#task-filter').dispatch('change');
+    element('#priority-filter').value = 'Low';
+    await element('#priority-filter').dispatch('change');
+    element('#due-from').value = '2025-01-01';
+    await element('#due-range-form').dispatch('submit');
+    await search('task', 'missing');
+    assert.equal(element('#task-list').children.length, 0);
+    const download = element('#download-project');
+    assert.equal(download.hidden, false);
+    assert.equal(download.href, '/api/projects/a/export');
+    assert.notEqual(download.disabled, true);
+    assert.equal(element('#task-filter').value, 'deleted');
+    assert.equal(element('#priority-filter').value, 'Low');
+    assert.equal(element('#due-from').value, '2025-01-01');
+    assert.equal(element('#task-search').value, 'missing');
+    assert.deepEqual(writes, []);
+  }
+});

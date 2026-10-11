@@ -747,3 +747,105 @@ test('deletion migrates live tasks, preserves data and positions, and survives r
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('portable exports include all current tasks in remembered order without changing saved data', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'export-'));
+  const databasePath = resolve(directory, 'workboard.sqlite');
+  let server;
+  try {
+    // An older database gains public defaults before exporting.
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`CREATE TABLE projects (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL
+    ); INSERT INTO projects (id, name) VALUES ('legacy', 'Old  PROJECT');
+    CREATE TABLE tasks (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+      project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    ); INSERT INTO tasks (id, project_id, title, completed)
+      VALUES ('old', 'legacy', 'Old\t task', 1)`);
+    legacy.close();
+    server = await start(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(server.url + '/api/projects' + path, {
+        method, ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const download = async id => {
+      const response = await fetch(`${server.url}/api/projects/${id}/export`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return JSON.parse(await response.text());
+    };
+    const portableTask = (title, fields = {}) => ({
+      title, completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false, ...fields,
+    });
+    assert.deepEqual(await download('legacy'), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Old  PROJECT', archived: false, defaultPriority: 'Normal',
+        tasks: [portableTask('Old\t task', { completed: true })] },
+    });
+    const other = await api('', 'POST', { name: 'Other' }, 201);
+    assert.deepEqual((await download(other.id)).project.tasks, []);
+    await api(`/${other.id}/tasks`, 'POST', { title: 'Must not export with legacy' }, 201);
+    const second = await api('/legacy/tasks', 'POST', { title: '  Unicode 日本語 📝  ' }, 201);
+    const secondPath = '/legacy/tasks/' + second.id;
+    const notes = '  line one\r\n\tUnicode café 日本語 📝\r<script>literal</script> & "text"\n  ';
+    for (const change of [{ priority: 'High' }, { due_date: '0001-01-01' }, { notes }]) {
+      await api(secondPath, 'PATCH', change);
+    }
+    // Move out and return after a later creation: the export uses reserved order.
+    await api('/legacy/tasks/old', 'PATCH', { destination_project_id: other.id });
+    await api('/legacy/tasks', 'POST', { title: 'Later' }, 201);
+    await api(`/${other.id}/tasks/old`, 'PATCH', { destination_project_id: 'legacy' });
+    await api(secondPath, 'PATCH', { deleted: true });
+    await api('/legacy', 'PATCH', { default_task_priority: 'Low' });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Old  PROJECT', archived: false, defaultPriority: 'Low', tasks: [
+        portableTask('Old\t task', { completed: true }),
+        portableTask('Unicode 日本語 📝', { priority: 'High', dueDate: '0001-01-01',
+          notes: notes.replace(/\r\n?/g, '\n'), deleted: true }),
+        portableTask('Later'),
+      ] },
+    };
+    const savedTasks = await api('/legacy/tasks');
+    const savedProjects = await api('');
+    const readPositions = () => {
+      const db = new DatabaseSync(databasePath);
+      try { return db.prepare('SELECT * FROM task_project_positions ORDER BY project_id, position').all(); }
+      finally { db.close(); }
+    };
+    const savedPositions = readPositions();
+    assert.deepEqual(await download('legacy'), expected);
+    assert.deepEqual(await api('/legacy/tasks'), savedTasks);
+    assert.deepEqual(await api(''), savedProjects);
+    assert.deepEqual(readPositions(), savedPositions);
+    await api('/legacy/tasks/old', 'PATCH', { deleted: true });
+    const later = (await api('/legacy/tasks'))[2];
+    await api('/legacy/tasks/' + later.id, 'PATCH', { deleted: true });
+    expected.project.tasks.forEach(task => { task.deleted = true; });
+    await api('/legacy', 'PATCH', { archived: true });
+    expected.project.archived = true;
+    assert.deepEqual(await download('legacy'), expected);
+    assert.equal((await api('/legacy')).total, 0);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await download('legacy'), expected);
+    assert.equal((await api('/legacy/tasks'))[1].notes, notes);
+    assert.deepEqual(readPositions(), savedPositions);
+    await api('/missing/export', 'GET', undefined, 404);
+    await api('/legacy', 'PATCH', { archived: false });
+    await api(secondPath, 'PATCH', { deleted: false });
+    assert.equal((await api('/legacy/tasks'))[1].notes, notes);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
