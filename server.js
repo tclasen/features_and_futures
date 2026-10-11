@@ -30,10 +30,35 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('BEGIN; ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id; COMMIT;');
 }
+// Keep vacated positions: returning tasks reuse them, while first arrivals append
+// after every position ever established in the destination project.
+db.exec(`BEGIN;
+  CREATE TABLE IF NOT EXISTS task_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  CREATE INDEX IF NOT EXISTS task_positions_project ON task_positions(project_id, position);
+  INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+  COMMIT;`);
 const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id ASC');
+const rememberPosition = db.prepare(`INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+  VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  position = (SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?)
   WHERE id = ? AND project_id = ?`);
+function transaction(action) {
+  db.exec('BEGIN');
+  try {
+    action();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position ASC, id ASC');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -42,7 +67,7 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 }
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0');
 const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -396,7 +421,10 @@ const server = http.createServer(async (req, res) => {
             sendHtml(res, 400, projectPage(project, filter, 'Choose an active destination project', selectedPriority, dueRange(form)));
             return;
           }
-          moveTask.run(destinationId, destinationId, taskId, projectId);
+          transaction(() => {
+            rememberPosition.run(taskId, destinationId, destinationId);
+            moveTask.run(destinationId, taskId, destinationId, taskId, projectId);
+          });
         } else if (parts[5] === 'rename') {
           const title = (form.get('title') || '').trim();
           if (!title) {
@@ -427,7 +455,10 @@ const server = http.createServer(async (req, res) => {
           sendHtml(res, 200, projectPage(project, filter, 'Task title is required', selectedPriority, dueRange(form)));
           return;
         }
-        createTask.run(projectId, title, project.default_priority, projectId);
+        transaction(() => {
+          const result = createTask.run(projectId, title, project.default_priority, projectId);
+          rememberPosition.run(result.lastInsertRowid, projectId, projectId);
+        });
       }
       res.writeHead(303, { Location: projectLocation(projectId, filter, selectedPriority, dueRange(form)) });
       res.end();
