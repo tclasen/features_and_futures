@@ -46,6 +46,7 @@
   <script type="module">
     const app = document.querySelector('#app');
     const escapeText = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    const foldAsciiCase = (value) => String(value).replace(/[A-Z]/g, (char) => char.toLowerCase());
 
     async function showProjects() {
       app.innerHTML = `
@@ -56,10 +57,13 @@
           <button type="submit">Create project</button>
         </form>
         <div id="form-message" role="alert" aria-live="polite"></div>
+        <form id="project-search" class="project-controls"><label for="project-search-query">Project search</label><input id="project-search-query" type="text" autocomplete="off"><button type="submit">Search projects</button></form>
         <div class="project-controls"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
         <section id="project-list" class="project-list" aria-label="Projects"></section>`;
       const list = app.querySelector('#project-list');
       const filter = app.querySelector('#project-filter');
+      const searchInput = app.querySelector('#project-search-query');
+      let appliedSearch = '';
       let projects = [];
       const loadProjects = async () => {
         const response = await fetch('/api/projects');
@@ -68,7 +72,7 @@
       };
       const renderProjects = () => {
         const archived = filter.value === 'Archived';
-        list.innerHTML = projects.filter((project) => project.archived === archived).map((project) => `
+        list.innerHTML = projects.filter((project) => project.archived === archived && foldAsciiCase(project.name).includes(foldAsciiCase(appliedSearch))).map((project) => `
           <div class="project-row" data-testid="project-row">
             <span class="project-name">${escapeText(project.name)}</span>
             <span class="project-summary" data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
@@ -78,6 +82,11 @@
       };
       await loadProjects();
       filter.addEventListener('change', renderProjects);
+      app.querySelector('#project-search').addEventListener('submit', (event) => {
+        event.preventDefault();
+        appliedSearch = searchInput.value.trim();
+        renderProjects();
+      });
       app.querySelector('#create-project').addEventListener('submit', async (event) => {
         event.preventDefault();
         const input = app.querySelector('#project-name');
@@ -121,12 +130,15 @@
           <div id="task-message" role="alert" aria-live="polite"></div>
           <div class="task-controls"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
           <div class="task-controls"><label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></div>
+          <form id="task-search" class="task-controls"><label for="task-search-query">Task search</label><input id="task-search-query" type="text" autocomplete="off"><button type="submit">Search tasks</button></form>
           <div class="task-controls"><label for="due-from">Due from</label><input id="due-from" type="text" autocomplete="off"><label for="due-through">Due through</label><input id="due-through" type="text" autocomplete="off"><button id="apply-due-range" type="button">Apply due range</button></div>
           <div class="task-controls"><label for="default-task-priority">Default task priority</label><select id="default-task-priority" ${project.archived ? 'disabled' : ''}><option ${project.default_task_priority === 'Low' ? 'selected' : ''}>Low</option><option ${project.default_task_priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${project.default_task_priority === 'High' ? 'selected' : ''}>High</option></select></div>
           <section id="task-list" class="task-list" aria-label="Tasks"></section></section>`;
         const list = app.querySelector('#task-list');
         const filter = app.querySelector('#task-filter');
         const priorityFilter = app.querySelector('#priority-filter');
+        const taskSearchInput = app.querySelector('#task-search-query');
+        let appliedTaskSearch = '';
         const dueFrom = app.querySelector('#due-from');
         const dueThrough = app.querySelector('#due-through');
         let appliedDueFrom = '';
@@ -142,6 +154,7 @@
           const visible = tasks.filter((task) =>
             (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed)) &&
             (selectedPriority === 'All' || task.priority === selectedPriority) &&
+            foldAsciiCase(task.title).includes(foldAsciiCase(appliedTaskSearch)) &&
             (!hasDueRange || (task.due_date && (!appliedDueFrom || task.due_date >= appliedDueFrom) && (!appliedDueThrough || task.due_date <= appliedDueThrough))));
           list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button></div>`).join('');
         };
@@ -168,6 +181,11 @@
         });
         filter.addEventListener('change', renderTasks);
         priorityFilter.addEventListener('change', renderTasks);
+        app.querySelector('#task-search').addEventListener('submit', (event) => {
+          event.preventDefault();
+          appliedTaskSearch = taskSearchInput.value.trim();
+          renderTasks();
+        });
         app.querySelector('#apply-due-range').addEventListener('click', () => {
           const message = app.querySelector('#task-message');
           const from = dueFrom.value.trim();
