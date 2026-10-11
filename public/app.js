@@ -594,6 +594,60 @@ async function showProjects() {
   });
   app.append(form);
 
+  const importForm = element('form', { className: 'project-import-form' });
+  const jsonLabel = element('label', { text: 'Project JSON' });
+  const jsonInput = element('textarea');
+  jsonInput.name = 'projectJson';
+  jsonLabel.append(jsonInput);
+  const importedNameLabel = element('label', { text: 'Imported project name' });
+  const importedNameInput = element('input');
+  importedNameInput.type = 'text';
+  importedNameInput.name = 'importedProjectName';
+  importedNameLabel.append(importedNameInput);
+  const importButton = element('button', { text: 'Import project' });
+  importButton.type = 'submit';
+  importForm.append(jsonLabel, importedNameLabel, importButton);
+  importForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = importedNameInput.value.trim();
+    if (!name) {
+      alert.textContent = 'Project name is required';
+      alert.hidden = false;
+      importedNameInput.focus();
+      return;
+    }
+    let document;
+    try {
+      document = JSON.parse(jsonInput.value);
+    } catch {
+      alert.textContent = 'Invalid project JSON';
+      alert.hidden = false;
+      return;
+    }
+    importButton.disabled = true;
+    try {
+      const response = await fetch('/api/projects/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, document }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        alert.textContent = result.error === 'Project name is required'
+          ? result.error : 'Invalid project JSON';
+        alert.hidden = false;
+        return;
+      }
+      location.href = `/projects/${result.id}`;
+    } catch {
+      alert.textContent = 'Invalid project JSON';
+      alert.hidden = false;
+    } finally {
+      importButton.disabled = false;
+    }
+  });
+  app.append(importForm);
+
   async function renderProjects() {
     const projects = await loadProjects(filter.value);
     projectList.replaceChildren();
