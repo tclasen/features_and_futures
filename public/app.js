@@ -250,6 +250,26 @@ async function render() {
     } catch (error) { alert.textContent = error.message; alert.hidden = false; }
   });
   app.append(form);
+  const importForm = element('form');
+  const jsonLabel = element('label', { for: 'project-json' }, 'Project JSON');
+  const jsonInput = element('textarea', { id: 'project-json', 'aria-label': 'Project JSON', rows: '6' });
+  const importedNameLabel = element('label', { for: 'imported-project-name' }, 'Imported project name');
+  const importedNameInput = element('input', { id: 'imported-project-name', type: 'text', 'aria-label': 'Imported project name' });
+  const importButton = element('button', { type: 'submit' }, 'Import project');
+  const importAlert = element('p', { role: 'alert', hidden: '' });
+  importForm.append(jsonLabel, jsonInput, importedNameLabel, importedNameInput, importButton, importAlert);
+  importForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      const result = await request('/api/projects/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document: jsonInput.value, name: importedNameInput.value }) });
+      history.pushState({}, '', `/projects/${encodeURIComponent(result.id)}`);
+      render();
+    } catch (error) {
+      importAlert.textContent = error.message === 'Project name is required' ? error.message : 'Invalid project JSON';
+      importAlert.hidden = false;
+    }
+  });
+  app.append(importForm);
   const labelFilter = element('label', { for: 'project-filter' }, 'Project filter');
   const filter = element('select', { id: 'project-filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', { value }, value));

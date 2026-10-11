@@ -110,6 +110,31 @@ const server = http.createServer(async (req, res) => {
       setArchived.run(payload.archived ? 1 : 0, project.id);
       return send(200, JSON.stringify({ ...project, archived: payload.archived ? 1 : 0 }));
     }
+    if (req.method === 'POST' && url.pathname === '/api/projects/import') {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      let payload;
+      try { payload = JSON.parse(raw); } catch { return send(400, JSON.stringify({ error: 'Invalid project JSON' })); }
+      const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      let sourceDocument;
+      try { sourceDocument = typeof payload.document === 'string' ? JSON.parse(payload.document) : payload.document; } catch { return send(400, JSON.stringify({ error: 'Invalid project JSON' })); }
+      const document = validateProjectDocument(sourceDocument);
+      if (!document) return send(400, JSON.stringify({ error: 'Invalid project JSON' }));
+      const id = randomUUID();
+      transaction(() => {
+        db.prepare('INSERT INTO projects (id, name, created_at, archived, default_priority) VALUES (?, ?, ?, ?, ?)')
+          .run(id, name, Date.now(), document.project.archived ? 1 : 0, document.project.defaultPriority);
+        const addTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority, due_date, notes, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        const addPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+        document.project.tasks.forEach((task, index) => {
+          const taskId = randomUUID();
+          addTask.run(taskId, id, task.title, task.completed ? 1 : 0, Date.now() + index, task.priority, task.dueDate || null, task.notes, task.deleted ? 1 : 0);
+          addPosition.run(taskId, id, index + 1);
+        });
+      });
+      return send(201, JSON.stringify({ id, name }));
+    }
     if (req.method === 'POST' && url.pathname === '/api/projects') {
       let raw = '';
       for await (const chunk of req) raw += chunk;
@@ -274,6 +299,18 @@ const server = http.createServer(async (req, res) => {
     return send(500, JSON.stringify({ error: 'Internal server error' }));
   }
 });
+
+function validateProjectDocument(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.format !== 'workboard-project' || value.version !== 1 || !Number.isInteger(value.version)) return null;
+  const project = value.project;
+  if (!project || typeof project !== 'object' || Array.isArray(project) || typeof project.name !== 'string' || !project.name.trim() || typeof project.archived !== 'boolean' || !['Low', 'Normal', 'High'].includes(project.defaultPriority) || !Array.isArray(project.tasks)) return null;
+  const tasks = [];
+  for (const task of project.tasks) {
+    if (!task || typeof task !== 'object' || Array.isArray(task) || typeof task.title !== 'string' || !task.title.trim() || typeof task.completed !== 'boolean' || !['Low', 'Normal', 'High'].includes(task.priority) || typeof task.dueDate !== 'string' || (task.dueDate !== '' && !isValidDueDate(task.dueDate)) || typeof task.notes !== 'string' || typeof task.deleted !== 'boolean') return null;
+    tasks.push(task);
+  }
+  return { project: { archived: project.archived, defaultPriority: project.defaultPriority, tasks } };
+}
 
 function isValidDueDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
