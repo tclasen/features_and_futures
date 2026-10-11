@@ -10,7 +10,10 @@ function element(tag, options = {}) {
 
 function matchesSearch(value, query) {
   const asciiLower = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-  return asciiLower(value).includes(asciiLower(query.trim()));
+  const normalizeWhitespace = (text) => text.replace(/[ \t]+/g, ' ');
+  return asciiLower(normalizeWhitespace(value)).includes(
+    asciiLower(normalizeWhitespace(query.trim())),
+  );
 }
 
 async function loadProjects(filter = 'Active') {
