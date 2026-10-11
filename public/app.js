@@ -781,16 +781,37 @@ async function showDirectory() {
     renderRows().catch(showLoadError);
   });
   app.append(searchForm);
+  const bulkActions = element('div', { className: 'directory-bulk-actions' });
+  const completeVisible = element('button', { text: 'Complete visible tasks' });
+  completeVisible.type = 'button';
+  const reopenVisible = element('button', { text: 'Reopen visible tasks', className: 'secondary-button' });
+  reopenVisible.type = 'button';
+  bulkActions.append(completeVisible, reopenVisible);
+  app.append(bulkActions);
   const results = element('section', { className: 'task-list' });
   app.append(results);
+  const emptyResult = element('p', { text: 'No matching tasks', className: 'empty-result' });
+  emptyResult.setAttribute('role', 'status');
+  emptyResult.hidden = true;
+  app.append(emptyResult);
+  let visibleRows = [];
+  let loading = false;
+  let requestVersion = 0;
   function showLoadError() {
     alert.textContent = 'Could not load task directory';
     alert.hidden = false;
   }
   async function renderRows() {
+    const currentRequest = ++requestVersion;
+    loading = true;
+    emptyResult.hidden = true;
+    completeVisible.disabled = true;
+    reopenVisible.disabled = true;
     const response = await fetch('/api/directory');
     if (!response.ok) throw new Error('Could not load task directory');
     const tasks = await response.json();
+    if (currentRequest !== requestVersion) return;
+    loading = false;
     results.replaceChildren();
     const rows = tasks.filter((task) => task.archived === (scope.value === 'Archived'))
       .filter((task) => completion.value === 'Deleted' ? task.deleted : !task.deleted && (
@@ -804,6 +825,12 @@ async function showDirectory() {
           && (!appliedRange.through || task.dueDate <= appliedRange.through);
       })
       .filter((task) => matchesSearch(task.title, appliedSearch));
+    visibleRows = rows;
+    const eligible = scope.value === 'Active' && completion.value !== 'Deleted'
+      ? rows.filter((task) => !task.deleted && !task.archived)
+      : [];
+    completeVisible.disabled = loading || eligible.every((task) => task.completed);
+    reopenVisible.disabled = loading || eligible.every((task) => !task.completed);
     for (const task of rows) {
       const row = element('div', { className: 'task-row directory-task-row', testId: 'directory-task-row' });
       row.append(element('span', { text: task.title, testId: 'directory-task-title' }));
@@ -818,7 +845,29 @@ async function showDirectory() {
       row.append(open);
       results.append(row);
     }
+    emptyResult.hidden = rows.length !== 0;
   }
+  async function updateVisibleTasks(completed) {
+    const taskIds = visibleRows.filter((task) => task.archived === false && task.deleted === false
+      && task.completed !== completed).map((task) => task.taskId);
+    if (!taskIds.length) return;
+    completeVisible.disabled = true;
+    reopenVisible.disabled = true;
+    try {
+      const response = await fetch('/api/directory/bulk-completion', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ completed, taskIds }),
+      });
+      if (!response.ok) throw new Error('Could not update visible tasks');
+      alert.hidden = true;
+      await renderRows();
+    } catch {
+      showLoadError();
+    }
+  }
+  completeVisible.addEventListener('click', () => updateVisibleTasks(true));
+  reopenVisible.addEventListener('click', () => updateVisibleTasks(false));
   for (const control of [scope, completion, priority]) {
     control.addEventListener('change', () => renderRows().catch(showLoadError));
   }

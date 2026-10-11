@@ -111,6 +111,39 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/directory/bulk-completion') {
+    try {
+      const payload = await readJson(request);
+      if (typeof payload.completed !== 'boolean' || !Array.isArray(payload.taskIds)
+        || payload.taskIds.some((id) => !Number.isSafeInteger(id) || id < 1)) {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid bulk update' }));
+        return;
+      }
+      const taskIds = [...new Set(payload.taskIds)];
+      let changed = 0;
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        const update = database.prepare(`
+          UPDATE tasks SET completed = ?
+          WHERE id = ? AND deleted = 0 AND project_id IN (
+            SELECT id FROM projects WHERE archived = 0
+          )
+        `);
+        for (const taskId of taskIds) {
+          changed += Number(update.run(payload.completed ? 1 : 0, taskId).changes);
+        }
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ changed }));
+    } catch {
+      send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid bulk update' }));
+    }
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
     const projects = database.prepare(`
