@@ -75,3 +75,5 @@ L065 observed: task025/b004/attempt002 fails before inference with oversized Pi 
 - L062 prospective031039 focused coverage fully verified: nine closed original fixtures, including039 three four-case render positives and22 selected fault controls. Broader140/reset/restore fixture and actual native lifecycle remain separate gates.
 
 - L062 broader002 first launch EPERM retained: no browser/model execution; unchanged fixture rerun with authorized local-network execution. Behavioral verification remains pending.
+
+- L060 broader002 first form/reload-reset variant independently verified:140 canonical cases, twenty actual resets and two process-local assertion probes pass; source and closed file hashes sealed. Remaining four full variants and actual native lifecycle checks remain separate and pending.
