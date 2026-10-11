@@ -5,9 +5,11 @@ const alertBox = document.querySelector('#alert');
 async function loadProjects() {
   const response = await fetch('/api/projects');
   const projects = await response.json();
+  const filter = document.querySelector('#project-filter').value;
   const container = document.querySelector('#projects');
   container.replaceChildren();
   for (const project of projects) {
+    if (Boolean(project.archived) !== (filter === 'Archived')) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -17,7 +19,17 @@ async function loadProjects() {
     button.type = 'button';
     button.textContent = 'Open project';
     button.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(name, button);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+    const archive = document.createElement('button');
+    archive.type = 'button';
+    archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+    archive.addEventListener('click', async () => {
+      await fetch(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+      await loadProjects();
+    });
+    row.append(name, summary, button, archive);
     container.append(row);
   }
 }
@@ -39,6 +51,7 @@ async function loadTasks(projectId) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(task.completed);
+    checkbox.disabled = Boolean(document.querySelector('#archived-label').hidden === false);
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
@@ -56,6 +69,8 @@ async function render() {
     if (response.ok) {
       const project = await response.json();
       document.querySelector('#project-title').textContent = project.name;
+      document.querySelector('#archived-label').hidden = !project.archived;
+      document.querySelector('#task-form').querySelectorAll('input, button').forEach(control => { control.disabled = Boolean(project.archived); });
       list.hidden = true;
       detail.hidden = false;
       await loadTasks(project.id);
@@ -86,6 +101,7 @@ document.querySelector('#create-form').addEventListener('submit', async event =>
   }
 });
 document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#task-filter').addEventListener('change', () => {
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (match) loadTasks(match[1]);
