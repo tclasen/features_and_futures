@@ -33,6 +33,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
 
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
@@ -83,14 +87,14 @@ body { margin: 0; font: 16px system-ui, sans-serif; color: #192b40; background: 
 main { max-width: 760px; margin: 60px auto; padding: 32px; background: white; border-radius: 12px; box-shadow: 0 4px 24px #192b4010; }
 h1 { margin-top: 0; overflow-wrap: anywhere; }
 label { display: block; font-weight: 600; margin-bottom: 8px; }
-input { padding: 10px; border: 1px solid #8b98a7; border-radius: 5px; font: inherit; width: min(100%, 400px); }
+input, textarea { padding: 10px; border: 1px solid #8b98a7; border-radius: 5px; font: inherit; width: min(100%, 400px); }
 button { padding: 10px 16px; border: 0; border-radius: 5px; background: #235baf; color: white; font: inherit; cursor: pointer; }
 select { padding: 10px; font: inherit; }
 input[type=checkbox] { width: auto; }
 .task label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
 .task { padding: 16px 0; border-top: 1px solid #dfe5ed; }
 .task-create { margin-top: 28px; margin-bottom: 24px; }
-button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #ebad32; outline-offset: 3px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid #ebad32; outline-offset: 3px; }
 .create { display: flex; gap: 12px; flex-wrap: wrap; }
 .projects { margin-top: 28px; }
 .project { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; border-top: 1px solid #dfe5ed; }
@@ -172,7 +176,7 @@ function projectLocation(id, filter, priority, range) {
 function projectPage(res, project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }) {
   const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id <> ? ORDER BY id').all(project.id);
   const moveDisabled = project.archived || !destinations.length;
-  const tasks = db.prepare(`SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ?
+  const tasks = db.prepare(`SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ?
     ${filter === 'All' ? '' : 'AND completed = ?'}
     ${priority === 'All' ? '' : 'AND priority = ?'}
     ${range.from || range.through ? "AND due_date <> ''" : ''}
@@ -268,6 +272,14 @@ ${rangeFields(range)}
 <label for="task-due-date-${task.id}">Task due date</label>
 <div class="create"><input id="task-due-date-${task.id}" name="due_date" type="text" value="${escape(task.due_date)}"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
 </form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+${rangeFields(range)}
+<input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
+<label for="task-notes-${task.id}">Task notes</label>
+<div class="create"><textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escape(task.notes).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;')}</textarea><button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button></div>
+</form>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/move">
 ${rangeFields(range)}
 <input type="hidden" name="filter" value="${filter}">
@@ -282,16 +294,18 @@ ${tasks.length ? '' : '<p>No tasks to show.</p>'}</section>`));
 }
 
 async function formBody(req) {
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of req) {
-    body += chunk.toString();
-    if (Buffer.byteLength(body) > 1024 * 1024) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size > 1024 * 1024) {
       const error = new Error('Request too large');
       error.status = 413;
       throw error;
     }
   }
-  return new URLSearchParams(body);
+  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
 const server = http.createServer(async (req, res) => {
@@ -372,7 +386,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/(?:rename|priority|due-date|move))?)?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/(?:rename|priority|due-date|notes|move))?)?$/.exec(url.pathname);
     if (req.method === 'POST' && taskMatch) {
       const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(taskMatch[1]);
       if (project) {
@@ -403,6 +417,13 @@ const server = http.createServer(async (req, res) => {
               position = (SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?)
               WHERE id = ?`).run(destination.id, task.id, destination.id, task.id);
           });
+        } else if (taskMatch[3] === '/notes') {
+          const result = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?')
+            .run(body.get('notes') || '', taskMatch[2], project.id);
+          if (!result.changes) {
+            sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+            return;
+          }
         } else if (taskMatch[3] === '/due-date') {
           const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], project.id);
           if (!task) {
