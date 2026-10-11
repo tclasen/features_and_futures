@@ -138,6 +138,23 @@ async function loadTasks(projectId, archived = false) {
         await loadTasks(projectId, archived);
       }
     });
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.disabled = archived;
+    priority.addEventListener('change', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ priority: priority.value }),
+      });
+      if (response.ok) await loadTasks(projectId, archived);
+    });
     const label = document.createElement('label');
     label.className = 'task-check-label';
     const checkbox = document.createElement('input');
@@ -153,7 +170,7 @@ async function loadTasks(projectId, archived = false) {
       await loadTasks(projectId);
     });
     label.append(checkbox);
-    row.append(title, renameInput, renameButton, label);
+    row.append(title, renameInput, renameButton, priority, label);
     taskContainer.append(row);
   }
 }

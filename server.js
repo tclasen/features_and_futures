@@ -18,6 +18,7 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'Normal',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -25,6 +26,10 @@ database.exec(`
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 database.exec('PRAGMA foreign_keys = ON');
 
@@ -92,7 +97,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
+    return sendJson(res, 200, database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId));
   }
   if (tasksMatch && req.method === 'POST') {
     let body = '';
@@ -106,7 +111,7 @@ const server = createServer(async (req, res) => {
     if (!project) return sendJson(res, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(res, 403, { error: 'Archived project' });
     const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: 0 });
+    return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: 0, priority: 'Normal' });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && req.method === 'PATCH') {
@@ -123,6 +128,11 @@ const server = createServer(async (req, res) => {
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
       return sendJson(res, 200, { id: taskId, title });
+    }
+    if (Object.hasOwn(data, 'priority')) {
+      if (!['Low', 'Normal', 'High'].includes(data.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+      database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(data.priority, taskId);
+      return sendJson(res, 200, { id: taskId, priority: data.priority });
     }
     if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, taskId);
