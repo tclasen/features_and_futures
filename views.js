@@ -106,7 +106,7 @@ export function projectListPage(projects, error = '', filter = 'Active', search 
     </div>`);
 }
 
-export function taskDirectoryPage(tasks, state, errors = {}) {
+export function taskDirectoryPage(tasks, owners, state, errors = {}) {
   const { scope, filter, priority, range, search, order } = state;
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
@@ -151,6 +151,13 @@ export function taskDirectoryPage(tasks, state, errors = {}) {
     </form>
     <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     ${tasks.length === 0 ? '<p role="status">No matching tasks</p>' : ''}
+    <div class="projects" aria-label="Matching projects">
+      ${owners.map((owner) => `<div class="project-row" data-testid="directory-owner-row">
+        <span class="project-name directory-field" data-testid="directory-owner-name">${escapeHtml(owner.name)}</span>
+        <span data-testid="directory-owner-summary">${owner.completedCount}/${owner.totalCount} completed</span>
+        <form method="get" action="/projects/${owner.id}"><button type="submit">Open project</button></form>
+      </div>`).join('')}
+    </div>
     <div class="projects">
       ${tasks.map((task) => `<div class="task-row" data-testid="directory-task-row">
         <div class="directory-field" data-testid="directory-task-title">${escapeHtml(task.title)}</div>

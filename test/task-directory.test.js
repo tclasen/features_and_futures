@@ -11,6 +11,26 @@ function assertDirectorySummary(html, completed, total) {
   const summaries = [...html.matchAll(/data-testid="directory-summary">([^<]*)<\/p>/g)];
   assert.deepEqual(summaries.map((match) => match[1]), [`${completed}/${total} completed`]);
   assert.equal(html.includes('role="status">No matching tasks'), total === 0);
+  const owners = directoryOwners(html);
+  assert.equal(owners.reduce((sum, owner) => sum + owner.completed, 0), completed);
+  assert.equal(owners.reduce((sum, owner) => sum + owner.total, 0), total);
+  const ids = owners.map((owner) => owner.id);
+  assert.deepEqual(ids, [...new Set(ids)].sort((left, right) => left - right));
+  assert.ok(owners.every((owner) => owner.total > 0));
+}
+
+function directoryOwners(html) {
+  return [...html.matchAll(/data-testid="directory-owner-row">([\s\S]*?)<\/form>\s*<\/div>/g)].map((match) => {
+    const row = match[1];
+    const counts = row.match(/data-testid="directory-owner-summary">(\d+)\/(\d+) completed<\/span>/);
+    assert.ok(counts);
+    assert.match(row, /<button type="submit">Open project<\/button>/);
+    return {
+      id: Number(row.match(/action="\/projects\/(\d+)"/)[1]),
+      name: row.match(/data-testid="directory-owner-name">([\s\S]*?)<\/span>/)[1],
+      completed: Number(counts[1]), total: Number(counts[2]),
+    };
+  });
 }
 
 test('directory intersects read-only filters, preserves order and literal fields across restart', async () => {
@@ -382,6 +402,105 @@ test('directory order survives controls and bulk actions without changing stored
     assert.deepEqual(titles(await get('/directory')), original);
     assert.deepEqual(snapshot()[1], before[1]);
     assert.deepEqual(await Promise.all([1, 2, 3].map((id) => get(`/projects/${id}/export`))), exports);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('directory owner totals keep duplicate identities and follow resolved membership', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-owners-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = async (path, values = {}) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+      assert.equal(response.status, 303);
+      return response.headers.get('location');
+    };
+    const task = (title, completed, overrides = {}) => ({
+      title, completed, priority: 'High', dueDate: '2028-02-29', notes: '', deleted: false, ...overrides,
+    });
+    const name = 'Same  <owner> 日本語';
+    const escapedName = 'Same  &lt;owner&gt; 日本語';
+    for (const project of [
+      { name, archived: false, defaultPriority: 'Normal', tasks: [
+        task('Zulu match', true), task('Zulu open match', false),
+        task('Other', true, { priority: 'Low', dueDate: '' }),
+        task('Deleted match', true, { deleted: true }),
+      ] },
+      { name: 'Different', archived: false, defaultPriority: 'Low', tasks: [
+        task('Alpha match', false), task('Deleted match', false, { deleted: true }),
+      ] },
+      { name, archived: true, defaultPriority: 'High', tasks: [
+        task('Archive match', true), task('Archive open match', false),
+        task('Archive deleted match', true, { deleted: true }),
+      ] },
+      { name: 'Empty owner', archived: false, defaultPriority: 'Normal', tasks: [] },
+    ]) {
+      await post('/projects/import', { importedName: project.name,
+        json: JSON.stringify({ format: 'workboard-project', version: 1, project }) });
+    }
+    // Creating and renaming to an existing name must both preserve independent IDs.
+    await post('/projects', { name });
+    await post('/projects/2/rename', { name: `  ${name}  ` });
+    const state = { scope: 'Active', filter: 'All', priorityFilter: 'High',
+      dueFrom: '2028-02-29', dueThrough: '2028-02-29', search: 'match', order: 'Title' };
+    const path = (values) => `/directory?${new URLSearchParams(values)}`;
+    const owner = (id, completed, total) => ({ id, name: escapedName, completed, total });
+    const check = async (values, expected) => {
+      const html = await get(path(values));
+      assert.deepEqual(directoryOwners(html), expected);
+      assertDirectorySummary(html, expected.reduce((sum, row) => sum + row.completed, 0),
+        expected.reduce((sum, row) => sum + row.total, 0));
+      return html;
+    };
+    const initial = await check(state, [owner(1, 1, 2), owner(2, 0, 1)]);
+    assert.ok(initial.indexOf('directory-task-title">Alpha match') < initial.indexOf('directory-task-title">Zulu match'));
+    for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+      await check({ ...state, order }, [owner(1, 1, 2), owner(2, 0, 1)]);
+    }
+    await check({ ...state, filter: 'Completed' }, [owner(1, 1, 1)]);
+    await check({ ...state, filter: 'Deleted' }, [owner(1, 1, 1), owner(2, 0, 1)]);
+    await check({ ...state, scope: 'Archived' }, [owner(3, 1, 2)]);
+    await check({ ...state, scope: 'Archived', filter: 'Deleted' }, [owner(3, 1, 1)]);
+    await check({ ...state, search: 'missing' }, []);
+    await check({ ...state, priorityFilter: 'Low' }, []);
+    await check({ ...state, dueFrom: '2028-03-01', dueThrough: '' }, []);
+    const invalid = await fetch(`${server.url}/directory/due-range`, {
+      method: 'POST', body: new URLSearchParams({ ...state, rangeFrom: '2027-02-29', rangeThrough: '' }),
+    });
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(directoryOwners(await invalid.text()), [owner(1, 1, 2), owner(2, 0, 1)]);
+    const open = { ...state, filter: 'Open' };
+    const location = await post('/directory/complete', open);
+    assert.deepEqual(Object.fromEntries(new URL(location, server.url).searchParams), open);
+    await check(open, []);
+    await check(state, [owner(1, 2, 2), owner(2, 1, 1)]);
+    const completed = { ...state, filter: 'Completed' };
+    await post('/directory/reopen', completed);
+    await check(completed, []);
+    await check(state, [owner(1, 0, 2), owner(2, 0, 1)]);
+    // The owner's bare URL resets the project filters and archive restrictions remain.
+    const archivedPage = await get('/projects/3');
+    assert.match(archivedPage, /Archived project/);
+    assert.match(archivedPage, /<button type="submit" disabled>Create task/);
+    const projectPage = await get('/projects/2');
+    assert.match(projectPage, /id="task-search"[^>]*value=""/);
+    assert.match(projectPage, /<option selected>All<\/option>/);
+    await server.stop();
+    server = await startServer(databasePath);
+    await check(state, [owner(1, 0, 2), owner(2, 0, 1)]);
+    await check({ ...state, filter: 'Deleted' }, [owner(1, 1, 1), owner(2, 0, 1)]);
+    await check({ ...state, scope: 'Archived' }, [owner(3, 1, 2)]);
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await check(state, [owner(1, 0, 1), owner(2, 0, 2)]);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    await check(state, [owner(1, 0, 2), owner(2, 0, 1)]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

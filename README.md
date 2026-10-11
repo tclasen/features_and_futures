@@ -185,3 +185,10 @@ in Archived scope. It follows all applied filters, search, due range, and bulk
 actions; changing Directory order leaves the counts unchanged. Empty results
 show `0/0 completed` alongside No matching tasks. Project summaries continue
 to count only their own live tasks.
+
+The directory also lists each owner represented in the resolved result, once per
+project ID in project creation order. Each owner's summary counts only its matching
+tasks, and the owner totals add up to the global directory summary. Duplicate
+project names remain separate rows; task sorting does not reorder these owners.
+Open project resets that project's view filters, including for archived owners.
+Empty results show no owners. This list never writes project or task data.

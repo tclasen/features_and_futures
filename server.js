@@ -220,7 +220,20 @@ function directoryLocation(state) {
 }
 
 function renderDirectory(state, errors = {}) {
-  return taskDirectoryPage(orderDirectoryTasks(directoryTasks(state), state.order), state, errors);
+  const tasks = directoryTasks(state);
+  // Group before view sorting so owners retain project creation order.
+  const owners = new Map();
+  for (const task of tasks) {
+    if (!owners.has(task.project_id)) {
+      owners.set(task.project_id, {
+        id: task.project_id, name: task.project_name, completedCount: 0, totalCount: 0,
+      });
+    }
+    const owner = owners.get(task.project_id);
+    owner.totalCount++;
+    if (task.completed) owner.completedCount++;
+  }
+  return taskDirectoryPage(orderDirectoryTasks(tasks, state.order), [...owners.values()], state, errors);
 }
 
 function setDirectoryCompletion(state, completed) {
