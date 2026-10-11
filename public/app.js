@@ -8,6 +8,11 @@ function element(tag, options = {}) {
   return node;
 }
 
+function matchesSearch(value, query) {
+  const asciiLower = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return asciiLower(value).includes(asciiLower(query.trim()));
+}
+
 async function loadProjects(filter = 'Active') {
   const response = await fetch(`/api/projects?filter=${filter}`);
   if (!response.ok) throw new Error('Could not load projects');
@@ -199,6 +204,22 @@ async function showProject(projectId) {
     loadTasks().catch(() => { alert.textContent = 'Could not load tasks'; alert.hidden = false; });
   });
   app.append(dueRangeForm);
+  let appliedTaskSearch = '';
+  const taskSearchForm = element('form', { className: 'search-form' });
+  const taskSearchLabel = element('label', { text: 'Task search' });
+  const taskSearchInput = element('input');
+  taskSearchInput.type = 'text';
+  taskSearchLabel.append(taskSearchInput);
+  const taskSearchButton = element('button', { text: 'Search tasks' });
+  taskSearchButton.type = 'submit';
+  taskSearchForm.append(taskSearchLabel, taskSearchButton);
+  taskSearchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    appliedTaskSearch = taskSearchInput.value.trim();
+    alert.hidden = true;
+    loadTasks().catch(() => { alert.textContent = 'Could not load tasks'; alert.hidden = false; });
+  });
+  app.append(taskSearchForm);
   const taskList = element('section', { className: 'task-list', testId: 'task-list' });
   app.append(taskList);
 
@@ -215,7 +236,7 @@ async function showProject(projectId) {
       if (!task.dueDate) return false;
       return (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
         && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
-    });
+    }).filter((task) => matchesSearch(task.title, appliedTaskSearch));
     for (const task of visibleTasks) {
       const row = element('div', { className: 'task-row', testId: 'task-row' });
       const checkboxLabel = element('label', { className: 'task-checkbox' });
@@ -433,6 +454,22 @@ async function showProjects() {
   }
   filterLabel.append(filter);
   app.append(filterLabel);
+  let appliedProjectSearch = '';
+  const searchForm = element('form', { className: 'search-form' });
+  const searchLabel = element('label', { text: 'Project search' });
+  const searchInput = element('input');
+  searchInput.type = 'text';
+  searchLabel.append(searchInput);
+  const searchButton = element('button', { text: 'Search projects' });
+  searchButton.type = 'submit';
+  searchForm.append(searchLabel, searchButton);
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    appliedProjectSearch = searchInput.value.trim();
+    alert.hidden = true;
+    renderProjects().catch(() => { alert.textContent = 'Could not load projects'; alert.hidden = false; });
+  });
+  app.append(searchForm);
   const projectList = element('section', { className: 'project-list' });
   app.append(projectList);
 
@@ -464,14 +501,16 @@ async function showProjects() {
       alert.hidden = false;
       return;
     }
-    await render();
+    input.value = '';
+    alert.hidden = true;
+    await renderProjects();
   });
   app.append(form);
 
   async function renderProjects() {
     const projects = await loadProjects(filter.value);
     projectList.replaceChildren();
-    for (const project of projects) {
+    for (const project of projects.filter((item) => matchesSearch(item.name, appliedProjectSearch))) {
       const row = element('div', { className: 'project-row', testId: 'project-row' });
       const details = element('div', { className: 'project-details' });
       details.append(element('span', { text: project.name, className: 'project-name' }));
