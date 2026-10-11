@@ -2,6 +2,8 @@ const listSection = document.querySelector('#project-list');
 const detailSection = document.querySelector('#project-detail');
 const projectContainer = document.querySelector('#projects');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#project-search-form');
+const projectSearchInput = document.querySelector('#project-search');
 const form = document.querySelector('#create-project-form');
 const nameInput = document.querySelector('#project-name');
 const alertMessage = document.querySelector('#form-alert');
@@ -18,11 +20,19 @@ const dueRangeForm = document.querySelector('#due-range-form');
 const dueFromInput = document.querySelector('#due-from');
 const dueThroughInput = document.querySelector('#due-through');
 const defaultTaskPriority = document.querySelector('#default-task-priority');
+const taskSearchForm = document.querySelector('#task-search-form');
+const taskSearchInput = document.querySelector('#task-search');
 const taskContainer = document.querySelector('#tasks');
 const archivedNotice = document.querySelector('#archived-notice');
 let activeProjectId = null;
 let activeProjectArchived = false;
 let appliedDueRange = { from: '', through: '' };
+let appliedProjectSearch = '';
+let appliedTaskSearch = '';
+
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
 
 function isValidDueDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -74,12 +84,19 @@ function projectRow(project) {
 
 async function renderProjects() {
   const projects = await request(`/api/projects?archived=${projectFilter.value === 'archived'}`);
-  projectContainer.replaceChildren(...projects.map(projectRow));
+  const query = asciiLower(appliedProjectSearch);
+  projectContainer.replaceChildren(...projects
+    .filter((project) => asciiLower(project.name).includes(query))
+    .map(projectRow));
 }
 
 async function renderRoute() {
   const match = window.location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (!match) {
+    if (activeProjectId !== null) {
+      appliedProjectSearch = '';
+      projectSearchInput.value = '';
+    }
     listSection.hidden = false;
     detailSection.hidden = true;
     activeProjectId = null;
@@ -93,6 +110,8 @@ async function renderRoute() {
     appliedDueRange = { from: '', through: '' };
     dueFromInput.value = '';
     dueThroughInput.value = '';
+    appliedTaskSearch = '';
+    taskSearchInput.value = '';
   }
   activeProjectId = match[1];
   activeProjectArchived = Boolean(project.archived);
@@ -127,7 +146,9 @@ async function renderTasks() {
       return (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
         && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
     });
-  taskContainer.replaceChildren(...visibleTasks.map((task) => {
+  const query = asciiLower(appliedTaskSearch);
+  const searchedTasks = visibleTasks.filter((task) => asciiLower(task.title).includes(query));
+  taskContainer.replaceChildren(...searchedTasks.map((task) => {
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'task-row';
@@ -289,7 +310,11 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#back-to-projects').addEventListener('click', () => {
+  appliedProjectSearch = '';
+  projectSearchInput.value = '';
+  navigate('/');
+});
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const name = renameInput.value.trim();
@@ -358,5 +383,15 @@ defaultTaskPriority.addEventListener('change', async () => {
   }
 });
 projectFilter.addEventListener('change', () => renderProjects().catch(showError));
+projectSearchForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  appliedProjectSearch = projectSearchInput.value.trim();
+  renderProjects().catch(showError);
+});
+taskSearchForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  appliedTaskSearch = taskSearchInput.value.trim();
+  renderTasks().catch(showTaskError);
+});
 window.addEventListener('popstate', () => renderRoute().catch(showError));
 renderRoute().catch(showError);
