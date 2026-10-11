@@ -53,7 +53,12 @@ class Element {
   }
 }
 
-async function fixture(archived = false) {
+async function fixture(archived = false, destinations = [
+  { id: 1, name: 'Source', archived: false },
+  { id: 2, name: 'Destination', archived: false },
+  { id: 3, name: 'Archived', archived: true },
+  { id: 4, name: 'Other destination', archived: false },
+]) {
   const app = new Element('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
@@ -68,7 +73,7 @@ async function fixture(archived = false) {
     validDueDate, matchesDueRange,
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     fetch: async (path, options) => {
-      if (!options) return { ok: true, json: async () => structuredClone(tasks) };
+      if (!options) return { ok: true, json: async () => structuredClone(path === '/api/projects' ? destinations : tasks) };
       requests.push(options);
       if (path === '/api/projects/1') {
         Object.assign(project, JSON.parse(options.body));
@@ -80,7 +85,12 @@ async function fixture(archived = false) {
         return { ok: true, json: async () => structuredClone(task) };
       }
       const task = tasks.find(item => item.id === Number(path.split('/').at(-1)));
-      Object.assign(task, JSON.parse(options.body));
+      const input = JSON.parse(options.body);
+      if (input.destination_project_id) {
+        task.project_id = input.destination_project_id;
+      } else {
+        Object.assign(task, input);
+      }
       return { ok: true, json: async () => structuredClone(task) };
     },
   };
@@ -318,4 +328,42 @@ test('archived projects can apply ranges without enabling edits or writing data'
   assert.equal(f.rows().length, 4);
   assert.ok(f.rows().every(row => row.children[4].children[1].disabled));
   assert.equal(f.requests.length, 0);
+});
+
+
+test('moving retains all filters and removes only the moved source row', async () => {
+  const f = await fixture();
+  await saveDate(f, 0, '2025-01-20');
+  await choose(f.completion, 'Open');
+  await choose(f.priority, 'High');
+  await applyRange(f, '2025-01-01', '2025-01-31');
+  const move = f.rows()[0].children[5];
+  assert.equal(move.children[0].attributes['aria-label'], 'Destination project');
+  assert.deepEqual(move.children[0].children.map(option => option.textContent), ['Destination', 'Other destination']);
+  move.children[0].value = '2';
+  await move.fire('submit');
+  assert.deepEqual(f.titles(), []);
+  assert.equal(f.completion.value, 'Open');
+  assert.equal(f.priority.value, 'High');
+  assert.equal(f.app.querySelector('#due-from').value, '2025-01-01');
+  assert.equal(f.app.querySelector('#due-through').value, '2025-01-31');
+  assert.equal(f.tasks[0].project_id, 2);
+  assert.equal(f.tasks[0].due_date, '2025-01-20');
+  await choose(f.priority, 'All');
+  await choose(f.completion, 'All');
+  assert.deepEqual(f.titles(), []); // Applied range was retained.
+  await applyRange(f, '', '');
+  assert.deepEqual(f.titles(), ['Second', 'Third', 'Fourth']);
+});
+
+test('move controls disable for archived sources or no active destinations', async () => {
+  for (const f of [await fixture(true), await fixture(false, [{ id: 1, name: 'Source' }, { id: 2, archived: true }])]) {
+    for (const row of f.rows()) {
+      const form = row.children[5];
+      assert.equal(form.children[0].disabled, true);
+      assert.equal(form.children[1].disabled, true);
+      await form.fire('submit');
+    }
+    assert.equal(f.requests.length, 0);
+  }
 });

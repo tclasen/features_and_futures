@@ -133,6 +133,8 @@ async function renderTasks(project) {
   app.append(section);
   const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = await api(endpoint);
+  const destinations = (await api('/api/projects'))
+    .filter(candidate => !candidate.archived && candidate.id !== project.id);
   const list = section.querySelector('#task-list');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
@@ -305,7 +307,41 @@ async function renderTasks(project) {
           dueButton.disabled = Boolean(project.archived);
         }
       });
-      row.append(title, checkbox, renameForm, priority, dueForm);
+      const moveForm = document.createElement('form');
+      const destination = document.createElement('select');
+      destination.setAttribute('aria-label', 'Destination project');
+      for (const candidate of destinations) {
+        const option = document.createElement('option');
+        option.value = String(candidate.id);
+        option.textContent = candidate.name;
+        destination.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      const cannotMove = Boolean(project.archived) || destinations.length === 0;
+      destination.disabled = moveButton.disabled = cannotMove;
+      moveForm.append(destination, moveButton);
+      moveForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (cannotMove) return;
+        app.querySelector('[role="alert"]')?.remove();
+        moveButton.disabled = true;
+        try {
+          await api(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+          });
+          tasks = tasks.filter(item => item.id !== task.id);
+          drawTasks();
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          moveButton.disabled = cannotMove;
+        }
+      });
+      row.append(title, checkbox, renameForm, priority, dueForm, moveForm);
       return row;
     }));
   }

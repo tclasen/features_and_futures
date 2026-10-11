@@ -18,7 +18,7 @@ Health: `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, task priority validation and isolation, detail routes, health, database migration, and persistence across server-process restarts. Dependency-free DOM tests exercise combined filters and task editing event handlers.
+The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, task priority validation and isolation, detail routes, health, database migration, task moves, and persistence across server-process restarts. Dependency-free DOM tests exercise combined filters, task editing, and move event handlers.
 
 The Project filter defaults to Active; choose Archived to open or restore archived projects. Each project row shows completed/total task counts. Archived project pages show tasks and allow filtering, but cannot create tasks, rename tasks, change priorities, or change completion.
 
@@ -33,5 +33,7 @@ Each task row has a Task priority selector with Low, Normal, and High options. M
 Default task priority offers Low, Normal, and High on each project page. Changing it saves only that project's default for future tasks; existing tasks, summary counts, and both filter selections remain unchanged. The default survives renaming, restarts, archival, and restoration. Archived projects display it in a disabled selector.
 
 Due from and Due through textboxes apply an inclusive calendar-date range with Apply due range. Blank boundaries are unbounded; both blank include undated tasks, while either boundary excludes them. The range intersects completion and priority filters, remains applied through task edits and creation, and resets when reopening the page. Invalid dates or reversed boundaries show an alert and preserve the previous applied range. Range controls remain usable in archived projects.
+
+Each task row provides Destination project and Move task controls. Destinations list other active projects in project creation order. Moving appends the task to the destination, preserving its identity, title, completion, priority, and due date; both summaries update accordingly. The source stays open with all filters retained. Archived projects cannot send or receive tasks, and move controls are disabled when no eligible destination exists. Task order and ownership persist across restarts.
 
 Each task row has a Task due date textbox and Save due date button. Enter a real Gregorian date in YYYY-MM-DD format (years 0001–9999), or leave it blank to clear the date. Surrounding whitespace is trimmed. Invalid dates show an alert and leave saved data unchanged. Dates are calendar days with no timezone conversion, persist independently, and survive other task edits. Archived projects disable both due-date controls.
