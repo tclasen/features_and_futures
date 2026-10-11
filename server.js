@@ -125,7 +125,7 @@ const server = http.createServer(async (req, res) => {
     const value = String(body.dueDate ?? '').trim();
     let date = null;
     if (value) {
-      const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!match) return json(400, { error: 'Due date must be a valid YYYY-MM-DD date' });
       const [, y, m, d] = match, year = Number(y), month = Number(m), day = Number(d);
       const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
