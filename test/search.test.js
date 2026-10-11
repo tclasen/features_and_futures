@@ -34,7 +34,7 @@ test('ASCII substring searches intersect filters and survive mutations without c
     assert.equal((text.match(/data-testid="project-row"/g) || []).length, 2);
     assert.match(text, /name="search" value="alpha"/);
     text = await html('/?search=alpha%20%20team');
-    assert.equal((text.match(/data-testid="project-row"/g) || []).length, 1);
+    assert.equal((text.match(/data-testid="project-row"/g) || []).length, 2);
     assert.match(text, /Alpha  Team/);
     assert.equal((await html('/?search=%C3%A4lpha')).includes('data-testid="project-row"'), false);
     await post('/projects/2/archive');
@@ -55,7 +55,7 @@ test('ASCII substring searches intersect filters and survive mutations without c
     assert.match(text, /id="task-search" name="search" type="text" value="alpha"/);
     assert.match(text, /name="search" value="alpha"/);
     assert.deepEqual(rows(await html(page({ search: '  ALPHA  one  ' }))), ['Alpha  one']);
-    assert.deepEqual(rows(await html(page({ search: 'alpha one' }))), []);
+    assert.deepEqual(rows(await html(page({ search: 'alpha one' }))), ['Alpha  one']);
     let response = await fetch(base + page({ ...filters, applyRange: '1', rangeFrom: '2024-02-29', rangeThrough: '' }), { redirect: 'manual' });
     assert.equal(new URL(response.headers.get('location'), base).searchParams.get('search'), 'alpha');
     for (const [path, values, expected] of [

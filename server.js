@@ -106,9 +106,9 @@ function sendHtml(res, status, html) {
   res.end(html);
 }
 
-// Fold only ASCII letters: non-ASCII characters and internal whitespace are significant.
-const asciiFold = value => value.replace(/[A-Z]/g, char => char.toLowerCase());
-const searchMatches = (value, query) => asciiFold(value).includes(asciiFold(query));
+// Normalize only for matching; never rewrite saved names or titles.
+const searchKey = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
+const searchMatches = (value, query) => searchKey(value).includes(searchKey(query));
 
 function projectList(res, error = '', filter = 'Active', query = '') {
   const projects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
