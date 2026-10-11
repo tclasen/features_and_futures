@@ -46,6 +46,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+}
 // Keep a durable position for every task in every project it has visited.
 // Existing tasks are seeded from their current order when this feature is added.
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -59,18 +62,19 @@ db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort
   SELECT id, project_id, sort_order FROM tasks`);
 db.exec('PRAGMA foreign_keys = ON');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
-  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
-  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1 AND t.deleted = 0) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0) AS totalCount
   FROM projects p WHERE p.archived = ? ORDER BY p.id ASC`);
 const findProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
+  , t.deleted
   FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY pos.sort_order ASC, t.id ASC`);
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -341,7 +345,7 @@ const page = `<!doctype html>
       filterLabel.textContent = 'Task filter';
       const filter = document.createElement('select');
       filter.id = 'task-filter';
-      for (const value of ['All', 'Open', 'Completed']) {
+      for (const value of ['All', 'Open', 'Completed', 'Deleted']) {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = value;
@@ -409,7 +413,7 @@ const page = `<!doctype html>
       function drawTasks() {
         tasksList.replaceChildren();
         const visible = tasks.filter(task =>
-          (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
+          (filter.value === 'Deleted' ? Boolean(task.deleted) : !task.deleted && (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed))) &&
           (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
           (!appliedFrom && !appliedThrough || Boolean(task.dueDate)) &&
           (!appliedFrom || task.dueDate >= appliedFrom) &&
@@ -422,7 +426,7 @@ const page = `<!doctype html>
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = Boolean(task.completed);
-          checkbox.disabled = Boolean(project.archived);
+          checkbox.disabled = Boolean(project.archived) || Boolean(task.deleted);
           checkbox.id = 'task-' + task.id;
           checkbox.setAttribute('aria-label', 'Complete ' + task.title);
           checkbox.addEventListener('change', async () => {
@@ -439,11 +443,11 @@ const page = `<!doctype html>
           renameInput.type = 'text';
           renameInput.value = task.title;
           renameInput.setAttribute('aria-label', 'New task title');
-          renameInput.disabled = Boolean(project.archived);
+          renameInput.disabled = Boolean(project.archived) || Boolean(task.deleted);
           const renameButton = document.createElement('button');
           renameButton.type = 'button';
           renameButton.textContent = 'Rename task';
-          renameButton.disabled = Boolean(project.archived);
+          renameButton.disabled = Boolean(project.archived) || Boolean(task.deleted);
           renameButton.addEventListener('click', async () => {
             const newTitle = renameInput.value.trim();
             if (!newTitle) {
@@ -471,7 +475,7 @@ const page = `<!doctype html>
             priority.append(option);
           }
           priority.value = task.priority || 'Normal';
-          priority.disabled = Boolean(project.archived);
+          priority.disabled = Boolean(project.archived) || Boolean(task.deleted);
           priority.addEventListener('change', async () => {
             try {
               const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
@@ -484,11 +488,11 @@ const page = `<!doctype html>
           dueDate.setAttribute('aria-label', 'Task due date');
           dueDate.placeholder = 'YYYY-MM-DD';
           dueDate.value = task.dueDate || '';
-          dueDate.disabled = Boolean(project.archived);
+          dueDate.disabled = Boolean(project.archived) || Boolean(task.deleted);
           const saveDueDate = document.createElement('button');
           saveDueDate.type = 'button';
           saveDueDate.textContent = 'Save due date';
-          saveDueDate.disabled = Boolean(project.archived);
+          saveDueDate.disabled = Boolean(project.archived) || Boolean(task.deleted);
           saveDueDate.addEventListener('click', async () => {
             try {
               const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: dueDate.value }) });
@@ -517,8 +521,8 @@ const page = `<!doctype html>
           const moveButton = document.createElement('button');
           moveButton.type = 'button';
           moveButton.textContent = 'Move task';
-          destination.disabled = Boolean(project.archived) || eligible.length === 0;
-          moveButton.disabled = Boolean(project.archived) || eligible.length === 0;
+          destination.disabled = Boolean(project.archived) || Boolean(task.deleted) || eligible.length === 0;
+          moveButton.disabled = Boolean(project.archived) || Boolean(task.deleted) || eligible.length === 0;
           moveButton.addEventListener('click', async () => {
             try {
               await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id) + '/move', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(destination.value) }) });
@@ -532,11 +536,11 @@ const page = `<!doctype html>
           const notes = document.createElement('textarea');
           notes.setAttribute('aria-label', 'Task notes');
           notes.value = task.notes || '';
-          notes.disabled = Boolean(project.archived);
+          notes.disabled = Boolean(project.archived) || Boolean(task.deleted);
           const saveNotes = document.createElement('button');
           saveNotes.type = 'button';
           saveNotes.textContent = 'Save notes';
-          saveNotes.disabled = Boolean(project.archived);
+          saveNotes.disabled = Boolean(project.archived) || Boolean(task.deleted);
           saveNotes.addEventListener('click', async () => {
             try {
               const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
@@ -547,7 +551,18 @@ const page = `<!doctype html>
               error.hidden = false;
             }
           });
-          row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, moveButton);
+          const deleteButton = document.createElement('button');
+          deleteButton.type = 'button';
+          deleteButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+          deleteButton.disabled = Boolean(project.archived);
+          deleteButton.addEventListener('click', async () => {
+            try {
+              const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleted: !task.deleted }) });
+              tasks = tasks.map(item => item.id === updated.id ? updated : item);
+              drawTasks();
+            } catch { error.textContent = 'Unable to update task'; error.hidden = false; }
+          });
+          row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, moveButton, deleteButton);
           tasksList.append(row);
         }
       }
@@ -711,7 +726,7 @@ const server = http.createServer(async (request, response) => {
       const destination = findProject.get(destinationId);
       const task = findTask.get(taskId, sourceId);
       if (!source || !destination || !task) { sendJson(response, 404, { error: 'Project or task not found' }); return; }
-      if (source.archived || destination.archived || sourceId === destinationId) {
+      if (source.archived || destination.archived || sourceId === destinationId || task.deleted) {
         sendJson(response, 409, { error: 'Tasks can only move between different active projects' });
         return;
       }
@@ -733,7 +748,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && !tasksMatch[2]) {
-      sendJson(response, 200, listTasks.all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      sendJson(response, 200, listTasks.all(projectId).map(task => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) })));
       return;
     }
     if (request.method === 'POST' && !tasksMatch[2]) {
@@ -749,7 +764,7 @@ const server = http.createServer(async (request, response) => {
         const order = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
         const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.defaultPriority || 'Normal', order);
         db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)').run(Number(result.lastInsertRowid), projectId, order);
-        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority || 'Normal', dueDate: null });
+        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority || 'Normal', dueDate: null, notes: '', deleted: false });
       } catch { sendJson(response, 400, { error: 'Invalid request' }); }
       return;
     }
@@ -758,6 +773,15 @@ const server = http.createServer(async (request, response) => {
         const data = await readBody(request);
         const taskId = Number(tasksMatch[2]);
         const project = findProject.get(projectId);
+        if (Object.hasOwn(data, 'deleted')) {
+          if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot delete or restore tasks' }); return; }
+          if (typeof data.deleted !== 'boolean') { sendJson(response, 400, { error: 'Task deletion state is required' }); return; }
+          const existing = findTask.get(taskId, projectId);
+          if (!existing) { sendJson(response, 404, { error: 'Task not found' }); return; }
+          db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?').run(data.deleted ? 1 : 0, taskId, projectId);
+          sendJson(response, 200, { ...existing, deleted: data.deleted, completed: Boolean(existing.completed) });
+          return;
+        }
         if (Object.hasOwn(data, 'notes')) {
           if (project.archived) {
             sendJson(response, 409, { error: 'Archived projects cannot change task notes' });
