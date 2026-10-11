@@ -47,6 +47,7 @@
           <div class="filter"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
           <div class="filter"><label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></div>
           <div class="filter"><label for="default-priority">Default task priority</label><select id="default-priority" ${project.archived ? 'disabled' : ''}><option ${project.defaultPriority === 'Low' ? 'selected' : ''}>Low</option><option ${project.defaultPriority === 'Normal' ? 'selected' : ''}>Normal</option><option ${project.defaultPriority === 'High' ? 'selected' : ''}>High</option></select></div>
+          <form id="due-range-form"><label for="due-from">Due from</label><input id="due-from" type="text"><label for="due-through">Due through</label><input id="due-through" type="text"><button type="submit">Apply due range</button></form>
           <section id="task-list" aria-label="Tasks"></section>`;
         app.querySelector('#back').addEventListener('click', () => navigate('/'));
         app.querySelector('#rename-form').addEventListener('submit', async event => {
@@ -59,6 +60,24 @@
         });
         const filter = app.querySelector('#task-filter');
         const priorityFilter = app.querySelector('#priority-filter');
+        let appliedDueFrom = '', appliedDueThrough = '';
+        const validDate = value => {
+          const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+          if (!match) return false;
+          const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+          if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+          const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+          return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+        };
+        app.querySelector('#due-range-form').addEventListener('submit', event => {
+          event.preventDefault();
+          const from = app.querySelector('#due-from').value.trim();
+          const through = app.querySelector('#due-through').value.trim();
+          const message = app.querySelector('#message');
+          if ((from && !validDate(from)) || (through && !validDate(through))) { message.textContent = 'Due range must use valid YYYY-MM-DD dates'; return; }
+          if (from && through && from > through) { message.textContent = 'Due from must not be after Due through'; return; }
+          appliedDueFrom = from; appliedDueThrough = through; message.textContent = ''; paintTasks();
+        });
         app.querySelector('#default-priority').addEventListener('change', async event => {
           const response = await fetch(`/api/projects/${match[1]}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ defaultPriority: event.target.value }) });
           if (!response.ok) event.target.value = project.defaultPriority;
@@ -67,7 +86,8 @@
         const paintTasks = () => {
           const visible = tasks.filter(task =>
             (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
-            (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+            (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+            ((!appliedDueFrom && !appliedDueThrough) || (Boolean(task.dueDate) && (!appliedDueFrom || task.dueDate >= appliedDueFrom) && (!appliedDueThrough || task.dueDate <= appliedDueThrough)))
           );
           app.querySelector('#task-list').innerHTML = visible.map(task => `<div class="row task-row" data-testid="task-row"><input type="checkbox" id="task-${task.id}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><label for="task-${task.id}">${escapeHtml(task.title)}</label><input type="text" aria-label="New task title" data-rename-input="${task.id}" value="${escapeHtml(task.title)}" ${project.archived ? 'disabled' : ''}><button type="button" data-rename="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><select aria-label="Task priority" data-priority="${task.id}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" aria-label="Task due date" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button></div>`).join('');
           app.querySelectorAll('#task-list [data-rename]').forEach(button => button.addEventListener('click', async () => {
@@ -82,7 +102,7 @@
             const task = tasks.find(item => String(item.id) === button.dataset.saveDue);
             const input = app.querySelector(`[data-due-date="${task.id}"]`);
             const response = await fetch(`/api/projects/${match[1]}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: input.value }) });
-            if (response.ok) { Object.assign(task, await response.json()); input.value = task.dueDate || ''; app.querySelector('#message').textContent = ''; }
+            if (response.ok) { Object.assign(task, await response.json()); app.querySelector('#message').textContent = ''; paintTasks(); }
             else { const result = await response.json(); app.querySelector('#message').textContent = result.error || 'Unable to save due date'; }
           }));
           app.querySelectorAll('#task-list [data-priority]').forEach(select => select.addEventListener('change', async () => {
