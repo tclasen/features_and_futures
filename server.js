@@ -42,6 +42,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Notes are plain text; upgrades initialize only this new field.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Remember positions even while a task belongs elsewhere. Seed legacy tasks in
 // their current order; restarting must never overwrite an established position.
 database.exec(`
@@ -67,7 +71,7 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
 const listTasks = database.prepare(`
-  SELECT tasks.id, title, completed, priority, due_date
+  SELECT tasks.id, title, completed, priority, due_date, notes
   FROM tasks JOIN task_project_positions AS ordering
     ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
   WHERE tasks.project_id = ? ORDER BY ordering.position
@@ -78,6 +82,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY position');
 const updateTaskOwner = database.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ? AND id = ?');
 const rememberTaskPosition = database.prepare(`
@@ -319,7 +324,7 @@ const server = http.createServer(async (request, response) => {
       sendHtml(response, project ? 200 : 404, project ? renderFilteredProject(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter')), readDueRange(searchParams), normalizeSearch(searchParams.get('query'))) : renderNotFound());
       return;
     }
-    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority|due-date|move))?)?$/);
+    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority|due-date|move|notes))?)?$/);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (!project) {
@@ -355,6 +360,8 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           result = updateTaskPriority.run(taskPriority, project.id, taskMatch[2]);
+        } else if (taskMatch[3] === 'notes') {
+          result = updateTaskNotes.run(form.get('notes') ?? '', project.id, taskMatch[2]);
         } else if (taskMatch[3] === 'due-date') {
           const dueDate = (form.get('dueDate') ?? '').trim();
           if (dueDate && !isValidDueDate(dueDate)) {

@@ -1110,3 +1110,83 @@ test('project and task searches intersect filters and survive edits, archives, a
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('notes upgrade, exact text, filters, movement, archive protection, and persistence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, name TEXT,
+      archived INTEGER DEFAULT 0, default_task_priority TEXT DEFAULT 'Normal');
+    CREATE TABLE tasks (position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, project_id TEXT,
+      title TEXT, completed INTEGER DEFAULT 0, priority TEXT DEFAULT 'Normal', due_date TEXT DEFAULT '');
+    INSERT INTO projects (id, name) VALUES ('a', 'Alpha'), ('b', 'Beta');
+    INSERT INTO tasks (id, project_id, title, completed, priority, due_date)
+      VALUES ('one', 'a', 'First', 1, 'High', '2026-02-28'), ('two', 'a', 'Second', 0, 'Low', '');
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const savedTasks = () => {
+      const db = new DatabaseSync(databasePath);
+      try { return db.prepare('SELECT * FROM tasks ORDER BY position').all().map((task) => ({ ...task })); }
+      finally { db.close(); }
+    };
+    const before = savedTasks();
+    assert.deepEqual(before.map((task) => task.notes), ['', '']);
+    assert.match(await get('/projects/a'), /name="notes" rows="4">\n<\/textarea>/);
+    const notes = '\n  Leading spaces\nUnicode: 雪 📝\n<script>alert("x")</script></textarea>&\n  ';
+    const state = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-02-01',
+      dueThrough: '2026-02-28', query: 'first' };
+    let response = await post('/projects/a/tasks/one/notes', { ...state, notes });
+    assert.equal(response.status, 303);
+    const location = response.headers.get('location');
+    const params = new URL(location, server.url).searchParams;
+    for (const [key, value] of Object.entries(state)) assert.equal(params.get(key), value);
+    let html = await get(location);
+    assert.equal((html.match(/data-testid="task-row"/g) ?? []).length, 1);
+    assert.match(html, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;&lt;\/textarea&gt;&amp;/);
+    assert.doesNotMatch(html, /<script>/);
+    assert.deepEqual(savedTasks(), [{ ...before[0], notes }, before[1]]);
+    assert.doesNotMatch(await get('/projects/a?query=Unicode'), /data-testid="task-row"/);
+    assert.match(await get('/'), /project-summary">1\/2 completed/);
+    assert.equal((await post('/projects/b/tasks/one/notes', { notes: 'wrong owner' })).status, 404);
+    await post('/projects/a/tasks/one/rename', { title: 'Renamed' });
+    await post('/projects/a/tasks/one/move', { destination: 'b' });
+    assert.equal(savedTasks()[0].notes, notes);
+    assert.match(await get('/projects/b'), /&lt;script&gt;/);
+    await post('/projects/b/tasks/one/move', { destination: 'a' });
+    html = await get('/projects/a');
+    assert.ok(html.indexOf('Renamed</span>') < html.indexOf('Second</span>'));
+    await post('/projects/a/archive');
+    html = await get('/projects/a');
+    assert.equal((html.match(/name="notes" rows="4" disabled/g) ?? []).length, 2);
+    assert.equal((html.match(/disabled>Save notes/g) ?? []).length, 2);
+    assert.equal((await post('/projects/a/tasks/one/notes', { notes: 'forbidden' })).status, 403);
+    assert.equal(savedTasks()[0].notes, notes);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get('/projects/a'), html);
+    await post('/projects/a/restore');
+    assert.doesNotMatch(await get('/projects/a'), /name="notes" rows="4" disabled/);
+    assert.equal(savedTasks()[0].notes, notes);
+    await post('/projects/a/tasks/two/notes', { notes: '  \n\t  ' });
+    assert.equal(savedTasks()[1].notes, '  \n\t  ');
+    await post('/projects/a/tasks/one/notes', { notes: '' });
+    assert.equal(savedTasks()[0].notes, '');
+    await post('/projects/a/tasks', { title: 'New' });
+    assert.equal(savedTasks()[2].notes, '');
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(savedTasks()[0].notes, '');
+    assert.equal(savedTasks()[1].notes, '  \n\t  ');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

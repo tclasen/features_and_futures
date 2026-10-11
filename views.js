@@ -17,7 +17,7 @@ function page(title, content) {
     main { max-width: 760px; margin: 64px auto; padding: 32px; background: white; border: 1px solid #dce2ec; border-radius: 12px; }
     h1 { margin: 0 0 24px; overflow-wrap: anywhere; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
-    input { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid #8a97aa; border-radius: 6px; }
+    input, textarea { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid #8a97aa; border-radius: 6px; }
     button { font: inherit; font-weight: 600; color: white; background: #2456b5; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
     button:hover { background: #1a428e; }
     button:disabled { background: #738098; cursor: not-allowed; }
@@ -83,6 +83,8 @@ export function renderProjects(projects, filter = 'Active', error = '', query = 
 }
 
 export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, destinations = [], query = '') {
+  // Textarea content starts with a sacrificial newline: HTML strips the first
+  // newline after the opening tag, preserving any leading newline in the notes.
   const moveDisabled = project.archived || destinations.length === 0;
   const projectPath = `/projects/${escapeHtml(project.id)}`;
   const rangeFields = `<input type="hidden" name="query" value="${escapeHtml(query)}">
@@ -167,6 +169,13 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
           <label for="task-due-date-${escapeHtml(task.id)}">Task due date</label>
           <input id="task-due-date-${escapeHtml(task.id)}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
+        <form class="create task-notes" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/notes">
+          ${filterFields}
+          <label for="task-notes-${escapeHtml(task.id)}">Task notes</label>
+          <textarea id="task-notes-${escapeHtml(task.id)}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
         </form>
         <form class="create task-move" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/move">
           ${filterFields}
