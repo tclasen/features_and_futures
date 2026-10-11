@@ -17,6 +17,9 @@ def main():
  out=Path(completed['evidence']);assert out.parent==base;destination=out/'independently-verified.json';assert not destination.exists()
  inputs=json.loads((batch/'inputs.json').read_text());prepared=base/'task030-summary-full001-inputs.json';assert sha(prepared)==inputs['prepared_sha256']
  prep=json.loads(prepared.read_text());assert sha(out/'executed-controller.mjs')==inputs['controller_sha256']==prep['controller_sha256']
+ source_controller=Path(prep['source_controller']);assert sha(source_controller)==prep['source_controller_sha256']
+ inherited=source_controller.read_bytes().replace(b'research-v014',b'research-v015').replace(b'task030-executed-suite',b'task030-summary-suite').replace(b'task030-full-check-',b'task030-summary-full001-check-')
+ assert (out/'executed-controller.mjs').read_bytes()==inherited, 'Prospective full fixture changes more than versioned root/suite/evidence paths'
  suite=base/'task030-summary-suite';assert file_hashes(suite)==prep['suite_files']==inputs['suite_files']
  original=Path('runs/instruction-effects/eval-014/tasks/task-030/suite');assert verify_summary_only_delta(original,suite)==['return-order.spec.mjs']
  closure_path=out/'input-closure.json';closure=json.loads(closure_path.read_text());assert closure['exit_code']==0 and closure['model_calls']==0 and sha(closure_path)==completed['input_closure_sha256']

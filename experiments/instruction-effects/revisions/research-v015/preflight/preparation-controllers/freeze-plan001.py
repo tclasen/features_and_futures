@@ -33,6 +33,7 @@ for stage in range(1,31):
  assert delta==([] if stage<12 else ['return-order.spec.mjs'])
 full=list((v/'preflight').glob('task030-summary-full001-check-*/independently-verified.json'));assert len(full)==1
 full_path=full[0];f=load(full_path);assert f['verified'] and f['model_calls']==0 and f['full99_variants']==8 and f['process_local_probes']==16
+assert f['verifier_sha256']==sha(Path('scripts/verify-summary-full-fixtures.py'))
 assert sum(x['tests'] for x in f['checks'])==808 and len(f['checks'])==24
 assert f['input_closure_sha256']==sha(full_path.parent/'input-closure.json')
 closure=load(full_path.parent/'input-closure.json');assert closure['exit_code']==0
