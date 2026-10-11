@@ -334,7 +334,7 @@ const page = `<!doctype html>
       }
       for(const control of [scope,taskFilter,priority]) control.addEventListener('change',draw);
       searchButton.addEventListener('click',()=>{appliedSearch=search.value.trim();draw();});
-      apply.addEventListener('click',()=>{const a=from.value.trim(),b=through.value.trim();if((a&&!validDate(a))||(b&&!validDate(b))){error.textContent='Due range must use valid YYYY-MM-DD dates';error.hidden=false;return;}if(a&&b&&a>b){error.textContent='Due from must not be after Due through';error.hidden=false;return;}appliedFrom=a;appliedThrough=b;error.hidden=true;draw();});
+      apply.addEventListener('click',()=>{const a=from.value.trim(),b=through.value.trim();if((a&&!validDate(a))||(b&&!validDate(b))){from.value=appliedFrom;through.value=appliedThrough;error.textContent='Due range must use valid YYYY-MM-DD dates';error.hidden=false;return;}if(a&&b&&a>b){from.value=appliedFrom;through.value=appliedThrough;error.textContent='Due from must not be after Due through';error.hidden=false;return;}appliedFrom=a;appliedThrough=b;from.value=a;through.value=b;error.hidden=true;draw();});
       app.append(back,heading,scopeLabel,scope,taskFilterLabel,taskFilter,priorityLabel,priority,searchLabel,search,searchButton,fromLabel,from,throughLabel,through,apply,error,list); draw();
     }
 
@@ -683,17 +683,23 @@ const page = `<!doctype html>
         const from = dueFrom.value.trim();
         const through = dueThrough.value.trim();
         if ((from && !validDate(from)) || (through && !validDate(through))) {
+          dueFrom.value = appliedFrom;
+          dueThrough.value = appliedThrough;
           error.textContent = 'Due range must use valid YYYY-MM-DD dates';
           error.hidden = false;
           return;
         }
         if (from && through && from > through) {
+          dueFrom.value = appliedFrom;
+          dueThrough.value = appliedThrough;
           error.textContent = 'Due from must not be after Due through';
           error.hidden = false;
           return;
         }
         appliedFrom = from;
         appliedThrough = through;
+        dueFrom.value = from;
+        dueThrough.value = through;
         error.hidden = true;
         drawTasks();
       });
