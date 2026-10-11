@@ -108,6 +108,10 @@ Due date (ascending, undated last), or Title (ASCII-folded Unicode code point or
 Ties retain Original order. Ordering remains selected through filters, searches,
 due-range validation and bulk actions; it never changes stored order, exports or
 remembered positions.
+The directory summary shows completed/total tasks in the current resolved result,
+including retained completion flags in Deleted views. All filters and bulk actions
+refresh these counts; changing order does not affect them. Empty results show
+0/0 completed alongside No matching tasks.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -148,4 +152,6 @@ empty-result announcements, movement and real server restart persistence.
 Directory ordering tests cover stable cross-project ties, Unicode code point title
 comparison, literal title whitespace, date ordering, retained action state, archived
 and deleted views, unchanged exports and Original defaults.
+Directory summary tests cover scope and filter intersections, deleted completion flags,
+empty results, order independence, invalid-range preservation, bulk updates and unchanged exports.
 Temporary files are removed afterward.

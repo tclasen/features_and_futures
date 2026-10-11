@@ -371,6 +371,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <button type="submit" name="completed" value="1"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
+    <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
     <section class="tasks" aria-label="Directory tasks">${tasks.length ? tasks.map(task => `
       <div class="task" data-testid="directory-task-row">
         <div data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</div>
