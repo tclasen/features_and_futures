@@ -133,6 +133,16 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     return sendJson(response, 200, listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    const projects = listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) }));
+    const tasks = [];
+    for (const project of projects) {
+      for (const task of listTasks.all(project.id)) {
+        tasks.push({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted), projectName: project.name, projectArchived: project.archived });
+      }
+    }
+    return sendJson(response, 200, tasks);
+  }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
     for await (const chunk of request) body += chunk;
@@ -297,7 +307,7 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/app.js') {
     return sendFile(response, 'app.js', 'text/javascript; charset=utf-8');
   }
-  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
+  if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/\d+$/.test(url.pathname))) {
     return sendFile(response, 'index.html', 'text/html; charset=utf-8');
   }
   response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
