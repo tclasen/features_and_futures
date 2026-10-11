@@ -15,7 +15,7 @@ projects, tasks, completion state, priorities, due dates, and project defaults a
 
 Open a project to create tasks, change completion with each task's checkbox, and
 filter tasks by All, Open, or Completed. Priority filter offers All, Low, Normal,
-and High. Tasks must match both filters and appear in creation order. Changing
+and High. Tasks must match both filters and any applied due range, and appear in creation order. Changing
 either filter preserves the other selection; task edits immediately update the
 matching rows and retain both selections. Opening a project from the list starts
 with both filters set to All. Filters remain usable in archived projects and do
@@ -57,6 +57,15 @@ preserve the saved date. Due dates persist without timezone conversion and leave
 other task data and filters unchanged. Archived projects disable due-date edits
 until restored.
 
+Use Due from, Due through, and Apply due range to filter by inclusive calendar
+boundaries. Leave either boundary blank for no limit on that side. With both
+blank, all dates and undated tasks match; with either boundary set, undated tasks
+are excluded. The range intersects Task filter and Priority filter and survives
+filter changes and task edits. Invalid dates or a reversed range show an alert
+and retain the previously applied range and matching rows. Range controls remain
+usable in archived projects. Opening a project from the list starts with both
+boundaries empty. Filters never change saved tasks or completion summaries.
+
 Run the integration checks:
 
 ```sh
@@ -70,5 +79,5 @@ protection, project and task renaming with identity and data preservation, task
 priority defaults and independence, project default migration and inheritance,
 combined completion and priority filtering,
 due-date calendar validation and clearing, selection preservation through edits
-and validation, and persistence after server
-restarts.
+and validation, inclusive due-range intersections and invalid-range preservation,
+and persistence after server restarts.
