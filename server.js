@@ -89,7 +89,14 @@ const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     try {
-      const completed = JSON.parse(raw).completed ? 1 : 0;
+      const payload = JSON.parse(raw);
+      if (Object.hasOwn(payload, 'title')) {
+        const title = String(payload.title ?? '').trim();
+        if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
+        const result = db.prepare(`UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(title, taskMatch[1]);
+        return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
+      }
+      const completed = payload.completed ? 1 : 0;
       const result = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(completed, taskMatch[1]);
       return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
