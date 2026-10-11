@@ -81,3 +81,5 @@ L065 observed: task025/b004/attempt002 fails before inference with oversized Pi 
 - L066 observed: prospective async prototype submits stale hidden directory_mode=Phrase after user selects Starts with; original failure, full closure and request trace preserved. Correct only prospective prototype; directed old/new proof and revised broader execution pending.
 
 L066 paired race verification: three original failures and three corrected passes; broader003 launch gated on proof. Full broader/native lifecycle verification remains pending.
+
+L067: frozen summary observer assumes layout-dependent innerText after a DOM-text assertion. Native trace and six synthetic controls confirm the mechanism; coordinator drained. Immutable-source and cumulative/lifecycle verification pending before any prospective revision. Frozen run/source/measurements preserved.
