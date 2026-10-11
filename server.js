@@ -335,6 +335,7 @@ ${escapeHtml(task.notes)}</textarea>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form action="/projects/${project.id}/export" method="get">${filterInputs}<button type="submit">Download project</button></form>
     <form action="/projects/${project.id}/rename" method="post" class="create-form">
       ${filterInputs}
       <label for="new-project-name">New project name</label>
@@ -472,6 +473,34 @@ const server = http.createServer(async (request, response) => {
       const form = await readForm(request);
       response.writeHead(303, { Location: `/?${new URLSearchParams({ filter: action === 'archive' ? 'Active' : 'Archived', search: searchQuery(form) })}` });
       response.end();
+    } else if (request.method === 'GET' && /^\/projects\/\d+\/export$/.test(url.pathname)) {
+      const project = getProject.get(url.pathname.split('/')[2]);
+      if (!project) {
+        sendHtml(response, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const document = {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_priority,
+          tasks: listTasks.all(project.id).map(task => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted),
+          })),
+        },
+      };
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      });
+      response.end(JSON.stringify(document, null, 2));
     } else if (request.method === 'GET' && /^\/projects\/\d+(?:\/due-range)?$/.test(url.pathname)) {
       const project = getProject.get(url.pathname.split('/')[2]);
       if (!project) {

@@ -20,12 +20,16 @@ Every task row also has a multiline Task notes textarea and Save notes button. N
 
 Live task rows provide Delete task. Deletion retains every saved field, ownership, and remembered position but removes the task from All/Open/Completed and completion summaries. Deleted shows only deleted tasks, intersecting priority, due range, and title search; their editing and move controls are read-only. Restore task returns a task to its reserved position with all fields unchanged, even after default changes or newer task creation. Both actions retain applied filters. Archived projects disable deletion and restoration but allow reading and filtering deleted tasks. Deletion persists through restarts; upgrades initialize existing tasks as live.
 
+Every project page offers Download project, including archived and empty projects. It downloads UTF-8 `workboard-project.json` with format `workboard-project`, version 1, and the project's current name, archive state, default priority, and all owned live/deleted tasks in saved order. Each task exports title, completion, explicit priority, due date, notes, and deletion state. Export ignores display filters, preserves stored data and remembered positions, and normalizes only exported notes line endings to LF.
+
 ## Checks
 
 ```sh
 npm test
 node --check server.js
 ```
+
+Export checks cover older-record defaults, empty projects, complete portable fields, task isolation, deleted-only archived projects, return ordering, LF notes normalization, unchanged stored data and filter controls, download headers, and restart persistence.
 
 Deletion checks cover live-data migration, filter intersections and retention, read-only enforcement, live-only summaries, field preservation, reserved restoration order, default changes, archives, movement, and restart persistence.
 
