@@ -37,6 +37,9 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
     database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'deleted')) {
+    database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0, 1))');
+  }
   // Legacy databases used tasks.position, or task IDs before movement existed.
   // Seed only current memberships; earlier moves cannot be reconstructed.
   const hasLegacyPosition = database.prepare('PRAGMA table_info(tasks)').all()
@@ -73,7 +76,7 @@ export function openProjects(databasePath) {
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
-    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.deleted = 0
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id
   `);
   const find = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
@@ -82,10 +85,10 @@ export function openProjects(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
-    SELECT tasks.id, title, completed, priority, due_date, notes FROM tasks
+    SELECT tasks.id, title, completed, priority, due_date, notes, deleted FROM tasks
     JOIN task_project_positions AS ordering
       ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
-    WHERE tasks.project_id = ? AND (? IS NULL OR completed = ?)
+    WHERE tasks.project_id = ? AND deleted = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?)
       AND (? = '' OR due_date >= ?)
       AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY ordering.position, tasks.id
@@ -100,23 +103,27 @@ export function openProjects(databasePath) {
       FROM task_project_positions WHERE project_id = ?))
   `);
   const updateTask = database.prepare(`
-    UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
+    UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ? AND deleted = 0
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
   const updateTaskTitle = database.prepare(`
-    UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
+    UPDATE tasks SET title = ? WHERE id = ? AND project_id = ? AND deleted = 0
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
   const updateTaskPriority = database.prepare(`
-    UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?
+    UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ? AND deleted = 0
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
   const updateTaskDueDate = database.prepare(`
-    UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
+    UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ? AND deleted = 0
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
   const updateTaskNotes = database.prepare(`
-    UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?
+    UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ? AND deleted = 0
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
+  const updateTaskDeleted = database.prepare(`
+    UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ? AND deleted = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
   const eligibleMove = database.prepare(`
@@ -124,7 +131,7 @@ export function openProjects(databasePath) {
     JOIN projects AS source ON source.id = tasks.project_id
     JOIN projects AS destination ON destination.id = ?
     WHERE tasks.id = ? AND tasks.project_id = ? AND source.id != destination.id
-      AND source.archived = 0 AND destination.archived = 0
+      AND tasks.deleted = 0 AND source.archived = 0 AND destination.archived = 0
   `);
   const findPosition = database.prepare(`
     SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?
@@ -157,7 +164,7 @@ export function openProjects(databasePath) {
       const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
       const priority = TASK_PRIORITIES.includes(priorityFilter) ? priorityFilter : null;
       const { dueFrom = '', dueThrough = '', search = '' } = dueRange;
-      return listTasks.all(projectId, completed, completed, priority, priority,
+      return listTasks.all(projectId, filter === 'Deleted' ? 1 : 0, completed, completed, priority, priority,
         dueFrom, dueFrom, dueThrough, dueThrough)
         .filter((task) => matchesSearch(task.title, search));
     },
@@ -190,6 +197,10 @@ export function openProjects(databasePath) {
     },
     setTaskNotes(projectId, taskId, notes) {
       return updateTaskNotes.run(notes, taskId, projectId).changes > 0;
+    },
+    setTaskDeleted(projectId, taskId, deleted) {
+      // Only the flag changes: ownership, fields and all reserved positions remain.
+      return updateTaskDeleted.run(deleted ? 1 : 0, taskId, projectId, deleted ? 0 : 1).changes > 0;
     },
     moveTask(projectId, taskId, destinationId) {
       if (!Number.isSafeInteger(destinationId) || destinationId < 1) return false;

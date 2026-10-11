@@ -19,12 +19,12 @@ npm test
 `GET /health` returns `{"status":"ok"}`. Projects are created with trimmed,
 nonempty names and displayed in creation order. Project pages use persistent
 IDs at `/projects/<id>`. Each project has tasks with trimmed, nonempty titles,
-saved completion state, and All/Open/Completed filters in creation order.
+saved completion state, and All/Open/Completed/Deleted filters in creation order.
 Small browser event handlers submit filter and checkbox changes using forms.
 The project list defaults to Active and also offers Archived projects. Archive
 and restore preserve all tasks. Archived project pages allow task filtering,
 but task creation and completion changes are disabled and rejected by the server.
-Project summaries count all tasks, regardless of task filters. Existing databases
+Project summaries count all live tasks, regardless of task filters. Existing databases
 are migrated automatically with all previous projects remaining active.
 Active project pages also support renaming with trimmed, nonempty names. Renaming
 preserves the project URL, creation order, tasks, and completion summary. Archived
@@ -38,7 +38,7 @@ Normal when migrated. Priority changes preserve task order, ownership, title,
 completion, and summaries; renaming preserves priority. Archived projects disable
 priority controls and reject priority changes until restored.
 
-Project pages combine the All/Open/Completed task filter with an
+Project pages combine the All/Open/Completed/Deleted task filter with an
 All/Low/Normal/High priority filter. Tasks must match both filters, retaining
 creation order. Both selections stay in the page URL and are preserved by task
 edits, including validation errors. Priority and completion changes immediately
@@ -65,7 +65,7 @@ Project pages also offer Due from and Due through textboxes with Apply due range
 The trimmed Gregorian boundaries are inclusive; either blank boundary is unbounded.
 With any boundary present, undated tasks are excluded. With both blank, all dates
 and undated tasks match. The range intersects completion and priority selections
-and preserves creation order and all-task summaries. Invalid or reversed ranges
+and preserves creation order and all-live-task summaries. Invalid or reversed ranges
 show an alert and retain the previously applied range. The applied range stays in
 the URL and all editing forms, including validation errors, and remains usable
 in archived projects. Opening a project from the list starts with empty boundaries.
@@ -93,7 +93,7 @@ Project search intersects Active/Archived; task search intersects completion,
 priority and applied due range.
 Queries stay in the URL and forms across filter changes and edits, with matching
 rows re-evaluated in their existing order. Search does not change saved data or
-all-task summaries, and remains available on archived projects. Opening a project
+all-live-task summaries, and remains available on archived projects. Opening a project
 from the list or returning through Projects resets the corresponding search.
 
 Every task has optional multiline plain-text notes, edited with Task notes and
@@ -103,3 +103,14 @@ including return-position restoration. Saving notes retains all applied filters
 and search; notes do not contribute to title/name search or completion summaries.
 Archived notes remain visible but cannot be edited until restoration. Existing
 databases automatically add empty notes without changing previous task data.
+
+Tasks can be deleted reversibly. All, Open and Completed show only live tasks;
+Deleted shows deleted tasks and intersects priority, due range and title search.
+Deletion removes the task from completion summaries but retains every saved field,
+its ownership and all remembered project positions. Restore task recovers its
+reserved place, including ahead of tasks created while it was deleted, without
+changing its saved completion or priority. Both actions retain applied filters.
+Deleted rows show their data with all editing and move controls disabled, and the
+server rejects those changes. Archived projects also disable deletion/restoration
+while allowing all reading filters. Migration initializes existing tasks as live;
+deletion state persists across reloads, restarts and project archive/restoration.

@@ -119,7 +119,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
       ${searchField}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter">
-        ${['All', 'Open', 'Completed'].map((option) =>
+        ${['All', 'Open', 'Completed', 'Deleted'].map((option) =>
           `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <label for="priority-filter">Priority filter</label>
@@ -150,12 +150,12 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
           <span>${escapeHtml(task.title)}</span>
           <form action="${projectPath}/tasks/${task.id}/completion" method="post" data-auto-submit>
             ${filterFields}
-            <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
+            <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived || task.deleted ? ' disabled' : ''}>
           </form>
           <form action="${projectPath}/tasks/${task.id}/priority" method="post" data-auto-submit>
             ${filterFields}
             <label for="task-priority-${task.id}">Task priority</label>
-            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}>
+            <select id="task-priority-${task.id}" name="priority"${project.archived || task.deleted ? ' disabled' : ''}>
               ${TASK_PRIORITIES.map((priority) =>
                 `<option${priority === task.priority ? ' selected' : ''}>${priority}</option>`).join('')}
             </select>
@@ -163,29 +163,33 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
           <form action="${projectPath}/tasks/${task.id}/rename" method="post" class="task-rename">
             ${filterFields}
             <label for="new-task-title-${task.id}">New task title</label>
-            <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
-            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+            <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived || task.deleted ? ' disabled' : ''}>
+            <button type="submit"${project.archived || task.deleted ? ' disabled' : ''}>Rename task</button>
           </form>
           <form action="${projectPath}/tasks/${task.id}/due-date" method="post" class="task-due-date">
             ${filterFields}
             <label for="task-due-date-${task.id}">Task due date</label>
-            <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
-            <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+            <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived || task.deleted ? ' disabled' : ''}>
+            <button type="submit"${project.archived || task.deleted ? ' disabled' : ''}>Save due date</button>
           </form>
           <form action="${projectPath}/tasks/${task.id}/move" method="post" class="task-move">
             ${filterFields}
             <label for="destination-project-${task.id}">Destination project</label>
-            <select id="destination-project-${task.id}" name="destination"${moveDisabled ? ' disabled' : ''}>
+            <select id="destination-project-${task.id}" name="destination"${moveDisabled || task.deleted ? ' disabled' : ''}>
               ${destinations.map((destination) =>
                 `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
             </select>
-            <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
+            <button type="submit"${moveDisabled || task.deleted ? ' disabled' : ''}>Move task</button>
           </form>
           <form action="${projectPath}/tasks/${task.id}/notes" method="post" class="task-notes">
             ${filterFields}
             <label for="task-notes-${task.id}">Task notes</label>
-            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>${textareaContent(task.notes)}</textarea>
-            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived || task.deleted ? ' disabled' : ''}>${textareaContent(task.notes)}</textarea>
+            <button type="submit"${project.archived || task.deleted ? ' disabled' : ''}>Save notes</button>
+          </form>
+          <form action="${projectPath}/tasks/${task.id}/${task.deleted ? 'restore' : 'delete'}" method="post" class="task-deletion">
+            ${filterFields}
+            <button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
           </form>
         </div>`).join('') : '<p class="empty">No tasks match these filters.</p>'}
     </section>`);

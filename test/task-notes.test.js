@@ -31,7 +31,7 @@ test('notes migration preserves all prior task data and remembered positions; no
     projects = openProjects(databasePath);
     const migrated = new DatabaseSync(databasePath);
     assert.deepEqual(migrated.prepare('SELECT * FROM tasks ORDER BY id').all().map((task) => ({ ...task })),
-      priorTasks.map((task) => ({ ...task, notes: '' })));
+      priorTasks.map((task) => ({ ...task, notes: '', deleted: 0 })));
     assert.deepEqual(migrated.prepare('SELECT * FROM task_project_positions ORDER BY project_id, position').all(), priorPositions);
     migrated.close();
     const before = projects.listTasks(1);

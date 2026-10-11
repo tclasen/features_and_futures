@@ -11,7 +11,7 @@ const stylesheet = readFileSync(new URL('./public/styles.css', import.meta.url))
 const formScript = readFileSync(new URL('./public/forms.js', import.meta.url));
 
 function taskFilter(value) {
-  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+  return ['All', 'Open', 'Completed', 'Deleted'].includes(value) ? value : 'All';
 }
 
 function priorityFilter(value) {
@@ -171,7 +171,7 @@ const server = createServer(async (request, response) => {
         return redirect(response, projectLocation(project.id, filters));
       }
     }
-    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move))?$/);
+    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move|delete|restore))?$/);
     if (request.method === 'POST' && taskMatch &&
         Number.isSafeInteger(Number(taskMatch[1])) &&
         (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
@@ -182,7 +182,11 @@ const server = createServer(async (request, response) => {
         }
         const form = await readForm(request);
         const filters = projectFilters(form);
-        if (taskMatch[3] === 'notes') {
+        if (taskMatch[3] === 'delete' || taskMatch[3] === 'restore') {
+          if (!projects.setTaskDeleted(project.id, Number(taskMatch[2]), taskMatch[3] === 'delete')) {
+            return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
+          }
+        } else if (taskMatch[3] === 'notes') {
           if (!projects.setTaskNotes(project.id, Number(taskMatch[2]), form.get('notes') || '')) {
             return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
           }

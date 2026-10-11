@@ -354,7 +354,7 @@ test('rename storage rejects invalid and archived changes while preserving proje
       { id: 1, name: 'Renamed', archived: 0, total_count: 1, completed_count: 1 },
     ]);
     assert.deepEqual(projects.listTasks(1).map((task) => ({ ...task })), [
-      { id: 1, title: 'Saved task', completed: 1, priority: 'Normal', due_date: '', notes: '' },
+      { id: 1, title: 'Saved task', completed: 1, priority: 'Normal', due_date: '', notes: '', deleted: 0 },
     ]);
   } finally {
     projects.close();
@@ -685,8 +685,8 @@ test('task rename storage preserves ownership, order and completion and guards i
     projects.setArchived(1, false);
     assert.equal(projects.renameTask(1, 1, '  Renamed  '), true);
     assert.deepEqual(projects.listTasks(1).map((task) => ({ ...task })), [
-      { id: 1, title: 'Renamed', completed: 1, priority: 'Normal', due_date: '', notes: '' },
-      { id: 2, title: 'Next', completed: 0, priority: 'Normal', due_date: '', notes: '' },
+      { id: 1, title: 'Renamed', completed: 1, priority: 'Normal', due_date: '', notes: '', deleted: 0 },
+      { id: 2, title: 'Next', completed: 0, priority: 'Normal', due_date: '', notes: '', deleted: 0 },
     ]);
     assert.deepEqual(projects.listTasks(2), []);
     assert.equal(projects.list()[0].completed_count, 1);
@@ -832,7 +832,7 @@ test('combined filter controls survive edits, validation, reload, restart and ar
     const assertFilters = (html, completion, priority) => {
       const form = html.match(/<form[^>]*class="task-filter"[^>]*>([\s\S]*?)<\/form>/)[1];
       for (const [id, options, selected] of [
-        ['task-filter', ['All', 'Open', 'Completed'], completion],
+        ['task-filter', ['All', 'Open', 'Completed', 'Deleted'], completion],
         ['priority-filter', ['All', 'Low', 'Normal', 'High'], priority],
       ]) {
         const select = form.match(new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`));
@@ -1480,6 +1480,83 @@ test('search forms retain applied queries across filters, edits, movement and ar
     const escaped = await page('/projects/1?search=%22%3E%3Cscript%3E');
     assert.match(escaped, /value="&quot;&gt;&lt;script&gt;"/);
     assert.deepEqual(titles(escaped), []);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('delete and restore controls retain intersecting filters, disable deleted edits and survive process restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-http-'));
+  let server;
+  try {
+    const path = join(directory, 'workboard.sqlite');
+    server = await start(path);
+    const post = (route, values = {}) => fetch(`${server.url}${route}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const page = async (route) => (await fetch(`${server.url}${route}`)).text();
+    const titles = (html) => [...html.matchAll(/data-testid="task-row"[^>]*>\s*<span>(.*?)<\/span>/g)].map((m) => m[1]);
+    await post('/projects', { name: 'Source' });
+    await post('/projects', { name: 'Destination' });
+    await post('/projects/1/tasks', { title: 'Match title' });
+    await post('/projects/1/tasks/1/completion', { completed: 'on' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    await post('/projects/1/tasks/1/notes', { notes: '  café\n<literal>  ' });
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', search: 'mAtCh' };
+    const livePath = `/projects/1?${new URLSearchParams(filters)}`;
+    const live = await page(livePath);
+    assert.match(live, />Delete task<\/button>/);
+    const response = await post('/projects/1/tasks/1/delete', filters);
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), livePath);
+    assert.deepEqual(titles(await page(livePath)), []);
+    assert.match(await page('/'), /data-testid="project-summary">0\/0 completed/);
+    const deletedFilters = { ...filters, filter: 'Deleted' };
+    const deletedPath = `/projects/1?${new URLSearchParams(deletedFilters)}`;
+    const deleted = await page(deletedPath);
+    assert.deepEqual(titles(deleted), ['Match title']);
+    const select = deleted.match(/<select id="task-filter"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.deepEqual([...select.matchAll(/<option[^>]*>(.*?)<\/option>/g)].map((m) => m[1]), ['All', 'Open', 'Completed', 'Deleted']);
+    const row = deleted.match(/<div data-testid="task-row"[\s\S]*?<\/div>/)[0];
+    for (const control of row.matchAll(/<(?:input|select|textarea|button)\b[^>]*>/g)) {
+      if (control[0].includes('type="hidden"') || control[0] === '<button type="submit">') continue;
+      assert.match(control[0], /disabled/);
+    }
+    assert.match(row, /<button type="submit">Restore task<\/button>/);
+    assert.doesNotMatch(row, />Delete task<\/button>/);
+    for (const [action, values] of [
+      ['rename', { title: 'Changed' }], ['completion', {}], ['priority', { priority: 'Low' }],
+      ['due-date', { dueDate: '' }], ['notes', { notes: '' }], ['move', { destination: '2' }],
+    ]) assert.equal((await post(`/projects/1/tasks/1/${action}`, values)).status, action === 'move' ? 400 : 404);
+    assert.equal(await page(deletedPath), deleted);
+    assert.deepEqual(titles(await page(deletedPath.replace('priorityFilter=High', 'priorityFilter=Low'))), []);
+    assert.deepEqual(titles(await page(deletedPath.replace('search=mAtCh', 'search=literal'))), []);
+    await server.stop();
+    server = await start(path);
+    assert.equal(await page(deletedPath), deleted);
+    await post('/projects/1/archive');
+    const archived = await page(deletedPath);
+    assert.match(archived, /disabled>Restore task/);
+    assert.doesNotMatch(archived.match(/<form[^>]*class="task-filter"[\s\S]*?<\/form>/)[0], /disabled/);
+    for (const action of ['delete', 'restore']) {
+      assert.equal((await post(`/projects/1/tasks/1/${action}`)).status, 409);
+    }
+    await post('/projects/1/restore');
+    await post('/projects/1/tasks', { title: 'Later' });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    const restored = await post('/projects/1/tasks/1/restore', deletedFilters);
+    assert.equal(restored.headers.get('location'), deletedPath);
+    assert.deepEqual(titles(await page(deletedPath)), []);
+    assert.equal(await page(livePath), live.replace('<option>Low</option><option selected>Normal</option>', '<option selected>Low</option><option>Normal</option>'));
+    assert.deepEqual(titles(await page('/projects/1')), ['Match title', 'Later']);
+    assert.match(await page('/'), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await start(path);
+    assert.deepEqual(titles(await page('/projects/1')), ['Match title', 'Later']);
+    assert.deepEqual(titles(await page('/projects/1?filter=Completed')), ['Match title']);
+    assert.deepEqual(titles(await page('/projects/1?filter=Open')), ['Later']);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
