@@ -69,7 +69,7 @@ const server = http.createServer(async (req, res) => {
     const id = Number(exportItem[1]);
     const project = db.prepare('SELECT id,name,archived,default_priority FROM projects WHERE id=?').get(id);
     if (!project) return send(res,404,{error:'Not found'});
-    const tasks = db.prepare('SELECT title,completed,priority,due_date,notes,deleted FROM tasks WHERE project_id=? ORDER BY position,id').all(id).map(t => ({title:t.title,completed:Boolean(t.completed),priority:t.priority||'Normal',dueDate:t.due_date||'',notes:String(t.notes||'').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'),deleted:Boolean(t.deleted)}));
+    const tasks = db.prepare('SELECT title,completed,priority,due_date,notes,deleted FROM tasks WHERE project_id=? ORDER BY position,id').all(id).map(t => ({title:t.title,completed:Boolean(t.completed),priority:t.priority||'Normal',dueDate:t.due_date||'',notes:String(t.notes||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n'),deleted:Boolean(t.deleted)}));
     res.writeHead(200, {'content-type':'application/json; charset=utf-8','content-disposition':'attachment; filename="workboard-project.json"','cache-control':'no-store'});
     return res.end(JSON.stringify({format:'workboard-project',version:1,project:{name:project.name,archived:Boolean(project.archived),defaultPriority:project.default_priority||'Normal',tasks}}));
   }
@@ -136,7 +136,7 @@ const server = http.createServer(async (req, res) => {
         const task=db.prepare('SELECT tasks.id,tasks.project_id,projects.archived FROM tasks JOIN projects ON projects.id=tasks.project_id WHERE tasks.id=?').get(Number(taskItem[1]));
         const destination=db.prepare('SELECT id,archived FROM projects WHERE id=?').get(Number(body.project_id));
         if(!task) return send(res,404,{error:'Not found'});
-        if(task.archived||!destination||destination.archived||destination.id===task.project_id) return send(res,400,{error:'Invalid destination'});
+        if(task.archived||task.deleted||!destination||destination.archived||destination.id===task.project_id) return send(res,400,{error:'Invalid destination'});
         let remembered=db.prepare('SELECT position FROM task_project_positions WHERE task_id=? AND project_id=?').get(task.id,destination.id);
         if(!remembered){
           const next=db.prepare('SELECT COALESCE(MAX(position)+1,0) position FROM task_project_positions WHERE project_id=?').get(destination.id).position;
@@ -214,7 +214,7 @@ const server = http.createServer(async (req, res) => {
     const p=doc.project;
     const transaction=db.prepare('INSERT INTO projects (name,archived,default_priority) VALUES (?,?,?)');
     db.exec('BEGIN');
-    try { const id=Number(transaction.run(name,p.archived?1:0,p.defaultPriority).lastInsertRowid);const ins=db.prepare('INSERT INTO tasks (project_id,title,completed,priority,due_date,notes,deleted,position) VALUES (?,?,?,?,?,?,?,?)');const pos=db.prepare('INSERT INTO task_project_positions(task_id,project_id,position) VALUES (?,?,?)');p.tasks.forEach((t,i)=>{const taskId=Number(ins.run(id,t.title,t.completed?1:0,t.priority,t.dueDate||null,t.notes.replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'),t.deleted?1:0,i).lastInsertRowid);pos.run(taskId,id,i)});db.exec('COMMIT');return send(res,201,{id}); } catch { db.exec('ROLLBACK');return send(res,400,{error:'Invalid project JSON'}); }
+    try { const id=Number(transaction.run(name,p.archived?1:0,p.defaultPriority).lastInsertRowid);const ins=db.prepare('INSERT INTO tasks (project_id,title,completed,priority,due_date,notes,deleted,position) VALUES (?,?,?,?,?,?,?,?)');const pos=db.prepare('INSERT INTO task_project_positions(task_id,project_id,position) VALUES (?,?,?)');p.tasks.forEach((t,i)=>{const taskId=Number(ins.run(id,t.title,t.completed?1:0,t.priority,t.dueDate||null,t.notes.replace(/\r\n/g,'\n').replace(/\r/g,'\n'),t.deleted?1:0,i).lastInsertRowid);pos.run(taskId,id,i)});db.exec('COMMIT');return send(res,201,{id}); } catch { db.exec('ROLLBACK');return send(res,400,{error:'Invalid project JSON'}); }
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
