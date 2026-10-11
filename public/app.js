@@ -3,11 +3,26 @@ import { matchesSearch } from './search.js';
 
 const app = document.querySelector('#app');
 
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Unable to complete request');
-  return result;
+const pendingWrites = new Set();
+
+function api(path, options) {
+  const request = (async () => {
+    const response = await fetch(path, options);
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Unable to complete request');
+    return result;
+  })();
+  if (options) {
+    pendingWrites.add(request);
+    request.then(() => pendingWrites.delete(request), () => pendingWrites.delete(request));
+  }
+  return request;
+}
+
+async function navigate(path) {
+  // A click on Projects/Open must not cancel a save still in flight.
+  while (pendingWrites.size) await Promise.allSettled([...pendingWrites]);
+  location.assign(path);
 }
 
 function showError(message) {
@@ -28,7 +43,7 @@ function projectRow(project, onUpdate) {
   name.textContent = project.name;
   const open = document.createElement('button');
   open.textContent = 'Open project';
-  open.addEventListener('click', () => location.assign(`/projects/${project.id}`));
+  open.addEventListener('click', () => navigate(`/projects/${project.id}`));
   const summary = document.createElement('span');
   summary.dataset.testid = 'project-summary';
   summary.textContent = `${project.completed}/${project.total} completed`;
@@ -192,6 +207,7 @@ async function renderTasks(project) {
       defaultPriority.disabled = Boolean(project.archived);
     }
   });
+  const taskRows = new Map();
   function drawTasks() {
     const visible = tasks.filter(task =>
       (filter.value === 'Deleted' ? task.deleted :
@@ -200,7 +216,23 @@ async function renderTasks(project) {
       (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
       matchesDueRange(task.due_date, appliedFrom, appliedThrough) &&
       matchesSearch(task.title, appliedQuery));
-    list.replaceChildren(...visible.map(task => {
+    const rows = visible.map(task => {
+      const existing = taskRows.get(task.id);
+      if (existing && existing.deleted === task.deleted) {
+        // Keep drafts and focused controls intact when another field is saved.
+        const { row, saved } = existing;
+        if (saved.title !== task.title) {
+          row.children[0].textContent = task.title;
+          row.children[1].setAttribute('aria-label', `Complete ${task.title}`);
+          row.children[2].querySelector('input').value = '';
+        }
+        if (saved.completed !== task.completed) row.children[1].checked = task.completed;
+        if (saved.priority !== task.priority) row.children[3].value = task.priority;
+        if (saved.due_date !== task.due_date) row.children[4].querySelector('input').value = task.due_date;
+        if (saved.notes !== task.notes) row.children[6].querySelector('textarea').value = task.notes;
+        existing.saved = { ...task };
+        return row;
+      }
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
       row.className = 'task-row';
@@ -220,7 +252,7 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: checkbox.checked }),
           });
-          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          Object.assign(task, saved);
           drawTasks();
         } catch (error) {
           checkbox.checked = task.completed;
@@ -255,7 +287,8 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: newTitle }),
           });
-          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          renameInput.value = '';
+          Object.assign(task, saved);
           drawTasks();
         } catch (error) {
           showError(error.message);
@@ -281,7 +314,7 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ priority: priority.value }),
           });
-          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          Object.assign(task, saved);
           drawTasks();
         } catch (error) {
           priority.value = task.priority;
@@ -314,7 +347,8 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ due_date: dueInput.value.trim() }),
           });
-          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          dueInput.value = saved.due_date;
+          Object.assign(task, saved);
           drawTasks();
         } catch (error) {
           showError(error.message);
@@ -346,7 +380,7 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ notes: notesInput.value }),
           });
-          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          Object.assign(task, saved);
           drawTasks();
         } catch (error) {
           showError(error.message);
@@ -409,7 +443,7 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ deleted: !task.deleted }),
           });
-          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          Object.assign(task, saved);
           drawTasks();
         } catch (error) {
           showError(error.message);
@@ -418,8 +452,13 @@ async function renderTasks(project) {
         }
       });
       row.append(deletionButton);
+      taskRows.set(task.id, { row, saved: { ...task }, deleted: task.deleted });
       return row;
-    }));
+    });
+    // Do not detach unchanged rows: that would disrupt focus during a save.
+    if (rows.length !== list.children.length || rows.some((row, index) => row !== list.children[index])) {
+      list.replaceChildren(...rows);
+    }
   }
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
@@ -462,7 +501,7 @@ async function render() {
     app.replaceChildren();
     const back = document.createElement('button');
     back.textContent = 'Projects';
-    back.addEventListener('click', () => location.assign('/'));
+    back.addEventListener('click', () => navigate('/'));
     app.append(back);
     const project = await api(`/api/projects/${match[1]}`);
     const heading = document.createElement('h1');
@@ -479,6 +518,8 @@ async function render() {
     return;
   }
 
+  // Load first, before exposing controls that have no handlers yet.
+  let projects = await api('/api/projects');
   app.innerHTML = `
     <h1>Workboard</h1>
     <form>
@@ -501,7 +542,6 @@ async function render() {
     <section aria-label="Projects" id="project-list"></section>
   `;
   const list = app.querySelector('#project-list');
-  let projects = await api('/api/projects');
   const filter = app.querySelector('#project-filter');
   const search = app.querySelector('#project-search');
   let appliedQuery = '';

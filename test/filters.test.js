@@ -67,7 +67,7 @@ async function fixture(archived = false, destinations = [
   { id: 2, name: 'Destination', archived: false },
   { id: 3, name: 'Archived', archived: true },
   { id: 4, name: 'Other destination', archived: false },
-], beforeRead = async () => {}, deletedIds = []) {
+], beforeRead = async () => {}, deletedIds = [], beforeWrite = async () => {}) {
   const app = new Element('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
@@ -87,6 +87,7 @@ async function fixture(archived = false, destinations = [
         return { ok: true, json: async () => structuredClone(path === '/api/projects' ? destinations : tasks) };
       }
       requests.push(options);
+      await beforeWrite(path, options);
       if (path === '/api/projects/1') {
         Object.assign(project, JSON.parse(options.body));
         return { ok: true, json: async () => structuredClone(project) };
@@ -119,6 +120,61 @@ async function choose(select, value) {
   select.value = value;
   await select.fire('change');
 }
+
+test('a delayed priority save retains the next due-date draft and deleted filter membership', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const f = await fixture(false, undefined, undefined, [], async (path, options) => {
+    if (Object.hasOwn(JSON.parse(options.body), 'priority')) await gate;
+  });
+  const originalRow = f.rows()[0];
+  const saving = choose(originalRow.children[3], 'Low');
+  const dueForm = originalRow.children[4];
+  dueForm.children[1].value = '2025-01-15';
+  release();
+  await saving;
+  assert.equal(f.rows()[0], originalRow);
+  assert.equal(dueForm.children[1].value, '2025-01-15');
+  await dueForm.fire('submit');
+  await originalRow.children[7].fire('click');
+  await choose(f.completion, 'Deleted');
+  await choose(f.priority, 'Low');
+  await applyRange(f, '2025-01-01', '2025-01-31');
+  await searchTasks(f, 'first');
+  assert.deepEqual(f.titles(), ['First']);
+  assert.equal(f.rows()[0].children[4].children[1].value, '2025-01-15');
+});
+
+test('Projects navigation waits for a delayed rename to finish saving', async () => {
+  const app = new Element('main');
+  const heading = new Element('h1');
+  const project = { id: 1, name: 'Before', archived: false };
+  let storedName = project.name;
+  const navigations = [];
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const context = {
+    document: { querySelector: () => app, createElement: tag => new Element(tag) },
+    location: { assign: path => navigations.push({ path, storedName }) },
+    fetch: async (path, options) => {
+      await gate;
+      storedName = JSON.parse(options.body).name;
+      return { ok: true, json: async () => ({ ...project, name: storedName }) };
+    },
+  };
+  runInNewContext(source.slice(0, source.lastIndexOf('\nrender().catch')).replace(/^import .*;\n/gm, '') +
+    '\nthis.renderRename = renderRename; this.navigate = navigate;', context);
+  context.renderRename(project, heading);
+  app.querySelector('input').value = '  Saved identity  ';
+  const saving = app.querySelector('form').fire('submit');
+  const leaving = context.navigate('/');
+  assert.deepEqual(navigations, []);
+  release();
+  await Promise.all([saving, leaving]);
+  assert.deepEqual(navigations, [{ path: '/', storedName: 'Saved identity' }]);
+  assert.equal(heading.textContent, 'Saved identity');
+});
 
 test('deletion and restoration retain intersecting filters and disable deleted-row edits', async () => {
   const f = await fixture();
