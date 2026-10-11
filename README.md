@@ -12,7 +12,8 @@ Open `http://localhost:8080`. The server binds to `0.0.0.0`.
 `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`.
 Use the same database path across restarts to retain projects, tasks, completion state,
 archive state, renamed project names and task titles, task priorities, project task-priority defaults,
-and task due dates. Existing databases are upgraded automatically.
+task due dates, and remembered task positions in each visited project. Existing
+databases are upgraded automatically without changing their current task order.
 `GET /health` returns `{"status":"ok"}`.
 
 Verify:
@@ -95,10 +96,16 @@ filtering, empty initial boundaries, and accessible controls.
 
 Each task row provides Destination project and Move task controls. Destinations are
 other active projects in project creation order, using their current names. Moving
-appends the task to the destination while preserving its identity, title, completion,
-priority, and due date. The source page stays open with all its filters retained;
+appends a first arrival after the destination's established positions. Returning tasks
+reuse their remembered position in that project, even when multiple tasks return in
+a different order. New tasks follow established positions, including those held by
+tasks currently away. Moves preserve identity, current title, completion, priority,
+and due date. The source page stays open with all its filters retained;
 both project summaries reflect current ownership. Archived projects cannot send or
 receive tasks, and moving is disabled when no destination is available. Moves and
 the resulting task order persist across restarts. Move checks cover saved data,
 ordering, summaries, repeat moves, archived restrictions, empty destinations,
-filter retention, error recovery, and persistence.
+filter retention, error recovery, and persistence. Return-order checks cover migration
+of sparse existing positions, reverse returns, new tasks while originals are away,
+multiple visited projects, current fields after edits elsewhere, project renaming,
+archive/restore, completion summaries, and repeated process restarts.

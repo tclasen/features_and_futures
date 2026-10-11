@@ -35,6 +35,16 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Keep positions even while tasks are away, so returns recover the established order.
+database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
+);
+INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks`);
 const projectColumns = `SELECT p.id, p.name, p.archived, p.default_task_priority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed
@@ -45,16 +55,30 @@ const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE i
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position');
+const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+  FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position`);
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, priority) VALUES (?, ?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
-const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks)
-  WHERE project_id = ? AND id = ?`);
+const moveTask = database.prepare('UPDATE tasks SET project_id = ? WHERE project_id = ? AND id = ?');
+const rememberTaskPosition = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+  SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?
+  ON CONFLICT (task_id, project_id) DO NOTHING`);
+
+function transaction(action) {
+  database.exec('BEGIN');
+  try {
+    action();
+    database.exec('COMMIT');
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
 const assets = new Map([
   ['/', ['public/index.html', 'text/html; charset=utf-8']],
   ['/dates.js', ['public/dates.js', 'text/javascript; charset=utf-8']],
@@ -122,7 +146,10 @@ const server = http.createServer(async (request, response) => {
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
         const task = { id: randomUUID(), title, completed: false };
-        insertTask.run(task.id, projectId, task.title, currentProject.default_task_priority);
+        transaction(() => {
+          insertTask.run(task.id, projectId, task.title, currentProject.default_task_priority);
+          rememberTaskPosition.run(task.id, projectId, projectId);
+        });
         return json(response, 201, taskResult(findTask.get(projectId, task.id)));
       }
       if (request.method === 'PATCH' && taskId) {
@@ -135,7 +162,10 @@ const server = http.createServer(async (request, response) => {
           if (!destination || destination.id === projectId || destination.archived) {
             return json(response, 400, { error: 'Destination must be another active project' });
           }
-          moveTask.run(destination.id, projectId, taskId);
+          transaction(() => {
+            rememberTaskPosition.run(taskId, destination.id, destination.id);
+            moveTask.run(destination.id, projectId, taskId);
+          });
           return json(response, 200, taskResult(findTask.get(destination.id, taskId)));
         }
         if (input && Object.hasOwn(input, 'due_date')) {

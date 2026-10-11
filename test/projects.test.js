@@ -430,7 +430,7 @@ test('due dates validate calendar days and persist independently through edits, 
   }
 });
 
-test('moves append tasks, preserve data and summaries, reject archived projects, and survive restart', async () => {
+test('moves append first arrivals, restore returning order, preserve data and summaries, and survive restart', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data', 'moves-'));
   let server;
@@ -481,7 +481,7 @@ test('moves append tasks, preserve data and summaries, reject archived projects,
     assert.deepEqual(await api(destinationPath + '/tasks'), [existing, saved, afterMove]);
     assert.deepEqual(await api(''), summaries);
     await api(destinationPath + '/tasks/' + moved.id, 'PATCH', { destination_project_id: source.id });
-    assert.deepEqual(await api(sourcePath + '/tasks'), [remaining, saved]);
+    assert.deepEqual(await api(sourcePath + '/tasks'), [saved, remaining]);
     // Blank dates also survive moving independently.
     await api(sourcePath + '/tasks/' + remaining.id, 'PATCH', { destination_project_id: destination.id });
     assert.deepEqual(await api(destinationPath + '/tasks'), [existing, afterMove, remaining]);
@@ -490,6 +490,98 @@ test('moves append tasks, preserve data and summaries, reject archived projects,
     server = await start(databasePath);
     assert.deepEqual(await api(sourcePath + '/tasks'), [{ ...saved, title: 'Renamed after move' }]);
     assert.deepEqual(await api(destinationPath + '/tasks'), [existing, afterMove, remaining]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('remembered positions migrate existing order and survive reverse returns, edits, and restarts', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'return-order-'));
+  const databasePath = resolve(directory, 'order.sqlite');
+  let server;
+  try {
+    // Task 011 can leave sparse global positions after moves. Preserve that order.
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`CREATE TABLE projects (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL
+    ); INSERT INTO projects (id, name) VALUES ('a', 'Source'), ('b', 'Destination'), ('c', 'Third');
+    CREATE TABLE tasks (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+      project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    ); INSERT INTO tasks (position, id, project_id, title) VALUES
+      (10, 'first', 'a', 'First'), (30, 'middle', 'a', 'Middle'),
+      (50, 'last', 'a', 'Last'), (60, 'existing', 'b', 'Existing')`);
+    legacy.close();
+    server = await start(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(server.url + '/api/projects/' + path, {
+        method, ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const ids = async project => (await api(project + '/tasks')).map(task => task.id);
+    const move = (task, from, to, status = 200) => api(`${from}/tasks/${task}`, 'PATCH',
+      { destination_project_id: to }, status);
+    assert.deepEqual(await ids('a'), ['first', 'middle', 'last']);
+    await move('first', 'a', 'b');
+    await move('middle', 'a', 'b');
+    await move('last', 'a', 'b');
+    assert.deepEqual(await ids('b'), ['existing', 'first', 'middle', 'last']);
+    // With every original task away, new tasks must still follow their reserved positions.
+    const newSource = await api('a/tasks', 'POST', { title: 'New source task' }, 201);
+    const newDestination = await api('b/tasks', 'POST', { title: 'New destination task' }, 201);
+    await api('a', 'PATCH', { name: 'Renamed source' });
+    await api('a', 'PATCH', { default_task_priority: 'Low' });
+    await api('a', 'PATCH', { archived: true });
+    await move('middle', 'b', 'a', 400);
+    await api('b', 'PATCH', { archived: true });
+    await move('middle', 'b', 'c', 409);
+    await server.stop();
+    server = await start(databasePath);
+    await api('a', 'PATCH', { archived: false });
+    await api('b', 'PATCH', { archived: false });
+    await api('b/tasks/middle', 'PATCH', { title: 'Current middle title' });
+    await api('b/tasks/middle', 'PATCH', { completed: true });
+    await api('b/tasks/middle', 'PATCH', { priority: 'High' });
+    const currentMiddle = await api('b/tasks/middle', 'PATCH', { due_date: '2024-02-29' });
+    // Return in reverse order, including a stop at a third project.
+    await move('last', 'b', 'a');
+    await move('middle', 'b', 'c');
+    await move('middle', 'c', 'a');
+    await move('first', 'b', 'a');
+    assert.deepEqual(await ids('a'), ['first', 'middle', 'last', newSource.id]);
+    assert.deepEqual((await api('a/tasks'))[1], currentMiddle);
+    assert.deepEqual(await ids('b'), ['existing', newDestination.id]);
+    assert.deepEqual(await ids('c'), []);
+    assert.equal((await api('a')).completed, 1);
+    assert.equal((await api('a')).total, 4);
+    assert.equal((await api('b')).completed, 0);
+    assert.equal((await api('b')).total, 2);
+    // A first arrival follows all established positions even while their tasks are away.
+    await move('existing', 'b', 'a');
+    assert.deepEqual(await ids('a'), ['first', 'middle', 'last', newSource.id, 'existing']);
+    await server.stop();
+    server = await start(databasePath);
+    await move('last', 'a', 'b');
+    await move('middle', 'a', 'b');
+    await move('first', 'a', 'b');
+    await move('existing', 'a', 'b');
+    assert.deepEqual(await ids('b'), ['existing', 'first', 'middle', 'last', newDestination.id]);
+    assert.deepEqual((await api('b/tasks'))[2], currentMiddle);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await ids('b'), ['existing', 'first', 'middle', 'last', newDestination.id]);
+    await move('middle', 'b', 'c');
+    assert.deepEqual(await api('c/tasks'), [currentMiddle]);
+    await move('middle', 'c', 'a');
+    assert.deepEqual(await ids('a'), ['middle', newSource.id]);
+    assert.deepEqual((await api('a/tasks'))[0], currentMiddle);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
