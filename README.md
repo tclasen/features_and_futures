@@ -20,7 +20,9 @@ Active project pages also support renaming with `New project name` and `Rename p
 
 Each task row provides `New task title` and `Rename task`. Titles are trimmed and required. Renaming updates the visible title and completion checkbox label while preserving ownership, creation order, completion state, filter membership, and project summaries. Archived projects disable task renaming; restoration enables it again. Renamed task titles persist across server restarts.
 
-Each project page has a `Priority filter` with All/Low/Normal/High options. It combines with the All/Open/Completed task filter, preserving creation order. Both selections stay in place through task edits, including edits that remove a task from the matching rows. Filters also work on archived projects. Summaries always count all tasks. Each task has an independent, persistent Low/Normal/High priority, defaulting to Normal; archived projects disable priority edits.
+Each project page has a `Priority filter` with All/Low/Normal/High options. It combines with the All/Open/Completed task filter, preserving creation order. Both selections stay in place through task edits, including edits that remove a task from the matching rows. Filters also work on archived projects. Summaries always count all tasks. Each task has an independent, persistent Low/Normal/High priority; archived projects disable priority edits.
+
+`Default task priority` sets the priority inherited by subsequent tasks in that project. Existing and new projects initially use Normal. Changing the default preserves existing tasks and both selected filters. Each project's default persists through reloads, server restarts, renaming, archival, and restoration. Archived projects show the saved default in a disabled combobox.
 
 Run verification:
 
@@ -28,4 +30,4 @@ Run verification:
 npm test
 ```
 
-The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, combined priority and completion filtering, edits under selected filters, archive/restore behavior, renaming and identity preservation, completion summaries, and persistence across server restarts.
+The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, combined priority and completion filtering, edits under selected filters, project default inheritance and isolation, archive/restore behavior, renaming and identity preservation, completion summaries, and persistence across server restarts.
