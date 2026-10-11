@@ -119,24 +119,34 @@ const directoryTaskFilter = document.querySelector('#directory-task-filter');
 const directoryPriority = document.querySelector('#directory-priority');
 const directorySearch = document.querySelector('#directory-search');
 const directoryResults = document.querySelector('#directory-results');
+const directoryEmpty = document.querySelector('#directory-empty');
+const completeVisibleButton = document.querySelector('#complete-visible-tasks');
+const reopenVisibleButton = document.querySelector('#reopen-visible-tasks');
 let directoryQuery = '';
 let directoryRange = { from: '', through: '' };
+let visibleDirectoryTasks = [];
 
 async function loadDirectory() {
+  directoryEmpty.hidden = true;
+  completeVisibleButton.disabled = true;
+  reopenVisibleButton.disabled = true;
   const response = await fetch('/api/directory');
   if (!response.ok) return;
   const tasks = await response.json();
+  visibleDirectoryTasks = tasks.filter((task) => {
+    if ((directoryScope.value === 'Active' && task.archived) || (directoryScope.value === 'Archived' && !task.archived)) return false;
+    if (directoryTaskFilter.value === 'Deleted' ? !task.deleted : task.deleted) return false;
+    if (directoryTaskFilter.value === 'Open' && task.completed) return false;
+    if (directoryTaskFilter.value === 'Completed' && !task.completed) return false;
+    if (directoryPriority.value !== 'All' && task.priority !== directoryPriority.value) return false;
+    if (directoryQuery && !normalizeSearchText(task.title).includes(normalizeSearchText(directoryQuery))) return false;
+    if ((directoryRange.from || directoryRange.through) && !task.dueDate) return false;
+    if (directoryRange.from && task.dueDate < directoryRange.from) return false;
+    if (directoryRange.through && task.dueDate > directoryRange.through) return false;
+    return true;
+  });
   directoryResults.replaceChildren();
-  for (const task of tasks) {
-    if ((directoryScope.value === 'Active' && task.archived) || (directoryScope.value === 'Archived' && !task.archived)) continue;
-    if (directoryTaskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
-    if (directoryTaskFilter.value === 'Open' && task.completed) continue;
-    if (directoryTaskFilter.value === 'Completed' && !task.completed) continue;
-    if (directoryPriority.value !== 'All' && task.priority !== directoryPriority.value) continue;
-    if (directoryQuery && !normalizeSearchText(task.title).includes(normalizeSearchText(directoryQuery))) continue;
-    if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
-    if (directoryRange.from && task.dueDate < directoryRange.from) continue;
-    if (directoryRange.through && task.dueDate > directoryRange.through) continue;
+  for (const task of visibleDirectoryTasks) {
     const row = document.createElement('div');
     row.dataset.testid = 'directory-task-row';
     row.className = 'task-row directory-task-row';
@@ -155,7 +165,26 @@ async function loadDirectory() {
     row.append(title, owner, completion, priority, due, notes, open);
     directoryResults.append(row);
   }
+  directoryEmpty.hidden = visibleDirectoryTasks.length !== 0;
+  const eligible = directoryScope.value === 'Active' && directoryTaskFilter.value !== 'Deleted'
+    ? visibleDirectoryTasks.filter((task) => !task.deleted) : [];
+  completeVisibleButton.disabled = !eligible.some((task) => !task.completed);
+  reopenVisibleButton.disabled = !eligible.some((task) => task.completed);
 }
+
+async function updateVisibleDirectoryTasks(completed) {
+  const taskIds = visibleDirectoryTasks.filter((task) => !task.deleted && task.completed !== completed).map((task) => task.id);
+  if (!taskIds.length) return;
+  completeVisibleButton.disabled = true;
+  reopenVisibleButton.disabled = true;
+  const response = await fetch('/api/directory/bulk', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ taskIds, completed }),
+  });
+  if (response.ok) await loadDirectory();
+}
+completeVisibleButton.addEventListener('click', () => updateVisibleDirectoryTasks(true));
+reopenVisibleButton.addEventListener('click', () => updateVisibleDirectoryTasks(false));
 
 for (const control of [directoryScope, directoryTaskFilter, directoryPriority]) control.addEventListener('change', loadDirectory);
 document.querySelector('#directory-search-form').addEventListener('submit', (event) => { event.preventDefault(); directoryQuery = directorySearch.value.trim(); loadDirectory(); });

@@ -96,6 +96,26 @@ const server = createServer(async (req, res) => {
       ORDER BY p.id, COALESCE(pos.position, t.sort_order), t.id
     `).all().map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), archived: Boolean(task.archived), completed: Boolean(task.completed), deleted: Boolean(task.deleted), priority: task.priority || 'Normal', dueDate: task.dueDate || '', notes: task.notes || '' })));
   }
+  if (url.pathname === '/api/directory/bulk' && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let data;
+    try { data = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    if (typeof data.completed !== 'boolean' || !Array.isArray(data.taskIds) || data.taskIds.some((id) => !Number.isInteger(id))) {
+      return sendJson(res, 400, { error: 'Invalid bulk update' });
+    }
+    const update = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+      AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const id of new Set(data.taskIds)) update.run(data.completed ? 1 : 0, id);
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+    return sendJson(res, 200, { updated: data.taskIds.length });
+  }
   if (url.pathname === '/api/projects/import' && req.method === 'POST') {
     let body = '';
     for await (const chunk of req) body += chunk;
