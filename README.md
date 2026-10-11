@@ -8,7 +8,7 @@ A project and task application using Node.js 22.22.1, built-in HTTP and SQLite, 
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port `8080` and database `data/workboard.sqlite`. Keep the database file to preserve projects, tasks, completion state, project names, task titles, task priorities, project default priorities, and archive state across restarts. Existing databases migrate automatically.
+Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port `8080` and database `data/workboard.sqlite`. Keep the database file to preserve projects, tasks, completion state, project names, task titles, task priorities, project default priorities, due dates, and archive state across restarts. Existing databases migrate automatically.
 
 Health: `GET /health` returns `{"status":"ok"}`.
 
@@ -31,3 +31,5 @@ Each task row provides New task title and Rename task. Renames trim whitespace a
 Each task row has a Task priority selector with Low, Normal, and High options. Migrated tasks default to Normal. New tasks inherit their project's saved Default task priority, initially Normal. Priorities are saved independently and preserved by renaming, completion changes, and archive/restore. Archived projects disable priority editing.
 
 Default task priority offers Low, Normal, and High on each project page. Changing it saves only that project's default for future tasks; existing tasks, summary counts, and both filter selections remain unchanged. The default survives renaming, restarts, archival, and restoration. Archived projects display it in a disabled selector.
+
+Each task row has a Task due date textbox and Save due date button. Enter a real Gregorian date in YYYY-MM-DD format (years 0001–9999), or leave it blank to clear the date. Surrounding whitespace is trimmed. Invalid dates show an alert and leave saved data unchanged. Dates are calendar days with no timezone conversion, persist independently, and survive other task edits. Archived projects disable both due-date controls.

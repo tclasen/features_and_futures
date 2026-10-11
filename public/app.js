@@ -243,7 +243,39 @@ async function renderTasks(project) {
           priority.disabled = Boolean(project.archived);
         }
       });
-      row.append(title, checkbox, renameForm, priority);
+      const dueForm = document.createElement('form');
+      const dueLabel = document.createElement('label');
+      dueLabel.htmlFor = `task-due-date-${task.id}`;
+      dueLabel.textContent = 'Task due date';
+      const dueInput = document.createElement('input');
+      dueInput.id = dueLabel.htmlFor;
+      dueInput.type = 'text';
+      dueInput.value = task.due_date;
+      const dueButton = document.createElement('button');
+      dueButton.type = 'submit';
+      dueButton.textContent = 'Save due date';
+      dueInput.disabled = dueButton.disabled = Boolean(project.archived);
+      dueForm.append(dueLabel, dueInput, dueButton);
+      dueForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        app.querySelector('[role="alert"]')?.remove();
+        dueButton.disabled = true;
+        try {
+          const saved = await api(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueInput.value.trim() }),
+          });
+          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          drawTasks();
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          dueButton.disabled = Boolean(project.archived);
+        }
+      });
+      row.append(title, checkbox, renameForm, priority, dueForm);
       return row;
     }));
   }

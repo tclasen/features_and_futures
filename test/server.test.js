@@ -237,7 +237,7 @@ test('existing project databases migrate without losing IDs or tasks', async () 
       id: 7, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 1, completed: 1,
     }]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [{
-      id: 1, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal',
+      id: 1, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '',
     }]);
   } finally {
     if (child) await stop(child);
@@ -300,6 +300,76 @@ test('project defaults affect only subsequent tasks and survive rename, archive,
     assert.equal((await add(projectPath, 'After restore')).priority, 'Low');
     await patch(projectPath, { default_priority: 'High' });
     assert.equal((await add(projectPath, 'After edit')).priority, 'High');
+  } finally {
+    if (child) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
+test('due dates validate Gregorian days and persist independently through edits and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  const dbPath = join(directory, 'test.sqlite');
+  let child;
+  const get = async path => (await fetch(`${base}${path}`)).json();
+  const patch = (path, body) => fetch(`${base}${path}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  try {
+    child = await start(dbPath);
+    const first = await (await create('Dates')).json();
+    const other = await (await create('Other')).json();
+    const projectPath = `/api/projects/${first.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const add = async title => (await fetch(`${base}${tasksPath}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    })).json();
+    let task = await add('First');
+    const second = await add('Second');
+    assert.equal(task.due_date, '');
+    assert.equal(second.due_date, '');
+    const taskPath = `${tasksPath}/${task.id}`;
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '  2025-04-30  ']) {
+      const response = await patch(taskPath, { due_date: date });
+      assert.equal(response.status, 200);
+      const saved = await response.json();
+      assert.deepEqual(saved, { ...task, due_date: date.trim() });
+      task = saved;
+    }
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2023-02-29', '2025-04-31',
+      '2025-00-01', '2025-13-01', '2025-01-00', '2025-01-32', '2025-1-01', '25-01-01',
+      '2025-01-01T00:00:00Z', 'not a date', null, 20250101]) {
+      const response = await patch(taskPath, { due_date: date });
+      assert.equal(response.status, 400, String(date));
+      assert.match((await response.json()).error, /Due date must be a valid YYYY-MM-DD date/);
+      assert.deepEqual(await get(tasksPath), [task, second]);
+    }
+    assert.equal((await patch(`/api/projects/${other.id}/tasks/${task.id}`, { due_date: '2025-01-01' })).status, 404);
+    for (const body of [{ title: 'Renamed' }, { completed: true }, { priority: 'High' }]) {
+      const saved = await (await patch(taskPath, body)).json();
+      assert.deepEqual(saved, { ...task, ...body });
+      task = saved;
+    }
+    const summary = await get(projectPath);
+    assert.equal(summary.total, 2);
+    assert.equal(summary.completed, 1);
+    await patch(projectPath, { archived: true });
+    assert.equal((await patch(taskPath, { due_date: '' })).status, 409);
+    await stop(child);
+    child = undefined;
+    child = await start(dbPath);
+    assert.deepEqual(await get(tasksPath), [task, second]);
+    await patch(projectPath, { archived: false });
+    for (const date of ['', '  \t\n ']) {
+      const saved = await (await patch(taskPath, { due_date: date })).json();
+      assert.deepEqual(saved, { ...task, due_date: '' });
+      task = saved;
+    }
+    assert.deepEqual(await get(projectPath), summary);
+    await stop(child);
+    child = undefined;
+    child = await start(dbPath);
+    assert.deepEqual(await get(tasksPath), [task, second]);
   } finally {
     if (child) await stop(child);
     await rm(directory, { recursive: true, force: true });

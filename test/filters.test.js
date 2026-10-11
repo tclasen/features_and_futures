@@ -54,7 +54,7 @@ async function fixture(archived = false) {
     { id: 2, title: 'Second', completed: true, priority: 'Normal' },
     { id: 3, title: 'Third', completed: true, priority: 'High' },
     { id: 4, title: 'Fourth', completed: false, priority: 'Low' },
-  ];
+  ].map(task => ({ ...task, due_date: '' }));
   const requests = [];
   const project = { id: 1, archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -146,6 +146,8 @@ test('archived projects keep both filters usable while task edits remain disable
     assert.equal(row.children[2].children[1].disabled, true);
     assert.equal(row.children[2].children[2].disabled, true);
     assert.equal(row.children[3].disabled, true);
+    assert.equal(row.children[4].children[1].disabled, true);
+    assert.equal(row.children[4].children[2].disabled, true);
   }
   await choose(f.priority, 'High');
   await choose(f.completion, 'Completed');
@@ -154,6 +156,32 @@ test('archived projects keep both filters usable while task edits remain disable
   assert.equal((await fixture()).priority.value, 'All');
 });
 
+
+test('due date save and clear preserve both filters, task identity, and row order', async () => {
+  const f = await fixture();
+  await choose(f.completion, 'Completed');
+  await choose(f.priority, 'High');
+  const original = structuredClone(f.tasks);
+  let form = f.rows()[0].children[4];
+  assert.equal(form.children[0].textContent, 'Task due date');
+  assert.equal(form.children[1].type, 'text');
+  assert.equal(form.children[1].value, '');
+  assert.equal(form.children[2].textContent, 'Save due date');
+  form.children[1].value = '  2024-02-29  ';
+  await form.fire('submit');
+  assert.deepEqual(f.tasks, original.map(task => task.id === 3 ? { ...task, due_date: '2024-02-29' } : task));
+  assert.deepEqual(f.titles(), ['Third']);
+  assert.equal(f.completion.value, 'Completed');
+  assert.equal(f.priority.value, 'High');
+  form = f.rows()[0].children[4];
+  assert.equal(form.children[1].value, '2024-02-29');
+  form.children[1].value = '   ';
+  await form.fire('submit');
+  assert.deepEqual(f.tasks, original);
+  assert.equal(f.rows()[0].children[4].children[1].value, '');
+  assert.equal(f.completion.value, 'Completed');
+  assert.equal(f.priority.value, 'High');
+});
 
 test('default priority changes preserve both filters and existing rows', async () => {
   const f = await fixture();
