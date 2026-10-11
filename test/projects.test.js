@@ -2602,3 +2602,147 @@ test('directory owner totals follow matching results by identity and creation or
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory bulk deletion and restoration preserve owners, fields, reserved positions and intersected views', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'directory-deletion-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const path = values => `/directory?${new URLSearchParams(values)}`;
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return {
+          projects: database.prepare('SELECT * FROM projects ORDER BY id').all().map(row => ({ ...row })),
+          tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all().map(row => ({ ...row })),
+          positions: database.prepare('SELECT * FROM task_positions ORDER BY project_id, position').all().map(row => ({ ...row })),
+        };
+      } finally { database.close(); }
+    };
+    const task = (title, completed = false, priority = 'High', dueDate = '2026-01-01', deleted = false) =>
+      ({ title, completed, priority, dueDate, deleted, notes: '  雪 <literal>\n line\t  ' });
+    for (const [name, archived, tasks] of [
+      ['Same owner', false, [task('Zulu MATCH'), task('Zulu completed match', true),
+        task('Low match', false, 'Low'), task('Undated match', false, 'High', ''),
+        task('Late match', false, 'High', '2026-01-02'), task('Other title'),
+        task('Existing deleted match', true, 'High', '2026-01-01', true)]],
+      ['Same owner', false, [task('Alpha match', true)]],
+      ['Archive', true, [task('Archived match'), task('Archived deleted match', true, 'High', '2026-01-01', true)]],
+    ]) {
+      assert.equal((await post('/projects/import', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks },
+      }) })).status, 303);
+    }
+    // Establish a remembered destination before deletion, then return to the original owner.
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    const before = snapshot();
+    const view = { scope: 'Active', filter: 'All', priorityFilter: 'High', order: 'Title',
+      dueFrom: '2026-01-01', dueThrough: '2026-01-01', directorySearch: 'MATCH' };
+    const titles = page => [...page.matchAll(/data-testid="directory-task-title">([^<]*)/g)].map(match => match[1]);
+    const disabled = (page, label) => {
+      const button = new RegExp(`<button[^>]*>${label}</button>`).exec(page);
+      assert.ok(button, `Missing ${label}`);
+      return button[0].includes(' disabled');
+    };
+    const check = (page, expectedTitles, summary, owners) => {
+      assert.deepEqual(titles(page), expectedTitles);
+      assert.ok(page.includes(`data-testid="directory-summary">${summary}`));
+      const rows = [...page.matchAll(/<div data-testid="directory-owner-row"[\s\S]*?<\/form>\s*<\/div>/g)];
+      assert.deepEqual(rows.map(([row]) => [Number(/action="\/projects\/(\d+)"/.exec(row)[1]),
+        /data-testid="directory-owner-summary">([^<]*)/.exec(row)[1]]), owners);
+      assert.equal(page.includes('role="status">No matching tasks'), expectedTitles.length === 0);
+    };
+    let page = await html(path(view));
+    check(page, ['Alpha match', 'Zulu completed match', 'Zulu MATCH'], '2/3 completed',
+      [[1, '1/2 completed'], [2, '1/1 completed']]);
+    assert.equal(disabled(page, 'Delete visible tasks'), false);
+    assert.equal(disabled(page, 'Restore visible tasks'), true);
+    const form = /<form method="post" action="\/directory\/deletion">[\s\S]*?<\/form>/.exec(page)[0];
+    for (const [key, value] of Object.entries(view)) assert.ok(form.includes(`name="${key}" value="${value}"`));
+    // Protected scopes and the wrong action/filter pairing must be safe even on direct POSTs.
+    for (const values of [
+      { ...view, scope: 'Archived', deleted: '1' },
+      { ...view, scope: 'Archived', filter: 'Deleted', deleted: '0' },
+      { ...view, filter: 'Deleted', deleted: '1' },
+      { ...view, deleted: '0' },
+      { ...view, directorySearch: 'absent', deleted: '1' },
+    ]) {
+      page = await html(path(values));
+      assert.equal(disabled(page, values.deleted === '1' ? 'Delete visible tasks' : 'Restore visible tasks'), true);
+      assert.equal((await post('/directory/deletion', values)).status, 303);
+      assert.deepEqual(snapshot(), before);
+    }
+    assert.equal((await post('/directory/deletion', { ...view, deleted: 'invalid' })).status, 400);
+    assert.deepEqual(snapshot(), before);
+    const deleted = await post('/directory/deletion', { ...view, deleted: '1' });
+    assert.equal(deleted.status, 303);
+    const location = deleted.headers.get('location');
+    for (const [key, value] of Object.entries(view)) assert.equal(new URL(location, server.base).searchParams.get(key), value);
+    page = await html(location);
+    check(page, [], '0/0 completed', []);
+    for (const label of ['Delete visible tasks', 'Restore visible tasks', 'Complete visible tasks', 'Reopen visible tasks']) {
+      assert.equal(disabled(page, label), true);
+    }
+    const after = snapshot();
+    assert.deepEqual(after.projects, before.projects);
+    assert.deepEqual(after.positions, before.positions);
+    assert.deepEqual(after.tasks, before.tasks.map(row => [1, 2, 8].includes(row.id) ? { ...row, deleted: 1 } : row));
+    assert.match(await html('/'), /data-testid="project-summary">0\/0 completed/);
+    const deletedView = { ...view, filter: 'Deleted' };
+    page = await html(path(deletedView));
+    check(page, ['Alpha match', 'Existing deleted match', 'Zulu completed match', 'Zulu MATCH'],
+      '3/4 completed', [[1, '2/3 completed'], [2, '1/1 completed']]);
+    assert.equal(disabled(page, 'Restore visible tasks'), false);
+    assert.match(await html('/projects/1?filter=Deleted'), /disabled>Save notes/);
+    assert.equal((await post('/projects/1/tasks/1/move', { destinationProject: '2' })).status, 403);
+    // New tasks must not consume deleted tasks' reserved positions.
+    await post('/projects/1/tasks', { title: 'Later task' });
+    await post('/projects/1/default-priority', { priority: 'Normal' });
+    const persisted = snapshot();
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), persisted);
+    const restored = await post('/directory/deletion', { ...deletedView, deleted: '0' });
+    for (const [key, value] of Object.entries(deletedView)) {
+      assert.equal(new URL(restored.headers.get('location'), server.base).searchParams.get(key), value);
+    }
+    check(await html(restored.headers.get('location')), [], '0/0 completed', []);
+    check(await html(path(view)), ['Alpha match', 'Existing deleted match', 'Zulu completed match', 'Zulu MATCH'],
+      '3/4 completed', [[1, '2/3 completed'], [2, '1/1 completed']]);
+    const saved = snapshot();
+    assert.deepEqual(saved.projects, persisted.projects);
+    assert.deepEqual(saved.positions, persisted.positions);
+    assert.deepEqual(saved.tasks, persisted.tasks.map(row => [1, 2, 7, 8].includes(row.id) ? { ...row, deleted: 0 } : row));
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(snapshot(), saved);
+    const exported = await (await fetch(`${server.base}/projects/1/export`)).json();
+    assert.deepEqual(exported.project.tasks.map(task => task.title),
+      ['Zulu MATCH', 'Zulu completed match', 'Low match', 'Undated match', 'Late match', 'Other title', 'Existing deleted match', 'Later task']);
+    // Both completion-specific live views can delete and restore without changing completion.
+    for (const filter of ['Open', 'Completed']) {
+      const selected = { ...view, filter };
+      const matching = titles(await html(path(selected)));
+      assert.ok(matching.length > 0);
+      const response = await post('/directory/deletion', { ...selected, deleted: '1' });
+      check(await html(response.headers.get('location')), [], '0/0 completed', []);
+      await post('/directory/deletion', { ...deletedView, deleted: '0' });
+      assert.deepEqual(snapshot(), saved);
+    }
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), saved);
+    assert.deepEqual(await (await fetch(`${server.base}/health`)).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

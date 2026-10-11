@@ -558,6 +558,11 @@ function directoryPage(state, error = '', rangeInput = state.range) {
       <button type="submit" name="completed" value="1"${canEdit && tasks.some(task => !task.completed) ? '' : ' disabled'}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${canEdit && tasks.some(task => task.completed) ? '' : ' disabled'}>Reopen visible tasks</button>
     </form>
+    <form method="post" action="/directory/deletion">
+      ${selections}${rangeInputs}${searchField('directorySearch', query)}
+      <button type="submit" name="deleted" value="1"${canEdit && tasks.length ? '' : ' disabled'}>Delete visible tasks</button>
+      <button type="submit" name="deleted" value="0"${scope === 'Active' && filter === 'Deleted' && tasks.length ? '' : ' disabled'}>Restore visible tasks</button>
+    </form>
     <section aria-label="Directory projects">
       ${owners.map(owner => `
         <div data-testid="directory-owner-row" class="directory-row">
@@ -650,6 +655,29 @@ const server = createServer(async (request, response) => {
             if (task.completed !== Number(completed)) {
               updateTask.run(Number(completed), task.id, task.project_id);
             }
+          }
+        });
+      }
+      redirect(response, directoryPath(state));
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/directory/deletion') {
+      const form = await readForm(request);
+      if (!form) {
+        sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
+      }
+      const state = directoryState(form);
+      const deleted = form.get('deleted');
+      if (deleted !== '0' && deleted !== '1') {
+        sendHtml(response, 400, directoryPage(state, 'Invalid deletion state'));
+        return;
+      }
+      const deleting = deleted === '1';
+      if (state.scope === 'Active' && (deleting ? state.filter !== 'Deleted' : state.filter === 'Deleted')) {
+        transaction(() => {
+          for (const task of directoryTasks(state)) {
+            setTaskDeleted.run(Number(deleted), task.id, task.project_id);
           }
         });
       }
