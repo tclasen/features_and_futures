@@ -314,14 +314,21 @@ async function renderProject(id, viewState = {}) {
     ]);
     const destinations = projects.filter((item) => !item.archived && item.id !== id);
     list.replaceChildren();
-    const visible = tasks.filter((task) =>
-      (filter.value === 'deleted' ? Boolean(task.deleted) : !task.deleted &&
-        (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed))) &&
-      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
-      normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch)) &&
-      ((!appliedRange.from && !appliedRange.through) || (Boolean(task.dueDate) &&
-        (!appliedRange.from || task.dueDate >= appliedRange.from) &&
-        (!appliedRange.through || task.dueDate <= appliedRange.through))));
+    const visible = tasks.filter((task) => {
+      const isDeleted = Boolean(task.deleted);
+      const statusMatches = filter.value === 'deleted'
+        ? isDeleted
+        : !isDeleted && (filter.value === 'all' ||
+          (filter.value === 'completed') === Boolean(task.completed));
+      const priorityMatches = priorityFilter.value === 'all' ||
+        (task.priority || 'Normal').toLowerCase() === priorityFilter.value;
+      const searchMatches = normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch));
+      const rangeMatches = (!appliedRange.from && !appliedRange.through) ||
+        (Boolean(task.dueDate) &&
+          (!appliedRange.from || task.dueDate >= appliedRange.from) &&
+          (!appliedRange.through || task.dueDate <= appliedRange.through));
+      return statusMatches && priorityMatches && rangeMatches && searchMatches;
+    });
     for (const task of visible) {
       const deleted = Boolean(task.deleted);
       const locked = Boolean(project.archived) || deleted;
