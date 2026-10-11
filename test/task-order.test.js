@@ -36,6 +36,7 @@ test('each project remembers order across reverse returns, field edits, archival
     store.tasks.setCompleted(source, first.id, true);
     store.tasks.setPriority(source, first.id, 'High');
     store.tasks.setDueDate(source, first.id, '2028-02-29');
+    store.tasks.setNotes(source, first.id, '  Current notes\n日本語 <b>literal</b>  ');
     const currentFirst = store.tasks.list(source)[0];
     store.rename(destination, 'Renamed destination');
     store.setDefaultPriority(destination, 'Low');

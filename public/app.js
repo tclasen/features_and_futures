@@ -302,6 +302,40 @@ async function renderTasks(project) {
           dueDateButton.disabled = project.archived;
         }
       });
+      const notesForm = document.createElement('form');
+      notesForm.className = 'task-notes';
+      const notesLabel = document.createElement('label');
+      notesLabel.htmlFor = `task-notes-${task.id}`;
+      notesLabel.textContent = 'Task notes';
+      const notesInput = document.createElement('textarea');
+      notesInput.id = notesLabel.htmlFor;
+      notesInput.rows = 4;
+      notesInput.value = task.notes;
+      notesInput.disabled = project.archived;
+      const notesButton = document.createElement('button');
+      notesButton.type = 'submit';
+      notesButton.textContent = 'Save notes';
+      notesButton.disabled = project.archived;
+      notesForm.append(notesLabel, notesInput, notesButton);
+      notesForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (project.archived) return;
+        alert.hidden = true;
+        notesButton.disabled = true;
+        try {
+          const updated = await request(`${endpoint}/${task.id}/notes`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          task.notes = updated.notes;
+          displayTasks();
+        } catch (error) {
+          showError(alert, error.message);
+        } finally {
+          notesButton.disabled = project.archived;
+        }
+      });
       const moveForm = document.createElement('form');
       moveForm.className = 'task-move';
       const destinationLabel = document.createElement('label');
@@ -346,7 +380,7 @@ async function renderTasks(project) {
           destinationSelect.disabled = cannotMove;
         }
       });
-      row.append(title, checkbox, priorityControls, renameForm, dueDateForm, moveForm);
+      row.append(title, checkbox, priorityControls, renameForm, dueDateForm, notesForm, moveForm);
       list.append(row);
     }
   }

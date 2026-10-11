@@ -7,6 +7,65 @@ import { join } from 'node:path';
 import { openProjects } from '../projects.js';
 import { createTaskStore } from '../tasks.js';
 
+test('notes migration preserves all existing fields and remembered project positions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-migration-'));
+  const path = join(directory, 'existing.sqlite');
+  let store;
+  try {
+    const database = new DatabaseSync(path);
+    try {
+      database.exec(`
+        CREATE TABLE projects (
+          id INTEGER PRIMARY KEY, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
+          default_task_priority TEXT NOT NULL DEFAULT 'Normal'
+        );
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id),
+          title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+          priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '',
+          position INTEGER NOT NULL
+        );
+        CREATE TABLE task_project_positions (
+          task_id INTEGER NOT NULL REFERENCES tasks(id), project_id INTEGER NOT NULL REFERENCES projects(id),
+          position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id), UNIQUE (project_id, position)
+        );
+        INSERT INTO projects VALUES (1, 'Source  Project', 0, 'Low'), (2, 'Archived', 1, 'High');
+        INSERT INTO tasks VALUES
+          (20, 1, 'First  TITLE', 1, 'High', '0004-02-29', 2),
+          (10, 1, 'Second', 0, 'Low', '', 5),
+          (30, 2, 'Elsewhere', 1, 'Normal', '9999-12-31', 1);
+        INSERT INTO task_project_positions VALUES (20, 1, 2), (10, 1, 5), (30, 1, 3), (30, 2, 1);
+      `);
+    } finally {
+      database.close();
+    }
+    store = openProjects(path);
+    const source = [
+      { id: 20, title: 'First  TITLE', completed: true, priority: 'High', due_date: '0004-02-29', notes: '' },
+      { id: 10, title: 'Second', completed: false, priority: 'Low', due_date: '', notes: '' },
+    ];
+    const elsewhere = { id: 30, title: 'Elsewhere', completed: true, priority: 'Normal', due_date: '9999-12-31', notes: '' };
+    assert.deepEqual(store.tasks.list(1), source);
+    assert.deepEqual(store.tasks.list(2), [elsewhere]);
+    assert.deepEqual(store.list(), [
+      { id: 1, name: 'Source  Project', archived: false, default_task_priority: 'Low', total_count: 2, completed_count: 1 },
+      { id: 2, name: 'Archived', archived: true, default_task_priority: 'High', total_count: 1, completed_count: 1 },
+    ]);
+    store.tasks.setNotes(1, 20, '  Saved\nnotes 🙂  ');
+    source[0].notes = '  Saved\nnotes 🙂  ';
+    store.close();
+    store = openProjects(path);
+    assert.deepEqual(store.tasks.list(1), source);
+    store.setArchived(2, false);
+    store.tasks.move(2, 30, 1);
+    assert.deepEqual(store.tasks.list(1), [source[0], elsewhere, source[1]]);
+    assert.equal(store.tasks.create(1, 'New').notes, '');
+  } finally {
+    store?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('move ordering migrates legacy ID order and survives repeated moves and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-migration-'));
   const path = join(directory, 'existing.sqlite');
@@ -90,8 +149,8 @@ test('project default migration preserves Task 007 priorities, identities, and s
       { id: 10, name: 'Archived project', archived: true, default_task_priority: 'Normal', total_count: 1, completed_count: 1 },
     ];
     const tasks = [
-      { id: 30, title: 'High completed', completed: true, priority: 'High', due_date: '' },
-      { id: 31, title: 'Low open', completed: false, priority: 'Low', due_date: '' },
+      { id: 30, title: 'High completed', completed: true, priority: 'High', due_date: '', notes: '' },
+      { id: 31, title: 'Low open', completed: false, priority: 'Low', due_date: '', notes: '' },
     ];
     assert.deepEqual(store.list(), projects);
     assert.deepEqual(store.tasks.list(9), tasks);
@@ -104,7 +163,7 @@ test('project default migration preserves Task 007 priorities, identities, and s
     store = openProjects(path);
     assert.deepEqual(store.list(), projects);
     assert.deepEqual(store.tasks.list(9), tasks);
-    assert.deepEqual(store.tasks.list(10), [{ id: 32, title: 'Archived task', completed: true, priority: 'High', due_date: '' }]);
+    assert.deepEqual(store.tasks.list(10), [{ id: 32, title: 'Archived task', completed: true, priority: 'High', due_date: '', notes: '' }]);
   } finally {
     store?.close();
     await rm(directory, { recursive: true, force: true });
@@ -213,8 +272,8 @@ test('priority migration defaults legacy tasks to Normal and preserves saved dat
     }
     store = openProjects(path);
     const expectedTasks = [
-      { id: 21, title: 'Renamed completed task', completed: true, priority: 'Normal', due_date: '' },
-      { id: 22, title: 'Open task', completed: false, priority: 'Normal', due_date: '' },
+      { id: 21, title: 'Renamed completed task', completed: true, priority: 'Normal', due_date: '', notes: '' },
+      { id: 22, title: 'Open task', completed: false, priority: 'Normal', due_date: '', notes: '' },
     ];
     const expectedProject = { id: 7, name: 'Legacy project', archived: true, default_task_priority: 'Normal', total_count: 2, completed_count: 1 };
     assert.deepEqual(store.tasks.list(7), expectedTasks);

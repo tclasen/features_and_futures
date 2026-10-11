@@ -18,6 +18,9 @@ export function createTaskStore(database) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  }
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
     // Legacy ID order becomes explicit order; moving never changes task identity.
     database.exec(`
@@ -40,8 +43,8 @@ export function createTaskStore(database) {
     INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
       SELECT id, project_id, position FROM tasks;
   `);
-  const list = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
-  const get = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
+  const list = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+  const get = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
   const insert = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
     VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))`);
   const rememberCreatedPosition = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
@@ -57,6 +60,7 @@ export function createTaskStore(database) {
   const updateTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
   const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+  const updateNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
   const taskValue = (row) => row ? { ...row, completed: Boolean(row.completed) } : undefined;
   function transaction(operation) {
     database.exec('BEGIN IMMEDIATE');
@@ -110,6 +114,15 @@ export function createTaskStore(database) {
     setDueDate(projectId, taskId, dueDate) {
       const date = normalizeDueDate(dueDate);
       updateDueDate.run(date, projectId, taskId);
+      return taskValue(get.get(projectId, taskId));
+    },
+    setNotes(projectId, taskId, notes) {
+      if (typeof notes !== 'string') {
+        const error = new Error('Task notes must be text');
+        error.status = 400;
+        throw error;
+      }
+      updateNotes.run(notes, projectId, taskId);
       return taskValue(get.get(projectId, taskId));
     },
     setPriority(projectId, taskId, priority) {

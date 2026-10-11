@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { matchesSearch, normalizeSearchQuery } from '../public/search.js';
+import { filterTasks } from '../public/task-filters.js';
 
 test('projects, tasks, renames, priorities, archive state, and summaries persist across server restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
@@ -95,6 +96,14 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ due_date: dueDate }),
+    });
+  }
+
+  async function setNotes(projectId, taskId, notes) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}/notes`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
     });
   }
 
@@ -484,6 +493,52 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     assert.deepEqual(await listTasks(third.id), [blankDateTask]);
     assert.deepEqual(await listTasks(first.id), [savedDateTask, ...sourceAfterMove.slice(1)]);
     assert.deepEqual(await listTasks(second.id), [...destinationBeforeMove, appended]);
+
+    // Notes save exact plain text without altering other data or visibility.
+    const notesBefore = await listTasks(first.id);
+    const summaryBeforeNotes = await getProject(first.id);
+    const noteTask = notesBefore[0];
+    assert.ok(notesBefore.every((task) => task.notes === ''));
+    const notes = '  Leading spaces\n\nUnicode: café 日本語 🙂\n<script>alert("literal")</script> & <b>text</b>\n\t trailing  ';
+    const filters = ['completed', 'High', { from: '2028-01-01', through: '2028-12-31' }, normalizeSearchQuery('Date preserved')];
+    const membershipBefore = filterTasks(notesBefore, ...filters).map((task) => task.id);
+    const withNotes = { ...noteTask, notes };
+    const savedNotes = await setNotes(first.id, noteTask.id, notes);
+    assert.equal(savedNotes.status, 200);
+    assert.deepEqual(await savedNotes.json(), withNotes);
+    assert.deepEqual(await listTasks(first.id), [withNotes, ...notesBefore.slice(1)]);
+    assert.deepEqual(await getProject(first.id), summaryBeforeNotes);
+    assert.deepEqual(filterTasks(await listTasks(first.id), ...filters).map((task) => task.id), membershipBefore);
+    assert.deepEqual(filterTasks([withNotes], 'all', 'all', undefined, normalizeSearchQuery('Unicode')), []);
+    for (const invalidNotes of [null, 123, {}, [], true, undefined]) {
+      assert.equal((await setNotes(first.id, noteTask.id, invalidNotes)).status, 400);
+      assert.deepEqual(await listTasks(first.id), [withNotes, ...notesBefore.slice(1)]);
+    }
+    assert.equal((await setNotes(second.id, noteTask.id, 'Wrong owner')).status, 404);
+    assert.equal((await setNotes(first.id, 999999, 'Missing task')).status, 404);
+    assert.equal((await setNotes(999999, noteTask.id, 'Missing project')).status, 404);
+    const renamedWithNotes = { ...withNotes, title: 'Notes travel' };
+    assert.deepEqual(await (await renameTask(first.id, noteTask.id, renamedWithNotes.title)).json(), renamedWithNotes);
+    assert.deepEqual(await (await moveTask(first.id, noteTask.id, second.id)).json(), renamedWithNotes);
+    await setArchived(second.id, true);
+    assert.equal((await setNotes(second.id, noteTask.id, 'Blocked')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual((await listTasks(second.id)).find((task) => task.id === noteTask.id), renamedWithNotes);
+    await setArchived(second.id, false);
+    assert.deepEqual(await (await setNotes(second.id, noteTask.id, notes)).json(), renamedWithNotes);
+    await moveTask(second.id, noteTask.id, first.id);
+    assert.deepEqual(await listTasks(first.id), [renamedWithNotes, ...notesBefore.slice(1)]);
+    // Whitespace is content; only the empty string clears notes.
+    assert.deepEqual(await (await setNotes(first.id, noteTask.id, ' \n\t ')).json(), { ...renamedWithNotes, notes: ' \n\t ' });
+    await stop();
+    await start();
+    assert.equal((await listTasks(first.id))[0].notes, ' \n\t ');
+    assert.deepEqual(await (await setNotes(first.id, noteTask.id, '')).json(), { ...renamedWithNotes, notes: '' });
+    await stop();
+    await start();
+    assert.deepEqual(await listTasks(first.id), [{ ...renamedWithNotes, notes: '' }, ...notesBefore.slice(1)]);
+    assert.deepEqual(await getProject(first.id), summaryBeforeNotes);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
