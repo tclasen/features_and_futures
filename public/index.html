@@ -30,38 +30,30 @@
     const app = document.querySelector('#app');
     const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     async function renderList() {
-      app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form><div id="alert" role="alert" hidden></div><section id="projects" aria-label="Projects"></section>';
-      const form = document.querySelector('#create-form');
-      const input = form.elements.name;
-      const alert = document.querySelector('#alert');
+      app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form><div id="alert" role="alert" hidden></div><label>Project filter<select id="project-filter"><option>Active</option><option>Archived</option></select></label><section id="projects" aria-label="Projects"></section>';
+      const form = document.querySelector('#create-form'), input = form.elements.name, alert = document.querySelector('#alert');
       async function load() {
-        const projects = await fetch('/api/projects').then(r => r.json());
-        document.querySelector('#projects').innerHTML = projects.map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHTML(project.name)}</span><button type="button" data-id="${escapeHTML(project.id)}">Open project</button></div>`).join('');
-        document.querySelectorAll('#projects button').forEach(button => button.addEventListener('click', () => { location.href = `/projects/${encodeURIComponent(button.dataset.id)}`; }));
+        const archived = document.querySelector('#project-filter').value === 'Archived';
+        const projects = await fetch(`/api/projects?filter=${archived ? 'Archived' : 'Active'}`).then(r => r.json());
+        document.querySelector('#projects').innerHTML = projects.map(p => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHTML(p.name)}</span><span data-testid="project-summary">${p.completedCount}/${p.totalCount} completed</span><button type="button" data-open="${escapeHTML(p.id)}">Open project</button><button type="button" data-archive="${escapeHTML(p.id)}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
+        document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => location.href = `/projects/${encodeURIComponent(b.dataset.open)}`);
+        document.querySelectorAll('[data-archive]').forEach(b => b.onclick = async () => { await fetch(`/api/projects/${encodeURIComponent(b.dataset.archive)}/archive`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived:!archived})}); await load(); });
       }
-      form.addEventListener('submit', async event => {
-        event.preventDefault();
-        const name = input.value.trim();
-        if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
-        const response = await fetch('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
-        if (!response.ok) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
-        input.value = ''; alert.textContent = ''; alert.hidden = true;
-        await load();
-      });
-      await load();
+      form.addEventListener('submit', async event => { event.preventDefault(); const name=input.value.trim(); if(!name){alert.textContent='Project name is required';alert.hidden=false;return;} await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}); input.value='';alert.hidden=true;await load(); });
+      document.querySelector('#project-filter').addEventListener('change',load); await load();
     }
     async function renderDetail(id) {
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (!response.ok) { app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>'; }
       else {
         const project = await response.json();
-        app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHTML(project.name)}</h1><form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off"></label><button type="submit">Create task</button></form><div id="task-alert" role="alert" hidden></div><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><section id="tasks" aria-label="Tasks"></section>`;
+        app.innerHTML = `<button class="back" type="button">Projects</button>${project.archived ? '<p>Archived project</p>' : ''}<h1>${escapeHTML(project.name)}</h1><form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form><div id="task-alert" role="alert" hidden></div><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><section id="tasks" aria-label="Tasks"></section>`;
         const alert = document.querySelector('#task-alert');
         async function loadTasks() {
           const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(r => r.json());
           const filter = document.querySelector('#task-filter').value;
           const visible = tasks.filter(task => filter === 'All' || (filter === 'Completed') === Boolean(task.completed));
-          document.querySelector('#tasks').innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><label><input type="checkbox" aria-label="Complete ${escapeHTML(task.title)}" data-task-id="${escapeHTML(task.id)}" ${task.completed ? 'checked' : ''}>${escapeHTML(task.title)}</label></div>`).join('');
+          document.querySelector('#tasks').innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><label><input type="checkbox" aria-label="Complete ${escapeHTML(task.title)}" data-task-id="${escapeHTML(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}>${escapeHTML(task.title)}</label></div>`).join('');
           document.querySelectorAll('#tasks input').forEach(box => box.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.taskId)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ completed: box.checked }) });
             await loadTasks();

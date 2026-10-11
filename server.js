@@ -10,11 +10,13 @@ const database = new DatabaseSync(process.env.DB_PATH || join(root, 'workboard.s
 database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -26,6 +28,10 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 
 function send(response, status, body, type = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -38,7 +44,7 @@ const server = createServer(async (request, response) => {
     return send(response, 200, { status: 'ok' });
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    return send(response, 200, listProjects.all());
+    return send(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
     let input = '';
@@ -57,6 +63,7 @@ const server = createServer(async (request, response) => {
     if (!findProject.get(projectId)) return send(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') return send(response, 200, listTasks.all(projectId));
     if (request.method === 'POST') {
+      if (findProject.get(projectId).archived) return send(response, 403, { error: 'Archived project' });
       let input = '';
       for await (const chunk of request) input += chunk;
       let data;
@@ -72,6 +79,7 @@ const server = createServer(async (request, response) => {
   if (taskRoute && request.method === 'PATCH') {
     const projectId = decodeURIComponent(taskRoute[1]);
     const taskId = decodeURIComponent(taskRoute[2]);
+    if (findProject.get(projectId)?.archived) return send(response, 403, { error: 'Archived project' });
     if (!findTask.get(taskId, projectId)) return send(response, 404, { error: 'Task not found' });
     let input = '';
     for await (const chunk of request) input += chunk;
@@ -79,6 +87,18 @@ const server = createServer(async (request, response) => {
     try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
     if (typeof data.completed !== 'boolean') return send(response, 400, { error: 'Invalid completion state' });
     updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+    return send(response, 200, { ok: true });
+  }
+  const archiveRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
+  if (archiveRoute && request.method === 'PATCH') {
+    const id = decodeURIComponent(archiveRoute[1]);
+    if (!findProject.get(id)) return send(response, 404, { error: 'Project not found' });
+    let input = '';
+    for await (const chunk of request) input += chunk;
+    let data;
+    try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    if (typeof data.archived !== 'boolean') return send(response, 400, { error: 'Invalid archive state' });
+    updateArchive.run(data.archived ? 1 : 0, id);
     return send(response, 200, { ok: true });
   }
   const detail = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
