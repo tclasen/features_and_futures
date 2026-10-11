@@ -37,6 +37,7 @@ const listProjects = database.prepare(`
 `);
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY position');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title) VALUES (?, ?, ?)');
@@ -107,6 +108,28 @@ const server = http.createServer(async (request, response) => {
       insertProject.run(randomUUID(), name);
       response.writeHead(303, { Location: '/' });
       response.end();
+      return;
+    }
+    const renameMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/rename$/);
+    if (request.method === 'POST' && renameMatch) {
+      const project = findProject.get(renameMatch[1]);
+      if (!project) {
+        sendHtml(response, 404, renderNotFound());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (project.archived) {
+        sendHtml(response, 403, projectPage(project, filter, 'Archived projects cannot be changed'));
+        return;
+      }
+      const name = (form.get('name') ?? '').trim();
+      if (!name) {
+        sendHtml(response, 422, projectPage(project, filter, 'Project name is required'));
+        return;
+      }
+      renameProject.run(name, project.id);
+      redirect(response, `/projects/${project.id}?filter=${filter}`);
       return;
     }
     const archiveMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/(archive|restore)$/);

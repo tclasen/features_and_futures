@@ -29,7 +29,7 @@ function page(title, content) {
     .project form { flex-shrink: 0; }
     [role="alert"] { color: #9c2020; padding: 12px; background: #fff0f0; border-radius: 6px; }
     .empty { color: #596779; margin-top: 28px; }
-    .task-create, .task-filter, .project-filter { margin-top: 24px; }
+    .project-rename, .task-create, .task-filter, .project-filter { margin-top: 24px; }
     select { font: inherit; padding: 8px; }
     .tasks { list-style: none; padding: 0; }
     .task { padding: 16px 0; border-top: 1px solid #dce2ec; }
@@ -82,6 +82,12 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
       <button type="submit">Projects</button>
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create project-rename" method="post" action="${projectPath}/rename">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <label for="new-project-name">New project name</label>
+      <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+    </form>
     <form class="create task-create" method="post" action="${projectPath}/tasks">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
       <label for="task-title">Task title</label>
