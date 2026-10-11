@@ -12,6 +12,7 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
   ;
@@ -28,6 +29,9 @@ const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!projectColumns.some(column => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
@@ -36,12 +40,13 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount
   FROM projects p ORDER BY p.id`);
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority) SELECT id, ?, default_priority FROM projects WHERE id = ? AND archived = 0");
+const updateProjectDefaultPriority = database.prepare("UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0");
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
   AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
@@ -167,6 +172,12 @@ const page = `<!doctype html>
       app.append(element('h1', project.name));
       if (project.archived) app.append(element('p', 'Archived project'));
       const alert = element('p', '', { role: 'alert', hidden: '' });
+      const defaultPriorityLabel = element('label', 'Default task priority');
+      const defaultPriority = element('select', undefined, { 'aria-label': 'Default task priority' });
+      for (const value of ['Low', 'Normal', 'High']) defaultPriority.append(element('option', value, { value }));
+      defaultPriority.value = project.defaultPriority;
+      defaultPriority.disabled = Boolean(project.archived);
+      defaultPriorityLabel.append(defaultPriority);
       const renameForm = element('form');
       const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New project name', autocomplete: 'off' });
       const renameButton = element('button', 'Rename project', { type: 'submit' });
@@ -187,7 +198,7 @@ const page = `<!doctype html>
       for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
       priorityFilterLabel.append(priorityFilter);
       const list = element('section', undefined, { class: 'project-list', 'aria-label': 'Tasks' });
-      app.append(alert, renameForm, form, controls, list);
+      app.append(alert, renameForm, defaultPriorityLabel, form, controls, list);
       controls.append(filterLabel, priorityFilterLabel);
       let refreshSequence = 0;
       async function refresh() {
@@ -248,6 +259,19 @@ const page = `<!doctype html>
       }
       filter.addEventListener('change', () => refresh().catch(showLoadError));
       priorityFilter.addEventListener('change', () => refresh().catch(showLoadError));
+      defaultPriority.addEventListener('change', async () => {
+        const value = defaultPriority.value;
+        const result = await fetch('/api/projects/' + encodeURIComponent(id), {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ defaultPriority: value })
+        });
+        if (!result.ok) {
+          alert.textContent = 'Could not update default task priority'; alert.hidden = false;
+          defaultPriority.value = project.defaultPriority;
+          return;
+        }
+        project.defaultPriority = value;
+        alert.hidden = true;
+      });
       renameForm.addEventListener('submit', async event => {
         event.preventDefault();
         const name = renameInput.value.trim();
@@ -334,6 +358,17 @@ const server = createServer(async (request, response) => {
   if (request.method === 'PATCH' && projectMatch) {
     const projectId = Number(projectMatch[1]);
     const body = await readJson(request);
+    if (typeof body?.defaultPriority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(body.defaultPriority)) { sendJson(response, 400, { error: 'Invalid default task priority' }); return; }
+      const result = updateProjectDefaultPriority.run(body.defaultPriority, projectId);
+      if (!result.changes) {
+        const project = getProject.get(projectId);
+        sendJson(response, project ? 409 : 404, { error: project ? 'Archived projects cannot change defaults' : 'Project not found' });
+        return;
+      }
+      sendJson(response, 200, getProject.get(projectId));
+      return;
+    }
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) { sendJson(response, 400, { error: 'Project name is required' }); return; }
     const result = renameProject.run(name, projectId);
@@ -362,7 +397,8 @@ const server = createServer(async (request, response) => {
     const body = await readJson(request);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
-    const result = createTask.run(projectId, title);
+    const result = createTask.run(title, projectId);
+    if (!result.changes) { sendJson(response, 409, { error: 'Archived projects cannot create tasks' }); return; }
     sendJson(response, 201, getTask.get(Number(result.lastInsertRowid), projectId));
     return;
   }
