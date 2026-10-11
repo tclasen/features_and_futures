@@ -115,10 +115,11 @@ function dueRange(values) {
   return { from, through };
 }
 
-// Fold only ASCII letters; other characters and internal whitespace stay literal.
+// Normalize only for matching; stored names/titles and displayed queries stay intact.
 const searchQuery = (values) => (values.get('searchQuery') || '').trim();
-const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-const matchesSearch = (value, query) => asciiLower(value).includes(asciiLower(query));
+const normalizeSearch = (value) => value.replace(/[ \t]+/g, ' ')
+  .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+const matchesSearch = (value, query) => normalizeSearch(value).includes(normalizeSearch(query));
 
 const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
 

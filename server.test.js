@@ -1157,7 +1157,65 @@ test('moves preserve saved data and source filters, and enforce active ownership
   }
 });
 
-test('search matches literal substrings and intersects filters while edits retain applied state', async () => {
+test('space and tab search normalization preserves saved text across archive and restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-search-whitespace-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const names = (body) => [...body.matchAll(/class="project-name">([^<]*)<\/span>/g)].map((match) => match[1]);
+    const titles = (body) => [...body.matchAll(/<span>([^<]*)<\/span>/g)].map((match) => match[1]);
+    const originals = ['MiXeD \t\t  Name', 'mixed name', 'mixed\nname', 'mixed\u00a0name'];
+    for (const name of originals) await post('/projects', { name });
+    for (const title of originals) await post('/projects/1/tasks', { title });
+    const query = ' \nMIXED\t \t NAME\t ';
+    const listPath = '/?' + new URLSearchParams({ searchQuery: query });
+    const taskPath = '/projects/1?' + new URLSearchParams({ searchQuery: query });
+    const listBefore = await get('/');
+    const tasksBefore = await get('/projects/1');
+    for (let pass = 0; pass < 2; pass++) {
+      assert.deepEqual(names(await get(listPath)), originals.slice(0, 2));
+      assert.deepEqual(titles(await get(taskPath)), originals.slice(0, 2));
+      // Internal newlines and non-ASCII spaces must not collapse like spaces/tabs.
+      for (const index of [2, 3]) {
+        const searchQuery = originals[index];
+        assert.deepEqual(names(await get('/?' + new URLSearchParams({ searchQuery }))), [originals[index]]);
+        assert.deepEqual(titles(await get('/projects/1?' + new URLSearchParams({ searchQuery }))), [originals[index]]);
+      }
+      assert.equal(await get('/'), listBefore);
+      assert.equal(await get('/projects/1'), tasksBefore);
+      if (pass === 0) {
+        await app.stop();
+        app = await launch(dbPath);
+      }
+    }
+    await post('/projects/1/archive');
+    assert.deepEqual(names(await get(listPath + '&filter=Archived')), [originals[0]]);
+    const archivedTasks = await get(taskPath);
+    assert.deepEqual(titles(archivedTasks), originals.slice(0, 2));
+    assert.match(archivedTasks, /disabled>Rename task/);
+    assert.doesNotMatch(archivedTasks, /id="task-search"[^>]*disabled/);
+    await post('/projects/1/restore');
+    assert.equal(await get('/'), listBefore);
+    assert.equal(await get('/projects/1'), tasksBefore);
+    const savedDb = new DatabaseSync(dbPath);
+    try {
+      assert.deepEqual(savedDb.prepare('SELECT name FROM projects ORDER BY id').all().map((row) => row.name), originals);
+      assert.deepEqual(savedDb.prepare('SELECT title FROM tasks ORDER BY id').all().map((row) => row.title), originals);
+    } finally {
+      savedDb.close();
+    }
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('search matches normalized substrings and intersects filters while edits retain applied state', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-search-'));
   const dbPath = join(dir, 'workboard.sqlite');
   let app;
@@ -1171,7 +1229,7 @@ test('search matches literal substrings and intersects filters while edits retai
     const names = (body) => [...body.matchAll(/class="project-name">([^<]*)<\/span>/g)].map((match) => match[1]);
     for (const name of ['Alpha  PLAN', 'Other', 'alpha plan', 'ÄLPHA']) await post('/projects', { name });
     await post('/projects/3/archive');
-    for (const [query, expected] of [['  pLaN  ', ['Alpha  PLAN']], ['alpha plan', []], ['alpha  plan', ['Alpha  PLAN']], ['ä', []], ['Ä', ['ÄLPHA']], [' \t ', ['Alpha  PLAN', 'Other', 'ÄLPHA']], ['%', []]]) {
+    for (const [query, expected] of [['  pLaN  ', ['Alpha  PLAN']], ['alpha plan', ['Alpha  PLAN']], ['alpha  plan', ['Alpha  PLAN']], ['alpha\t \tplan', ['Alpha  PLAN']], ['ä', []], ['Ä', ['ÄLPHA']], [' \t ', ['Alpha  PLAN', 'Other', 'ÄLPHA']], ['%', []]]) {
       assert.deepEqual(names(await get('/?' + new URLSearchParams({ searchQuery: query }))), expected);
     }
     assert.deepEqual(names(await get('/?filter=Archived&searchQuery=PLAN')), ['alpha plan']);
@@ -1188,7 +1246,7 @@ test('search matches literal substrings and intersects filters while edits retai
       await post(`/projects/1/tasks/${id}/due-date`, { dueDate: '2024-02-29' });
     }
     await post('/projects/1/tasks/4', { completed: '1' });
-    for (const [query, expected] of [[' nEeDlE ', ['Needle  ONE', 'needle one', 'NEEDLE last', 'ÄNEEDLE']], ['needle one', ['needle one']], ['needle  one', ['Needle  ONE']], ['äne', []], ['', ['Needle  ONE', 'needle one', 'Other', 'NEEDLE last', 'ÄNEEDLE']]]) {
+    for (const [query, expected] of [[' nEeDlE ', ['Needle  ONE', 'needle one', 'NEEDLE last', 'ÄNEEDLE']], ['needle one', ['Needle  ONE', 'needle one']], ['needle  one', ['Needle  ONE', 'needle one']], ['needle\t \tONE', ['Needle  ONE', 'needle one']], ['äne', []], ['', ['Needle  ONE', 'needle one', 'Other', 'NEEDLE last', 'ÄNEEDLE']]]) {
       const response = await post('/projects/1/search', { query });
       assert.equal(response.status, 303);
       assert.deepEqual(titles(await get(response.headers.get('location'))), expected);

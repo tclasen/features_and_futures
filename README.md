@@ -86,8 +86,10 @@ npm test
 Use `Project search` and `Search projects` to match project names within the
 selected Active or Archived list. Use `Task search` and `Search tasks` to match
 titles alongside completion, priority and due-range filters. Searches ignore
-ASCII letter case and trim surrounding query whitespace; internal whitespace
-remains significant. Blank queries match all rows allowed by the other filters.
+ASCII letter case and trim surrounding query whitespace. Runs of ASCII spaces
+and horizontal tabs in queries and names/titles match as one space, without
+rewriting saved or displayed text. Other internal whitespace remains literal.
+Blank queries match all rows allowed by the other filters.
 Task edits and moves retain the applied search and filters. Searches work on
 archived projects and do not change stored data or all-task summaries. Opening
 a project from the list, or returning via `Projects`, starts with an empty query.
