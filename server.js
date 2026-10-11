@@ -19,8 +19,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 db.exec('PRAGMA foreign_keys = ON');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
@@ -30,11 +34,12 @@ const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 const page = `<!doctype html>
 <html lang="en">
@@ -313,7 +318,23 @@ const page = `<!doctype html>
               error.hidden = false;
             }
           });
-          row.append(checkbox, title, renameInput, renameButton);
+          const priority = document.createElement('select');
+          priority.setAttribute('aria-label', 'Task priority');
+          for (const value of ['Low', 'Normal', 'High']) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            priority.append(option);
+          }
+          priority.value = task.priority || 'Normal';
+          priority.disabled = Boolean(project.archived);
+          priority.addEventListener('change', async () => {
+            try {
+              const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+              tasks = tasks.map(item => item.id === updated.id ? updated : item);
+            } catch { priority.value = task.priority || 'Normal'; }
+          });
+          row.append(checkbox, title, renameInput, renameButton, priority);
           tasksList.append(row);
         }
       }
@@ -437,7 +458,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         const result = addTask.run(projectId, title);
-        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
       } catch { sendJson(response, 400, { error: 'Invalid request' }); }
       return;
     }
@@ -463,6 +484,24 @@ const server = http.createServer(async (request, response) => {
           }
           renameTask.run(title, taskId, projectId);
           sendJson(response, 200, { ...existing, title, completed: Boolean(existing.completed) });
+          return;
+        }
+        if (typeof data.priority === 'string') {
+          if (project.archived) {
+            sendJson(response, 409, { error: 'Archived projects cannot change task priority' });
+            return;
+          }
+          if (!['Low', 'Normal', 'High'].includes(data.priority)) {
+            sendJson(response, 400, { error: 'Invalid task priority' });
+            return;
+          }
+          const existing = findTask.get(taskId, projectId);
+          if (!existing) {
+            sendJson(response, 404, { error: 'Task not found' });
+            return;
+          }
+          updatePriority.run(data.priority, taskId, projectId);
+          sendJson(response, 200, { ...existing, priority: data.priority, completed: Boolean(existing.completed) });
           return;
         }
         if (typeof data.completed !== 'boolean') {
