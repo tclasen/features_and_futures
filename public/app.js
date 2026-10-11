@@ -53,13 +53,17 @@ async function render() {
     const filterLabel = element('label', { for: 'task-filter' }, 'Task filter');
     const filter = element('select', { id: 'task-filter' });
     for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', { value }, value));
+    const priorityFilterLabel = element('label', { for: 'priority-filter' }, 'Priority filter');
+    const priorityFilter = element('select', { id: 'priority-filter' });
+    for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', { value }, value));
     const tasks = element('section', { 'aria-label': 'Tasks' });
-    app.append(form, filterLabel, filter, tasks);
+    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, tasks);
     const refresh = async () => {
       const items = await request(`/api/projects/${encodeURIComponent(match[1])}/tasks`);
       tasks.replaceChildren();
       for (const task of items) {
-        if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+        if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
+        if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
         const row = element('div', { 'data-testid': 'task-row', class: 'project-row' });
         row.append(element('span', {}, task.title));
         const renameInput = element('input', { type: 'text', 'aria-label': 'New task title', value: task.title });
@@ -83,6 +87,7 @@ async function render() {
         priority.addEventListener('change', async () => {
           try {
             await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+            await refresh();
           } catch (error) { priority.value = task.priority || 'Normal'; }
         });
         row.append(priority);
@@ -97,6 +102,7 @@ async function render() {
       }
     };
     filter.addEventListener('change', refresh);
+    priorityFilter.addEventListener('change', refresh);
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const title = input.value.trim();
