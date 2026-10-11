@@ -211,3 +211,124 @@ test('tasks validate, filter, remain project-owned, and save completion across r
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('archive migration, summaries, read-only tasks, and restoration persist', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let app;
+  try {
+    // Upgrade a Task 002 database with existing tasks and completion state.
+    const existingDatabase = new DatabaseSync(databasePath);
+    try {
+      existingDatabase.exec(`
+        CREATE TABLE projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL CHECK(length(trim(name)) > 0)
+        );
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id),
+          title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+          completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1))
+        );
+        INSERT INTO projects (name) VALUES ('Existing project');
+        INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Pending', 0);
+      `);
+    } finally {
+      existingDatabase.close();
+    }
+    app = await launch(databasePath);
+    const post = (path, values = {}) => fetch(`${app.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const getPage = async path => (await fetch(`${app.base}${path}`)).text();
+    const rows = (html, type) => [...html.matchAll(new RegExp(`<li data-testid="${type}-row">[\\s\\S]*?<\\/li>`, 'g'))].map(match => match[0]);
+    const summary = (row, counts) => assert.ok(row.includes(`data-testid="project-summary">${counts} completed`));
+
+    await post('/projects', { name: 'New project' });
+    let active = await getPage('/');
+    assert.match(active, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(active, /<option selected>Active<\/option>/);
+    assert.match(active, /<option>Archived<\/option>/);
+    const initialRows = rows(active, 'project');
+    assert.equal(initialRows.length, 2);
+    assert.match(initialRows[0], /Existing project/);
+    summary(initialRows[0], '1/2');
+    summary(initialRows[1], '0/0');
+    assert.match(initialRows[0], />Archive project<\/button>/);
+    assert.doesNotMatch(active, />Restore project<\/button>/);
+    assert.equal(rows(await getPage('/?filter=Archived'), 'project').length, 0);
+    assert.match(await getPage('/?filter=invalid'), /<option selected>Active<\/option>/);
+
+    await getPage('/projects/1?filter=Completed');
+    summary(rows(await getPage('/'), 'project')[0], '1/2');
+    const archive = await post('/projects/1/archive');
+    assert.equal(archive.status, 303);
+    assert.equal(archive.headers.get('location'), '/');
+    active = await getPage('/');
+    assert.equal(rows(active, 'project').length, 1);
+    assert.doesNotMatch(active, /Existing project/);
+    let archived = await getPage('/?filter=Archived');
+    assert.match(archived, /<option selected>Archived<\/option>/);
+    const archivedRows = rows(archived, 'project');
+    assert.equal(archivedRows.length, 1);
+    assert.match(archivedRows[0], />Open project<\/button>/);
+    assert.match(archivedRows[0], />Restore project<\/button>/);
+    assert.doesNotMatch(archivedRows[0], />Archive project<\/button>/);
+    summary(archivedRows[0], '1/2');
+    const detail = await getPage('/projects/1');
+    assert.match(detail, /<h1>Existing project<\/h1>/);
+    assert.match(detail, /<p>Archived project<\/p>/);
+    assert.match(detail, /<button type="submit" disabled>Create task<\/button>/);
+    const tasks = rows(detail, 'task');
+    assert.equal(tasks.length, 2);
+    assert.match(tasks[0], /aria-label="Complete Done" checked disabled/);
+    assert.match(tasks[1], /aria-label="Complete Pending" disabled/);
+    assert.equal(rows(await getPage('/projects/1?filter=Completed'), 'task').length, 1);
+    assert.equal(rows(await getPage('/projects/1?filter=Open'), 'task').length, 1);
+
+    // Disabled controls are backed by server guards, including crafted requests.
+    assert.equal((await post('/projects/1/tasks', { title: 'Blocked' })).status, 409);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 409);
+    assert.equal((await post('/projects/1/tasks/2/completion', { completed: '1' })).status, 409);
+    assert.equal(await getPage('/projects/1'), detail);
+    assert.equal(await getPage('/?filter=Archived'), archived);
+    assert.equal((await post('/projects/999/archive')).status, 404);
+    assert.equal((await post('/projects/999/restore')).status, 404);
+
+    await app.stop();
+    app = undefined;
+    app = await launch(databasePath);
+    assert.equal(await getPage('/'), active);
+    assert.equal(await getPage('/?filter=Archived'), archived);
+    assert.equal(await getPage('/projects/1'), detail);
+
+    const restore = await post('/projects/1/restore');
+    assert.equal(restore.status, 303);
+    assert.equal(restore.headers.get('location'), '/?filter=Archived');
+    assert.equal(rows(await getPage('/?filter=Archived'), 'project').length, 0);
+    active = await getPage('/');
+    const restoredRows = rows(active, 'project');
+    assert.equal(restoredRows.length, 2);
+    assert.match(restoredRows[0], /Existing project/);
+    summary(restoredRows[0], '1/2');
+    const restored = await getPage('/projects/1');
+    assert.doesNotMatch(restored, /Archived project| disabled/);
+    assert.equal(rows(restored, 'task').length, 2);
+    assert.match(rows(restored, 'task')[0], / checked/);
+    assert.doesNotMatch(rows(restored, 'task')[1], / checked/);
+    await post('/projects/1/tasks/2/completion', { completed: '1' });
+    await post('/projects/1/tasks', { title: 'After restoration' });
+    summary(rows(await getPage('/'), 'project')[0], '2/3');
+    const saved = await getPage('/projects/1');
+    active = await getPage('/');
+    await app.stop();
+    app = undefined;
+    app = await launch(databasePath);
+    assert.equal(await getPage('/'), active);
+    assert.equal(await getPage('/projects/1'), saved);
+  } finally {
+    if (app) await app.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
