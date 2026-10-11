@@ -147,14 +147,20 @@ async function renderProject(id) {
   for (const [value, label] of [['all', 'All'], ['open', 'Open'], ['completed', 'Completed']]) {
     filter.append(element('option', label, { value }));
   }
+  const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    priorityFilter.append(element('option', value, { value }));
+  }
   const tasks = element('section', undefined, { 'aria-label': 'Tasks' });
   tasks.className = 'task-list';
   let taskData = [];
   const drawTasks = () => {
     tasks.replaceChildren();
     const mode = filter.value;
+    const selectedPriority = priorityFilter.value;
     for (const task of taskData) {
       if (mode === 'open' && task.completed || mode === 'completed' && !task.completed) continue;
+      if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
       const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
       row.append(element('span', task.title));
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
@@ -185,7 +191,10 @@ async function renderProject(id) {
           method: 'PATCH', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ priority: priority.value }),
         });
-        if (result.ok) task.priority = priority.value;
+        if (result.ok) {
+          task.priority = priority.value;
+          drawTasks();
+        }
         else priority.value = previousPriority;
       });
       row.append(priority);
@@ -220,6 +229,7 @@ async function renderProject(id) {
     }
   };
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const title = input.value.trim();
@@ -244,7 +254,7 @@ async function renderProject(id) {
   const taskResponse = await fetch(`/api/projects/${id}/tasks`);
   if (taskResponse.ok) taskData = await taskResponse.json();
   drawTasks();
-  view.append(back, renameForm, renameAlert, form, alert, filter, tasks);
+  view.append(back, renameForm, renameAlert, form, alert, filter, priorityFilter, tasks);
   app.replaceChildren(view);
 }
 
