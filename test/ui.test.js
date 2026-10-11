@@ -39,6 +39,74 @@ class Node {
 const browserSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const source = `${normalizeDueDate.toString()}\n${browserSource.replace("import { normalizeDueDate } from '/due-date.js';", '')}`;
 
+for (const scenario of ['active', 'archived', 'no destinations']) {
+  test(`task move controls: ${scenario}`, async () => {
+    const app = new Node('main');
+    const archived = scenario === 'archived';
+    const projects = [
+      { id: 1, name: 'Source', archived, defaultTaskPriority: 'Normal' },
+      { id: 2, name: 'Renamed destination', archived: scenario === 'no destinations' },
+      { id: 3, name: 'Archived destination', archived: true },
+      { id: 4, name: 'Last destination', archived: scenario === 'no destinations' },
+    ];
+    const tasks = [1, 2].map((id) => ({
+      id, title: `Task ${id}`, completed: true, priority: 'High', dueDate: '2000-02-29',
+    }));
+    const moves = [];
+    runInNewContext(source, {
+      document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+      location: { pathname: '/projects/1', assign() { assert.fail('Moving must not navigate'); } },
+      async fetch(path, options) {
+        let data;
+        if (!options) data = path === '/api/projects' ? projects
+          : path === '/api/projects/1' ? projects[0] : tasks.map((task) => ({ ...task }));
+        else {
+          const changes = JSON.parse(options.body);
+          moves.push({ path, ...changes });
+          data = { ...tasks[0] };
+        }
+        return { ok: true, json: async () => data };
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    filters.children[1].value = 'Completed';
+    await filters.children[1].fire('change');
+    filters.children[3].value = 'High';
+    await filters.children[3].fire('change');
+    const range = app.children.find((node) => node.children[0]?.textContent === 'Due from');
+    range.children[1].value = range.children[3].value = '2000-02-29';
+    await range.fire('submit');
+    const list = app.querySelector('ul');
+    const moveForm = list.children[0].children[6];
+    const [label, select, button] = moveForm.children;
+    assert.equal(label.textContent, 'Destination project');
+    assert.equal(label.htmlFor, select.id);
+    assert.equal(button.textContent, 'Move task');
+    assert.deepEqual(select.children.map((option) => option.textContent), scenario === 'no destinations'
+      ? [] : ['Renamed destination', 'Last destination']);
+    assert.deepEqual(select.children.map((option) => option.value), scenario === 'no destinations' ? [] : ['2', '4']);
+    assert.equal(select.disabled, scenario !== 'active');
+    assert.equal(button.disabled, scenario !== 'active');
+    select.value = '4';
+    await moveForm.fire('submit');
+    if (scenario === 'active') {
+      assert.deepEqual(moves, [{ path: '/api/projects/1/tasks/1', destinationProjectId: 4 }]);
+      assert.deepEqual(list.children.map((row) => row.children[1].textContent), ['Task 2']);
+    } else {
+      assert.equal(moves.length, 0);
+      assert.equal(list.children.length, 2);
+    }
+    assert.equal(filters.children[1].value, 'Completed');
+    assert.equal(filters.children[3].value, 'High');
+    assert.equal(range.children[1].value, '2000-02-29');
+    assert.equal(range.children[3].value, '2000-02-29');
+    filters.children[3].value = 'All';
+    await filters.children[3].fire('change');
+    assert.equal(list.children.length, scenario === 'active' ? 1 : 2);
+  });
+}
+
 for (const archived of [false, true]) {
   test(`inclusive due ranges intersect filters (${archived ? 'archived' : 'active'})`, async () => {
     const app = new Node('main');
@@ -618,7 +686,7 @@ test('renaming validates, updates the heading, and preserves the route and task 
         if (failRename) return { ok: false, json: async () => ({ error: 'Unable to rename' }) };
         Object.assign(project, JSON.parse(options.body));
       }
-      const data = path.endsWith('/tasks')
+      const data = path === '/api/projects' ? [{ ...project }] : path.endsWith('/tasks')
         ? [{ id: 3, title: 'Saved task', completed: true }] : { ...project };
       return { ok: true, json: async () => data };
     },

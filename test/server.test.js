@@ -410,3 +410,72 @@ test('project defaults apply only to future tasks and survive rename, archive an
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('moves preserve task data, append order, summaries and ownership across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
+  const databasePath = join(directory, 'tasks.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    async function request(path, method = 'GET', body, status = 200) {
+      const response = await fetch(`${server.url}/api/projects${path}`, {
+        method, headers: { 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    }
+    const source = await request('', 'POST', { name: 'Source' }, 201);
+    const destination = await request('', 'POST', { name: 'Destination' }, 201);
+    const archived = await request('', 'POST', { name: 'Archived' }, 201);
+    const sourcePath = `/${source.id}`;
+    const destinationPath = `/${destination.id}`;
+    const first = await request(`${sourcePath}/tasks`, 'POST', { title: 'First' }, 201);
+    const remaining = await request(`${sourcePath}/tasks`, 'POST', { title: 'Remaining' }, 201);
+    // This newer task must stay before the older moved task in the destination.
+    const existing = await request(`${destinationPath}/tasks`, 'POST', { title: 'Existing' }, 201);
+    await request(destinationPath, 'PATCH', { defaultTaskPriority: 'Low' });
+    const taskPath = `${sourcePath}/tasks/${first.id}`;
+    await request(taskPath, 'PATCH', { priority: 'High' });
+    await request(taskPath, 'PATCH', { completed: true });
+    const saved = await request(taskPath, 'PATCH', { dueDate: '0001-01-01' });
+    await request(`/${archived.id}`, 'PATCH', { archived: true });
+    for (const invalid of [source.id, null, '2', 1.5]) {
+      await request(taskPath, 'PATCH', { destinationProjectId: invalid }, 400);
+    }
+    await request(taskPath, 'PATCH', { destinationProjectId: 99999 }, 404);
+    await request(taskPath, 'PATCH', { destinationProjectId: archived.id }, 409);
+    await request(sourcePath, 'PATCH', { archived: true });
+    await request(taskPath, 'PATCH', { destinationProjectId: destination.id }, 409);
+    await request(sourcePath, 'PATCH', { archived: false });
+    assert.deepEqual(await request(taskPath, 'PATCH', { destinationProjectId: destination.id }), saved);
+    assert.deepEqual(await request(`${sourcePath}/tasks`), [remaining]);
+    assert.deepEqual(await request(`${destinationPath}/tasks`), [existing, saved]);
+    await request(taskPath, 'PATCH', { completed: false }, 404);
+    const sourceSummary = await request(sourcePath);
+    const destinationSummary = await request(destinationPath);
+    assert.equal(sourceSummary.totalCount, 1);
+    assert.equal(sourceSummary.completedCount, 0);
+    assert.equal(destinationSummary.totalCount, 2);
+    assert.equal(destinationSummary.completedCount, 1);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await request(`${destinationPath}/tasks`), [existing, saved]);
+    assert.deepEqual(await request(sourcePath), sourceSummary);
+    assert.deepEqual(await request(destinationPath), destinationSummary);
+    await request(`${destinationPath}/tasks/${first.id}`, 'PATCH', { destinationProjectId: source.id });
+    assert.deepEqual(await request(`${sourcePath}/tasks`), [remaining, saved]);
+    // New tasks append after moved tasks; blank-date moves also preserve data.
+    const newest = await request(`${sourcePath}/tasks`, 'POST', { title: 'Newest' }, 201);
+    await request(`${sourcePath}/tasks/${remaining.id}`, 'PATCH', { destinationProjectId: destination.id });
+    assert.deepEqual(await request(`${sourcePath}/tasks`), [saved, newest]);
+    assert.deepEqual(await request(`${destinationPath}/tasks`), [existing, remaining]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await request(`${sourcePath}/tasks`), [saved, newest]);
+    assert.deepEqual(await request(`${destinationPath}/tasks`), [existing, remaining]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -16,6 +16,8 @@ Each task row also has Task due date and Save due date controls. Save a real Gre
 
 Each project page has Due from and Due through textboxes and Apply due range. Valid, trimmed YYYY-MM-DD boundaries are inclusive and intersect the completion and priority filters. Blank boundaries are unbounded; when either is present, undated tasks are excluded. Invalid dates or reversed boundaries show an alert and preserve the last applied range. Task edits immediately re-evaluate membership; renaming, creation, and default changes preserve all applied filters. Range controls remain usable on archived projects. Opening or reloading a project starts with empty boundaries and All in both task filters. Filtering is local to the page and never changes saved task data or all-task summaries.
 
+Each task row has Destination project and Move task controls. Destinations list other active projects by current name in project creation order. Moving appends the task after the destination's current tasks, preserving its title, completion, priority, and due date rather than applying the destination's default. The source page stays open with all filters retained. Both project summaries reflect their current tasks, and ownership and ordering persist across restarts. Archived projects cannot send or receive tasks; move controls are disabled on archived pages or when no destinations are available.
+
 The Project filter defaults to Active. Archive projects to move them to Archived, or restore them without losing tasks. Archived project pages are read-only, but task filtering remains available. Each project row summarizes completed tasks out of all tasks.
 
 `GET /health` returns `{"status":"ok"}`.

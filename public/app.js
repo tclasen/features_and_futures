@@ -134,6 +134,7 @@ async function showTasks(project) {
   const archived = Boolean(project.archived);
   const endpoint = `/api/projects/${projectId}/tasks`;
   let tasks = [];
+  let destinations = [];
   const saving = new Set();
   const form = element('form');
   const titleLabel = element('label', 'Task title');
@@ -230,6 +231,8 @@ async function showTasks(project) {
         priority.disabled = true;
         dueDateInput.disabled = true;
         dueDateButton.disabled = true;
+        destination.disabled = true;
+        moveButton.disabled = true;
         app.querySelector('[role="alert"]')?.remove();
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
@@ -237,7 +240,11 @@ async function showTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(changes),
           });
-          Object.assign(task, saved);
+          if (Object.hasOwn(changes, 'destinationProjectId')) {
+            tasks = tasks.filter((current) => current.id !== task.id);
+          } else {
+            Object.assign(task, saved);
+          }
         } catch (error) {
           checkbox.checked = task.completed;
           showAlert(error.message);
@@ -304,7 +311,26 @@ async function showTasks(project) {
         if (archived || saving.has(task.id)) return;
         await saveTask({ dueDate: dueDateInput.value.trim() });
       });
-      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority, dueDateForm);
+      const moveForm = element('form');
+      const destinationLabel = element('label', 'Destination project');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      const destination = element('select');
+      destination.id = destinationLabel.htmlFor;
+      for (const project of destinations) {
+        const option = element('option', project.name);
+        option.value = String(project.id);
+        destination.append(option);
+      }
+      const moveButton = element('button', 'Move task');
+      moveButton.type = 'submit';
+      destination.disabled = moveButton.disabled = archived || saving.has(task.id) || destinations.length === 0;
+      moveForm.append(destinationLabel, destination, moveButton);
+      moveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (moveButton.disabled) return;
+        await saveTask({ destinationProjectId: Number(destination.value) });
+      });
+      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority, dueDateForm, moveForm);
       return row;
     }));
   }
@@ -339,7 +365,9 @@ async function showTasks(project) {
     }
   });
   app.append(form, filters, rangeForm, defaultPriorityControl(project), list);
-  tasks = await api(endpoint);
+  const [savedTasks, projects] = await Promise.all([api(endpoint), api('/api/projects')]);
+  tasks = savedTasks;
+  destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== projectId);
   renderTasks();
   create.disabled = archived;
 }

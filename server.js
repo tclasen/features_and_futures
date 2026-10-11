@@ -37,6 +37,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'dueDate')) {
   database.exec("ALTER TABLE tasks ADD COLUMN dueDate TEXT NOT NULL DEFAULT ''");
 }
+// A task's position belongs to its current project; moved tasks append at the end.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
+}
 const projectQuery = `SELECT p.id, p.name, p.archived, p.defaultTaskPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
@@ -45,9 +49,13 @@ const getProject = database.prepare(`${projectQuery} WHERE p.id = ? GROUP BY p.i
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
 const getTask = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?`);
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET defaultTaskPriority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
@@ -123,13 +131,25 @@ const server = createServer(async (request, response) => {
         const input = await readJson(request);
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title, getProject.get(projectId).defaultTaskPriority);
+        const result = insertTask.run(projectId, title, getProject.get(projectId).defaultTaskPriority, projectId);
         return json(response, 201, taskJson(getTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (request.method === 'PATCH' && taskId !== null) {
         if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const input = await readJson(request);
-        if (input && Object.hasOwn(input, 'title')) {
+        if (input && Object.hasOwn(input, 'destinationProjectId')) {
+          const destinationId = input.destinationProjectId;
+          if (!Number.isSafeInteger(destinationId) || destinationId === projectId) {
+            return json(response, 400, { error: 'Select another active destination project' });
+          }
+          const destination = getProject.get(destinationId);
+          if (!destination) return json(response, 404, { error: 'Destination project not found' });
+          if (destination.archived || getProject.get(projectId).archived) {
+            return json(response, 409, { error: 'Archived projects cannot move tasks' });
+          }
+          moveTask.run(destinationId, destinationId, projectId, taskId);
+          return json(response, 200, taskJson(getTask.get(destinationId, taskId)));
+        } else if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
           renameTask.run(title, projectId, taskId);
