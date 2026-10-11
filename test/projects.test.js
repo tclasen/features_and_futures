@@ -31,6 +31,91 @@ async function stop(child) {
   await exited;
 }
 
+test('project priority defaults migrate, affect only future tasks and persist independently', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Existing task', 1, 'Low');
+  `);
+  db.close();
+  let running;
+  try {
+    running = await start(dbPath);
+    let base = running.base;
+    const post = (path, values = {}) => fetch(`${base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = path => fetch(`${base}${path}`).then(response => response.text());
+    const defaultSelect = text => text.match(/<select id="default-task-priority"[\s\S]*?<\/select>/)[0];
+    const rows = text => [...text.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    const options = priority => ['Low', 'Normal', 'High'].map(value =>
+      `<option${value === priority ? ' selected' : ''}>${value}</option>`).join('');
+    await post('/projects', { name: 'Other' });
+    for (const id of [1, 2]) {
+      const text = await html(`/projects/${id}`);
+      assert.match(text, /<label for="default-task-priority">Default task priority<\/label>/);
+      assert.ok(defaultSelect(text).includes(options('Normal')));
+    }
+    await post('/projects/1/tasks', { title: 'Normal task' });
+    const selection = { filter: 'Completed', priorityFilter: 'Low' };
+    const path = '/projects/1?filter=Completed&priorityFilter=Low';
+    const existingRows = rows(await html('/projects/1'));
+    const visibleRows = rows(await html(path));
+    const summary = await html('/');
+    const other = await html('/projects/2');
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await post('/projects/1/default-priority', { ...selection, priority });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), path);
+      const text = await html(path);
+      assert.ok(defaultSelect(text).includes(options(priority)));
+      assert.deepEqual(rows(text), visibleRows);
+      assert.deepEqual(rows(await html('/projects/1')), existingRows);
+      assert.equal(await html('/'), summary);
+      assert.equal(await html('/projects/2'), other);
+      assert.match(text, /<option selected>Completed<\/option>/);
+    }
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Urgent' })).status, 400);
+    assert.equal((await post('/projects/999/default-priority', { priority: 'Low' })).status, 404);
+    await post('/projects/1/tasks', { title: 'High task' });
+    await post('/projects/2/tasks', { title: 'Other normal task' });
+    assert.ok(rows(await html('/projects/1'))[2].includes(options('High')));
+    assert.ok(rows(await html('/projects/2'))[0].includes(options('Normal')));
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Low task' });
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    await post('/projects/1/tasks/3/rename', { title: 'Renamed high task' });
+    const saved = await html('/projects/1');
+    assert.ok(defaultSelect(saved).includes(options('Low')));
+    assert.ok(rows(saved)[2].includes(options('High')));
+    assert.ok(rows(saved)[3].includes(options('Low')));
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assert.match(defaultSelect(archived), /name="priority" disabled/);
+    assert.ok(defaultSelect(archived).includes(options('Low')));
+    assert.equal((await post('/projects/1/default-priority', { priority: 'High' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    await stop(running.child);
+    running = undefined;
+    running = await start(dbPath);
+    base = running.base;
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), saved);
+    await post('/projects/1/tasks', { title: 'After restart' });
+    assert.ok(rows(await html('/projects/1'))[4].includes(options('Low')));
+    assert.match(await html('/'), /1\/5 completed/);
+  } finally {
+    if (running) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('combined filters preserve selections, re-evaluate edits and work when archived', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
   const dbPath = join(directory, 'workboard.sqlite');

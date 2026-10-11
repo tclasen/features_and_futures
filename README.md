@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open http://localhost:8080. The server binds to `0.0.0.0`; defaults are port
 8080 and database `data/workboard.sqlite`. Use the same `DB_PATH` across restarts
-to preserve projects, task titles, priorities, completion state, and archive state. Existing databases
+to preserve projects, task titles, priorities, project priority defaults, completion state, and archive state. Existing databases
 are migrated automatically. `GET /health` returns `{"status":"ok"}`.
 
 ## Verify
@@ -29,4 +29,6 @@ restrictions. Priority checks cover Normal defaults for migrated and new tasks,
 independent edits, validation, ownership, rename preservation, restart persistence,
 and archive/restore restrictions. Combined-filter checks cover every completion/priority
 combination, selection preservation, immediate re-filtering after edits, unchanged
-summaries, persistence, and usable filters on archived projects.
+summaries, persistence, and usable filters on archived projects. Project-default checks
+cover migration, independent saved defaults, future-task inheritance, unchanged existing
+tasks and filters, validation, and persistence through renaming and archive/restore.
