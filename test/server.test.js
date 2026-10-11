@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -29,7 +30,7 @@ async function start(databasePath) {
 }
 
 test('projects validate, render safely, navigate, and persist across restarts', async () => {
-  const directory = await mkdtemp('data-test-');
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   let server;
   try {
     server = await start(join(directory, 'workboard.sqlite'));
