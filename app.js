@@ -4,6 +4,10 @@ const projectList = document.querySelector('#projects');
 const form = document.querySelector('#create-project-form');
 const nameInput = document.querySelector('#project-name');
 const alert = document.querySelector('#form-alert');
+const importForm = document.querySelector('#import-project-form');
+const projectJsonInput = document.querySelector('#project-json');
+const importedProjectName = document.querySelector('#imported-project-name');
+const importAlert = document.querySelector('#import-alert');
 const taskForm = document.querySelector('#create-task-form');
 const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
@@ -358,6 +362,31 @@ form.addEventListener('submit', async (event) => {
   }
   nameInput.value = '';
   renderProjects(await fetchProjects());
+});
+
+importForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = importedProjectName.value.trim();
+  if (!name) {
+    importAlert.textContent = 'Project name is required';
+    importAlert.hidden = false;
+    return;
+  }
+  const response = await fetch('/api/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ document: projectJsonInput.value, name }),
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    importAlert.textContent = result.error === 'Project name is required'
+      ? result.error : 'Invalid project JSON';
+    importAlert.hidden = false;
+    return;
+  }
+  const imported = await response.json();
+  importAlert.hidden = true;
+  navigate(`/projects/${imported.id}`);
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
