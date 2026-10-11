@@ -1286,6 +1286,69 @@ test('returning tasks restores per-project order after migration, reverse return
   }
 });
 
+test('search collapses only ASCII spaces and tabs without changing saved names or titles', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'search-whitespace-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const titles = (page, kind) => [...page.matchAll(new RegExp(`data-testid="${kind}-row"[^>]*>\\s*<span>([^<]*)`, 'g'))].map(match => match[1]);
+    const names = ['MiXeD  \t Team', 'MIXED Team', 'Mixed\nTeam', 'Mixed\u00a0Team', 'Älpha Team'];
+    for (const name of names) await post('/projects', { name });
+    for (const title of names) await post('/projects/1/tasks', { title });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2026-10-11' });
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_positions'].map(table => database.prepare(`SELECT * FROM ${table}`).all());
+      } finally {
+        database.close();
+      }
+    };
+    const beforeSearch = snapshot();
+    for (const query of ['mixed team', ' \tMiXeD\t  \tTEAM\n ', 'XED\t T']) {
+      assert.deepEqual(titles(await html(`/?${new URLSearchParams({ projectSearch: query })}`), 'project'), names.slice(0, 2));
+      assert.deepEqual(titles(await html(`/projects/1?${new URLSearchParams({ taskSearch: query })}`), 'task'), names.slice(0, 2));
+    }
+    for (const query of ['mixed\nteam', 'mixed\u00a0team', 'älpha team']) {
+      const expected = query === 'älpha team' ? [] : [names[query.includes('\n') ? 2 : 3]];
+      assert.deepEqual(titles(await html(`/?${new URLSearchParams({ projectSearch: query })}`), 'project'), expected);
+      assert.deepEqual(titles(await html(`/projects/1?${new URLSearchParams({ taskSearch: query })}`), 'task'), expected);
+    }
+    const view = new URLSearchParams({ taskSearch: 'mixed\t team', filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-11', dueThrough: '2026-10-11' });
+    const viewPath = `/projects/1?${view}`;
+    assert.deepEqual(titles(await html(viewPath), 'task'), [names[0]]);
+    assert.deepEqual(titles(await html('/?projectSearch=%20%09'), 'project'), names);
+    assert.deepEqual(titles(await html('/projects/1?taskSearch=%20%09'), 'task'), names);
+    assert.deepEqual(snapshot(), beforeSearch);
+    const saved = await html(viewPath);
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html(viewPath), saved);
+    assert.deepEqual(snapshot(), beforeSearch);
+    assert.deepEqual(titles(await html('/'), 'project'), names);
+    assert.deepEqual(titles(await html('/projects/1'), 'task'), names);
+    await post('/projects/1/archive');
+    assert.deepEqual(titles(await html('/?filter=Archived&projectSearch=mixed+team'), 'project'), [names[0]]);
+    assert.deepEqual(titles(await html(viewPath), 'task'), [names[0]]);
+    assert.match(await html(viewPath), /aria-label="Complete MiXeD  \t Team" checked disabled/);
+    await post('/projects/1/restore');
+    assert.equal(await html(viewPath), saved);
+    assert.deepEqual(snapshot(), beforeSearch);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('search intersects filters, retains view state through edits, and preserves data and return order', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data', 'search-test-'));
