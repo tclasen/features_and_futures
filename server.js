@@ -20,13 +20,25 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS tasks_project_id ON tasks(project_id);
 `);
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Existing databases predate archive support; migrate without changing IDs or tasks.
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const projectQuery = `SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
+const listProjects = database.prepare(`${projectQuery} GROUP BY p.id ORDER BY p.id`);
+const getProject = database.prepare(`${projectQuery} WHERE p.id = ? GROUP BY p.id`);
+const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+
+function projectJson(project) {
+  return { ...project, archived: Boolean(project.archived) };
+}
 
 function taskJson(task) {
   return { ...task, completed: Boolean(task.completed) };
@@ -67,20 +79,24 @@ const server = createServer(async (request, response) => {
     const path = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && path === '/health') return json(response, 200, { status: 'ok' });
     if (path === '/api/projects') {
-      if (request.method === 'GET') return json(response, 200, listProjects.all());
+      if (request.method === 'GET') return json(response, 200, listProjects.all().map(projectJson));
       if (request.method === 'POST') {
         const input = await readJson(request);
         const name = typeof input?.name === 'string' ? input.name.trim() : '';
         if (!name) return json(response, 400, { error: 'Project name is required' });
         const result = insertProject.run(name);
-        return json(response, 201, getProject.get(Number(result.lastInsertRowid)));
+        return json(response, 201, projectJson(getProject.get(Number(result.lastInsertRowid))));
       }
     }
     const taskMatch = path.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (taskMatch) {
       const projectId = Number(taskMatch[1]);
       const taskId = taskMatch[2] ? Number(taskMatch[2]) : null;
-      if (!getProject.get(projectId)) return json(response, 404, { error: 'Project not found' });
+      const project = getProject.get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      if (project.archived && ['POST', 'PATCH'].includes(request.method)) {
+        return json(response, 409, { error: 'Archived project cannot be changed' });
+      }
       if (request.method === 'GET' && taskId === null) {
         return json(response, 200, listTasks.all(projectId).map(taskJson));
       }
@@ -102,9 +118,19 @@ const server = createServer(async (request, response) => {
       }
     }
     const projectMatch = path.match(/^\/api\/projects\/(\d+)$/);
-    if (request.method === 'GET' && projectMatch) {
-      const project = getProject.get(Number(projectMatch[1]));
-      return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
+    if (projectMatch) {
+      const projectId = Number(projectMatch[1]);
+      const project = getProject.get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      if (request.method === 'GET') return json(response, 200, projectJson(project));
+      if (request.method === 'PATCH') {
+        const input = await readJson(request);
+        if (typeof input?.archived !== 'boolean') {
+          return json(response, 400, { error: 'Archived must be a boolean' });
+        }
+        updateProject.run(Number(input.archived), projectId);
+        return json(response, 200, projectJson(getProject.get(projectId)));
+      }
     }
     const asset = assets.get(/^\/projects\/\d+$/.test(path) ? '/' : path);
     if (request.method === 'GET' && asset) {

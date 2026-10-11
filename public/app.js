@@ -23,14 +23,35 @@ function showAlert(message) {
   alert.textContent = message;
 }
 
-function projectRow(project) {
+function projectRow(project, onArchiveChange) {
   const row = element('li');
   row.dataset.testid = 'project-row';
   row.append(element('span', project.name));
   const open = element('button', 'Open project');
   open.type = 'button';
   open.addEventListener('click', () => location.assign(`/projects/${project.id}`));
-  row.append(open);
+  const summary = element('span', `${project.completedCount}/${project.totalCount} completed`);
+  summary.dataset.testid = 'project-summary';
+  const archive = element('button', project.archived ? 'Restore project' : 'Archive project');
+  archive.type = 'button';
+  archive.addEventListener('click', async () => {
+    archive.disabled = true;
+    app.querySelector('[role="alert"]')?.remove();
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, saved);
+      onArchiveChange();
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      archive.disabled = false;
+    }
+  });
+  row.append(summary, open, archive);
   return row;
 }
 
@@ -48,6 +69,25 @@ async function showProjects() {
   form.append(label, input, create);
   const list = element('ul');
   list.className = 'projects';
+  let projects = [];
+  const filterLabel = element('label', 'Project filter');
+  filterLabel.htmlFor = 'project-filter';
+  const filter = element('select');
+  filter.id = 'project-filter';
+  for (const value of ['Active', 'Archived']) {
+    const option = element('option', value);
+    option.value = value;
+    filter.append(option);
+  }
+  const filters = element('div');
+  filters.className = 'project-filter';
+  filters.append(filterLabel, filter);
+  function renderProjects() {
+    list.replaceChildren(...projects
+      .filter((project) => Boolean(project.archived) === (filter.value === 'Archived'))
+      .map((project) => projectRow(project, renderProjects)));
+  }
+  filter.addEventListener('change', renderProjects);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;
@@ -65,7 +105,8 @@ async function showProjects() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      list.append(projectRow(project));
+      projects.push(project);
+      renderProjects();
       input.value = '';
       input.focus();
     } catch (error) {
@@ -74,19 +115,19 @@ async function showProjects() {
       create.disabled = false;
     }
   });
-  app.append(form, list);
+  app.append(form, filters, list);
   // Enable creation only after the initial list has loaded, preserving ordering.
   create.disabled = true;
   try {
-    const projects = await api('/api/projects');
-    list.replaceChildren(...projects.map(projectRow));
+    projects = await api('/api/projects');
+    renderProjects();
     create.disabled = false;
   } catch (error) {
     showAlert(error.message);
   }
 }
 
-async function showTasks(projectId) {
+async function showTasks(projectId, archived) {
   const endpoint = `/api/projects/${projectId}/tasks`;
   let tasks = [];
   const saving = new Set();
@@ -126,7 +167,7 @@ async function showTasks(projectId) {
       const checkbox = element('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
-      checkbox.disabled = saving.has(task.id);
+      checkbox.disabled = archived || saving.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         saving.add(task.id);
@@ -177,13 +218,13 @@ async function showTasks(projectId) {
     } catch (error) {
       showAlert(error.message);
     } finally {
-      create.disabled = false;
+      create.disabled = archived;
     }
   });
   app.append(form, filters, list);
   tasks = await api(endpoint);
   renderTasks();
-  create.disabled = false;
+  create.disabled = archived;
 }
 
 async function showProject(id) {
@@ -196,7 +237,8 @@ async function showProject(id) {
     const project = await api(`/api/projects/${id}`);
     document.title = `${project.name} — Workboard`;
     app.prepend(element('h1', project.name));
-    await showTasks(id);
+    if (project.archived) app.append(element('p', 'Archived project'));
+    await showTasks(id, Boolean(project.archived));
   } catch (error) {
     if (!app.querySelector('h1')) app.prepend(element('h1', 'Workboard'));
     showAlert(error.message);

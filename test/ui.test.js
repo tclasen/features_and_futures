@@ -37,6 +37,98 @@ class Node {
 
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 
+test('project list: active default, archive/restore, summaries, and creation in either filter', async () => {
+  const app = new Node('main');
+  const projects = [
+    { id: 1, name: 'First', archived: false, completedCount: 1, totalCount: 2 },
+    { id: 2, name: 'Second', archived: false, completedCount: 0, totalCount: 0 },
+  ];
+  let destination;
+  runInNewContext(source, {
+    document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+    location: { pathname: '/', assign(path) { destination = path; } },
+    async fetch(path, options) {
+      let data;
+      if (!options) data = projects.map((project) => ({ ...project }));
+      else if (options.method === 'POST') {
+        data = { id: projects.length + 1, name: JSON.parse(options.body).name,
+          archived: false, completedCount: 0, totalCount: 0 };
+        projects.push({ ...data });
+      } else {
+        const project = projects.find((project) => path.endsWith(`/${project.id}`));
+        Object.assign(project, JSON.parse(options.body));
+        data = { ...project };
+      }
+      return { ok: true, json: async () => data };
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const filter = app.querySelector('select');
+  const list = app.querySelector('ul');
+  const names = () => list.children.map((row) => row.children[0].textContent);
+  assert.equal(filter.value, 'Active');
+  assert.deepEqual(filter.children.map((option) => option.textContent), ['Active', 'Archived']);
+  assert.deepEqual(names(), ['First', 'Second']);
+  assert.equal(list.children[0].dataset.testid, 'project-row');
+  assert.equal(list.children[0].children[1].dataset.testid, 'project-summary');
+  assert.equal(list.children[0].children[1].textContent, '1/2 completed');
+  assert.equal(list.children[1].children[1].textContent, '0/0 completed');
+  assert.equal(list.children[0].children[3].textContent, 'Archive project');
+  await list.children[0].children[3].fire('click');
+  assert.deepEqual(names(), ['Second']);
+  filter.value = 'Archived';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['First']);
+  assert.equal(list.children[0].children[3].textContent, 'Restore project');
+  await list.children[0].children[2].fire('click');
+  assert.equal(destination, '/projects/1');
+  const form = app.querySelector('form');
+  form.children[1].value = '  Third  ';
+  await form.fire('submit');
+  assert.deepEqual(names(), ['First']);
+  await list.children[0].children[3].fire('click');
+  assert.deepEqual(names(), []);
+  filter.value = 'Active';
+  await filter.fire('change');
+  assert.deepEqual(names(), ['First', 'Second', 'Third']);
+  assert.equal(list.children[0].children[1].textContent, '1/2 completed');
+});
+
+test('archived project is read-only while task filters still work', async () => {
+  const app = new Node('main');
+  const tasks = [
+    { id: 1, title: 'Open task', completed: false },
+    { id: 2, title: 'Done task', completed: true },
+  ];
+  runInNewContext(source, {
+    document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+    location: { pathname: '/projects/1', assign() {} },
+    async fetch(path, options) {
+      assert.equal(options, undefined);
+      const data = path === '/api/projects/1'
+        ? { id: 1, name: 'Archived example', archived: true } : tasks;
+      return { ok: true, json: async () => data };
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.querySelector('p').textContent, 'Archived project');
+  const form = app.querySelector('form');
+  assert.equal(form.children[2].disabled, true);
+  form.children[1].value = 'Not allowed';
+  await form.fire('submit');
+  const list = app.querySelector('ul');
+  assert.equal(list.children.length, 2);
+  assert.ok(list.children.every((row) => row.children[0].disabled));
+  const filter = app.querySelector('select');
+  for (const [value, title] of [['Open', 'Open task'], ['Completed', 'Done task']]) {
+    filter.value = value;
+    await filter.fire('change');
+    assert.equal(list.children.length, 1);
+    assert.equal(list.children[0].children[1].textContent, title);
+    assert.equal(list.children[0].children[0].disabled, true);
+  }
+});
+
 test('project task UI: labels, validation, completion, and filters in creation order', async () => {
   const app = new Node('main');
   const tasks = [];
