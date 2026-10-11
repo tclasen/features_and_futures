@@ -9,13 +9,18 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Open http://localhost:8080. The server binds to `0.0.0.0`. `PORT` defaults to
 8080 and `DB_PATH` defaults to `./data/workboard.sqlite`; parent directories are
 created automatically. Keep the database file to preserve projects, tasks, and
-completion state across restarts.
+completion and archive state across restarts. Existing databases are migrated
+without losing projects or tasks.
 
 Open a project to create tasks, toggle their completion, and filter by All, Open,
 or Completed. Each project has its own tasks; filtering does not change saved data.
+The project list defaults to Active; switch to Archived to open or restore archived
+projects. Archived projects retain their tasks but cannot create tasks or change
+completion until restored. Project rows summarize completed tasks out of all tasks.
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated HTTP and persistence tests with `npm test`. Tests use a temporary
 SQLite database and verify validation, creation order, project lookup, page/asset
-routes, task ownership, completion updates, and persistence through a process restart.
+routes, task ownership, completion updates, archive/restore restrictions, summaries,
+legacy database migration, and persistence through process restarts.
