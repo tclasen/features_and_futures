@@ -114,6 +114,11 @@ ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' sel
 <form method="post" action="/projects/${project.id}/tasks/${task.id}">
 <input type="hidden" name="filter" value="${filter}">
 <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
+</form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+<input type="hidden" name="filter" value="${filter}">
+<label for="new-task-title-${task.id}">New task title</label>
+<div class="create"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
 </form></div>`).join('')}
 ${tasks.length ? '' : '<p>No tasks to show.</p>'}</section>`));
 }
@@ -186,7 +191,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+))?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/rename)?)?$/.exec(url.pathname);
     if (req.method === 'POST' && taskMatch) {
       const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(taskMatch[1]);
       if (project) {
@@ -196,7 +201,19 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await formBody(req);
         const filter = taskFilter(body.get('filter'));
-        if (taskMatch[2]) {
+        if (taskMatch[3]) {
+          const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], project.id);
+          if (!task) {
+            sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+            return;
+          }
+          const title = (body.get('title') || '').trim();
+          if (!title) {
+            projectPage(res, project, filter, 'Task title is required');
+            return;
+          }
+          db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, task.id, project.id);
+        } else if (taskMatch[2]) {
           const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
             .run(body.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
           if (!result.changes) {
