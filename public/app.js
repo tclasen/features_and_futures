@@ -38,7 +38,18 @@ async function loadTasks() {
       const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
       if (result.ok) await loadTasks(); else checkbox.checked = task.completed;
     });
-    row.append(title, checkbox); container.append(row);
+    row.append(title, checkbox);
+    const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.value = task.title; renameInput.setAttribute('aria-label', 'New task title'); renameInput.disabled = Boolean(window.currentProjectArchived);
+    const renameButton = document.createElement('button'); renameButton.type = 'button'; renameButton.textContent = 'Rename task'; renameButton.disabled = Boolean(window.currentProjectArchived);
+    renameButton.addEventListener('click', async () => {
+      const newTitle = renameInput.value.trim();
+      const message = document.querySelector('#task-alert');
+      if (!newTitle) { message.textContent = 'Task title is required'; message.hidden = false; return; }
+      const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+      if (!result.ok) { message.textContent = result.status === 400 ? 'Task title is required' : 'Unable to rename task'; message.hidden = false; return; }
+      message.hidden = true; await loadTasks();
+    });
+    row.append(renameInput, renameButton); container.append(row);
   }
 }
 

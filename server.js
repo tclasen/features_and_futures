@@ -36,7 +36,20 @@ const server = http.createServer(async (req, res) => {
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (req.method === 'PATCH' && taskMatch) {
-    try { const data = await readBody(); if (typeof data.completed !== 'boolean') return send(400, { error: 'Invalid completion state' }); const result = db.prepare('UPDATE tasks SET completed=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(data.completed ? 1 : 0, Number(taskMatch[1])); return result.changes ? send(200, { completed: data.completed }) : send(404, { error: 'Task not found' }); } catch { return send(400, { error: 'Invalid request' }); }
+    try {
+      const data = await readBody();
+      if (typeof data.title === 'string') {
+        if (!data.title.trim()) return send(400, { error: 'Task title is required' });
+        const title = data.title.trim();
+        const result = db.prepare('UPDATE tasks SET title=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(title, Number(taskMatch[1]));
+        if (result.changes) return send(200, { title });
+        const task = db.prepare('SELECT t.id, p.archived FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=?').get(Number(taskMatch[1]));
+        return task ? send(409, { error: 'Archived project' }) : send(404, { error: 'Task not found' });
+      }
+      if (typeof data.completed !== 'boolean') return send(400, { error: 'Invalid completion state' });
+      const result = db.prepare('UPDATE tasks SET completed=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(data.completed ? 1 : 0, Number(taskMatch[1]));
+      return result.changes ? send(200, { completed: data.completed }) : send(404, { error: 'Task not found' });
+    } catch { return send(400, { error: 'Invalid request' }); }
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (req.method === 'POST' && archiveMatch) {
