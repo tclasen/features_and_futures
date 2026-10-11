@@ -1,5 +1,10 @@
 # Workboard
 
+Each task row provides New task title and Rename task. Titles are trimmed;
+blank titles show an alert. Renaming preserves the task's project, order and
+completion state, and persists across restarts. Archived projects disable task
+renaming until restored.
+
 Requires Node.js 22.22.1. No dependencies or installation step are needed.
 
 ```sh

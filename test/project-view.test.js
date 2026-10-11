@@ -70,6 +70,7 @@ const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf
 const settled = () => new Promise(resolve => setImmediate(resolve));
 
 async function browser(storage, projects, pending = {}) {
+  const tasks = pending.tasks || [{ id: 1, title: 'Saved task', completed: true }];
   const app = new Element('main', true);
   const location = { pathname: '/' };
   const document = {
@@ -88,13 +89,15 @@ async function browser(storage, projects, pending = {}) {
       let result;
       if (options?.method === 'PATCH') {
         if (pending.wait) await pending.wait;
-        const project = projects.find(item => path === `/api/projects/${item.id}`);
-        Object.assign(project, JSON.parse(options.body));
-        result = { ...project };
+        const taskMatch = path.match(/\/tasks\/(\d+)$/);
+        const item = taskMatch ? tasks.find(task => task.id === Number(taskMatch[1])) :
+          projects.find(project => path === `/api/projects/${project.id}`);
+        Object.assign(item, JSON.parse(options.body));
+        result = { ...item };
       } else if (path === '/api/projects') {
         result = projects.map(item => ({ ...item }));
       } else if (path.endsWith('/tasks')) {
-        result = [{ id: 1, title: 'Saved task', completed: true }];
+        result = tasks.map(task => ({ ...task }));
       } else {
         result = { ...projects.find(item => path === `/api/projects/${item.id}`) };
       }
@@ -155,6 +158,8 @@ test('Archived filter survives reload and opening a read-only project then retur
   assert.equal(app.querySelector('#rename-form').querySelector('button').disabled, true);
   assert.equal(app.querySelector('form').querySelector('button').disabled, true);
   assert.equal(rows(app)[0].querySelector('input').disabled, true);
+  assert.equal(rows(app)[0].querySelector('form').querySelector('input').disabled, true);
+  assert.equal(rows(app)[0].querySelector('form').querySelector('button').disabled, true);
   await app.querySelector('#projects').emit('click');
   await settled();
   assert.equal(app.querySelector('select').value, 'Archived');
@@ -169,6 +174,8 @@ test('Archived filter survives reload and opening a read-only project then retur
   assert.equal(app.querySelector('#rename-form').querySelector('button').disabled, false);
   assert.equal(rows(app)[0].querySelector('input').disabled, false);
   assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app)[0].querySelector('form').querySelector('input').disabled, false);
+  assert.equal(rows(app)[0].querySelector('form').querySelector('button').disabled, false);
   await app.querySelector('#projects').emit('click');
   await settled();
   assert.equal(app.querySelector('select').value, 'Active');
@@ -198,4 +205,49 @@ test('rename validates input and updates the heading and list while preserving t
   assert.equal(rows(app)[0].children[0].textContent, 'New project name');
   assert.equal(rows(app)[1].children[0].textContent, 'Second project');
   assert.ok(control(rows(app)[0], '1/1 completed'));
+});
+
+test('task rename validates, preserves ordering and filter membership, and updates completion labels', async () => {
+  const projects = [project()];
+  const pending = { tasks: [
+    { id: 1, title: 'Completed original', completed: true },
+    { id: 2, title: 'Open original', completed: false },
+  ] };
+  let app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  const form = rows(app)[0].querySelector('form');
+  const input = form.querySelector('input');
+  assert.equal(input.attributes['aria-label'], 'New task title');
+  input.value = ' \t\n ';
+  await form.emit('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Task title is required');
+  assert.equal(app.querySelector('[role="alert"]').hidden, false);
+  assert.equal(rows(app)[0].children[0].textContent, 'Completed original');
+  input.value = '  Completed renamed  ';
+  await form.emit('submit');
+  assert.equal(app.querySelector('[role="alert"]').hidden, true);
+  assert.equal(rows(app)[0].children[0].textContent, 'Completed renamed');
+  assert.equal(rows(app)[0].querySelector('input').attributes['aria-label'], 'Complete Completed renamed');
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app)[1].children[0].textContent, 'Open original');
+  await filter(app, 'Open');
+  assert.equal(rows(app).length, 1);
+  const openForm = rows(app)[0].querySelector('form');
+  openForm.querySelector('input').value = '  Open renamed  ';
+  await openForm.emit('submit');
+  assert.equal(app.querySelector('select').value, 'Open');
+  assert.equal(rows(app).length, 1);
+  assert.equal(rows(app)[0].children[0].textContent, 'Open renamed');
+  assert.equal(rows(app)[0].querySelector('input').checked, false);
+  await filter(app, 'Completed');
+  assert.equal(rows(app).length, 1);
+  assert.equal(rows(app)[0].children[0].textContent, 'Completed renamed');
+  app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('select').value, 'All');
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent), ['Completed renamed', 'Open renamed']);
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app)[1].querySelector('input').checked, false);
 });
