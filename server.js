@@ -94,6 +94,28 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const renameProjectRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (renameProjectRoute && request.method === 'PATCH') {
+    try {
+      const payload = await readJson(request);
+      const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+      if (!name) {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project name is required' }));
+        return;
+      }
+      const result = database.prepare('UPDATE projects SET name = ? WHERE id = ?')
+        .run(name, Number(renameProjectRoute[1]));
+      if (result.changes === 0) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ name }));
+    } catch {
+      send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
+    }
+    return;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     try {
       const payload = await readJson(request);

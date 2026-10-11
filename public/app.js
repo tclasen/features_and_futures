@@ -29,13 +29,53 @@ async function showProject(projectId) {
   const back = element('button', { text: 'Projects', className: 'back-button' });
   back.type = 'button';
   back.addEventListener('click', () => { location.href = '/'; });
-  app.append(back, element('h1', { text: project.name }));
+  const heading = element('h1', { text: project.name });
+  app.append(back, heading);
   if (project.archived) app.append(element('p', { text: 'Archived project', className: 'archive-notice' }));
 
   const alert = element('p', { className: 'alert' });
   alert.setAttribute('role', 'alert');
   alert.hidden = true;
   app.append(alert);
+
+  const renameForm = element('form');
+  const renameLabel = element('label', { text: 'New project name' });
+  const renameInput = element('input');
+  renameInput.type = 'text';
+  renameInput.name = 'newProjectName';
+  renameLabel.append(renameInput);
+  const renameButton = element('button', { text: 'Rename project' });
+  renameButton.type = 'submit';
+  renameButton.disabled = project.archived;
+  renameForm.append(renameLabel, renameButton);
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = renameInput.value.trim();
+    if (!name) {
+      alert.textContent = 'Project name is required';
+      alert.hidden = false;
+      renameInput.focus();
+      return;
+    }
+    renameButton.disabled = true;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/rename`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) throw new Error('Could not rename project');
+      heading.textContent = name;
+      renameInput.value = '';
+      alert.hidden = true;
+    } catch {
+      alert.textContent = 'Could not rename project';
+      alert.hidden = false;
+    } finally {
+      renameButton.disabled = project.archived;
+    }
+  });
+  app.append(renameForm);
 
   const form = element('form');
   const label = element('label', { text: 'Task title' });
