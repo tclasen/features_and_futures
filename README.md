@@ -16,6 +16,10 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Open `http://localhost:8080/` to create and open projects. Within a project,
 create tasks, toggle their completion, and filter by All, Open, or Completed.
 Project URLs can be reloaded directly. Projects and tasks persist in SQLite.
+The project list defaults to Active and can show Archived projects. Archive or
+restore a project from its row; its completion summary includes all its tasks.
+Archived project pages allow viewing and filtering tasks, with task creation and
+completion changes disabled. Archiving preserves tasks and their completion state.
 `GET /health`
 returns `{"status":"ok"}`. The default database is `data/workboard.sqlite`.
 
@@ -25,4 +29,5 @@ npm test
 
 The integration test checks blank-name validation, trimming, creation order,
 project routes, health, task validation and project isolation, completion updates,
-and saved projects and tasks after a server restart.
+archive/restore, completion summaries, archived-project write protection,
+saved state after server restarts, and migration of existing SQLite data.

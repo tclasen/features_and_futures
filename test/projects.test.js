@@ -6,10 +6,15 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks validate, stay ordered and isolated, and persist across restarts', async () => {
+test('projects and tasks validate, stay ordered and isolated, archive and restore, and persist across restarts', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), 'data', 'test-'));
+  // Start from the previous checkpoint's schema to exercise the archive migration.
+  const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
+  legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  legacy.close();
   const reservation = createServer();
   reservation.listen(0, '0.0.0.0');
   await once(reservation, 'listening');
@@ -63,6 +68,9 @@ test('projects and tasks validate, stay ordered and isolated, and persist across
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.total_count, 0);
+    assert.equal(first.completed_count, 0);
     const second = await (await create('Second project')).json();
     assert.notEqual(first.id, second.id);
     const expected = [first, second];
@@ -97,6 +105,18 @@ test('projects and tasks validate, stay ordered and isolated, and persist across
     assert.equal(completedResponse.status, 200);
     const completedTask = await completedResponse.json();
     assert.deepEqual(completedTask, { ...firstTask, completed: true });
+    const firstWithTasks = { ...first, total_count: 2, completed_count: 1 };
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), firstWithTasks);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, second]);
+    assert.equal((await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: 'yes' })).status, 400);
+    assert.equal((await taskRequest('/api/projects/999999', 'PATCH', { archived: true })).status, 404);
+    const archiveResponse = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: true });
+    assert.equal(archiveResponse.status, 200);
+    const archived = { ...firstWithTasks, archived: true };
+    assert.deepEqual(await archiveResponse.json(), archived);
+    assert.equal((await taskRequest(taskPath, 'POST', { title: 'Blocked' })).status, 409);
+    assert.equal((await taskRequest(`${taskPath}/${firstTask.id}`, 'PATCH', { completed: false })).status, 409);
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [completedTask, secondTask]);
     assert.equal((await taskRequest('/api/projects/999999/tasks', 'POST', { title: 'Orphan' })).status, 404);
     for (const path of ['/', `/projects/${first.id}`]) {
       const response = await fetch(base + path);
@@ -106,19 +126,50 @@ test('projects and tasks validate, stay ordered and isolated, and persist across
     }
     await stop();
     await start();
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
-    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [archived, second]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), archived);
     assert.deepEqual(await (await fetch(base + taskPath)).json(), [completedTask, secondTask]);
     assert.deepEqual(await (await fetch(base + otherTaskPath)).json(), []);
+    const restored = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: false });
+    assert.equal(restored.status, 200);
+    assert.deepEqual(await restored.json(), firstWithTasks);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, second]);
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [completedTask, secondTask]);
     const reopened = await taskRequest(`${taskPath}/${firstTask.id}`, 'PATCH', { completed: false });
     assert.equal(reopened.status, 200);
     assert.deepEqual(await reopened.json(), firstTask);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(base + taskPath)).json(), [firstTask, secondTask]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), {
+      ...firstWithTasks, completed_count: 0,
+    });
     const third = await (await create('Third')).json();
     assert.ok(third.id > second.id);
     assert.equal((await fetch(`${base}/api/projects/999999`)).status, 404);
+    await stop();
+    await rm(join(directory, 'projects.sqlite'));
+    const populatedLegacy = new DatabaseSync(join(directory, 'projects.sqlite'));
+    populatedLegacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)));
+      INSERT INTO projects (id, name) VALUES (7, 'Existing project');
+      INSERT INTO tasks (id, project_id, title, completed) VALUES (9, 7, 'Existing task', 1);
+    `);
+    populatedLegacy.close();
+    await start();
+    const migratedProject = { id: 7, name: 'Existing project', archived: false, total_count: 1, completed_count: 1 };
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [migratedProject]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
+      { id: 9, project_id: 7, title: 'Existing task', completed: true },
+    ]);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects/7`)).json(), migratedProject);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
