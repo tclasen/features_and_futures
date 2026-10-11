@@ -13,7 +13,9 @@
     button { cursor: pointer; }
     #alert { color: #b42318; margin: 1rem 0; }
     .project-list { padding: 0; list-style: none; }
-    [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; border: 1px solid #d0d5dd; border-radius: 6px; padding: .75rem; margin: .6rem 0; }
+    [data-testid="project-row"], [data-testid="task-row"] { display: flex; align-items: center; justify-content: space-between; border: 1px solid #d0d5dd; border-radius: 6px; padding: .75rem; margin: .6rem 0; }
+    .task-list { padding: 0; list-style: none; }
+    #task-filter { font: inherit; padding: .55rem .75rem; }
   </style>
 </head>
 <body>
@@ -45,8 +47,34 @@
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (!response.ok) return showProjects();
       const project = await response.json();
-      app.innerHTML = `<button type="button" id="projects">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      app.innerHTML = `<button type="button" id="projects">Projects</button><h1>${escapeHtml(project.name)}</h1>
+        <form id="task-form"><label>Task title<input name="title" aria-label="Task title"></label><button type="submit">Create task</button></form>
+        <p id="alert" role="alert" aria-live="polite"></p>
+        <label>Task filter<select id="task-filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
+        <ul class="task-list" id="tasks"></ul>`;
       app.querySelector('#projects').addEventListener('click', showProjects);
+      const list = app.querySelector('#tasks');
+      const filter = app.querySelector('#task-filter');
+      async function loadTasks() {
+        const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(response => response.json());
+        const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
+        list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}></li>`).join('');
+        list.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
+          await fetch(`/api/tasks/${box.dataset.task}`, { method: 'PATCH', headers: {'content-type':'application/json'}, body: JSON.stringify({completed: box.checked}) });
+          await loadTasks();
+        }));
+      }
+      filter.addEventListener('change', loadTasks);
+      app.querySelector('#task-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const title = new FormData(event.currentTarget).get('title').trim();
+        if (!title) { app.querySelector('#alert').textContent = 'Task title is required'; return; }
+        const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({title}) });
+        if (!result.ok) { app.querySelector('#alert').textContent = 'Task title is required'; return; }
+        event.currentTarget.reset();
+        await loadTasks();
+      });
+      await loadTasks();
     }
 
     async function render() {
