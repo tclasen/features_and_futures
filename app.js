@@ -33,7 +33,13 @@ async function loadProjects() {
     const open = document.createElement('button');
     open.type = 'button';
     open.textContent = 'Open project';
-    open.addEventListener('click', () => navigate(`/projects/${project.id}`));
+    open.addEventListener('click', () => {
+      // Each entry from the list starts with the unfiltered task view, even
+      // when reopening the project that was just viewed.
+      taskFilter.value = 'All';
+      priorityFilter.value = 'All';
+      navigate(`/projects/${project.id}`);
+    });
     const summary = document.createElement('span');
     summary.dataset.testid = 'project-summary';
     summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
