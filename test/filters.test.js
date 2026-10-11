@@ -58,7 +58,7 @@ async function fixture(archived = false, destinations = [
   { id: 2, name: 'Destination', archived: false },
   { id: 3, name: 'Archived', archived: true },
   { id: 4, name: 'Other destination', archived: false },
-]) {
+], beforeRead = async () => {}) {
   const app = new Element('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
@@ -73,7 +73,10 @@ async function fixture(archived = false, destinations = [
     validDueDate, matchesDueRange,
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     fetch: async (path, options) => {
-      if (!options) return { ok: true, json: async () => structuredClone(path === '/api/projects' ? destinations : tasks) };
+      if (!options) {
+        await beforeRead(app, path);
+        return { ok: true, json: async () => structuredClone(path === '/api/projects' ? destinations : tasks) };
+      }
       requests.push(options);
       if (path === '/api/projects/1') {
         Object.assign(project, JSON.parse(options.body));
@@ -198,6 +201,26 @@ test('due date save and clear preserve both filters, task identity, and row orde
   assert.equal(f.rows()[0].children[4].children[1].value, '');
   assert.equal(f.completion.value, 'Completed');
   assert.equal(f.priority.value, 'High');
+});
+
+test('task controls are not exposed during asynchronous initialization', async () => {
+  const reads = [];
+  const f = await fixture(false, undefined, async (app, path) => {
+    reads.push(path);
+    // Simulate slow task/destination reads: no editable control may be exposed
+    // before its initial saved value and event handler are installed.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(app.querySelector('#default-task-priority'), null);
+    assert.equal(app.querySelector('#task-title'), null);
+  });
+  assert.deepEqual(reads, ['/api/projects/1/tasks', '/api/projects']);
+  const defaultPriority = f.app.querySelector('#default-task-priority');
+  await choose(defaultPriority, 'Low');
+  assert.equal(f.project.default_priority, 'Low');
+  f.app.querySelector('#task-title').value = 'Lifecycle task';
+  await f.app.querySelector('form').fire('submit');
+  assert.equal(f.tasks.at(-1).priority, 'Low');
+  assert.equal(defaultPriority.value, 'Low');
 });
 
 test('default priority changes preserve both filters and existing rows', async () => {

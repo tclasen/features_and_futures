@@ -130,7 +130,6 @@ async function renderTasks(project) {
     </form>
     <div id="task-list"></div>
   `;
-  app.append(section);
   const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = await api(endpoint);
   const destinations = (await api('/api/projects'))
@@ -375,6 +374,9 @@ async function renderTasks(project) {
       submit.disabled = Boolean(project.archived);
     }
   });
+  // Publish controls only after data and all handlers are ready. Otherwise an
+  // early selection during loading can be overwritten without ever being saved.
+  app.append(section);
 }
 
 async function render() {
