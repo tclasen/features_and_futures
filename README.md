@@ -115,6 +115,12 @@ refresh these counts; changing order does not affect them. Empty results show
 A separate owner list shows each represented project's name, matching completion
 counts and Open project navigation in project creation order, regardless of task
 sorting. Projects with identical names retain independent rows and totals.
+Visible tasks priority offers Low, Normal and High, initially Normal on a fresh
+Task directory visit. Set visible priority atomically changes only the matching live
+tasks in Active scope. Archived scope, Deleted and empty results disable the action;
+invalid or missing priority values never change tasks. Saved changes re-evaluate the
+same filters and ordering, refresh owner/global totals and eligibility, and preserve
+all other fields, ownership and remembered positions across restarts.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
