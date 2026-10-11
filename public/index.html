@@ -32,6 +32,7 @@
   <script>
     const app = document.querySelector('#app');
     const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const normalizeSearch = value => String(value).replace(/[A-Z]/g, c => c.toLowerCase()).replace(/[ \t]+/g, ' ');
     async function renderList() {
       app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form><div id="alert" role="alert" hidden></div><label>Project filter<select id="project-filter"><option>Active</option><option>Archived</option></select></label><form id="project-search-form"><label>Project search<input name="query" type="text" autocomplete="off"></label><button type="submit">Search projects</button></form><section id="projects" aria-label="Projects"></section>';
       const form = document.querySelector('#create-form'), input = form.elements.name, alert = document.querySelector('#alert');
@@ -41,8 +42,8 @@
       async function load() {
         const archived = document.querySelector('#project-filter').value === 'Archived';
         const projects = await fetch(`/api/projects?filter=${archived ? 'Archived' : 'Active'}`).then(r => r.json());
-        const needle = appliedQuery.replace(/[A-Z]/g, c => c.toLowerCase());
-        document.querySelector('#projects').innerHTML = projects.filter(p => p.name.replace(/[A-Z]/g, c => c.toLowerCase()).includes(needle)).map(p => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHTML(p.name)}</span><span data-testid="project-summary">${p.completedCount}/${p.totalCount} completed</span><button type="button" data-open="${escapeHTML(p.id)}">Open project</button><button type="button" data-archive="${escapeHTML(p.id)}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
+        const needle = normalizeSearch(appliedQuery);
+        document.querySelector('#projects').innerHTML = projects.filter(p => normalizeSearch(p.name).includes(needle)).map(p => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHTML(p.name)}</span><span data-testid="project-summary">${p.completedCount}/${p.totalCount} completed</span><button type="button" data-open="${escapeHTML(p.id)}">Open project</button><button type="button" data-archive="${escapeHTML(p.id)}">${archived ? 'Restore project' : 'Archive project'}</button></div>`).join('');
         document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => location.href = `/projects/${encodeURIComponent(b.dataset.open)}`);
         document.querySelectorAll('[data-archive]').forEach(b => b.onclick = async () => { await fetch(`/api/projects/${encodeURIComponent(b.dataset.archive)}/archive`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived:!archived})}); await load(); });
       }
@@ -80,8 +81,8 @@
           const eligible = destinations.filter(p => p.id !== id);
           const filter = document.querySelector('#task-filter').value;
           const priorityFilter = document.querySelector('#priority-filter').value;
-          const needle = appliedTaskQuery.replace(/[A-Z]/g, c => c.toLowerCase());
-          const visible = tasks.filter(task => task.title.replace(/[A-Z]/g, c => c.toLowerCase()).includes(needle) && (filter === 'All' || (filter === 'Completed') === Boolean(task.completed)) && (priorityFilter === 'All' || task.priority === priorityFilter) && (!appliedDueFrom && !appliedDueThrough || task.dueDate && (!appliedDueFrom || task.dueDate >= appliedDueFrom) && (!appliedDueThrough || task.dueDate <= appliedDueThrough)));
+          const needle = normalizeSearch(appliedTaskQuery);
+          const visible = tasks.filter(task => normalizeSearch(task.title).includes(needle) && (filter === 'All' || (filter === 'Completed') === Boolean(task.completed)) && (priorityFilter === 'All' || task.priority === priorityFilter) && (!appliedDueFrom && !appliedDueThrough || task.dueDate && (!appliedDueFrom || task.dueDate >= appliedDueFrom) && (!appliedDueThrough || task.dueDate <= appliedDueThrough)));
           document.querySelector('#tasks').innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><label><input type="checkbox" aria-label="Complete ${escapeHTML(task.title)}" data-task-id="${escapeHTML(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}>${escapeHTML(task.title)}</label><form data-rename-task="${escapeHTML(task.id)}"><label>New task title<input name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><label>Task priority<select aria-label="Task priority" data-priority-task="${escapeHTML(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><form data-due-task="${escapeHTML(task.id)}"><label>Task due date<input name="dueDate" type="text" value="${escapeHTML(task.dueDate || '')}" placeholder="YYYY-MM-DD" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button></form><label>Destination project<select aria-label="Destination project" data-destination-task="${escapeHTML(task.id)}" ${project.archived || eligible.length === 0 ? 'disabled' : ''}>${eligible.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.name)}</option>`).join('')}</select></label><button type="button" data-move-task="${escapeHTML(task.id)}" ${project.archived || eligible.length === 0 ? 'disabled' : ''}>Move task</button></div>`).join('');
           document.querySelectorAll('#tasks input[type="checkbox"]').forEach(box => box.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.taskId)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ completed: box.checked }) });
@@ -131,7 +132,7 @@
         });
         document.querySelector('#task-filter').addEventListener('change', loadTasks);
         const taskSearchForm = document.querySelector('#task-search-form');
-        taskSearchForm.addEventListener('submit', event => { event.preventDefault(); appliedTaskQuery = taskSearchForm.elements.query.value.trim().replace(/[A-Z]/g, c => c.toLowerCase()); loadTasks(); });
+        taskSearchForm.addEventListener('submit', event => { event.preventDefault(); appliedTaskQuery = taskSearchForm.elements.query.value.trim(); loadTasks(); });
         document.querySelector('#due-range-form').addEventListener('submit', event => {
           event.preventDefault();
           const form = event.currentTarget;
