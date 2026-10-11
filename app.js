@@ -13,15 +13,31 @@ async function loadProjects() {
   return response.json();
 }
 
-function projectRow(project) {
+function projectRow(project, refresh) {
   const row = element('div', undefined, { 'data-testid': 'project-row', class: 'project-row' });
   row.append(element('span', project.name, { class: 'project-name' }));
+  row.append(element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary' }));
   const open = element('button', 'Open project', { type: 'button' });
   open.addEventListener('click', () => {
     history.pushState({}, '', `/projects/${project.id}`);
     renderProject(project.id);
   });
   row.append(open);
+  if (project.archived) {
+    const restore = element('button', 'Restore project', { type: 'button' });
+    restore.addEventListener('click', async () => {
+      await fetch(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: false }) });
+      refresh();
+    });
+    row.append(restore);
+  } else {
+    const archive = element('button', 'Archive project', { type: 'button' });
+    archive.addEventListener('click', async () => {
+      await fetch(`/api/projects/${project.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: true }) });
+      refresh();
+    });
+    row.append(archive);
+  }
   return row;
 }
 
@@ -35,7 +51,19 @@ async function renderList() {
   form.append(input, submit);
   const alert = element('p', '', { id: 'alert', role: 'alert', hidden: '' });
   const projects = element('section', undefined, { id: 'projects', 'aria-label': 'Projects' });
-  app.append(form, alert, projects);
+  const filter = element('select', undefined, { 'aria-label': 'Project filter' });
+  filter.append(element('option', 'Active', { value: 'active' }), element('option', 'Archived', { value: 'archived' }));
+  app.append(form, alert, filter, projects);
+
+  const drawProjects = async () => {
+    projects.replaceChildren();
+    const allProjects = await loadProjects();
+    for (const project of allProjects) {
+      if (project.archived !== (filter.value === 'archived')) continue;
+      projects.append(projectRow(project, drawProjects));
+    }
+  };
+  filter.addEventListener('change', drawProjects);
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -59,12 +87,10 @@ async function renderList() {
     }
     const project = await response.json();
     input.value = '';
-    projects.append(projectRow(project));
+    await drawProjects();
   });
 
-  for (const project of await loadProjects()) {
-    projects.append(projectRow(project));
-  }
+  await drawProjects();
 }
 
 async function renderProject(id) {
@@ -76,6 +102,7 @@ async function renderProject(id) {
   const project = await response.json();
   const view = element('section', undefined, { id: 'project-view' });
   view.append(element('h1', project.name));
+  if (project.archived) view.append(element('p', 'Archived project'));
   const back = element('button', 'Projects', { type: 'button' });
   back.addEventListener('click', () => {
     history.pushState({}, '', '/');
@@ -84,6 +111,10 @@ async function renderProject(id) {
   const form = element('form');
   const input = element('input', undefined, { type: 'text', 'aria-label': 'Task title', autocomplete: 'off' });
   const submit = element('button', 'Create task', { type: 'submit' });
+  if (project.archived) {
+    input.disabled = true;
+    submit.disabled = true;
+  }
   form.append(input, submit);
   const alert = element('p', '', { role: 'alert', hidden: '' });
   const filter = element('select', undefined, { 'aria-label': 'Task filter' });
@@ -102,6 +133,7 @@ async function renderProject(id) {
       row.append(element('span', task.title));
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.addEventListener('change', async () => {
         const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' },

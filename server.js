@@ -20,13 +20,23 @@ database.exec(`
   )
 `);
 database.exec('PRAGMA foreign_keys = ON');
+try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  FROM projects p ORDER BY p.id`);
+const findProject = database.prepare(`SELECT p.id, p.name, p.archived,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+  FROM projects p WHERE p.id = ?`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 
 function sendJson(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -50,7 +60,7 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(response, 200, listProjects.all());
+    return sendJson(response, 200, listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
@@ -69,9 +79,16 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), name: trimmedName });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (request.method === 'PATCH' && projectMatch) {
+    let body;
+    try { body = await readRequestJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    if (typeof body.archived !== 'boolean') return sendJson(response, 400, { error: 'Invalid archive state' });
+    const result = updateArchive.run(body.archived ? 1 : 0, Number(projectMatch[1]));
+    return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Project not found' });
+  }
   if (request.method === 'GET' && projectMatch) {
     const project = findProject.get(Number(projectMatch[1]));
-    return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
+    return project ? sendJson(response, 200, { ...project, archived: Boolean(project.archived) }) : sendJson(response, 404, { error: 'Project not found' });
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
