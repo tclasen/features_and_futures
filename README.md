@@ -28,6 +28,11 @@ it. Names are trimmed and required. Renaming preserves the project's URL,
 creation order, tasks, and completion totals. Archived projects must be restored
 before they can be renamed.
 
+Each task row provides `New task title` and `Rename task`. Titles are trimmed
+and required. Renaming preserves task ownership, creation order, completion,
+filter membership, and project completion totals. Archived projects disable
+task renaming until restoration. Renamed titles persist across server restarts.
+
 Run the integration checks with:
 
 ```sh
