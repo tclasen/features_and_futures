@@ -7,9 +7,11 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_task_priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -132,6 +134,18 @@ const page = `<!doctype html>
         if (!result.ok) { renameAlert.textContent = 'Could not rename project'; renameAlert.hidden = false; return; }
         project.name = name; heading.textContent = name; renameInput.value = name; renameAlert.hidden = true;
       });
+      const defaultLabel = document.createElement('label'); defaultLabel.textContent = 'Default task priority';
+      const defaultPriority = document.createElement('select'); defaultPriority.setAttribute('aria-label', 'Default task priority');
+      for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; defaultPriority.append(option); }
+      defaultPriority.value = project.default_task_priority;
+      defaultPriority.disabled = project.archived;
+      defaultPriority.addEventListener('change', async () => {
+        const previous = project.default_task_priority;
+        const result = await fetch('/api/projects/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_task_priority: defaultPriority.value }) });
+        if (!result.ok) { defaultPriority.value = previous; return; }
+        project.default_task_priority = defaultPriority.value;
+      });
+      defaultLabel.append(defaultPriority);
       const form = document.createElement('form'); form.className = 'task-controls';
       const label = document.createElement('label'); label.textContent = 'Task title';
       const input = document.createElement('input'); input.type = 'text'; input.setAttribute('aria-label', 'Task title'); label.append(input);
@@ -197,7 +211,7 @@ const page = `<!doctype html>
         if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
         alert.hidden = true; input.value = ''; await refreshTasks();
       });
-      section.append(renameForm, renameAlert, form, alert, filterLabel, priorityFilterLabel, list); app.replaceChildren(section); await refreshTasks();
+      section.append(renameForm, renameAlert, defaultLabel, form, alert, filterLabel, priorityFilterLabel, list); app.replaceChildren(section); await refreshTasks();
     }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
@@ -250,6 +264,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'PATCH' && projectMatch) {
     try {
       const body = await readJson(req);
+      if (typeof body.default_task_priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(body.default_task_priority)) return sendJson(res, 400, { error: 'Invalid default task priority' });
+        const result = db.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0').run(body.default_task_priority, projectMatch[1]);
+        if (!result.changes) {
+          const exists = db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectMatch[1]);
+          return exists ? sendJson(res, 409, { error: 'Archived projects cannot change task defaults' }) : sendJson(res, 404, { error: 'Project not found' });
+        }
+        return sendJson(res, 200, { status: 'ok', default_task_priority: body.default_task_priority });
+      }
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return sendJson(res, 400, { error: 'Project name is required' });
       const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, projectMatch[1]);
@@ -261,7 +284,7 @@ const server = http.createServer(async (req, res) => {
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(projectMatch[1]);
+    const project = db.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?').get(projectMatch[1]);
     return project ? sendJson(res, 200, {...project, id: String(project.id), archived: Boolean(project.archived)}) : sendJson(res, 404, { error: 'Project not found' });
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
@@ -284,11 +307,11 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-      const owner = db.prepare('SELECT archived FROM projects WHERE id = ?').get(tasksMatch[1]);
+      const owner = db.prepare('SELECT archived, default_task_priority FROM projects WHERE id = ?').get(tasksMatch[1]);
       if (!owner) return sendJson(res, 404, { error: 'Project not found' });
       if (owner.archived) return sendJson(res, 409, { error: 'Archived projects cannot accept tasks' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(tasksMatch[1], title);
-      return sendJson(res, 201, { id: String(result.lastInsertRowid), title, completed: false });
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(tasksMatch[1], title, owner.default_task_priority);
+      return sendJson(res, 201, { id: String(result.lastInsertRowid), title, completed: false, priority: owner.default_task_priority });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
