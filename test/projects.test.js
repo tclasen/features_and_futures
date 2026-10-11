@@ -31,6 +31,72 @@ async function start(databasePath) {
   };
 }
 
+test('task renaming preserves ownership, order, completion, filters and restart persistence', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp('data/test-');
+  const databasePath = resolve(directory, 'task-rename.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    await post('/projects', { name: 'One' });
+    await post('/projects', { name: 'Two' });
+    await post('/projects/1/tasks', { title: 'First' });
+    await post('/projects/1/tasks', { title: 'Second' });
+    await post('/projects/2/tasks', { title: 'Other' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const original = await get('/projects/1');
+    const summary = await get('/');
+    assert.match(original, /<label for="new-task-title-1">New task title<\/label>/);
+    assert.equal((original.match(/>Rename task<\/button>/g) || []).length, 2);
+    for (const title of ['', '  \t ']) {
+      const invalid = await post('/projects/1/tasks/1/rename', { title, filter: 'Completed' });
+      assert.equal(invalid.status, 422);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.equal(await get('/projects/1'), original);
+    }
+    assert.equal((await post('/projects/2/tasks/1/rename', { title: 'Wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/rename', { title: 'Missing' })).status, 404);
+    assert.equal((await post('/projects/999/tasks/1/rename', { title: 'Missing' })).status, 404);
+    const response = await post('/projects/1/tasks/1/rename', { title: '  Renamed <task> "quoted"  ', filter: 'Completed' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
+    const renamed = await get('/projects/1');
+    assert.equal(renamed, original.replaceAll('First', 'Renamed &lt;task&gt; &quot;quoted&quot;'));
+    assert.match(renamed, /aria-label="Complete Renamed &lt;task&gt; &quot;quoted&quot;" checked/);
+    assert.equal(await get('/'), summary);
+    assert.doesNotMatch(await get('/projects/1?filter=Open'), /Renamed/);
+    assert.doesNotMatch(await get('/projects/1?filter=Completed'), /<span>Second<\/span>/);
+    assert.doesNotMatch(await get('/projects/2'), /Renamed|Wrong owner/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await get('/projects/1'), renamed);
+    assert.equal(await get('/'), summary);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.equal((archived.match(/id="new-task-title-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((archived.match(/<button type="submit" disabled>Rename task/g) || []).length, 2);
+    assert.equal((await post('/projects/1/tasks/1/rename', { title: 'Forbidden' })).status, 403);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), renamed);
+    await post('/projects/1/tasks/2/rename', { title: '  Renamed open  ', filter: 'Open' });
+    assert.match(await get('/projects/1?filter=Open'), /aria-label="Complete Renamed open"\s+onchange/);
+    await server.stop();
+    server = await start(databasePath);
+    assert.match(await get('/projects/1?filter=Open'), /<span>Renamed open<\/span>/);
+    assert.equal(await get('/'), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('renaming preserves identity, order, tasks and summary, validates and respects archives', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp('data/test-');
