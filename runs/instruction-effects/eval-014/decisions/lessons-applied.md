@@ -85,3 +85,5 @@ L066 paired race verification: three original failures and three corrected passe
 L067: frozen summary observer assumes layout-dependent innerText after a DOM-text assertion. Native trace and six synthetic controls confirm the mechanism; coordinator drained. Immutable-source and cumulative/lifecycle verification pending before any prospective revision. Frozen run/source/measurements preserved.
 
 L067 directed immutable-source verification: original043045 fail3/3 repeats, prospective DOM-text reader passes3/3 with identical assertions. Source/history/data restored and diagnostic resource removed. Full83/prior-upgrade/actual-restart remains pending; no frozen outcome rewritten.
+
+L067 full native verification: original attempt010 passes83 cumulative, prior24 upgrade and actual process restart with only DOM-text extraction correction. Eval014 superseded with299 accepted checkpoints/common24; all380attempts/3889requests retained. Exact correction guard and fault controls verified; successor015 remains unfrozen pending preparation gates.

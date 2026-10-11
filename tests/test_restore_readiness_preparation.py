@@ -48,6 +48,12 @@ class RestorePreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Replay differs'):
                 verify_prepared_stream(self.source, self.prepared, revision, exact)
 
+    def test_summary_successor_retains_restore_delta_but_exact_repeat_cannot_change_it(self):
+        result = verify_prepared_stream(self.source, self.prepared, 'research-v015')
+        self.assertEqual(result['mode'], 'declared-prospective-restore-and-summary-readiness')
+        with self.assertRaisesRegex(ValueError, 'Replay differs'):
+            verify_prepared_stream(self.source, self.prepared, 'research-v015', True)
+
     def test_fresh_revision_cannot_remove_assertions_even_with_updated_hash(self):
         self.spec.write_text(self.spec.read_text().replace(
             "await expect(taskRow(page, 'Retained task')).toBeVisible();\n", ''))

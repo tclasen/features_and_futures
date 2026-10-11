@@ -17,10 +17,15 @@ BUILDERS_ROOT=Path('/Users/Shared/projects/features-and-futures-builders')
 
 def verify_prepared_stream(source, run, revision, exact=False):
     """Allow only the declared fresh observer revision; repeats remain exact."""
-    if exact or revision != 'research-v014':
+    if exact or revision not in ('research-v014', 'research-v015'):
         return verify_replay(source, run)
     from .task_stream import suite_for_stage, stream_input_hash
     from .restore_readiness import verify_restore_only_delta
+    if revision == 'research-v015':
+        from .summary_readiness import verify_restore_and_summary_delta
+        verify_delta = verify_restore_and_summary_delta
+    else:
+        verify_delta = verify_restore_only_delta
     from .workload import phase_expectations
     left, right = task_stream(source), task_stream(run)
     if len(left) != len(right):
@@ -35,10 +40,12 @@ def verify_prepared_stream(source, run, revision, exact=False):
         if 'suite_files' not in prepared and prepared['suite_hash'] != digest_json(
                 file_hashes(suite_for_stage(run, stage))):
             raise ValueError('Prospective base suite hash differs from delivered suite')
-        changed = verify_restore_only_delta(suite_for_stage(source, stage),
-                                            suite_for_stage(run, stage))
+        changed = verify_delta(suite_for_stage(source, stage),
+                               suite_for_stage(run, stage))
         changes.append({'stage': stage, 'changed_suite_files': changed})
-    return {'verified': True, 'mode': 'declared-prospective-restore-readiness',
+    return {'verified': True, 'mode': ('declared-prospective-restore-and-summary-readiness'
+                                      if revision == 'research-v015'
+                                      else 'declared-prospective-restore-readiness'),
             'checkpoints': len(left), 'changes': changes,
             'source_input_sha256': stream_input_hash(source),
             'prepared_input_sha256': stream_input_hash(run)}
@@ -48,6 +55,8 @@ def research_inputs(original, revision=None, replay=False):
     if revision is not None and revision!=selected:raise InfrastructureError('Exact replay cannot change the research revision')
     if selected not in ('research-v001',*BOUNDED_REVISIONS):raise InfrastructureError('Unsupported research revision')
     plan=Path('experiments/instruction-effects/revisions')/selected/'analysis-plan.json'
+    if not (ROOT/plan).is_file():
+        raise InfrastructureError('Selected research plan is unavailable')
     definition=json.loads((ROOT/plan).read_text())
     if definition.get('revision_id')!=selected or definition.get('status')!='frozen-before-main-dispatch':
         raise InfrastructureError('Freeze the selected research plan before preparing a run')
@@ -58,7 +67,7 @@ def research_inputs(original, revision=None, replay=False):
         from .bounded_confirmation import METHOD
         research['analysis_method']=METHOD
         execution['provider_incident_policy']=POLICY
-        if selected in ('research-v007', 'research-v008', 'research-v009', 'research-v010', 'research-v011', 'research-v012', 'research-v013', 'research-v014'):
+        if selected in ('research-v007', 'research-v008', 'research-v009', 'research-v010', 'research-v011', 'research-v012', 'research-v013', 'research-v014', 'research-v015'):
             execution['inference_observation_lifecycle']=OBSERVATION_LIFECYCLE
         try:validate_policy({'experiment_revision':selected,'execution':execution,'research':research},definition)
         except ValueError as error:raise InfrastructureError(str(error)) from error
@@ -160,13 +169,13 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         if 'suite_files' in task:
             for name in ('round.json','requirements.md'):shutil.copy2(source/'tasks'/task['task_id']/name,target/name)
             shutil.copytree(source/'tasks'/task['task_id']/'suite',target/'suite')
-    if selected == 'research-v014' and not confirmation and not recovery:
+    if selected in ('research-v014', 'research-v015') and not confirmation and not recovery:
         # Install the preregistered observer while this fresh preparation is
         # unstarted, before hashing its manifest. Original source runs stay intact.
         changes = []
         for stage, target in ((1, run/'definitions/project/acceptance'),
                               (5, run/'tasks/task-005/suite')):
-            draft = ROOT/'experiments/instruction-effects/revisions/research-v014'/f'decisions/frozen-prefix-drafts/task-{stage:03d}/suite'
+            draft = ROOT/'experiments/instruction-effects/revisions'/selected/f'decisions/frozen-prefix-drafts/task-{stage:03d}/suite'
             from .restore_readiness import verify_restore_only_delta
             before, after = file_hashes(target), file_hashes(draft)
             try:
@@ -205,7 +214,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         manifest['pricing']=price_snapshot(run/'pricing',models={b['model'] for b in original['runtime']['builder_configurations']})
         write_json(run/'definitions/pricing-mappings.json',manifest['pricing'])
     manifest['provenance']['definition_hashes']=file_hashes(run/'definitions')
-    if selected == 'research-v014' and not confirmation and not recovery:
+    if selected in ('research-v014', 'research-v015') and not confirmation and not recovery:
         base_suite_hash = digest_json(file_hashes(run/'definitions/project/acceptance'))
         for task in manifest['tasks']:
             task['suite_hash'] = base_suite_hash

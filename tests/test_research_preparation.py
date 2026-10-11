@@ -12,6 +12,34 @@ from orchestrator.bounded_confirmation import METHOD
 
 
 class ResearchPreparationTests(unittest.TestCase):
+    def test_summary_revision_requires_frozen_plan_and_exact_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.plans(root)
+            parent = root/'experiments/instruction-effects/revisions/research-v014/analysis-plan.json'
+            path = root/'experiments/instruction-effects/revisions/research-v015/analysis-plan.json'
+            plan = json.loads(parent.read_text())
+            plan.update(revision_id='research-v015', status='prepared-unfrozen')
+            write_json(path, plan)
+            source = {'experiment_revision': 'pilot-v015',
+                      'execution': {'timing_revision': 'harness-return-v2'}}
+            with patch('orchestrator.prepare_evaluation.ROOT', root):
+                with self.assertRaisesRegex(InfrastructureError, 'Freeze'):
+                    research_inputs(source, 'research-v015')
+                plan['status'] = 'frozen-before-main-dispatch'
+                write_json(path, plan)
+                revision, research, execution = research_inputs(source, 'research-v015')
+                self.assertEqual(research['analysis_method'], METHOD)
+                self.assertEqual(execution['provider_incident_policy'], POLICY)
+                self.assertEqual(execution['inference_observation_lifecycle'],
+                                 'drain-upstream-and-partial-response-v1')
+                prepared = {'experiment_revision': revision, 'research': research,
+                            'execution': execution}
+                self.assertEqual(research_inputs(prepared, replay=True),
+                                 (revision, research, execution))
+                with self.assertRaises(InfrastructureError):
+                    research_inputs(prepared, 'research-v014', replay=True)
+
     def plans(self, root):
         for revision in ('research-v001','research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010','research-v011','research-v012','research-v013','research-v014'):
             plan={'revision_id':revision,'status':'frozen-before-main-dispatch','execution':{}}
