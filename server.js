@@ -13,10 +13,12 @@ db.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
-    priority TEXT NOT NULL DEFAULT 'Normal'
+    priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT
   );
 `);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const listProjects = db.prepare('SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id');
@@ -24,13 +26,24 @@ const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const html = await readFile(path.join(root, 'index.html'));
+
+function isValidDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -80,6 +93,10 @@ const server = http.createServer(async (req, res) => {
           updateTask.run(bodyValue.completed ? 1 : 0, id, projectId);
         } else if (['Low', 'Normal', 'High'].includes(bodyValue.priority)) {
           updatePriority.run(bodyValue.priority, id, projectId);
+        } else if (Object.hasOwn(bodyValue, 'dueDate')) {
+          const dueDate = String(bodyValue.dueDate ?? '').trim();
+          if (dueDate && !isValidDate(dueDate)) return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+          updateDueDate.run(dueDate || null, id, projectId);
         } else if (typeof bodyValue.title === 'string') {
           const title = bodyValue.title.trim();
           if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
