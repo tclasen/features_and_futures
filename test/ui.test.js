@@ -39,7 +39,7 @@ class Node {
 const browserSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const source = `${normalizeDueDate.toString()}\n${browserSource.replace("import { normalizeDueDate } from '/due-date.js';", '')}`;
 
-test('directory is read-only, intersects all filters, preserves drafts, and resets on reopening', async () => {
+test('directory is read-only, retains applied filters after invalid ranges, and resets on reopening', async () => {
   const tasks = [
     { id: 1, projectId: 1, projectName: 'Owner only', projectArchived: false, title: 'Alpha  \tTASK', completed: false, priority: 'High', dueDate: '2000-02-29', notes: '  α <b>literal</b>\nlast  ', deleted: false },
     { id: 2, projectId: 1, projectName: 'Owner only', projectArchived: false, title: 'Alpha task done', completed: true, priority: 'Normal', dueDate: '', notes: 'hidden keyword', deleted: false },
@@ -99,13 +99,28 @@ test('directory is read-only, intersects all filters, preserves drafts, and rese
   range.children[1].value = range.children[3].value = ' 2000-02-29 ';
   await range.fire('submit');
   assert.deepEqual(titles(), [tasks[0].title]);
-  range.children[1].value = '1900-02-29';
-  await range.fire('submit');
-  assert.equal(app.querySelector('[role="alert"]').textContent, 'Due range must use valid YYYY-MM-DD dates');
-  assert.deepEqual(titles(), [tasks[0].title]);
+  for (const [from, through] of [
+    ['1900-02-29', '2000-03-01'],
+    ['2000-02-01', '2046-02-30'],
+    ['bad', ''],
+  ]) {
+    range.children[1].value = from;
+    range.children[3].value = through;
+    await range.fire('submit');
+    assert.equal(app.querySelector('[role="alert"]').textContent, 'Due range must use valid YYYY-MM-DD dates');
+    assert.equal(range.children[1].value, '2000-02-29');
+    assert.equal(range.children[3].value, '2000-02-29');
+    assert.deepEqual(titles(), [tasks[0].title]);
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+    assert.equal(search.children[1].value, 'ALPHA\t  TASK');
+  }
   range.children[1].value = '2000-03-01';
   await range.fire('submit');
   assert.equal(app.querySelector('[role="alert"]').textContent, 'Due from must not be after Due through');
+  assert.equal(range.children[1].value, '2000-02-29');
+  assert.equal(range.children[3].value, '2000-02-29');
+  assert.deepEqual(titles(), [tasks[0].title]);
   completion.value = 'Deleted';
   await completion.fire('change');
   assert.deepEqual(titles(), [tasks[2].title]);
@@ -114,7 +129,7 @@ test('directory is read-only, intersects all filters, preserves drafts, and rese
   assert.deepEqual(titles(), [tasks[4].title]);
   assert.equal(priority.value, 'High');
   assert.equal(completion.value, 'Deleted');
-  assert.equal(range.children[1].value, '2000-03-01');
+  assert.equal(range.children[1].value, '2000-02-29');
   assert.equal(search.children[1].value, 'ALPHA\t  TASK');
   await list.children[0].children[6].fire('click');
   await app.children.find((node) => node.textContent === 'Projects').fire('click');

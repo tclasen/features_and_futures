@@ -201,7 +201,7 @@ function projectImportControl() {
 }
 
 // Shared controls keep directory and project filtering/validation semantics identical.
-function taskFilters(onChange) {
+function taskFilters(onChange, { restoreInvalidRange = false } = {}) {
   const filters = element('div');
   filters.className = 'task-filter';
   function selectControl(labelText, id, values) {
@@ -242,12 +242,17 @@ function taskFilters(onChange) {
     app.querySelector('[role="alert"]')?.remove();
     const nextFrom = normalizeDueDate(fromInput.value);
     const nextThrough = normalizeDueDate(throughInput.value);
-    if (nextFrom === null || nextThrough === null) {
-      showAlert('Due range must use valid YYYY-MM-DD dates');
-      return;
-    }
-    if (nextFrom && nextThrough && nextFrom > nextThrough) {
-      showAlert('Due from must not be after Due through');
+    const error = nextFrom === null || nextThrough === null
+      ? 'Due range must use valid YYYY-MM-DD dates'
+      : nextFrom && nextThrough && nextFrom > nextThrough
+        ? 'Due from must not be after Due through'
+        : null;
+    if (error) {
+      if (restoreInvalidRange) {
+        fromInput.value = from;
+        throughInput.value = through;
+      }
+      showAlert(error);
       return;
     }
     fromInput.value = from = nextFrom;
@@ -285,7 +290,7 @@ async function showDirectory() {
   const scopeControl = element('div');
   scopeControl.className = 'project-filter';
   scopeControl.append(scopeLabel, scope);
-  const controls = taskFilters(renderDirectory);
+  const controls = taskFilters(renderDirectory, { restoreInvalidRange: true });
   const search = searchControl('Directory search', 'Search directory', 'directory-search', renderDirectory);
   const list = element('ul');
   list.className = 'directory';
