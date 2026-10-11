@@ -27,14 +27,18 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+// Project defaults only affect future tasks, never existing task priorities.
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
 const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const taskJson = task => ({ ...task, completed: Boolean(task.completed) });
-const projectSelect = `SELECT p.id, p.name, p.archived,
+const projectSelect = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
   FROM projects p`;
@@ -43,6 +47,7 @@ const findProject = db.prepare(`${projectSelect} WHERE p.id = ?`);
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const projectJson = project => ({ ...project, archived: Boolean(project.archived) });
 
 const assets = new Map([
@@ -106,7 +111,7 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const title = typeof body?.title === 'string' ? body.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = insertTask.run(projectId, title);
+        const result = insertTask.run(projectId, title, project.default_priority);
         return json(response, 201, taskJson(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (taskId !== null && request.method === 'PATCH') {
@@ -141,10 +146,19 @@ const server = http.createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const body = await readJson(request);
-        if (Object.hasOwn(body ?? {}, 'name')) {
-          if (Object.hasOwn(body, 'archived')) {
-            return json(response, 400, { error: 'Rename and archive must be separate changes' });
+        const changes = ['name', 'archived', 'default_priority'].filter(key => Object.hasOwn(body ?? {}, key));
+        if (changes.length > 1) {
+          return json(response, 400, { error: 'Project edits must be separate changes' });
+        }
+        if (changes[0] === 'default_priority') {
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project cannot be changed' });
           }
+          if (!['Low', 'Normal', 'High'].includes(body.default_priority)) {
+            return json(response, 400, { error: 'Default task priority must be Low, Normal, or High' });
+          }
+          setDefaultPriority.run(body.default_priority, projectId);
+        } else if (changes[0] === 'name') {
           if (project.archived) {
             return json(response, 409, { error: 'Archived project cannot be changed' });
           }

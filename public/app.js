@@ -179,6 +179,41 @@ function taskPriorityControl(project, task, endpoint, onPriorityChange) {
   return controls;
 }
 
+function defaultPriorityControl(project) {
+  const controls = element('div');
+  const label = element('label', 'Default task priority');
+  const select = element('select');
+  select.id = 'default-task-priority';
+  label.htmlFor = select.id;
+  select.disabled = project.archived;
+  for (const priority of ['Low', 'Normal', 'High']) {
+    const option = element('option', priority);
+    option.value = priority;
+    select.append(option);
+  }
+  select.value = project.default_priority;
+  select.addEventListener('change', async () => {
+    if (project.archived) return;
+    select.disabled = true;
+    try {
+      const updated = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: select.value }),
+      });
+      Object.assign(project, updated);
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      select.value = project.default_priority;
+      select.disabled = project.archived;
+    }
+  });
+  controls.append(label, select);
+  return controls;
+}
+
 async function renderTasks(project) {
   const endpoint = `/api/projects/${project.id}/tasks`;
   const form = element('form');
@@ -216,7 +251,7 @@ async function renderTasks(project) {
   filterControls.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(form, filterControls, list);
+  app.append(defaultPriorityControl(project), form, filterControls, list);
   const tasks = await request(endpoint);
 
   function displayTasks() {

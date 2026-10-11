@@ -26,7 +26,7 @@ membership, and project summaries. The completion checkbox label follows the new
 title. Archived projects disable task renaming until restored. Task titles persist
 across restarts.
 Each task has a Task priority selector with Low, Normal, and High options. Existing
-and new tasks default to Normal. Priority changes persist independently without
+tasks default to Normal when migrated; new tasks inherit their project's saved default. Priority changes persist independently without
 changing completion, ownership, order, or summaries, and renaming preserves priority.
 Archived projects disable priority edits until restored.
 Project pages also have a Priority filter (All, Low, Normal, High), initially All.
@@ -34,6 +34,11 @@ It combines with the completion filter and keeps matching tasks in creation orde
 Changing a task's completion or priority immediately reapplies both filters;
 renaming and other task edits retain both selections. Filtering never changes
 saved data or completion summaries. Both filters remain usable when archived.
+Each project also has a Default task priority selector (Low, Normal, High), initially
+Normal. Changes affect only subsequent new tasks in that project, never existing
+tasks or either filter selection. Defaults persist through reloads, restarts,
+renaming, archival, and restoration. Archived projects disable default edits until
+restored.
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
@@ -42,5 +47,6 @@ SQLite database and verify validation, creation order, project lookup, page/asse
 routes, task ownership, completion updates, archive/restore restrictions, summaries,
 project and task rename validation and identity preservation, independent task priorities,
 priority validation and archive restrictions, combined priority/completion filtering,
-filter retention and immediate row updates after edits, legacy database migration, and
+filter retention and immediate row updates after edits, independent project defaults,
+new-task inheritance, default validation and archive protection, legacy database migration, and
 persistence through process restarts.

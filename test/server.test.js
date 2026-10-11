@@ -236,6 +236,73 @@ test('priorities are independent and preserve task data through edits and restar
   }
 });
 
+test('project defaults affect only future tasks and survive rename, archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-'));
+  const database = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  let running;
+  try {
+    running = await start(port, database);
+    const get = async path => (await fetch(`${running.base}${path}`)).json();
+    const mutate = (path, method, body) => fetch(`${running.base}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const project = await (await mutate('/api/projects', 'POST', { name: 'First' })).json();
+    const other = await (await mutate('/api/projects', 'POST', { name: 'Other' })).json();
+    assert.equal(project.default_priority, 'Normal');
+    assert.equal(other.default_priority, 'Normal');
+    const path = `/api/projects/${project.id}`;
+    const tasksPath = `${path}/tasks`;
+    const createTask = async title => (await mutate(tasksPath, 'POST', { title })).json();
+    const original = await createTask('Original');
+    await mutate(`${tasksPath}/${original.id}`, 'PATCH', { completed: true });
+    const saved = { ...original, completed: true };
+    for (const priority of ['High', 'Low', 'Normal', 'High']) {
+      const response = await mutate(path, 'PATCH', { default_priority: priority });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...project, completed: 1, total: 1, default_priority: priority });
+      assert.deepEqual(await get(tasksPath), [saved]);
+      assert.deepEqual(await get(`/api/projects/${other.id}`), other);
+    }
+    for (const priority of ['', 'high', ' High ', null, 42, true]) {
+      assert.equal((await mutate(path, 'PATCH', { default_priority: priority })).status, 400);
+    }
+    assert.equal((await mutate(path, 'PATCH', { default_priority: 'Low', archived: true })).status, 400);
+    assert.equal((await mutate(path, 'PATCH', { default_priority: 'Low', name: 'Mixed' })).status, 400);
+    assert.equal((await mutate('/api/projects/99999', 'PATCH', { default_priority: 'Low' })).status, 404);
+    const high = await createTask('Inherited high');
+    assert.equal(high.priority, 'High');
+    assert.equal(high.completed, false);
+    await mutate(path, 'PATCH', { default_priority: 'Low' });
+    await mutate(path, 'PATCH', { name: 'Renamed project' });
+    await stop(running.child);
+    running = await start(port, database);
+    assert.equal((await get(path)).default_priority, 'Low');
+    assert.equal((await get(path)).name, 'Renamed project');
+    assert.deepEqual(await get(tasksPath), [saved, high]);
+    await mutate(path, 'PATCH', { archived: true });
+    assert.equal((await mutate(path, 'PATCH', { default_priority: 'Normal' })).status, 409);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.equal((await get(path)).default_priority, 'Low');
+    assert.equal((await mutate(path, 'PATCH', { default_priority: 'High' })).status, 409);
+    await mutate(path, 'PATCH', { archived: false });
+    const low = await createTask('Inherited low');
+    assert.equal(low.priority, 'Low');
+    assert.deepEqual(await get(tasksPath), [saved, high, low]);
+    const otherTask = await (await mutate(`/api/projects/${other.id}/tasks`, 'POST', { title: 'Other task' })).json();
+    assert.equal(otherTask.priority, 'Normal');
+    await mutate(path, 'PATCH', { default_priority: 'Normal' });
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(tasksPath), [saved, high, low]);
+    assert.deepEqual(await get(path), { ...project, name: 'Renamed project', completed: 1, total: 3 });
+  } finally {
+    if (running && running.child.exitCode === null) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('legacy databases migrate without losing project IDs or tasks', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const database = join(directory, 'legacy.sqlite');
@@ -251,7 +318,7 @@ test('legacy databases migrate without losing project IDs or tasks', async () =>
   try {
     running = await start(await availablePort(), database);
     const projects = await (await fetch(`${running.base}/api/projects`)).json();
-    assert.deepEqual(projects, [{ id: 42, name: 'Existing project', archived: false, completed: 1, total: 1 }]);
+    assert.deepEqual(projects, [{ id: 42, name: 'Existing project', archived: false, default_priority: 'Normal', completed: 1, total: 1 }]);
     const tasks = await (await fetch(`${running.base}/api/projects/42/tasks`)).json();
     assert.deepEqual(tasks, [{ id: 1, title: 'Existing task', completed: true, priority: 'Normal' }]);
   } finally {

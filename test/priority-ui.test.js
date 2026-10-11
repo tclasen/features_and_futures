@@ -113,7 +113,8 @@ async function projectUI(archived = false) {
     }
     return { ok: true, json: async () => body };
   });
-  await renderTasks({ id: 1, archived });
+  const project = { id: 1, archived, default_priority: 'Normal' };
+  await renderTasks(project);
   const nodes = () => descendants(app);
   const byId = id => nodes().find(node => node.id === id);
   const rows = () => nodes().filter(node => node.dataset.testid === 'task-row');
@@ -123,7 +124,7 @@ async function projectUI(archived = false) {
     control.value = value;
     await control.listeners.change();
   };
-  return { app, tasks, requests, nodes, byId, rows, titles, change };
+  return { app, project, tasks, requests, nodes, byId, rows, titles, change };
 }
 
 test('priority and completion filters intersect in creation order without changing data', async () => {
@@ -180,9 +181,59 @@ test('task edits reapply both filters while retaining their selected values', as
   assert.equal(ui.requests.length, 3);
 });
 
+test('project default control saves independently without changing tasks or filters', async () => {
+  const ui = await projectUI();
+  const select = ui.byId('default-task-priority');
+  assert.equal(ui.nodes().find(node => node.htmlFor === select.id).textContent, 'Default task priority');
+  assert.deepEqual(Array.from(select.children, option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(select.value, 'Normal');
+  assert.equal(select.disabled, false);
+  await ui.change('task-filter', 'Open');
+  await ui.change('priority-filter', 'High');
+  const original = JSON.stringify(ui.tasks);
+  const rows = ui.rows();
+  await ui.change(select.id, 'Low');
+  assert.equal(ui.project.default_priority, 'Low');
+  assert.equal(select.value, 'Low');
+  assert.equal(select.disabled, false);
+  assert.equal(ui.byId('task-filter').value, 'Open');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.deepEqual(ui.rows(), rows);
+  assert.equal(JSON.stringify(ui.tasks), original);
+  assert.deepEqual(ui.requests, [{ path: '/api/projects/1', changes: { default_priority: 'Low' } }]);
+});
+
+test('default control rolls back failed saves and displays restored values', async () => {
+  const { app, renderTasks } = await setup(async (path, options) => ({
+    ok: !options,
+    json: async () => options ? { error: 'Unable to save' } : [],
+  }));
+  const project = { id: 1, archived: false, default_priority: 'High' };
+  await renderTasks(project);
+  let select = descendants(app).find(node => node.id === 'default-task-priority');
+  assert.equal(select.value, 'High');
+  select.value = 'Low';
+  await select.listeners.change();
+  assert.equal(select.value, 'High');
+  assert.equal(project.default_priority, 'High');
+  assert.equal(select.disabled, false);
+  app.replaceChildren();
+  await renderTasks({ ...project, archived: true });
+  select = descendants(app).find(node => node.id === 'default-task-priority');
+  assert.equal(select.value, 'High');
+  assert.equal(select.disabled, true);
+  app.replaceChildren();
+  await renderTasks(project);
+  select = descendants(app).find(node => node.id === 'default-task-priority');
+  assert.equal(select.value, 'High');
+  assert.equal(select.disabled, false);
+});
+
 test('archived projects keep both filters usable and task editing disabled', async () => {
   const ui = await projectUI(true);
   const original = JSON.stringify(ui.tasks);
+  assert.equal(ui.byId('default-task-priority').disabled, true);
+  assert.equal(ui.byId('default-task-priority').value, 'Normal');
   assert.notEqual(ui.byId('task-filter').disabled, true);
   assert.notEqual(ui.byId('priority-filter').disabled, true);
   await ui.change('task-filter', 'Completed');
