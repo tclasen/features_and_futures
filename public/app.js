@@ -3,7 +3,7 @@ const detailView = document.querySelector('#project-detail');
 const alert = document.querySelector('#alert');
 let activeProjectId = null;
 let appliedDueRange = { from: '', through: '' };
-const normalizeSearch = value => value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
+const normalizeSearch = value => value.trim().replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
