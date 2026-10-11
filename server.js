@@ -17,6 +17,7 @@ try { database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL D
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -88,6 +89,21 @@ const server = createServer(async (request, response) => {
     if (typeof data.completed !== 'boolean') return send(response, 400, { error: 'Invalid completion state' });
     updateTask.run(data.completed ? 1 : 0, taskId, projectId);
     return send(response, 200, { ok: true });
+  }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/rename$/);
+  if (renameRoute && request.method === 'PATCH') {
+    const id = decodeURIComponent(renameRoute[1]);
+    const project = findProject.get(id);
+    if (!project) return send(response, 404, { error: 'Project not found' });
+    if (project.archived) return send(response, 403, { error: 'Archived project' });
+    let input = '';
+    for await (const chunk of request) input += chunk;
+    let data;
+    try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (!name) return send(response, 400, { error: 'Project name is required' });
+    updateProjectName.run(name, id);
+    return send(response, 200, { id, name });
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (archiveRoute && request.method === 'PATCH') {
