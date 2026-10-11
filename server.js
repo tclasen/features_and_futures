@@ -33,6 +33,9 @@ const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
@@ -43,12 +46,25 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function isValidDueDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -267,6 +283,37 @@ const server = createServer(async (request, response) => {
         return;
       }
       renameTask.run(title.trim(), taskId, projectId);
+      sendJson(response, 200, getTask.get(taskId, projectId));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
+  if (request.method === 'PATCH' && dueDateMatch) {
+    try {
+      const projectId = Number(dueDateMatch[1]);
+      const taskId = Number(dueDateMatch[2]);
+      const task = getTask.get(taskId, projectId);
+      if (!task) {
+        sendJson(response, 404, { error: 'Task not found' });
+        return;
+      }
+      if (getProject.get(projectId).archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      const { dueDate } = await readBody(request);
+      if (typeof dueDate !== 'string') {
+        sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        return;
+      }
+      const trimmedDate = dueDate.trim();
+      if (trimmedDate && !isValidDueDate(trimmedDate)) {
+        sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        return;
+      }
+      updateTaskDueDate.run(trimmedDate || null, taskId, projectId);
       sendJson(response, 200, getTask.get(taskId, projectId));
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });

@@ -169,7 +169,31 @@ async function renderTasks() {
       } catch (error) { showTaskError(error); }
     });
     rename.append(renameInput, renameButton);
-    row.append(label, priorityLabel, rename);
+    const dueDateForm = document.createElement('form');
+    dueDateForm.className = 'task-due-date-form';
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.value = task.dueDate ?? '';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.disabled = activeProjectArchived;
+    const dueDateButton = document.createElement('button');
+    dueDateButton.type = 'submit';
+    dueDateButton.textContent = 'Save due date';
+    dueDateButton.disabled = activeProjectArchived;
+    dueDateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      taskAlert.hidden = true;
+      try {
+        await request(`/api/projects/${activeProjectId}/tasks/${task.id}/due-date`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ dueDate: dueDateInput.value }),
+        });
+        await renderTasks();
+      } catch (error) { showTaskError(error); }
+    });
+    dueDateForm.append(dueDateInput, dueDateButton);
+    row.append(label, priorityLabel, rename, dueDateForm);
     return row;
   }));
 }
