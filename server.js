@@ -123,8 +123,9 @@ const page = `<!doctype html>
 
     async function request(url, options) {
       const response = await fetch(url, options);
-      if (!response.ok) throw new Error('Request failed');
-      return response.json();
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error || 'Request failed');
+      return value;
     }
 
     function asciiLower(value) {
@@ -161,6 +162,34 @@ const page = `<!doctype html>
       error.id = 'error';
       error.setAttribute('role', 'alert');
       error.hidden = true;
+      const importForm = document.createElement('form');
+      importForm.noValidate = true;
+      const jsonLabel = document.createElement('label');
+      jsonLabel.htmlFor = 'project-json';
+      jsonLabel.textContent = 'Project JSON';
+      const jsonInput = document.createElement('textarea');
+      jsonInput.id = 'project-json';
+      jsonInput.setAttribute('aria-label', 'Project JSON');
+      const overrideLabel = document.createElement('label');
+      overrideLabel.htmlFor = 'imported-project-name';
+      overrideLabel.textContent = 'Imported project name';
+      const overrideInput = document.createElement('input');
+      overrideInput.id = 'imported-project-name';
+      overrideInput.type = 'text';
+      const importButton = document.createElement('button');
+      importButton.type = 'submit';
+      importButton.textContent = 'Import project';
+      importForm.append(jsonLabel, jsonInput, overrideLabel, overrideInput, importButton);
+      importForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        try {
+          const result = await request('/api/projects/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document: jsonInput.value, name: overrideInput.value }) });
+          location.href = '/projects/' + encodeURIComponent(result.id);
+        } catch (failure) {
+          error.textContent = failure.message === 'Project name is required' ? failure.message : 'Invalid project JSON';
+          error.hidden = false;
+        }
+      });
       const projectFilterLabel = document.createElement('label');
       projectFilterLabel.htmlFor = 'project-filter';
       projectFilterLabel.textContent = 'Project filter';
@@ -248,7 +277,7 @@ const page = `<!doctype html>
           error.hidden = false;
         }
       });
-      app.append(heading, form, error, projectFilterLabel, projectFilter, searchField, searchButton, list);
+      app.append(heading, form, importForm, error, projectFilterLabel, projectFilter, searchField, searchButton, list);
     }
 
     async function renderProject(id) {
@@ -659,6 +688,42 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     const filter = url.searchParams.get('filter') === 'archived' ? 1 : 0;
     sendJson(response, 200, listProjects.all(filter).map(project => ({ ...project, archived: Boolean(project.archived) })));
+    return;
+  }
+  if (request.method === 'POST' && url.pathname === '/api/projects/import') {
+    try {
+      const data = await readBody(request);
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      if (!name) { sendJson(response, 400, { error: 'Project name is required' }); return; }
+      let doc;
+      try { doc = JSON.parse(data.document); } catch { throw new Error('invalid'); }
+      const priorities = ['Low', 'Normal', 'High'];
+      const validDate = value => {
+        if (value === '') return true;
+        const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+      };
+      const p = doc?.project;
+      if (doc?.format !== 'workboard-project' || doc?.version !== 1 || !Number.isInteger(doc.version) || !p || typeof p !== 'object' || Array.isArray(p) || typeof p.name !== 'string' || !p.name.trim() || typeof p.archived !== 'boolean' || !priorities.includes(p.defaultPriority) || !Array.isArray(p.tasks) || !p.tasks.every(t => t && typeof t === 'object' && !Array.isArray(t) && typeof t.title === 'string' && t.title.trim() && typeof t.completed === 'boolean' && priorities.includes(t.priority) && validDate(t.dueDate) && typeof t.notes === 'string' && typeof t.deleted === 'boolean')) throw new Error('invalid');
+      db.exec('BEGIN');
+      try {
+        const result = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)').run(name, p.archived ? 1 : 0, p.defaultPriority);
+        const projectId = Number(result.lastInsertRowid);
+        const insert = db.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        const position = db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
+        p.tasks.forEach((task, index) => {
+          const inserted = insert.run(projectId, task.title, task.completed ? 1 : 0, task.priority, task.dueDate || null, task.notes.replace(/\r\n?/g, '\n'), task.deleted ? 1 : 0, index);
+          position.run(Number(inserted.lastInsertRowid), projectId, index);
+        });
+        db.exec('COMMIT');
+        sendJson(response, 201, { id: projectId });
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    } catch (error) {
+      sendJson(response, 400, { error: error.message === 'Project name is required' ? error.message : 'Invalid project JSON' });
+    }
     return;
   }
   const exportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
