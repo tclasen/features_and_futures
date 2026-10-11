@@ -45,27 +45,14 @@ async function renderList() {
 }
 
 let projectListRequest = 0;
-const projectRows = new Map();
 async function populateProjects(list, archived) {
   const requestId = ++projectListRequest;
   const projects = await request(`/api/projects?archived=${archived}`);
   // A slower response for the previous filter must not replace the current rows.
   if (requestId !== projectListRequest) return;
-  const visibleIds = new Set(projects.map(project => String(project.id)));
-  for (const [id, row] of projectRows) {
-    if (!visibleIds.has(id)) {
-      row.remove();
-      projectRows.delete(id);
-    }
-  }
+  list.replaceChildren();
   for (const project of projects) {
-    const id = String(project.id);
-    let row = projectRows.get(id);
-    if (row) {
-      row.querySelector('[data-testid="project-summary"]').textContent = `${project.completedCount}/${project.totalCount} completed`;
-      continue;
-    }
-    row = element('div', undefined, { 'data-testid': 'project-row' });
+    const row = element('div', undefined, { 'data-testid': 'project-row' });
     const name = element('span', project.name);
     const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary' });
     const open = element('button', 'Open project', { type: 'button' });
@@ -79,7 +66,6 @@ async function populateProjects(list, archived) {
       } catch { toggle.disabled = false; }
     });
     row.append(name, summary, open, toggle);
-    projectRows.set(id, row);
     list.append(row);
   }
 }
