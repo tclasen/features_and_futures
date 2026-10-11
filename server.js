@@ -112,9 +112,8 @@ const page = `<!doctype html>
             body: JSON.stringify({ archived: button.dataset.projectAction === 'archive' })
           });
           if (!response.ok) throw new Error('Project update failed');
-          // Show the project in the list that matches its new state.
-          const destination = button.dataset.projectAction === 'archive' ? 'Archived' : 'Active';
-          window.location.assign('/?filter=' + destination);
+          // Keep the current filter; the changed project leaves this view.
+          window.location.reload();
         } catch { document.querySelector('[role="alert"]').textContent = 'Unable to update project'; }
       });
     });
