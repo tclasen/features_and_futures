@@ -95,3 +95,11 @@ Queries stay in the URL and forms across filter changes and edits, with matching
 rows re-evaluated in their existing order. Search does not change saved data or
 all-task summaries, and remains available on archived projects. Opening a project
 from the list or returning through Projects resets the corresponding search.
+
+Every task has optional multiline plain-text notes, edited with Task notes and
+Save notes. Notes preserve whitespace, line breaks, Unicode and literal markup;
+empty text clears them. They persist through reloads, restarts, renaming and moves,
+including return-position restoration. Saving notes retains all applied filters
+and search; notes do not contribute to title/name search or completion summaries.
+Archived notes remain visible but cannot be edited until restoration. Existing
+databases automatically add empty notes without changing previous task data.

@@ -34,6 +34,9 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  }
   // Legacy databases used tasks.position, or task IDs before movement existed.
   // Seed only current memberships; earlier moves cannot be reconstructed.
   const hasLegacyPosition = database.prepare('PRAGMA table_info(tasks)').all()
@@ -79,7 +82,7 @@ export function openProjects(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
-    SELECT tasks.id, title, completed, priority, due_date FROM tasks
+    SELECT tasks.id, title, completed, priority, due_date, notes FROM tasks
     JOIN task_project_positions AS ordering
       ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
     WHERE tasks.project_id = ? AND (? IS NULL OR completed = ?)
@@ -110,6 +113,10 @@ export function openProjects(databasePath) {
   `);
   const updateTaskDueDate = database.prepare(`
     UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
+  const updateTaskNotes = database.prepare(`
+    UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
   const eligibleMove = database.prepare(`
@@ -180,6 +187,9 @@ export function openProjects(databasePath) {
       const date = normalizeDueDate(value);
       if (date === null) return false;
       return updateTaskDueDate.run(date, taskId, projectId).changes > 0;
+    },
+    setTaskNotes(projectId, taskId, notes) {
+      return updateTaskNotes.run(notes, taskId, projectId).changes > 0;
     },
     moveTask(projectId, taskId, destinationId) {
       if (!Number.isSafeInteger(destinationId) || destinationId < 1) return false;

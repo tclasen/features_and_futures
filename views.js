@@ -6,6 +6,12 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function textareaContent(value) {
+  // HTML parsing discards one initial newline inside a textarea. Supply that
+  // newline explicitly so a saved leading newline remains part of the value.
+  return `\n${escapeHtml(value)}`;
+}
+
 function page(title, content) {
   return `<!doctype html>
 <html lang="en">
@@ -174,6 +180,12 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
                 `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
             </select>
             <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
+          </form>
+          <form action="${projectPath}/tasks/${task.id}/notes" method="post" class="task-notes">
+            ${filterFields}
+            <label for="task-notes-${task.id}">Task notes</label>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>${textareaContent(task.notes)}</textarea>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
           </form>
         </div>`).join('') : '<p class="empty">No tasks match these filters.</p>'}
     </section>`);
