@@ -202,6 +202,8 @@ function directoryState(parameters) {
     range: appliedDueRange(parameters),
     search: normalizeSearch(parameters.get('search')),
     order: directoryOrder(parameters.get('order')),
+    visiblePriority: TASK_PRIORITIES.includes(parameters.get('visiblePriority'))
+      ? parameters.get('visiblePriority') : 'Normal',
   };
 }
 
@@ -216,6 +218,7 @@ function directoryLocation(state) {
     dueFrom: state.range.from, dueThrough: state.range.through, search: state.search,
   });
   if (state.order !== 'Original') query.set('order', state.order);
+  if (state.visiblePriority !== 'Normal') query.set('visiblePriority', state.visiblePriority);
   return `/directory?${query}`;
 }
 
@@ -255,6 +258,16 @@ function setDirectoryDeletion(state, deleted) {
   inTransaction(() => {
     for (const task of directoryTasks(state)) {
       setTaskDeleted.run(Number(deleted), task.id, task.project_id);
+    }
+  });
+}
+
+function setDirectoryPriority(state, priority) {
+  if (state.scope !== 'Active' || state.filter === 'Deleted' || !TASK_PRIORITIES.includes(priority)) return;
+  inTransaction(() => {
+    // Resolve the full matching set before edits can change priority membership.
+    for (const task of directoryTasks(state)) {
+      if (task.priority !== priority) setTaskPriority.run(priority, task.id, task.project_id);
     }
   });
 }
@@ -301,6 +314,11 @@ const server = createServer(async (request, response) => {
     } else if (request.method === 'POST' && ['/directory/delete', '/directory/restore'].includes(pathname)) {
       const state = directoryState(await readForm(request));
       setDirectoryDeletion(state, pathname === '/directory/delete');
+      redirect(response, directoryLocation(state));
+    } else if (request.method === 'POST' && pathname === '/directory/priority') {
+      const form = await readForm(request);
+      const state = directoryState(form);
+      setDirectoryPriority(state, form.get('visiblePriority'));
       redirect(response, directoryLocation(state));
     } else if (request.method === 'POST' && pathname === '/directory/due-range') {
       const form = await readForm(request);

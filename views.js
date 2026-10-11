@@ -107,7 +107,7 @@ export function projectListPage(projects, error = '', filter = 'Active', search 
 }
 
 export function taskDirectoryPage(tasks, owners, state, errors = {}) {
-  const { scope, filter, priority, range, search, order } = state;
+  const { scope, filter, priority, range, search, order, visiblePriority } = state;
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
@@ -116,12 +116,13 @@ export function taskDirectoryPage(tasks, owners, state, errors = {}) {
   const completedCount = tasks.filter((task) => task.completed).length;
   const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
   const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority) + hidden('order', order);
+  const bulkPriority = hidden('visiblePriority', visiblePriority);
   const boundaries = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
   const options = (values, selected) => values.map((value) => `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('');
   return page('Task directory', `<h1>Task directory</h1>
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <form class="task-filter" method="get" action="/directory">
-      ${boundaries}${hidden('search', search)}
+      ${boundaries}${hidden('search', search)}${bulkPriority}
       <label for="project-scope">Project scope</label>
       <select id="project-scope" name="scope" onchange="this.form.requestSubmit()">${options(['Active', 'Archived'], scope)}</select>
       <label for="task-filter">Task filter</label>
@@ -132,7 +133,7 @@ export function taskDirectoryPage(tasks, owners, state, errors = {}) {
       <select id="directory-order" name="order" onchange="this.form.requestSubmit()">${options(DIRECTORY_ORDERS, order)}</select>
     </form>
     <form class="task-filter" method="post" action="/directory/due-range">
-      ${selections}${boundaries}${hidden('search', search)}
+      ${selections}${boundaries}${hidden('search', search)}${bulkPriority}
       ${errors.dueRange ? `<p role="alert">${escapeHtml(errors.dueRange)}</p>` : ''}
       <label for="due-from">Due from</label>
       <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(errors.rangeFrom ?? range.from)}">
@@ -141,17 +142,23 @@ export function taskDirectoryPage(tasks, owners, state, errors = {}) {
       <button type="submit">Apply due range</button>
     </form>
     <form class="task-filter" method="get" action="/directory">
-      ${selections}${boundaries}
+      ${selections}${boundaries}${bulkPriority}
       <label for="directory-search">Directory search</label>
       <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}">
       <button type="submit">Search directory</button>
     </form>
     <form class="task-filter" method="post" action="/directory/complete">
-      ${selections}${boundaries}${hidden('search', search)}
+      ${selections}${boundaries}${hidden('search', search)}${bulkPriority}
       <button type="submit"${canComplete ? '' : ' disabled'}>Complete visible tasks</button>
       <button type="submit" formaction="/directory/reopen"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
       <button type="submit" formaction="/directory/delete"${canDelete ? '' : ' disabled'}>Delete visible tasks</button>
       <button type="submit" formaction="/directory/restore"${canRestore ? '' : ' disabled'}>Restore visible tasks</button>
+    </form>
+    <form class="task-filter" method="post" action="/directory/priority">
+      ${selections}${boundaries}${hidden('search', search)}
+      <label for="visible-tasks-priority">Visible tasks priority</label>
+      <select id="visible-tasks-priority" name="visiblePriority">${options(TASK_PRIORITIES, visiblePriority)}</select>
+      <button type="submit"${canDelete ? '' : ' disabled'}>Set visible priority</button>
     </form>
     <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     ${tasks.length === 0 ? '<p role="status">No matching tasks</p>' : ''}

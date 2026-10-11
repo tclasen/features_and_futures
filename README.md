@@ -201,3 +201,13 @@ summaries reflect the saved result. Archived scope, incompatible task filters,
 and empty results disable the corresponding controls and direct requests cannot
 change protected records. Deletion changes only the deletion flag, preserving
 all fields, ownership, stored order, and remembered return positions across restarts.
+
+Visible tasks priority offers Low, Normal, and High, initially Normal on each new
+directory visit. Set visible priority updates only matching live tasks in Active
+scope, resolving the current completion, priority, due range, and title search
+filters in one transaction. The chosen bulk priority and other directory controls
+are retained; membership, ordering, owner totals, and action eligibility refresh
+from the saved result. Archived scope, Deleted, and empty live results disable
+the action. Direct requests with missing or invalid priorities change no tasks.
+Only task priority changes; all other fields, project defaults, ownership, and
+remembered ordering remain intact through restarts and later moves.
