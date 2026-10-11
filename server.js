@@ -28,6 +28,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -106,12 +107,21 @@ const server = http.createServer(async (req, res) => {
       try {
         let body = '';
         for await (const chunk of req) body += chunk;
-        const completed = JSON.parse(body).completed;
+        const bodyData = JSON.parse(body);
         if (getProject.get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+        const taskId = Number(taskRoute[2]);
+        if (Object.hasOwn(bodyData, 'title')) {
+          const title = String(bodyData.title ?? '').trim();
+          if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
+          const result = renameTask.run(title, taskId, projectId);
+          if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+          return send(res, 200, JSON.stringify(listTasks.all(projectId).find(task => task.id === taskId)));
+        }
+        const completed = bodyData.completed;
         if (typeof completed !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid completion state' }));
-        const result = updateTask.run(completed ? 1 : 0, Number(taskRoute[2]), projectId);
+        const result = updateTask.run(completed ? 1 : 0, taskId, projectId);
         if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
-        return send(res, 200, JSON.stringify(listTasks.all(projectId).find(task => task.id === Number(taskRoute[2]))));
+        return send(res, 200, JSON.stringify(listTasks.all(projectId).find(task => task.id === taskId)));
       } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
     }
   }
