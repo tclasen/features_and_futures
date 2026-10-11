@@ -80,7 +80,8 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     // Remove fixture data so the original creation-order checks remain unchanged.
     await stop();
     const fixture = new DatabaseSync(join(directory, 'db.sqlite'));
-    fixture.exec("DELETE FROM tasks; DELETE FROM projects; DELETE FROM sqlite_sequence WHERE name IN ('projects', 'tasks')");
+    assert.deepEqual({ ...fixture.prepare('SELECT task_id, project_id, position FROM task_positions').get() }, { task_id: 1, project_id: 1, position: 1 });
+    fixture.exec("DELETE FROM task_positions; DELETE FROM tasks; DELETE FROM projects; DELETE FROM sqlite_sequence WHERE name IN ('projects', 'tasks')");
     fixture.close();
     await start();
     const initial = await (await fetch(base)).text();
