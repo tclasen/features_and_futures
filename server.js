@@ -113,6 +113,15 @@ const server = createServer(async (request, response) => {
     `).all(archived).map((project) => ({ ...project, archived: Boolean(project.archived) }));
     return sendJson(response, 200, projects);
   }
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = database.prepare(`
+      SELECT t.id, t.project_id AS projectId, p.name AS projectName, p.archived,
+        t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      ORDER BY p.id, t.sort_order, t.id
+    `).all().map((task) => ({ ...task, archived: Boolean(task.archived), completed: Boolean(task.completed), deleted: Boolean(task.deleted), dueDate: task.dueDate || '', notes: task.notes || '' }));
+    return sendJson(response, 200, rows);
+  }
   const projectExportPath = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
   if (projectExportPath && request.method === 'GET') {
     const projectId = Number(projectExportPath[1]);
@@ -321,7 +330,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { 'content-type': contentType });
     return response.end(content);
   }
-  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
+  if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/\d+$/.test(url.pathname))) {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return response.end(page);
   }

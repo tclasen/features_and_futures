@@ -1,5 +1,6 @@
 const listView = document.querySelector('#project-list');
 const detailView = document.querySelector('#project-detail');
+const directoryView = document.querySelector('#task-directory');
 const projectsContainer = document.querySelector('#projects');
 const form = document.querySelector('#create-project-form');
 const importForm = document.querySelector('#import-project-form');
@@ -96,6 +97,23 @@ async function setProjectArchived(projectId, archived) {
 }
 
 async function showRoute() {
+  if (location.pathname === '/directory') {
+    listView.hidden = true;
+    detailView.hidden = true;
+    directoryView.hidden = false;
+    document.querySelector('#directory-project-scope').value = 'Active';
+    document.querySelector('#directory-task-filter').value = 'All';
+    document.querySelector('#directory-priority-filter').value = 'All';
+    document.querySelector('#directory-due-from').value = '';
+    document.querySelector('#directory-due-through').value = '';
+    document.querySelector('#directory-search').value = '';
+    appliedDirectoryQuery = '';
+    appliedDirectoryFrom = '';
+    appliedDirectoryThrough = '';
+    await loadDirectory();
+    return;
+  }
+  directoryView.hidden = true;
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   if (!match) {
     listView.hidden = false;
@@ -130,6 +148,39 @@ async function showRoute() {
   listView.hidden = true;
   detailView.hidden = false;
   await loadTasks();
+}
+
+let appliedDirectoryQuery = '';
+let appliedDirectoryFrom = '';
+let appliedDirectoryThrough = '';
+async function loadDirectory() {
+  const response = await fetch('/api/directory');
+  const tasks = await response.json();
+  const results = document.querySelector('#directory-results');
+  const scope = document.querySelector('#directory-project-scope').value;
+  const taskFilter = document.querySelector('#directory-task-filter').value;
+  const priorityFilter = document.querySelector('#directory-priority-filter').value;
+  results.replaceChildren();
+  for (const task of tasks) {
+    if (task.archived !== (scope === 'Archived')) continue;
+    if (taskFilter === 'Deleted' ? !task.deleted : task.deleted) continue;
+    if (taskFilter === 'Open' && task.completed) continue;
+    if (taskFilter === 'Completed' && !task.completed) continue;
+    if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+    if ((appliedDirectoryFrom || appliedDirectoryThrough) && !task.dueDate) continue;
+    if (appliedDirectoryFrom && task.dueDate < appliedDirectoryFrom) continue;
+    if (appliedDirectoryThrough && task.dueDate > appliedDirectoryThrough) continue;
+    if (!normalizeSearchText(task.title).includes(normalizeSearchText(appliedDirectoryQuery))) continue;
+    const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.className = 'task-row';
+    const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
+    const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
+    const completion = document.createElement('span'); completion.dataset.testid = 'directory-task-completion'; completion.textContent = task.completed ? 'Completed' : 'Open';
+    const priority = document.createElement('span'); priority.dataset.testid = 'directory-task-priority'; priority.textContent = task.priority;
+    const dueDate = document.createElement('span'); dueDate.dataset.testid = 'directory-task-due-date'; dueDate.textContent = task.dueDate;
+    const notes = document.createElement('span'); notes.dataset.testid = 'directory-task-notes'; notes.textContent = task.notes;
+    const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Open project'; open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
+    row.append(title, owner, completion, priority, dueDate, notes, open); results.append(row);
+  }
 }
 
 async function loadTasks() {
@@ -415,6 +466,33 @@ importForm.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
+document.querySelector('#directory-projects').addEventListener('click', () => navigate('/'));
+for (const selector of ['#directory-project-scope', '#directory-task-filter', '#directory-priority-filter']) {
+  document.querySelector(selector).addEventListener('change', loadDirectory);
+}
+document.querySelector('#directory-search-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  appliedDirectoryQuery = document.querySelector('#directory-search').value.trim();
+  document.querySelector('#directory-search').value = appliedDirectoryQuery;
+  await loadDirectory();
+});
+document.querySelector('#directory-apply-due-range').addEventListener('click', async () => {
+  const from = document.querySelector('#directory-due-from').value.trim();
+  const through = document.querySelector('#directory-due-through').value.trim();
+  const alert = document.querySelector('#directory-range-alert');
+  if ((from && !isValidCalendarDate(from)) || (through && !isValidCalendarDate(through))) {
+    alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return;
+  }
+  if (from && through && from > through) {
+    alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return;
+  }
+  appliedDirectoryFrom = from; appliedDirectoryThrough = through;
+  document.querySelector('#directory-due-from').value = from;
+  document.querySelector('#directory-due-through').value = through;
+  alert.hidden = true;
+  await loadDirectory();
+});
 document.querySelector('#download-project').addEventListener('click', async () => {
   if (currentProjectId === null) return;
   const response = await fetch(`/api/projects/${currentProjectId}/export`);
