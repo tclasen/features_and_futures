@@ -101,14 +101,18 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let data;
     try { data = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
-    if (typeof data.completed !== 'boolean' || !Array.isArray(data.taskIds) || data.taskIds.some((id) => !Number.isInteger(id))) {
+    const validCompletion = typeof data.completed === 'boolean';
+    const validDeletion = typeof data.deleted === 'boolean';
+    if ((!validCompletion && !validDeletion) || (validCompletion && validDeletion) || !Array.isArray(data.taskIds) || data.taskIds.some((id) => !Number.isInteger(id))) {
       return sendJson(res, 400, { error: 'Invalid bulk update' });
     }
-    const update = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+    const column = validDeletion ? 'deleted' : 'completed';
+    const liveOnly = validCompletion ? 'AND deleted = 0' : '';
+    const update = database.prepare(`UPDATE tasks SET ${column} = ? WHERE id = ? ${liveOnly}
       AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const id of new Set(data.taskIds)) update.run(data.completed ? 1 : 0, id);
+      for (const id of new Set(data.taskIds)) update.run(data[validDeletion ? 'deleted' : 'completed'] ? 1 : 0, id);
       database.exec('COMMIT');
     } catch (error) {
       database.exec('ROLLBACK');

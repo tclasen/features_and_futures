@@ -125,6 +125,8 @@ const directoryEmpty = document.querySelector('#directory-empty');
 const directorySummary = document.querySelector('[data-testid="directory-summary"]');
 const completeVisibleButton = document.querySelector('#complete-visible-tasks');
 const reopenVisibleButton = document.querySelector('#reopen-visible-tasks');
+const deleteVisibleButton = document.querySelector('#delete-visible-tasks');
+const restoreVisibleButton = document.querySelector('#restore-visible-tasks');
 let directoryQuery = '';
 let directoryRange = { from: '', through: '' };
 let visibleDirectoryTasks = [];
@@ -133,6 +135,8 @@ async function loadDirectory() {
   directoryEmpty.hidden = true;
   completeVisibleButton.disabled = true;
   reopenVisibleButton.disabled = true;
+  deleteVisibleButton.disabled = true;
+  restoreVisibleButton.disabled = true;
   const response = await fetch('/api/directory');
   if (!response.ok) return;
   const tasks = await response.json();
@@ -231,6 +235,8 @@ async function loadDirectory() {
     ? visibleDirectoryTasks.filter((task) => !task.deleted) : [];
   completeVisibleButton.disabled = !eligible.some((task) => !task.completed);
   reopenVisibleButton.disabled = !eligible.some((task) => task.completed);
+  deleteVisibleButton.disabled = directoryScope.value !== 'Active' || directoryTaskFilter.value === 'Deleted' || !visibleDirectoryTasks.some((task) => !task.deleted);
+  restoreVisibleButton.disabled = directoryScope.value !== 'Active' || directoryTaskFilter.value !== 'Deleted' || !visibleDirectoryTasks.some((task) => task.deleted);
 }
 
 async function updateVisibleDirectoryTasks(completed) {
@@ -246,6 +252,20 @@ async function updateVisibleDirectoryTasks(completed) {
 }
 completeVisibleButton.addEventListener('click', () => updateVisibleDirectoryTasks(true));
 reopenVisibleButton.addEventListener('click', () => updateVisibleDirectoryTasks(false));
+
+async function updateVisibleDirectoryDeletion(deleted) {
+  const taskIds = visibleDirectoryTasks.filter((task) => task.deleted !== deleted).map((task) => task.id);
+  if (!taskIds.length) return;
+  deleteVisibleButton.disabled = true;
+  restoreVisibleButton.disabled = true;
+  const response = await fetch('/api/directory/bulk', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ taskIds, deleted }),
+  });
+  if (response.ok) await loadDirectory();
+}
+deleteVisibleButton.addEventListener('click', () => updateVisibleDirectoryDeletion(true));
+restoreVisibleButton.addEventListener('click', () => updateVisibleDirectoryDeletion(false));
 
 for (const control of [directoryScope, directoryTaskFilter, directoryPriority, directoryOrder]) control.addEventListener('change', loadDirectory);
 document.querySelector('#directory-search-form').addEventListener('submit', (event) => { event.preventDefault(); directoryQuery = directorySearch.value.trim(); loadDirectory(); });
