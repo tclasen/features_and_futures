@@ -23,10 +23,13 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -87,9 +90,15 @@ const server = createServer(async (request, response) => {
     for await (const chunk of request) input += chunk;
     let data;
     try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
-    if (typeof data.completed !== 'boolean') return send(response, 400, { error: 'Invalid completion state' });
-    updateTask.run(data.completed ? 1 : 0, taskId, projectId);
-    return send(response, 200, { ok: true });
+    if (typeof data.completed === 'boolean') {
+      updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+      return send(response, 200, { ok: true });
+    }
+    if (['Low', 'Normal', 'High'].includes(data.priority)) {
+      updateTaskPriority.run(data.priority, taskId, projectId);
+      return send(response, 200, { ok: true });
+    }
+    return send(response, 400, { error: 'Invalid task update' });
   }
   const taskRenameRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/rename$/);
   if (taskRenameRoute && request.method === 'PATCH') {
