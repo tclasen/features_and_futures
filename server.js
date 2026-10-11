@@ -27,6 +27,7 @@ try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DE
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -49,8 +50,8 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed=1) AS completed_count,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id) AS total_count
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.deleted=0 AND t.completed=1) AS completed_count,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.deleted=0) AS total_count
       FROM projects p ORDER BY p.id`).all());
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
@@ -77,7 +78,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
+    return json(res, 200, db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
       FROM tasks t JOIN task_positions p ON p.task_id=t.id AND p.project_id=t.project_id
       WHERE t.project_id = ? ORDER BY p.position, t.id`).all(projectId));
   }
@@ -99,6 +100,15 @@ const server = createServer(async (req, res) => {
     db.prepare('INSERT INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, projectId, nextPosition);
     return json(res, 201, { id: Number(result.lastInsertRowid), title, completed: 0, priority });
   }
+  const deletionMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/(delete|restore)$/);
+  if (deletionMatch && req.method === 'PATCH') {
+    const taskId = Number(deletionMatch[1]);
+    const task = db.prepare('SELECT project_id, deleted FROM tasks WHERE id=?').get(taskId);
+    if (!task) return json(res, 404, { error: 'Task not found' });
+    if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
+    db.prepare('UPDATE tasks SET deleted=? WHERE id=?').run(deletionMatch[2] === 'delete' ? 1 : 0, taskId);
+    return json(res, 200, { ok: true });
+  }
   const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
   if (moveMatch && req.method === 'PATCH') {
     let body = '';
@@ -106,8 +116,9 @@ const server = createServer(async (req, res) => {
     let data;
     try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
     const taskId = Number(moveMatch[1]);
-    const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(taskId);
+    const task = db.prepare('SELECT project_id, deleted FROM tasks WHERE id=?').get(taskId);
     if (!task) return json(res, 404, { error: 'Task not found' });
+    if (task.deleted) return json(res, 403, { error: 'Task is deleted' });
     if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
     const destination = db.prepare('SELECT id FROM projects WHERE id=? AND archived=0').get(Number(data.destination_id));
     if (!destination || destination.id === task.project_id) return json(res, 400, { error: 'Invalid destination project' });
@@ -125,8 +136,9 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let data;
     try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
-    const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(Number(taskMatch[1]));
+    const task = db.prepare('SELECT project_id, deleted FROM tasks WHERE id=?').get(Number(taskMatch[1]));
     if (!task) return json(res, 404, { error: 'Task not found' });
+    if (task.deleted) return json(res, 403, { error: 'Task is deleted' });
     if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
     if (Object.hasOwn(data, 'notes')) {
       if (typeof data.notes !== 'string') return json(res, 400, { error: 'Invalid notes' });
