@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-test('moves append, preserve data and filters, validate ownership, and persist after restart', async () => {
+test('moves remember project order, preserve data and filters, validate ownership, and persist after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
   const dbPath = join(directory, 'db.sqlite');
   // Exercise migration of old task order as well as new-task insertion after moves.
@@ -95,7 +95,7 @@ test('moves append, preserve data and filters, validate ownership, and persist a
     assert.match(movedRow, /name="dueDate" type="text" value="2024-02-29"/);
     assert.match(movedRow, /name="destination">/);
     await post('/projects/2/tasks/1/move', { destination: '1' });
-    assert.deepEqual(ids(await html('/projects/1')), [2, 1]);
+    assert.deepEqual(ids(await html('/projects/1')), [1, 2]);
     await post('/projects/1/tasks/2/move', { destination: '3' });
     assert.match(await html('/projects/3'), /name="dueDate" type="text" value=""/);
     await stop();
@@ -103,6 +103,38 @@ test('moves append, preserve data and filters, validate ownership, and persist a
     assert.deepEqual(ids(await html('/projects/1')), [1]);
     assert.deepEqual(ids(await html('/projects/2')), [3, 4]);
     assert.deepEqual(ids(await html('/projects/3')), [2]);
+
+    // Both original source positions remain reserved while their tasks are away.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual(ids(await html('/projects/2')), [3, 1, 4]);
+    await post('/projects/1/tasks', { title: 'Created while originals away' });
+    await post('/projects/3/tasks/2/rename', { title: 'Updated second' });
+    await post('/projects/3/tasks/2/priority', { priority: 'Low' });
+    await post('/projects/3/tasks/2/due-date', { dueDate: '0001-01-01' });
+    await post('/projects/1/rename', { name: 'Renamed source' });
+    await post('/projects/1/archive');
+    assert.equal((await post('/projects/3/tasks/2/move', { destination: '1' })).status, 400);
+    await stop();
+    await start();
+    await post('/projects/1/restore');
+    // Return in reverse order, across restarts, without restoring stale field data.
+    await post('/projects/3/tasks/2/move', { destination: '1' });
+    assert.deepEqual(ids(await html('/projects/1')), [2, 5]);
+    await stop();
+    await start();
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(ids(await html('/projects/1')), [1, 2, 5]);
+    text = await html('/projects/1');
+    assert.match(text, /<h1>Renamed source<\/h1>/);
+    assert.match(text, /aria-label="Complete Updated second"/);
+    assert.match(text, /<option selected>Low<\/option>/);
+    assert.match(text, /name="dueDate" type="text" value="0001-01-01"/);
+    assert.match(text, /aria-label="Complete Old first" checked/);
+    assert.match(await html('/'), /1\/3 completed/);
+    await stop();
+    await start();
+    assert.deepEqual(ids(await html('/projects/1')), [1, 2, 5]);
+    assert.deepEqual(ids(await html('/projects/2')), [3, 4]);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });

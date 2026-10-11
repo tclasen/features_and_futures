@@ -39,12 +39,41 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
+// Keep positions even while a task is away. Seed current positions on migration.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 const destinationsFor = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+const rememberDestination = db.prepare(`
+  INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+  SELECT id, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?)
+  FROM tasks WHERE id = ? AND project_id = ?
+`);
 const moveTask = db.prepare(`
   UPDATE tasks SET project_id = ?,
-    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    position = (SELECT position FROM task_positions WHERE task_id = tasks.id AND project_id = ?)
   WHERE id = ? AND project_id = ?
 `);
+
+function transaction(operation) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = operation();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed
@@ -58,7 +87,9 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND 
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
+const rememberCreatedTask = db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks WHERE id = ?`);
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -437,7 +468,10 @@ const server = http.createServer(async (request, response) => {
               sendHtml(response, 400, projectPage(project, filter, 'Choose an active destination project', selectedPriority, dueRange(body)));
               return;
             }
-            result = moveTask.run(destination.id, destination.id, taskMatch[2], project.id);
+            result = transaction(() => {
+              rememberDestination.run(destination.id, destination.id, taskMatch[2], project.id);
+              return moveTask.run(destination.id, destination.id, taskMatch[2], project.id);
+            });
           } else if (taskMatch[3] === 'due-date') {
             result = setTaskDueDate.run(dueDate, taskMatch[2], project.id);
           } else if (taskMatch[3] === 'rename') {
@@ -457,7 +491,10 @@ const server = http.createServer(async (request, response) => {
             sendHtml(response, 400, projectPage(project, filter, 'Task title is required', selectedPriority, dueRange(body)));
             return;
           }
-          createTask.run(project.id, title, project.default_priority, project.id);
+          transaction(() => {
+            const task = createTask.run(project.id, title, project.default_priority, project.id);
+            rememberCreatedTask.run(task.lastInsertRowid);
+          });
         }
         redirect(response, projectLocation(project.id, filter, selectedPriority, dueRange(body)));
         return;
