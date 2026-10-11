@@ -58,8 +58,11 @@ async function renderTasks(project) {
   form.append(element('label', 'Task title', { for: 'task-title' }), controls);
   const filter = element('select', '', { id: 'task-filter' });
   for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+  const priorityFilter = element('select', '', { id: 'priority-filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
   const filters = element('div', '', { class: 'filters' });
-  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter);
+  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter,
+    element('label', 'Priority filter', { for: 'priority-filter' }), priorityFilter);
   const list = element('section', '', { 'aria-label': 'Tasks', class: 'tasks' });
   app.append(form, element('p', '', { role: 'alert', hidden: '' }), filters, list);
   let tasks = [];
@@ -67,6 +70,7 @@ async function renderTasks(project) {
     list.replaceChildren();
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       const row = element('div', '', { 'data-testid': 'task-row', class: 'task-row' });
       const checkbox = element('input', '', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
       checkbox.checked = task.completed;
@@ -100,10 +104,7 @@ async function renderTasks(project) {
           }));
           showAlert('');
         } catch (error) { showAlert(error.message); }
-        finally {
-          priority.value = task.priority;
-          priority.disabled = Boolean(project.archived);
-        }
+        finally { drawTasks(); }
       });
       priorityControls.append(element('label', 'Task priority', { for: priority.id }), priority);
       row.append(priorityControls);
@@ -136,6 +137,7 @@ async function renderTasks(project) {
     }
   }
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (project.archived) return;

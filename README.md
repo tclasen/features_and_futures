@@ -37,4 +37,10 @@ New and existing tasks default to Normal. Priorities persist independently of
 task titles and completion; archived projects disable priority changes until
 restored.
 
+Use Priority filter to show All, Low, Normal, or High priorities together with
+Task filter. Tasks must match both filters and keep their creation order.
+Completion and priority edits immediately refresh the matching rows while
+preserving both filter selections. Both filters work in archived projects;
+filtering leaves saved tasks and completion summaries unchanged.
+
 Run the integration checks with `npm test`.
