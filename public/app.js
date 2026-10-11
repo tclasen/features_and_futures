@@ -437,6 +437,31 @@ async function renderProject(id, viewState = {}) {
       });
       row.append(dueDateForm);
 
+      const notesForm = element('form', 'task-notes-form');
+      const notesInput = element('textarea');
+      notesInput.value = task.notes || '';
+      notesInput.setAttribute('aria-label', 'Task notes');
+      notesInput.disabled = Boolean(project.archived);
+      const notesButton = element('button', 'secondary', 'Save notes');
+      notesButton.type = 'submit';
+      notesButton.disabled = Boolean(project.archived);
+      notesForm.append(notesInput, notesButton);
+      notesForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        alert.hidden = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          await renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      row.append(notesForm);
+
       const destinationLabel = element('label', 'task-destination-label', 'Destination project');
       const destinationSelect = element('select', 'task-destination');
       destinationSelect.setAttribute('aria-label', 'Destination project');
