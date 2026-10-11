@@ -154,11 +154,17 @@
           const mode = filter.value;
           const selectedPriority = priorityFilter.value;
           const hasDueRange = Boolean(appliedDueFrom || appliedDueThrough);
-          const visible = tasks.filter((task) =>
-            (mode === 'Deleted' ? task.deleted : !task.deleted && (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed))) &&
-            (selectedPriority === 'All' || task.priority === selectedPriority) &&
-            normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskSearch)) &&
-            (!hasDueRange || (task.due_date && (!appliedDueFrom || task.due_date >= appliedDueFrom) && (!appliedDueThrough || task.due_date <= appliedDueThrough))));
+          const visible = tasks.filter((task) => {
+            const matchesLifecycle = mode === 'Deleted'
+              ? task.deleted
+              : !task.deleted && (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed));
+            const matchesPriority = selectedPriority === 'All' || task.priority === selectedPriority;
+            const matchesSearch = normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskSearch));
+            const matchesDueRange = !hasDueRange || (Boolean(task.due_date) &&
+              (!appliedDueFrom || task.due_date >= appliedDueFrom) &&
+              (!appliedDueThrough || task.due_date <= appliedDueThrough));
+            return matchesLifecycle && matchesPriority && matchesSearch && matchesDueRange;
+          });
           list.innerHTML = visible.map((task) => { const locked = project.archived || task.deleted; return `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${locked ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${locked ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${locked ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${locked ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${locked ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${locked ? 'disabled' : ''}>Rename task</button><textarea data-task-notes-id="${task.id}" aria-label="Task notes" ${locked ? 'disabled' : ''}>${escapeText(task.notes || '')}</textarea><button type="button" data-save-notes-task-id="${task.id}" ${locked ? 'disabled' : ''}>Save notes</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${locked || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${locked || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button><button type="button" data-task-state-id="${task.id}" ${project.archived ? 'disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button></div>`; }).join('');
         };
         const loadTasks = async () => {
