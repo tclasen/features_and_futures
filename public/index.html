@@ -45,6 +45,7 @@
         <div id="alert" role="alert" aria-live="polite"></div>
         <label>Task filter<select id="task-filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
         <label>Priority filter<select id="priority-filter" aria-label="Priority filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label>
+        <div id="due-range"><label>Due from<input id="due-from" aria-label="Due from"></label><label>Due through<input id="due-through" aria-label="Due through"></label><button type="button" id="apply-due-range">Apply due range</button></div>
         <section id="tasks" aria-label="Tasks"></section>`;
       app.querySelector('#project-name').textContent = project.name;
       app.querySelector('#back').addEventListener('click', () => go('/'));
@@ -75,6 +76,21 @@
       });
       const filter = app.querySelector('#task-filter');
       const priorityFilter = app.querySelector('#priority-filter');
+      let appliedRange = { from: '', through: '' };
+      function validDate(value) {
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return false;
+        const [, y, m, d] = match.map(Number);
+        const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+        return y >= 1 && m >= 1 && m <= 12 && d >= 1 && d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+      }
+      app.querySelector('#apply-due-range').addEventListener('click', async () => {
+        const from = app.querySelector('#due-from').value.trim();
+        const through = app.querySelector('#due-through').value.trim();
+        if ((from && !validDate(from)) || (through && !validDate(through))) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; return; }
+        if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; return; }
+        appliedRange = { from, through }; alert.textContent = ''; await renderTasks();
+      });
       if (project.archived) form.querySelector('button').disabled = true;
       async function renderTasks() {
         const response = await fetch(`/api/projects/${project.id}/tasks`);
@@ -83,7 +99,8 @@
         const list = app.querySelector('#tasks'); list.replaceChildren();
         for (const task of tasks.filter(item =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(item.completed)) &&
-          (priorityFilter.value === 'All' || item.priority === priorityFilter.value)
+          (priorityFilter.value === 'All' || item.priority === priorityFilter.value) &&
+          ((!appliedRange.from && !appliedRange.through) || (Boolean(item.dueDate) && (!appliedRange.from || item.dueDate >= appliedRange.from) && (!appliedRange.through || item.dueDate <= appliedRange.through)))
         )) {
           const row = document.createElement('div'); row.className = 'task-row'; row.dataset.testid = 'task-row';
           const title = document.createElement('span'); title.textContent = task.title;
