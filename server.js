@@ -294,13 +294,15 @@ const server = createServer(async (request, response) => {
     const taskId = Number(taskMatch[2]);
     const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
-    if (project?.archived) return json(response, 409, { error: 'Archived project tasks cannot be changed' });
     let body = '';
     for await (const chunk of request) body += chunk;
     try {
       const input = JSON.parse(body);
       if (!input || typeof input !== 'object' || Array.isArray(input)) {
         return json(response, 400, { error: 'Invalid request body' });
+      }
+      if (project.archived && !Object.hasOwn(input, 'priority')) {
+        return json(response, 409, { error: 'Archived project tasks cannot be changed' });
       }
       const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?')
         .get(taskId, projectId);

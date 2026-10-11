@@ -97,7 +97,7 @@ async function showProject(id) {
   appliedDueRange = { from: '', through: '' };
   dueRangeAlert.hidden = true;
   document.querySelector('#detail-heading').textContent = project.name;
-  document.querySelector('#download-project').href = `/api/projects/${encodeURIComponent(id)}/export`;
+  document.querySelector('#download-project').dataset.projectId = id;
   activeProjectId = id;
   activeProjectArchived = project.archived;
   activeProjectDefaultPriority = project.defaultPriority;
@@ -199,7 +199,7 @@ async function refreshTasks() {
       priority.append(option);
     }
     priority.value = task.priority;
-    priority.disabled = activeProjectArchived || isDeleted;
+    priority.disabled = isDeleted;
     priority.addEventListener('change', async () => {
       const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
         method: 'PATCH',
@@ -361,6 +361,23 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#download-project').addEventListener('click', async (event) => {
+  const projectId = event.currentTarget.dataset.projectId;
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/export`);
+  if (!response.ok) {
+    taskAlert.textContent = 'Unable to download project';
+    taskAlert.hidden = false;
+    return;
+  }
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const download = document.createElement('a');
+  download.href = objectUrl;
+  download.download = 'workboard-project.json';
+  document.body.append(download);
+  download.click();
+  download.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+});
 document.querySelector('#project-search-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   appliedProjectQuery = projectSearchInput.value.trim();
