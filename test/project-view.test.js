@@ -33,7 +33,8 @@ class Element {
     const stack = [this];
     for (const token of html.match(/<[^>]+>|[^<]+/g) || []) {
       if (token.startsWith('</')) {
-        stack.pop();
+        const element = stack.pop();
+        if (element.tag === 'select') element.value = element.children[0].textContent;
       } else if (token.startsWith('<')) {
         const tag = token.match(/^<(\w+)/)[1];
         const element = new Element(tag);
@@ -48,8 +49,6 @@ class Element {
         stack.at(-1).textContent += token.trim();
       }
     }
-    const select = this.querySelector('select');
-    if (select) select.value = select.children[0].textContent;
   }
   setAttribute(name, value) { this.attributes[name] = value; }
   querySelector(selector) {
@@ -115,6 +114,150 @@ async function filter(app, value) {
   await app.querySelector('select').emit('change');
 }
 const project = () => ({ id: 1, name: 'Archive lifecycle', archived: false, total_count: 1, completed_count: 1 });
+
+async function priorityFilter(app, value) {
+  const select = app.querySelector('#priority-filter');
+  select.value = value;
+  await select.emit('change');
+}
+
+test('completion and priority filters intersect independently and preserve creation order and data', async () => {
+  const projects = [{ ...project(), total_count: 6, completed_count: 3 }];
+  const pending = { tasks: [
+    { id: 1, title: 'Low open', completed: false, priority: 'Low' },
+    { id: 2, title: 'High completed', completed: true, priority: 'High' },
+    { id: 3, title: 'Normal open', completed: false, priority: 'Normal' },
+    { id: 4, title: 'Low completed', completed: true, priority: 'Low' },
+    { id: 5, title: 'High open', completed: false, priority: 'High' },
+    { id: 6, title: 'Normal completed', completed: true, priority: 'Normal' },
+  ] };
+  const original = structuredClone(pending.tasks);
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  const priority = app.querySelector('#priority-filter');
+  assert.deepEqual(priority.children.map(option => option.textContent), ['All', 'Low', 'Normal', 'High']);
+  assert.equal(priority.value, 'All');
+  const cases = [
+    ['All', 'All', original.map(task => task.title)],
+    ['All', 'Low', ['Low open', 'Low completed']],
+    ['All', 'Normal', ['Normal open', 'Normal completed']],
+    ['All', 'High', ['High completed', 'High open']],
+    ['Open', 'All', ['Low open', 'Normal open', 'High open']],
+    ['Open', 'Low', ['Low open']],
+    ['Open', 'Normal', ['Normal open']],
+    ['Open', 'High', ['High open']],
+    ['Completed', 'All', ['High completed', 'Low completed', 'Normal completed']],
+    ['Completed', 'Low', ['Low completed']],
+    ['Completed', 'Normal', ['Normal completed']],
+    ['Completed', 'High', ['High completed']],
+  ];
+  for (const [completion, value, titles] of cases) {
+    const previousPriority = priority.value;
+    await filter(app, completion);
+    assert.equal(priority.value, previousPriority);
+    await priorityFilter(app, value);
+    assert.equal(app.querySelector('#task-filter').value, completion);
+    assert.deepEqual(rows(app).map(row => row.children[0].textContent), titles);
+  }
+  assert.deepEqual(pending.tasks, original);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  assert.ok(control(rows(app)[0], '3/6 completed'));
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#task-filter').value, 'All');
+  assert.equal(app.querySelector('#priority-filter').value, 'All');
+  assert.equal(rows(app).length, 6);
+});
+
+test('saved edits reapply both current filters, including filter changes during requests', async () => {
+  const projects = [{ ...project(), total_count: 2, completed_count: 0 }];
+  const pending = { tasks: [
+    { id: 1, title: 'First', completed: false, priority: 'High' },
+    { id: 2, title: 'Second', completed: false, priority: 'High' },
+  ] };
+  const storage = new Map();
+  let app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await filter(app, 'Open');
+  await priorityFilter(app, 'High');
+  const rename = rows(app)[0].querySelector('form');
+  rename.querySelector('input').value = '  Renamed  ';
+  await rename.emit('submit');
+  assert.equal(rows(app)[0].children[0].textContent, 'Renamed');
+  assert.equal(rows(app)[0].querySelector('input').attributes['aria-label'], 'Complete Renamed');
+  assert.equal(app.querySelector('#task-filter').value, 'Open');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  let priority = rows(app)[0].querySelector('select');
+  priority.value = 'Low';
+  await priority.emit('change');
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent), ['Second']);
+  assert.equal(app.querySelector('#task-filter').value, 'Open');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  const checkbox = rows(app)[0].querySelector('input');
+  checkbox.checked = true;
+  await checkbox.emit('change');
+  assert.equal(rows(app).length, 0);
+  assert.equal(app.querySelector('#task-filter').value, 'Open');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  await filter(app, 'Completed');
+  assert.equal(rows(app)[0].children[0].textContent, 'Second');
+  let release;
+  pending.wait = new Promise(resolve => { release = resolve; });
+  priority = rows(app)[0].querySelector('select');
+  priority.value = 'Normal';
+  const save = priority.emit('change');
+  await priorityFilter(app, 'Normal');
+  assert.equal(rows(app).length, 0);
+  release();
+  await save;
+  assert.equal(rows(app)[0].children[0].textContent, 'Second');
+  assert.equal(app.querySelector('#task-filter').value, 'Completed');
+  assert.equal(app.querySelector('#priority-filter').value, 'Normal');
+  delete pending.wait;
+  app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent), ['Renamed', 'Second']);
+  assert.deepEqual(rows(app).map(row => row.querySelector('select').value), ['Low', 'Normal']);
+  assert.deepEqual(rows(app).map(row => row.querySelector('input').checked), [false, true]);
+});
+
+test('both filters remain usable in archived projects and restoration preserves tasks', async () => {
+  const projects = [{ ...project(), archived: true, total_count: 2 }];
+  const pending = { tasks: [
+    { id: 1, title: 'Open low', completed: false, priority: 'Low' },
+    { id: 2, title: 'Completed high', completed: true, priority: 'High' },
+  ] };
+  const original = structuredClone(pending.tasks);
+  const app = await browser(new Map(), projects, pending);
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#task-filter').disabled, false);
+  assert.equal(app.querySelector('#priority-filter').disabled, false);
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'Low');
+  assert.equal(rows(app).length, 0);
+  await priorityFilter(app, 'High');
+  assert.equal(rows(app)[0].children[0].textContent, 'Completed high');
+  assert.equal(rows(app)[0].querySelector('input').disabled, true);
+  assert.equal(rows(app)[0].querySelector('select').disabled, true);
+  assert.equal(rows(app)[0].querySelector('form').querySelector('input').disabled, true);
+  assert.equal(rows(app)[0].querySelector('form').querySelector('button').disabled, true);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  assert.ok(control(rows(app)[0], '1/2 completed'));
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(rows(app).length, 2);
+  for (const row of rows(app)) assert.equal(row.querySelector('select').disabled, false);
+  assert.deepEqual(pending.tasks, original);
+});
 
 test('archive and restore update the list even if the filter changes before the request finishes', async () => {
   const projects = [project()];

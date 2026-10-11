@@ -1,5 +1,11 @@
 # Workboard
 
+Project pages provide Task filter (All, Open, Completed) and Priority filter
+(All, Low, Normal, High). Both initially select All and display tasks matching
+both selections in creation order. Edits immediately reapply both filters without
+resetting either selection; renaming preserves membership. Filtering leaves saved
+task data and completion summaries unchanged. Both filters work in archived projects.
+
 Each task has a Task priority selector with Low, Normal, and High options.
 Existing and new tasks default to Normal. Changes persist across reloads and
 server restarts, and preserve task titles, completion, ownership, order, and
@@ -53,3 +59,6 @@ Browser-script regression tests use a DOM adapter to check filter retention,
 archived-page controls, and switching filters during archive/restore requests.
 Priority checks cover option order, defaults, independent updates, validation,
 rename and filter preservation, migration, restart persistence, and archive/restore.
+Combined-filter checks cover every completion/priority combination, creation order,
+selection retention during edits and pending requests, defaults on opening a
+project, and filtering archived projects without changing their saved data.
