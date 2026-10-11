@@ -142,17 +142,32 @@ const server = createServer(async (request, response) => {
 
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
-    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(taskMatch[1]));
+    const projectId = Number(taskMatch[1]);
+    const taskId = Number(taskMatch[2]);
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(response, 404, { error: 'Project not found' });
     if (project?.archived) return json(response, 409, { error: 'Archived project tasks cannot be changed' });
     let body = '';
     for await (const chunk of request) body += chunk;
     try {
       const input = JSON.parse(body);
+      if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return json(response, 400, { error: 'Invalid request body' });
+      }
+      const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?')
+        .get(taskId, projectId);
+      if (!task) return json(response, 404, { error: 'Task not found' });
+
+      if (Object.hasOwn(input, 'title')) {
+        const title = typeof input.title === 'string' ? input.title.trim() : '';
+        if (!title) return json(response, 400, { error: 'Task title is required' });
+        database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+        return json(response, 200, { id: taskId, projectId, title, completed: Boolean(task.completed) });
+      }
       if (typeof input.completed !== 'boolean') return json(response, 400, { error: 'Completion state is required' });
-      const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
-        .run(input.completed ? 1 : 0, Number(taskMatch[2]), Number(taskMatch[1]));
-      if (!result.changes) return json(response, 404, { error: 'Task not found' });
-      return json(response, 200, { id: Number(taskMatch[2]), projectId: Number(taskMatch[1]), completed: input.completed });
+      database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
+        .run(input.completed ? 1 : 0, taskId, projectId);
+      return json(response, 200, { id: taskId, projectId, completed: input.completed });
     } catch (error) {
       if (error instanceof SyntaxError) return json(response, 400, { error: 'Invalid JSON' });
       throw error;

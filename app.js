@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskList = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const taskRenameAlert = document.querySelector('#task-rename-alert');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project-form');
@@ -111,7 +112,41 @@ async function refreshTasks() {
       }
       await refreshTasks();
     });
-    row.append(title, checkbox);
+
+    const renameForm = document.createElement('form');
+    renameForm.className = 'task-rename-form';
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.value = task.title;
+    renameInput.disabled = activeProjectArchived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = activeProjectArchived;
+    renameForm.append(renameInput, renameButton);
+    renameForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const newTitle = renameInput.value.trim();
+      if (!newTitle) {
+        taskRenameAlert.textContent = 'Task title is required';
+        taskRenameAlert.hidden = false;
+        return;
+      }
+      taskRenameAlert.hidden = true;
+      const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (!update.ok) {
+        taskRenameAlert.textContent = 'Unable to rename task';
+        taskRenameAlert.hidden = false;
+        return;
+      }
+      await refreshTasks();
+    });
+    row.append(title, renameForm, checkbox);
     taskList.append(row);
   }
 }
@@ -191,6 +226,7 @@ taskForm.addEventListener('submit', async (event) => {
     return;
   }
   taskAlert.hidden = true;
+  taskRenameAlert.hidden = true;
   const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
