@@ -1,3 +1,5 @@
+import { isValidDueDate } from '/date-validation.js';
+
 const app = document.querySelector('#app');
 
 function element(tag, text) {
@@ -179,7 +181,7 @@ function taskPriorityControl(project, task, endpoint, onPriorityChange) {
   return controls;
 }
 
-function taskDueDateForm(project, task, endpoint) {
+function taskDueDateForm(project, task, endpoint, onDueDateChange) {
   const form = element('form');
   const label = element('label', 'Task due date');
   const input = element('input');
@@ -206,6 +208,7 @@ function taskDueDateForm(project, task, endpoint) {
       task.due_date = updated.due_date;
       input.value = task.due_date;
       app.querySelector('[role="alert"]')?.remove();
+      onDueDateChange();
     } catch (error) {
       input.value = task.due_date ?? '';
       showError(error.message);
@@ -286,9 +289,27 @@ async function renderTasks(project) {
   const filterControls = element('div');
   filterControls.className = 'task-filter';
   filterControls.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
+  const dueRangeForm = element('form');
+  const dueFromLabel = element('label', 'Due from');
+  const dueFrom = element('input');
+  dueFrom.id = 'due-from';
+  dueFrom.type = 'text';
+  dueFromLabel.htmlFor = dueFrom.id;
+  const dueThroughLabel = element('label', 'Due through');
+  const dueThrough = element('input');
+  dueThrough.id = 'due-through';
+  dueThrough.type = 'text';
+  dueThroughLabel.htmlFor = dueThrough.id;
+  const applyDueRange = element('button', 'Apply due range');
+  applyDueRange.type = 'submit';
+  dueRangeForm.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
+  // Draft fields are separate from the applied range so invalid submissions
+  // and unapplied edits cannot change visible membership.
+  let appliedFrom = '';
+  let appliedThrough = '';
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(defaultPriorityControl(project), form, filterControls, list);
+  app.append(defaultPriorityControl(project), form, filterControls, dueRangeForm, list);
   const tasks = await request(endpoint);
 
   function displayTasks() {
@@ -297,6 +318,11 @@ async function renderTasks(project) {
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if (appliedFrom || appliedThrough) {
+        if (!task.due_date) continue;
+        if (appliedFrom && task.due_date < appliedFrom) continue;
+        if (appliedThrough && task.due_date > appliedThrough) continue;
+      }
       const row = element('li');
       row.dataset.testid = 'task-row';
       const checkbox = element('input');
@@ -325,10 +351,29 @@ async function renderTasks(project) {
       row.append(element('span', task.title), checkbox,
         taskRenameForm(project, task, endpoint, displayTasks),
         taskPriorityControl(project, task, endpoint, displayTasks),
-        taskDueDateForm(project, task, endpoint));
+        taskDueDateForm(project, task, endpoint, displayTasks));
       list.append(row);
     }
   }
+  dueRangeForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if ((from && !isValidDueDate(from)) || (through && !isValidDueDate(through))) {
+      showError('Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (from && through && from > through) {
+      showError('Due from must not be after Due through');
+      return;
+    }
+    appliedFrom = from;
+    appliedThrough = through;
+    dueFrom.value = from;
+    dueThrough.value = through;
+    app.querySelector('[role="alert"]')?.remove();
+    displayTasks();
+  });
   filter.addEventListener('change', displayTasks);
   priorityFilter.addEventListener('change', displayTasks);
   displayTasks();

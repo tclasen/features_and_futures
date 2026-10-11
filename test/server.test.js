@@ -431,9 +431,12 @@ test('projects and tasks validate, preserve ownership and order, and survive res
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), first);
     assert.equal((await get('/api/projects/99999')).status, 404);
-    for (const path of ['/', `/projects/${first.id}`, '/app.js', '/style.css']) {
+    for (const path of ['/', `/projects/${first.id}`, '/app.js', '/style.css', '/date-validation.js']) {
       assert.equal((await get(path)).status, 200);
     }
+    const validator = await get('/date-validation.js');
+    assert.match(validator.headers.get('content-type'), /text\/javascript/);
+    assert.match(await validator.text(), /export function isValidDueDate/);
     const tasksPath = `/api/projects/${first.id}/tasks`;
     const otherTasksPath = `/api/projects/${second.id}/tasks`;
     const createTask = title => fetch(`${running.base}${tasksPath}`, {

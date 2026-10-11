@@ -47,6 +47,17 @@ show an alert and leave the saved date unchanged. Dates persist independently,
 without timezone conversion or changes to other task data, filters, or summaries.
 Archived projects disable due-date editing until restored.
 
+Project pages have Due from and Due through textboxes and an Apply due range
+button. Boundaries use the same calendar-date rules as task due dates and are
+inclusive; a blank boundary is unbounded. With either boundary set, undated tasks
+are excluded. Empty boundaries include all dates and undated tasks. The applied
+range intersects completion and priority filters without changing saved data or
+summaries. Invalid dates or reversed boundaries show an alert and leave the
+previous applied range intact. Task edits immediately reapply all three filters;
+renaming, creation, and default changes retain them. Range controls remain usable
+when archived. Reopening a project starts with empty boundaries and All selected
+for both task filters. Range selections are page-local, not persisted.
+
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
@@ -56,5 +67,7 @@ project and task rename validation and identity preservation, independent task p
 priority validation and archive restrictions, combined priority/completion filtering,
 filter retention and immediate row updates after edits, independent project defaults,
 new-task inheritance, default validation and archive protection, due-date validation,
-clearing, independence, filter retention and archive protection, legacy database migration, and
+clearing, independence, filter retention and archive protection, inclusive due-range intersections,
+invalid-range preservation, live membership updates, archived range controls, shared date-validator serving,
+legacy database migration, and
 persistence through process restarts.

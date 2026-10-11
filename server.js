@@ -186,6 +186,11 @@ const server = http.createServer(async (request, response) => {
       }
       return json(response, 200, projectJson(findProject.get(projectId)));
     }
+    if (request.method === 'GET' && path === '/date-validation.js') {
+      const contents = await readFile(new URL('./date-validation.js', import.meta.url));
+      response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      return response.end(contents);
+    }
     if (request.method === 'GET' && (path === '/' || /^\/projects\/\d+$/.test(path) || assets.has(path))) {
       const [file, contentType] = assets.get(path) || ['index.html', 'text/html; charset=utf-8'];
       const contents = await readFile(new URL(`./public/${file}`, import.meta.url));
