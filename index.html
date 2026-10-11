@@ -113,6 +113,11 @@
           const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
           for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
           priorityFilterLabel.append(priorityFilter);
+          const taskSearchForm = element('form', undefined, { class: 'project-controls' });
+          const taskSearch = element('input', undefined, { type: 'text', 'aria-label': 'Task search', autocomplete: 'off' });
+          const taskSearchButton = element('button', 'Search tasks', { type: 'submit' });
+          taskSearchForm.append(taskSearch, taskSearchButton);
+          let appliedTaskSearch = '';
           const dueRange = element('form', undefined, { class: 'due-range' });
           const dueFromLabel = element('label', 'Due from');
           const dueFrom = element('input', undefined, { type: 'text', 'aria-label': 'Due from', placeholder: 'YYYY-MM-DD', autocomplete: 'off' });
@@ -139,11 +144,16 @@
             if (response.ok) {
               input.value = '';
               alert.hidden = true;
-              await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived);
+              await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived, appliedTaskSearch);
             }
           });
-          filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived));
-          priorityFilter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived));
+          filter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived, appliedTaskSearch));
+          priorityFilter.addEventListener('change', () => loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived, appliedTaskSearch));
+          taskSearchForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            appliedTaskSearch = taskSearch.value.trim();
+            await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived, appliedTaskSearch);
+          });
           dueRange.addEventListener('submit', async event => {
             event.preventDefault();
             const from = dueFrom.value.trim();
@@ -161,10 +171,10 @@
             }
             appliedDueRange = { from, through };
             alertMessage.hidden = true;
-            await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived);
+            await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived, appliedTaskSearch);
           });
-          app.append(renameForm, form, defaultPriorityLabel, alert, filterLabel, priorityFilterLabel, dueRange, list);
-          await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived);
+          app.append(renameForm, form, defaultPriorityLabel, alert, taskSearchForm, filterLabel, priorityFilterLabel, dueRange, list);
+          await loadTasks(project.id, list, filter.value, priorityFilter.value, appliedDueRange, project.archived, appliedTaskSearch);
         } else app.append(element('h1', 'Project not found'));
         return;
       }
@@ -179,6 +189,11 @@
       const filterSelect = element('select', undefined, { 'aria-label': 'Project filter' });
       for (const value of ['Active', 'Archived']) filterSelect.append(element('option', value, { value }));
       filterLabel.append(filterSelect);
+      const projectSearchForm = element('form');
+      const projectSearch = element('input', undefined, { type: 'text', 'aria-label': 'Project search', autocomplete: 'off' });
+      const projectSearchButton = element('button', 'Search projects', { type: 'submit' });
+      projectSearchForm.append(projectSearch, projectSearchButton);
+      let appliedProjectSearch = '';
       const list = element('section', undefined, { 'aria-label': 'Projects' });
       form.addEventListener('submit', async event => {
         event.preventDefault();
@@ -195,15 +210,20 @@
         if (response.ok) {
           input.value = '';
           alert.hidden = true;
-          await loadProjects(list, filterSelect.value, filterSelect);
+          await loadProjects(list, filterSelect.value, filterSelect, appliedProjectSearch);
         }
       });
-      filterSelect.addEventListener('change', () => loadProjects(list, filterSelect.value, filterSelect));
-      app.append(form, alert, filterLabel, list);
-      await loadProjects(list, filterSelect.value, filterSelect);
+      filterSelect.addEventListener('change', () => loadProjects(list, filterSelect.value, filterSelect, appliedProjectSearch));
+      projectSearchForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        appliedProjectSearch = projectSearch.value.trim();
+        await loadProjects(list, filterSelect.value, filterSelect, appliedProjectSearch);
+      });
+      app.append(form, alert, projectSearchForm, filterLabel, list);
+      await loadProjects(list, filterSelect.value, filterSelect, appliedProjectSearch);
     }
 
-    async function loadProjects(list, filter, filterSelect) {
+    async function loadProjects(list, filter, filterSelect, search = '') {
       // Filter changes and archive actions can overlap. Ignore stale responses
       // so an older result cannot remove the row the user is interacting with.
       const requestId = String(Number(list.dataset.requestId || 0) + 1);
@@ -240,7 +260,7 @@
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ archived: !archived })
               });
-              if (response.ok) await loadProjects(list, filterSelect.value, filterSelect);
+              if (response.ok) await loadProjects(list, filterSelect.value, filterSelect, search);
             } finally {
               action.disabled = false;
             }
@@ -250,7 +270,7 @@
           list.append(row);
         }
         rows.delete(String(project.id));
-        row.hidden = project.archived !== (filter === 'Archived');
+        row.hidden = project.archived !== (filter === 'Archived') || !asciiLower(project.name).includes(asciiLower(search));
         row.querySelector('.project-name').textContent = project.name;
         row.querySelector('[data-testid="project-summary"]').textContent =
           `${project.completedCount}/${project.totalCount} completed`;
@@ -270,7 +290,10 @@
       const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
       return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
     }
-    async function loadTasks(projectId, list, filter, priorityFilter, dueRange, archived = false) {
+    function asciiLower(value) {
+      return value.replace(/[A-Z]/g, character => character.toLowerCase());
+    }
+    async function loadTasks(projectId, list, filter, priorityFilter, dueRange, archived = false, search = '') {
       const [tasks, projects] = await Promise.all([
         fetch(`/api/projects/${projectId}/tasks`).then(response => response.json()),
         fetch('/api/projects').then(response => response.json())
@@ -278,6 +301,7 @@
       const visibleTasks = tasks.filter(task =>
         (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
         (priorityFilter === 'All' || task.priority === priorityFilter) &&
+        asciiLower(task.title).includes(asciiLower(search)) &&
         ((!dueRange.from && !dueRange.through) || (task.dueDate &&
           (!dueRange.from || task.dueDate >= dueRange.from) &&
           (!dueRange.through || task.dueDate <= dueRange.through)))
@@ -291,7 +315,7 @@
           await fetch(`/api/tasks/${task.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
           });
-          await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
+          await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
         });
         const title = element('span', task.title, { class: 'task-title' });
         const priority = element('select', undefined, { 'aria-label': 'Task priority' });
@@ -306,7 +330,7 @@
           if (!response.ok) priority.value = task.priority || 'Normal';
           else {
             task.priority = priority.value;
-            await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
+            await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
           }
         });
         const renameForm = element('form', undefined, { class: 'task-rename-form' });
@@ -333,7 +357,7 @@
           });
           if (response.ok) {
             alert.hidden = true;
-            await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
+            await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
           }
         });
         const dueDateInput = element('input', undefined, {
@@ -359,7 +383,7 @@
           const result = await response.json();
           dueDateInput.value = result.dueDate || '';
           alert.hidden = true;
-          await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
+          await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
         });
         const destinations = projects.filter(project => !project.archived && Number(project.id) !== Number(projectId));
         const destination = element('select', undefined, { 'aria-label': 'Destination project' });
@@ -375,7 +399,7 @@
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ destinationProjectId: Number(destination.value) })
           });
-          if (response.ok) await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
+          if (response.ok) await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived, search);
         });
         row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate, destination, move);
         return row;
