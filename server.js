@@ -38,6 +38,8 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND 
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -169,6 +171,14 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ent
           <input type="hidden" name="filter" value="${filter}">
           <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         </form>
+        <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="create">
+            <input id="new-task-title-${task.id}" name="title" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </div>
+        </form>
       </div>`).join('')}
     </section>`);
 }
@@ -237,6 +247,30 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         renameProject.run(name, project.id);
+        redirect(response, `/projects/${project.id}?filter=${filter}`);
+        return;
+      }
+    }
+    const taskRenameMatch = /^\/projects\/(\d+)\/tasks\/(\d+)\/rename$/.exec(path);
+    if (request.method === 'POST' && taskRenameMatch) {
+      const project = findProject.get(taskRenameMatch[1]);
+      if (project) {
+        if (project.archived) {
+          html(response, 403, projectPage(project, 'All', 'Archived project'));
+          return;
+        }
+        if (!findTask.get(taskRenameMatch[2], project.id)) {
+          html(response, 404, page('<h1>Task not found</h1>'));
+          return;
+        }
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        const title = (form.get('title') || '').trim();
+        if (!title) {
+          html(response, 200, projectPage(project, filter, 'Task title is required'));
+          return;
+        }
+        renameTask.run(title, taskRenameMatch[2], project.id);
         redirect(response, `/projects/${project.id}?filter=${filter}`);
         return;
       }
