@@ -24,6 +24,10 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+// Existing tasks gain the same default as newly created tasks.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed
@@ -34,10 +38,11 @@ const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 
 function taskFilter(value) {
@@ -154,6 +159,13 @@ function projectPage(project, filter = 'All', error = '') {
           <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
+        <form class="create" action="/projects/${project.id}/tasks/${task.id}/priority" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${['Low', 'Normal', 'High'].map(value => `<option${value === task.priority ? ' selected' : ''}>${value}</option>`).join('')}
+          </select>
+        </form>
       </div>`).join('');
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
@@ -239,7 +251,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const match = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename))?)?$/.exec(url.pathname);
+    const match = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?)?$/.exec(url.pathname);
     if (match) {
       const id = Number(match[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : null;
@@ -261,9 +273,15 @@ const server = http.createServer(async (req, res) => {
             sendHtml(res, 400, projectPage(project, filter, 'Task title is required'));
             return;
           }
+          if (existing && match[3] === 'priority' && !['Low', 'Normal', 'High'].includes(form.get('priority'))) {
+            sendHtml(res, 400, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
           const changes = existing && (match[3] === 'rename'
             ? renameTask.run(form.get('title').trim(), taskId, id).changes
-            : updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, id).changes);
+            : match[3] === 'priority'
+              ? setTaskPriority.run(form.get('priority'), taskId, id).changes
+              : updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, id).changes);
           if (!changes) {
             sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
             return;
