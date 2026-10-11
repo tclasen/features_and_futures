@@ -798,6 +798,8 @@ async function showDirectory() {
   const directorySummary = element('p', { testId: 'directory-summary' });
   directorySummary.hidden = true;
   app.append(directorySummary);
+  const ownerList = element('section', { className: 'directory-owner-list' });
+  app.append(ownerList);
   const results = element('section', { className: 'task-list' });
   app.append(results);
   const emptyResult = element('p', { text: 'No matching tasks', className: 'empty-result' });
@@ -865,6 +867,33 @@ async function showDirectory() {
     const completedCount = rows.filter((task) => task.completed).length;
     directorySummary.textContent = `${completedCount}/${rows.length} completed`;
     directorySummary.hidden = false;
+    ownerList.replaceChildren();
+    const owners = new Map();
+    for (const task of rows) {
+      let owner = owners.get(task.projectId);
+      if (!owner) {
+        owner = { id: task.projectId, name: task.projectName, tasks: [] };
+        owners.set(task.projectId, owner);
+      }
+      owner.tasks.push(task);
+    }
+    // Directory rows may be globally sorted, but owner summaries follow the
+    // project creation order represented by the source task sequence.
+    for (const owner of [...owners.values()].sort((left, right) => left.id - right.id)) {
+      const ownerRow = element('div', { className: 'project-row', testId: 'directory-owner-row' });
+      const ownerDetails = element('div', { className: 'project-details' });
+      const ownerCompleted = owner.tasks.filter((task) => task.completed).length;
+      ownerDetails.append(element('span', { text: owner.name, testId: 'directory-owner-name' }));
+      ownerDetails.append(element('span', {
+        text: `${ownerCompleted}/${owner.tasks.length} completed`,
+        testId: 'directory-owner-summary',
+      }));
+      const openOwner = element('button', { text: 'Open project' });
+      openOwner.type = 'button';
+      openOwner.addEventListener('click', () => { location.href = `/projects/${owner.id}`; });
+      ownerRow.append(ownerDetails, openOwner);
+      ownerList.append(ownerRow);
+    }
     const eligible = scope.value === 'Active' && completion.value !== 'Deleted'
       ? rows.filter((task) => !task.deleted && !task.archived)
       : [];
