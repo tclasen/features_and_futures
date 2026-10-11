@@ -668,3 +668,110 @@ test('combined filters retain selections, re-evaluate edits, and work through ar
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('project priority defaults migrate and affect only future tasks, surviving archive and restart', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'default-priority-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'Normal'
+    );
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Original', 1, 'Low');
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const rows = page => [...page.matchAll(/<div data-testid="task-row"[\s\S]*?<\/div>/g)].map(match => match[0]);
+    const assertDefault = (page, value, disabled = false) => {
+      assert.match(page, /<label for="default-task-priority">Default task priority<\/label>/);
+      const select = /<select id="default-task-priority"[\s\S]*?<\/select>/.exec(page)[0];
+      assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)].map(match => match[1]), ['Low', 'Normal', 'High']);
+      assert.match(select, new RegExp(`<option selected>${value}<\\/option>`));
+      assert.equal(select.includes(' disabled'), disabled);
+      assert.match(select, /onchange="this.form.requestSubmit\(\)"/);
+    };
+    assertDefault(await html('/projects/1'), 'Normal');
+    await post('/projects', { name: 'Independent' });
+    assertDefault(await html('/projects/2'), 'Normal');
+    await post('/projects/1/tasks', { title: 'Normal before change' });
+    const originalRows = rows(await html('/projects/1'));
+    const originalList = await html('/');
+    const selectedPath = '/projects/1?filter=Completed&priorityFilter=Low';
+    const selectedRows = rows(await html(selectedPath));
+    const selection = { filter: 'Completed', priorityFilter: 'Low' };
+    for (const priority of ['High', 'Low', 'Normal', 'High']) {
+      const response = await post('/projects/1/default-priority', { ...selection, priority });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), selectedPath);
+      const page = await html(selectedPath);
+      assertDefault(page, priority);
+      assert.match(page, /<option selected>Completed<\/option>/);
+      assert.match(/<select id="priority-filter"[\s\S]*?<\/select>/.exec(page)[0], /<option selected>Low<\/option>/);
+      assert.deepEqual(rows(page), selectedRows);
+      assert.deepEqual(rows(await html('/projects/1')), originalRows);
+      assert.equal(await html('/'), originalList);
+    }
+    assertDefault(await html('/projects/2'), 'Normal');
+    for (const priority of ['', 'Urgent']) {
+      assert.equal((await post('/projects/1/default-priority', { priority })).status, 400);
+      assertDefault(await html('/projects/1'), 'High');
+    }
+    assert.equal((await post('/projects/999/default-priority', { priority: 'High' })).status, 404);
+    await post('/projects/1/tasks', { title: 'Inherited High' });
+    await post('/projects/2/tasks', { title: 'Independent Normal' });
+    let taskRows = rows(await html('/projects/1'));
+    assert.match(taskRows[2], /<option selected>High<\/option>/);
+    assert.doesNotMatch(taskRows[2], / checked/);
+    assert.match(rows(await html('/projects/2'))[0], /<option selected>Normal<\/option>/);
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Inherited Low' });
+    taskRows = rows(await html('/projects/1'));
+    assert.deepEqual(taskRows.slice(0, 2), originalRows);
+    assert.match(taskRows[2], /<option selected>High<\/option>/);
+    assert.match(taskRows[3], /<option selected>Low<\/option>/);
+    assert.match(await html('/'), /1\/4 completed/);
+    await post('/projects/1/rename', { name: 'Renamed' });
+    assertDefault(await html('/projects/1'), 'Low');
+    const saved = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), saved);
+    assertDefault(await html('/projects/2'), 'Normal');
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    assertDefault(archived, 'Low', true);
+    assert.equal((await post('/projects/1/default-priority', { ...selection, priority: 'High' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    assert.deepEqual(rows(await html(selectedPath)).map(row => /<span>(.*?)<\/span>/.exec(row)[1]), ['Original']);
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), saved);
+    await post('/projects/1/tasks', { title: 'Low after restoration' });
+    assert.match(rows(await html('/projects/1'))[4], /<option selected>Low<\/option>/);
+    assert.match(await html('/'), /1\/5 completed/);
+    const finalPage = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), finalPage);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

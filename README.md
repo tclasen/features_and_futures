@@ -20,6 +20,8 @@ On an active project page, enter a New project name and select Rename project. N
 
 Each task row provides New task title and Rename task controls. Task titles are trimmed and saved while preserving ownership, creation order, completion state, filter membership, and completion counts. Blank titles show an alert. Archived projects disable task renaming until restored.
 
-Each task row also has a Task priority selector with Low, Normal, and High options. Existing and new tasks default to Normal. Priority changes save independently without changing task order, completion, or summaries; renaming preserves priority. Archived projects disable priority editing until restored. Priorities persist across reloads and server restarts.
+Each task row also has a Task priority selector with Low, Normal, and High options. Existing tasks default to Normal during migration. Priority changes save independently without changing task order, completion, or summaries; renaming preserves priority. Archived projects disable priority editing until restored. Priorities persist across reloads and server restarts.
+
+Each project has a Default task priority selector with Low, Normal, and High options, initially Normal. New tasks inherit the project's saved default. Changing it preserves existing tasks and both task filter selections. Defaults are independent per project and persist through renaming, restarts, archival, and restoration. Archived projects display the saved default with editing disabled.
 
 Tests start isolated server processes and remove their temporary database directories after checking validation, creation order, navigation, task filters, project isolation, and restart persistence for both completed and open tasks, database migration, archive/restore, editing protection, completion summaries, and project and task renaming with preserved identity.
