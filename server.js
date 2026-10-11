@@ -12,6 +12,7 @@ const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const getProjects = db.prepare(`SELECT p.id, p.name, p.archived, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completed, COUNT(t.id) AS total FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const getTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -38,6 +39,19 @@ const server = http.createServer(async (req, res) => {
     const id = randomUUID();
     insertProject.run(id, name, Date.now());
     return json(201, { id, name });
+  }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/rename$/);
+  if (req.method === 'POST' && renameMatch) {
+    const id = decodeURIComponent(renameMatch[1]);
+    const project = getProject.get(id);
+    if (!project) return json(404, { error: 'Not found' });
+    if (project.archived) return json(403, { error: 'Archived project' });
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    const name = String(body.name ?? '').trim();
+    if (!name) return json(400, { error: 'Project name is required' });
+    renameProject.run(name, id);
+    return json(200, { id, name });
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
   if (tasksMatch) {
