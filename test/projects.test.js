@@ -93,7 +93,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), first);
-    for (const path of ['/', `/projects/${first.id}`, '/app.js', '/task-filters.js', '/style.css']) {
+    for (const path of ['/', `/projects/${first.id}`, '/app.js', '/task-filters.js', '/due-date.js', '/style.css']) {
       assert.equal((await get(path)).status, 200);
     }
     assert.equal((await get('/api/projects/999999')).status, 404);

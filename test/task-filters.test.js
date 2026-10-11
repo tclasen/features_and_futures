@@ -1,6 +1,81 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterTasks } from '../public/task-filters.js';
+import { filterTasks, normalizeDueRange } from '../public/task-filters.js';
+
+test('due ranges validate both boundaries before replacing the applied range', () => {
+  assert.deepEqual(normalizeDueRange(' \t0001-01-01 ', ' 9999-12-31\n'),
+    { from: '0001-01-01', through: '9999-12-31' });
+  assert.deepEqual(normalizeDueRange(' ', '\t'), { from: '', through: '' });
+  assert.deepEqual(normalizeDueRange('2000-02-29', ''), { from: '2000-02-29', through: '' });
+  assert.deepEqual(normalizeDueRange('', '2000-02-29'), { from: '', through: '2000-02-29' });
+  let applied = normalizeDueRange('2026-01-01', '2026-12-31');
+  for (const invalid of ['2026-02-29', '1900-02-29', '0000-01-01', '10000-01-01', '2026-1-01', '2026-04-31']) {
+    for (const boundaries of [[invalid, ''], ['', invalid], ['9999-12-31', invalid]]) {
+      assert.throws(() => { applied = normalizeDueRange(...boundaries); },
+        { message: 'Due range must use valid YYYY-MM-DD dates' });
+      assert.deepEqual(applied, { from: '2026-01-01', through: '2026-12-31' });
+    }
+  }
+  assert.throws(() => { applied = normalizeDueRange('2026-12-31', '2026-01-01'); },
+    { message: 'Due from must not be after Due through' });
+  assert.deepEqual(applied, { from: '2026-01-01', through: '2026-12-31' });
+});
+
+test('inclusive and unbounded due ranges intersect completion and priority, retaining order and data', () => {
+  const tasks = [
+    { id: 1, completed: false, priority: 'High', due_date: '' },
+    { id: 2, completed: true, priority: 'Low', due_date: '0001-01-01' },
+    { id: 3, completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 4, completed: true, priority: 'Normal', due_date: '2024-03-01' },
+    { id: 5, completed: false, priority: 'Low', due_date: '9999-12-31' },
+    { id: 6, completed: true, priority: 'High', due_date: '2024-02-29' },
+  ];
+  const original = structuredClone(tasks);
+  const ranges = [
+    ['', '', [1, 2, 3, 4, 5, 6]],
+    ['0001-01-01', '9999-12-31', [2, 3, 4, 5, 6]],
+    ['2024-02-29', '2024-03-01', [3, 4, 6]],
+    ['2024-02-29', '2024-02-29', [3, 6]],
+    ['', '2024-02-29', [2, 3, 6]],
+    ['2024-03-01', '', [4, 5]],
+    ['2025-01-01', '2025-12-31', []],
+  ];
+  for (const [from, through, dateIds] of ranges) {
+    for (const completion of ['all', 'open', 'completed']) {
+      for (const priority of ['all', 'Low', 'Normal', 'High']) {
+        const expected = filterTasks(tasks, completion, priority).filter(task => dateIds.includes(task.id));
+        assert.deepEqual(filterTasks(tasks, completion, priority, normalizeDueRange(from, through)), expected);
+      }
+    }
+  }
+  assert.deepEqual(tasks, original);
+});
+
+test('task edits re-evaluate all three filters using the same applied range', () => {
+  const tasks = [
+    { id: 1, title: 'First', completed: false, priority: 'High', due_date: '2026-03-01' },
+    { id: 2, title: 'Second', completed: false, priority: 'High', due_date: '' },
+  ];
+  const range = normalizeDueRange('2026-03-01', '2026-03-31');
+  const visible = () => filterTasks(tasks, 'open', 'High', range).map(task => task.id);
+  assert.deepEqual(visible(), [1]);
+  tasks[1].due_date = '2026-03-31';
+  assert.deepEqual(visible(), [1, 2]);
+  tasks[0].title = 'Renamed';
+  assert.deepEqual(visible(), [1, 2]);
+  tasks[0].due_date = '2026-04-01';
+  assert.deepEqual(visible(), [2]);
+  tasks[1].completed = true;
+  assert.deepEqual(visible(), []);
+  tasks[1].completed = false;
+  tasks[1].priority = 'Low';
+  assert.deepEqual(visible(), []);
+  tasks[1].priority = 'High';
+  assert.deepEqual(visible(), [2]);
+  tasks[1].due_date = '';
+  assert.deepEqual(visible(), []);
+  assert.deepEqual(range, { from: '2026-03-01', through: '2026-03-31' });
+});
 
 test('all combinations of completion and priority filters preserve creation order and saved data', () => {
   const tasks = [

@@ -1,4 +1,4 @@
-import { filterTasks } from './task-filters.js';
+import { filterTasks, normalizeDueRange } from './task-filters.js';
 
 const app = document.getElementById('app');
 
@@ -94,6 +94,13 @@ async function renderProject(projectId) {
       <option value="Normal">Normal</option>
       <option value="High">High</option>
     </select>
+    <form id="due-range-form">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <p id="empty">No tasks to show.</p>
     <ul id="tasks"></ul>`;
   app.querySelector('h1').textContent = project.name;
@@ -149,9 +156,12 @@ async function renderProject(projectId) {
   document.getElementById('back').addEventListener('click', () => location.assign('/'));
   const filter = document.getElementById('task-filter');
   const priorityFilter = document.getElementById('priority-filter');
+  const dueFrom = document.getElementById('due-from');
+  const dueThrough = document.getElementById('due-through');
+  let dueRange = { from: '', through: '' };
   const list = document.getElementById('tasks');
   function drawTasks() {
-    const visible = filterTasks(tasks, filter.value, priorityFilter.value);
+    const visible = filterTasks(tasks, filter.value, priorityFilter.value, dueRange);
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -283,6 +293,16 @@ async function renderProject(projectId) {
   }
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
+  document.getElementById('due-range-form').addEventListener('submit', event => {
+    event.preventDefault();
+    try {
+      dueRange = normalizeDueRange(dueFrom.value, dueThrough.value);
+      dueFrom.value = dueRange.from;
+      dueThrough.value = dueRange.through;
+      document.getElementById('error').hidden = true;
+      drawTasks();
+    } catch (error) { showError(error.message); }
+  });
   drawTasks();
   document.getElementById('task-form').addEventListener('submit', async event => {
     event.preventDefault();

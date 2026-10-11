@@ -44,3 +44,10 @@ whitespace is trimmed; an empty value clears the date. Invalid dates show an
 alert and leave saved data unchanged. Dates persist across restarts and task
 renames without changing filters or summaries. Archived projects disable date
 editing; restoration preserves dates and enables editing again.
+
+Due from and Due through apply an inclusive due-date range alongside both task
+filters. Empty boundaries are unbounded; tasks without dates match only when
+both boundaries are empty. Apply due range validates and trims dates, retaining
+the previous applied range if a date is invalid or the boundaries are reversed.
+Task edits re-evaluate all filters without resetting them. Range controls remain
+usable in archived projects, and reopening a project starts with an empty range.
