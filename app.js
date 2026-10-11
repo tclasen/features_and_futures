@@ -12,6 +12,7 @@ const taskFilter = document.querySelector('#task-filter');
 const defaultTaskPriority = document.querySelector('#default-task-priority');
 const priorityFilter = document.querySelector('#priority-filter');
 const taskRenameAlert = document.querySelector('#task-rename-alert');
+const taskDateAlert = document.querySelector('#task-date-alert');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project-form');
@@ -182,7 +183,36 @@ async function refreshTasks() {
       await refreshTasks();
     });
 
-    row.append(title, renameForm, priority, checkbox);
+    const dueDateForm = document.createElement('form');
+    dueDateForm.className = 'task-due-date-form';
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.placeholder = 'YYYY-MM-DD';
+    dueDateInput.value = task.dueDate || '';
+    dueDateInput.disabled = activeProjectArchived;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'submit';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = activeProjectArchived;
+    dueDateForm.append(dueDateInput, saveDueDate);
+    dueDateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dueDate: dueDateInput.value }),
+      });
+      if (!response.ok) {
+        taskDateAlert.textContent = 'Due date must be a valid YYYY-MM-DD date';
+        taskDateAlert.hidden = false;
+        return;
+      }
+      taskDateAlert.hidden = true;
+      await refreshTasks();
+    });
+
+    row.append(title, renameForm, priority, dueDateForm, checkbox);
     taskList.append(row);
   }
 }

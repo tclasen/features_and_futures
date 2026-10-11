@@ -35,6 +35,20 @@ const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+function isValidDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || year > 9999) return false;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
 
 const json = (response, status, body) => {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -131,7 +145,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     return json(response, 200, database.prepare(
-      'SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id'
+      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id'
     ).all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
 
@@ -185,6 +199,16 @@ const server = createServer(async (request, response) => {
         database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?')
           .run(input.priority, taskId, projectId);
         return json(response, 200, { id: taskId, projectId, priority: input.priority });
+      }
+      if (Object.hasOwn(input, 'dueDate')) {
+        const dueDate = typeof input.dueDate === 'string' ? input.dueDate.trim() : '';
+        if (dueDate && !isValidDueDate(dueDate)) {
+          return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        }
+        const canonicalDate = dueDate || null;
+        database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?')
+          .run(canonicalDate, taskId, projectId);
+        return json(response, 200, { id: taskId, projectId, dueDate: canonicalDate });
       }
       if (typeof input.completed !== 'boolean') return json(response, 400, { error: 'Completion state is required' });
       database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
