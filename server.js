@@ -62,14 +62,25 @@ const server = createServer(async (request, response) => {
   }
   const projectPath = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectPath && request.method === 'PATCH') {
-    let archived;
-    try { archived = (await readBody(request)).archived; } catch {
+    let changes;
+    try { changes = await readBody(request); } catch {
       return sendJson(response, 400, { error: 'Invalid request body' });
     }
-    if (typeof archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state must be a boolean' });
-    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, Number(projectPath[1]));
-    if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, { id: Number(projectPath[1]), archived });
+    const projectId = Number(projectPath[1]);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (typeof changes.archived === 'boolean') {
+      database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(changes.archived ? 1 : 0, projectId);
+      return sendJson(response, 200, { id: projectId, archived: changes.archived });
+    }
+    if (typeof changes.name === 'string') {
+      const name = changes.name.trim();
+      if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+      if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+      database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+      return sendJson(response, 200, { id: projectId, name });
+    }
+    return sendJson(response, 400, { error: 'A project name or archive state is required' });
   }
   if (projectPath && request.method === 'GET') {
     const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectPath[1]));

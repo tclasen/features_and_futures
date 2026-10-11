@@ -12,6 +12,10 @@ const taskFilter = document.querySelector('#task-filter');
 const projectFilter = document.querySelector('#project-filter');
 const archiveNotice = document.querySelector('#archive-notice');
 const createTaskButton = taskForm.querySelector('button');
+const renameForm = document.querySelector('#rename-project-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameButton = renameForm.querySelector('button');
+const renameAlert = document.querySelector('#rename-alert');
 let currentProjectId = null;
 let currentProjectArchived = false;
 
@@ -77,6 +81,8 @@ async function showRoute() {
   currentProjectId = project.id;
   currentProjectArchived = project.archived;
   archiveNotice.hidden = !currentProjectArchived;
+  renameInput.disabled = currentProjectArchived;
+  renameButton.disabled = currentProjectArchived;
   createTaskButton.disabled = currentProjectArchived;
   taskInput.disabled = currentProjectArchived;
   listView.hidden = true;
@@ -140,6 +146,27 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (currentProjectArchived) return;
+  const name = renameInput.value.trim();
+  if (!name) {
+    renameAlert.textContent = 'Project name is required';
+    renameAlert.hidden = false;
+    return;
+  }
+  const response = await fetch(`/api/projects/${currentProjectId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) return;
+  const project = await response.json();
+  document.querySelector('#project-heading').textContent = project.name;
+  document.title = `${project.name} · Workboard`;
+  renameInput.value = '';
+  renameAlert.hidden = true;
+});
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (currentProjectArchived) return;
