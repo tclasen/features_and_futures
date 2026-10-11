@@ -38,7 +38,12 @@ filters and summaries, rename preservation, restart persistence, and archive/res
 Due-range checks cover inclusive and unbounded boundaries, undated tasks, intersections
 with completion and priority filters, invalid applications preserving the applied range,
 selection retention and immediate re-filtering across edits, and archived filtering.
-Reopening a project from the list resets all task filters and due-range boundaries.
+Project and task searches use trimmed substring queries with ASCII-only case folding.
+Search intersects existing filters, preserves internal whitespace, and remains applied
+through edits. Search controls work in archived projects. Returning through Projects
+resets project search; reopening a project from the list resets task search, all task
+filters and due-range boundaries. Search tests cover these rules, filter intersections,
+edit re-evaluation, movement, unchanged summaries, and navigation resets.
 Move checks cover active destination options, disabled controls, source ownership validation,
 first-arrival append ordering (including migrated tasks and subsequent creations), preserved task data,
 source filter retention, updated summaries, repeat moves, and restart persistence.
