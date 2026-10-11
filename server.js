@@ -60,6 +60,8 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
 
 function isValidDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -181,6 +183,25 @@ async function handle(req, res) {
   }
 
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (req.method === 'POST' && moveMatch) {
+    const sourceId = decodeURIComponent(moveMatch[1]);
+    const taskId = decodeURIComponent(moveMatch[2]);
+    const source = getProject.get(sourceId);
+    if (!source) return sendJson(res, 404, { error: 'Project not found' });
+    if (source.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
+    let payload;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; payload = JSON.parse(raw); }
+    catch { return sendJson(res, 400, { error: 'Invalid request body' }); }
+    const task = getTask.get(taskId, sourceId);
+    if (!task) return sendJson(res, 404, { error: 'Task not found' });
+    const destinationId = typeof payload?.destinationProjectId === 'string' ? payload.destinationProjectId : '';
+    const destination = getProject.get(destinationId);
+    if (!destination || destination.archived || destinationId === sourceId) return sendJson(res, 400, { error: 'Invalid destination project' });
+    const latest = db.prepare('SELECT COALESCE(MAX(created_at), 0) AS latest FROM tasks WHERE project_id = ?').get(destinationId).latest;
+    moveTask.run(destinationId, Math.max(Date.now(), latest + 1), taskId, sourceId);
+    return sendJson(res, 200, { ...task, projectId: destinationId });
+  }
   if (req.method === 'PATCH' && taskMatch) {
     const projectId = decodeURIComponent(taskMatch[1]);
     const taskId = decodeURIComponent(taskMatch[2]);

@@ -270,7 +270,11 @@ async function renderProject(id, viewState = {}) {
   app.append(list);
 
   async function renderTasks() {
-    const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const [tasks, projects] = await Promise.all([
+      request(`/api/projects/${encodeURIComponent(id)}/tasks`),
+      request('/api/projects'),
+    ]);
+    const destinations = projects.filter((item) => !item.archived && item.id !== id);
     list.replaceChildren();
     const visible = tasks.filter((task) =>
       (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed)) &&
@@ -393,6 +397,35 @@ async function renderProject(id, viewState = {}) {
         }
       });
       row.append(dueDateForm);
+
+      const destinationLabel = element('label', 'task-destination-label', 'Destination project');
+      const destinationSelect = element('select', 'task-destination');
+      destinationSelect.setAttribute('aria-label', 'Destination project');
+      for (const destination of destinations) {
+        const option = element('option', '', destination.name);
+        option.value = destination.id;
+        destinationSelect.append(option);
+      }
+      const moveButton = element('button', 'secondary', 'Move task');
+      moveButton.type = 'button';
+      destinationSelect.disabled = Boolean(project.archived) || destinations.length === 0;
+      moveButton.disabled = Boolean(project.archived) || destinations.length === 0;
+      destinationLabel.append(destinationSelect);
+      moveButton.addEventListener('click', async () => {
+        moveButton.disabled = true;
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}/move`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: destinationSelect.value }),
+          });
+          await renderTasks();
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+          moveButton.disabled = Boolean(project.archived) || destinations.length === 0;
+        }
+      });
+      row.append(destinationLabel, moveButton);
       list.append(row);
     }
   }
