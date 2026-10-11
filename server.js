@@ -182,9 +182,13 @@ const page = `<!doctype html>
       const filter = element('select', undefined, { 'aria-label': 'Task filter' });
       for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
       filterLabel.append(filter);
+      const priorityFilterLabel = element('label', 'Priority filter');
+      const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
+      for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
+      priorityFilterLabel.append(priorityFilter);
       const list = element('section', undefined, { class: 'project-list', 'aria-label': 'Tasks' });
       app.append(alert, renameForm, form, controls, list);
-      controls.append(filterLabel);
+      controls.append(filterLabel, priorityFilterLabel);
       let refreshSequence = 0;
       async function refresh() {
         const sequence = ++refreshSequence;
@@ -195,6 +199,7 @@ const page = `<!doctype html>
         list.replaceChildren();
         for (const task of tasks) {
           if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
+          if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
           const row = element('div', undefined, { class: 'task-row', 'data-testid': 'task-row' });
           const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': 'Complete ' + task.title });
           checkbox.checked = Boolean(task.completed);
@@ -222,6 +227,7 @@ const page = `<!doctype html>
               alert.textContent = 'Could not update task priority'; alert.hidden = false; priority.value = task.priority; return;
             }
             alert.hidden = true;
+            await refresh();
           });
           const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', autocomplete: 'off' });
           const renameButton = element('button', 'Rename task', { type: 'button' });
@@ -241,6 +247,7 @@ const page = `<!doctype html>
         }
       }
       filter.addEventListener('change', () => refresh().catch(showLoadError));
+      priorityFilter.addEventListener('change', () => refresh().catch(showLoadError));
       renameForm.addEventListener('submit', async event => {
         event.preventDefault();
         const name = renameInput.value.trim();
