@@ -1310,3 +1310,50 @@ test('Deleted filter intersects all controls, restores reserved order and disabl
   assert.deepEqual(taskTitles(app), ['Plan first', 'Plan second', 'Other', 'New task']);
   assert.deepEqual(pending.tasks.slice(0, 3), originals);
 });
+
+test('pending task saves block overlapping deletion and preserve Deleted filter membership', async () => {
+  const projects = [project()];
+  const pending = { tasks: [
+    { id: 1, project_id: 1, title: 'Hit one', completed: false, priority: 'Normal', due_date: '', notes: '', deleted: false },
+    { id: 2, project_id: 1, title: 'Hit two', completed: false, priority: 'Normal', due_date: '', notes: '', deleted: false },
+  ] };
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  let release;
+  pending.wait = new Promise(resolve => { release = resolve; });
+  const priority = rows(app)[0].querySelector('select');
+  priority.value = 'High';
+  const savingPriority = priority.emit('change');
+  assert.equal(dueDateForm(rows(app)[0]).querySelector('input').disabled, true);
+  assert.equal(control(rows(app)[0], 'Delete task').disabled, true);
+  await control(rows(app)[0], 'Delete task').emit('click');
+  assert.equal(pending.tasks[0].deleted, false);
+  // Re-rendering through filters must not unlock a pending task.
+  await priorityFilter(app, 'All');
+  assert.equal(control(rows(app)[0], 'Delete task').disabled, true);
+  release();
+  await savingPriority;
+  delete pending.wait;
+  assert.equal(control(rows(app)[0], 'Delete task').disabled, false);
+  const date = dueDateForm(rows(app)[0]);
+  date.querySelector('input').value = '2026-10-11';
+  pending.wait = new Promise(resolve => { release = resolve; });
+  const savingDate = date.emit('submit');
+  assert.equal(control(rows(app)[0], 'Delete task').disabled, true);
+  release();
+  await savingDate;
+  delete pending.wait;
+  await control(rows(app)[0], 'Delete task').emit('click');
+  await filter(app, 'Deleted');
+  await priorityFilter(app, 'High');
+  await dueRange(app, '2026-10-11', '2026-10-11');
+  await search(app, 'task', ' hit ');
+  assert.deepEqual(taskTitles(app), ['Hit one']);
+  assert.equal(rows(app)[0].querySelector('input').disabled, true);
+  await control(rows(app)[0], 'Restore task').emit('click');
+  assert.equal(rows(app).length, 0);
+  assert.equal(app.querySelector('#task-filter').value, 'Deleted');
+  await filter(app, 'Open');
+  assert.deepEqual(taskTitles(app), ['Hit one']);
+});

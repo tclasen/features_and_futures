@@ -146,6 +146,15 @@ async function render() {
     let destinations = [];
     let archived = false;
     let savedDefaultPriority = 'Normal';
+    // A whole-task response must not race another edit to the same task.
+    // Keep the lock across filter-driven row replacements as well.
+    const savingTasks = new Set();
+    const taskControlLocks = new Map();
+    function setTaskSaving(id, saving) {
+      if (saving) savingTasks.add(id);
+      else savingTasks.delete(id);
+      taskControlLocks.get(id)?.(saving);
+    }
     defaultPriority.addEventListener('change', async () => {
       if (defaultPriority.disabled) return;
       defaultPriority.disabled = true;
@@ -205,6 +214,7 @@ async function render() {
         ((!appliedFrom && !appliedThrough) ||
           (task.due_date && (!appliedFrom || task.due_date >= appliedFrom) &&
             (!appliedThrough || task.due_date <= appliedThrough))));
+      taskControlLocks.clear();
       list.replaceChildren(...visible.map(task => {
         const readOnly = archived || Boolean(task.deleted);
         const row = document.createElement('li');
@@ -219,6 +229,7 @@ async function render() {
         checkbox.addEventListener('change', async () => {
           if (checkbox.disabled) return;
           checkbox.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             const saved = await request(`${endpoint}/${task.id}`, {
@@ -233,6 +244,7 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             checkbox.disabled = readOnly;
+            setTaskSaving(task.id, false);
           }
         });
         const taskRenameForm = document.createElement('form');
@@ -256,6 +268,7 @@ async function render() {
             return;
           }
           taskRenameSubmit.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             const saved = await request(`${endpoint}/${task.id}`, {
@@ -269,6 +282,7 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             taskRenameSubmit.disabled = readOnly;
+            setTaskSaving(task.id, false);
           }
         });
         taskRenameForm.append(taskRenameInput, taskRenameSubmit);
@@ -287,6 +301,7 @@ async function render() {
         priority.addEventListener('change', async () => {
           if (priority.disabled) return;
           priority.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             const saved = await request(`${endpoint}/${task.id}`, {
@@ -301,6 +316,7 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             priority.disabled = readOnly;
+            setTaskSaving(task.id, false);
           }
         });
         priorityLabel.append(priority);
@@ -323,6 +339,7 @@ async function render() {
           event.preventDefault();
           if (dueDateSubmit.disabled) return;
           dueDateSubmit.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             const saved = await request(`${endpoint}/${task.id}`, {
@@ -336,6 +353,7 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             dueDateSubmit.disabled = readOnly;
+            setTaskSaving(task.id, false);
           }
         });
         dueDateForm.append(dueDateLabel, dueDateSubmit);
@@ -357,6 +375,7 @@ async function render() {
           event.preventDefault();
           if (notesSubmit.disabled) return;
           notesSubmit.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             const saved = await request(`${endpoint}/${task.id}`, {
@@ -370,6 +389,7 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             notesSubmit.disabled = readOnly;
+            setTaskSaving(task.id, false);
           }
         });
         notesForm.append(notesLabel, notesSubmit);
@@ -396,6 +416,7 @@ async function render() {
           event.preventDefault();
           if (moveSubmit.disabled) return;
           destination.disabled = moveSubmit.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             await request(`${endpoint}/${task.id}`, {
@@ -409,6 +430,7 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             destination.disabled = moveSubmit.disabled = readOnly || !destinations.length;
+            setTaskSaving(task.id, false);
           }
         });
         const deletion = document.createElement('button');
@@ -418,6 +440,7 @@ async function render() {
         deletion.addEventListener('click', async () => {
           if (deletion.disabled) return;
           deletion.disabled = true;
+          setTaskSaving(task.id, true);
           alertMessage('');
           try {
             const saved = await request(`${endpoint}/${task.id}`, {
@@ -431,9 +454,20 @@ async function render() {
             if (list.isConnected) alertMessage(error.message);
           } finally {
             deletion.disabled = archived;
+            setTaskSaving(task.id, false);
           }
         });
         row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm, moveForm, notesForm, deletion);
+        const lockControls = saving => {
+          for (const element of [checkbox, priority, taskRenameInput, taskRenameSubmit,
+            dueDateInput, dueDateSubmit, notesInput, notesSubmit]) {
+            element.disabled = readOnly || saving;
+          }
+          destination.disabled = moveSubmit.disabled = readOnly || saving || !destinations.length;
+          deletion.disabled = archived || saving;
+        };
+        taskControlLocks.set(task.id, lockControls);
+        lockControls(savingTasks.has(task.id));
         return row;
       }));
     }
