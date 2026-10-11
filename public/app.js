@@ -276,6 +276,51 @@ async function showProject(projectId) {
       });
       priorityLabel.append(priority);
       row.append(priorityLabel);
+      const dueDateForm = element('form', { className: 'due-date-form' });
+      const dueDateLabel = element('label', { text: 'Task due date', className: 'due-date-label' });
+      const dueDateInput = element('input');
+      dueDateInput.type = 'text';
+      dueDateInput.name = `dueDate-${task.id}`;
+      dueDateInput.value = task.dueDate ?? '';
+      dueDateInput.disabled = project.archived;
+      dueDateLabel.append(dueDateInput);
+      const saveDueDate = element('button', { text: 'Save due date', className: 'secondary-button' });
+      saveDueDate.type = 'submit';
+      saveDueDate.disabled = project.archived;
+      dueDateForm.append(dueDateLabel, saveDueDate);
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const previousDueDate = task.dueDate ?? '';
+        const dueDate = dueDateInput.value.trim();
+        saveDueDate.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ dueDate }),
+          });
+          if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            if (result.error === 'Due date must be a valid YYYY-MM-DD date') {
+              dueDateInput.value = previousDueDate;
+              alert.textContent = result.error;
+              alert.hidden = false;
+              return;
+            }
+            throw new Error('Could not save due date');
+          }
+          task.dueDate = dueDate || null;
+          dueDateInput.value = task.dueDate ?? '';
+          alert.hidden = true;
+        } catch {
+          dueDateInput.value = previousDueDate;
+          alert.textContent = 'Could not save due date';
+          alert.hidden = false;
+        } finally {
+          saveDueDate.disabled = project.archived;
+        }
+      });
+      row.append(dueDateForm);
       taskList.append(row);
     }
   }

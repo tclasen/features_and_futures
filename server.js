@@ -37,6 +37,9 @@ const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 database.exec('PRAGMA foreign_keys = ON');
 
 const page = await readFile(new URL('./public/index.html', import.meta.url));
@@ -165,7 +168,7 @@ const server = createServer(async (request, response) => {
   const tasksRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksRoute && request.method === 'GET') {
     const tasks = database.prepare(
-      'SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id'
+      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id'
     ).all(Number(tasksRoute[1])).map((task) => ({ ...task, completed: Boolean(task.completed) }));
     send(response, 200, 'application/json; charset=utf-8', JSON.stringify(tasks));
     return;
@@ -224,6 +227,15 @@ const server = createServer(async (request, response) => {
         result = database.prepare(
           'UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?'
         ).run(payload.priority, taskId, projectId);
+      } else if (typeof payload.dueDate === 'string') {
+        const dueDate = payload.dueDate.trim();
+        if (dueDate && !isValidDueDate(dueDate)) {
+          send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+          return;
+        }
+        result = database.prepare(
+          'UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?'
+        ).run(dueDate || null, taskId, projectId);
       } else {
         send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid task update' }));
         return;
@@ -232,7 +244,7 @@ const server = createServer(async (request, response) => {
         send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task not found' }));
         return;
       }
-      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ id: taskId, projectId, ...payload }));
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ id: taskId, projectId, ...payload, ...(typeof payload.dueDate === 'string' ? { dueDate: payload.dueDate.trim() || null } : {}) }));
     } catch {
       send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
     }
@@ -287,5 +299,17 @@ const server = createServer(async (request, response) => {
   }
   send(response, 404, 'text/plain; charset=utf-8', 'Not found');
 });
+
+function isValidDueDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
 
 server.listen(port, '0.0.0.0');
