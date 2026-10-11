@@ -272,7 +272,36 @@ async function refreshTasks() {
       await refreshTasks();
     });
 
-    row.append(title, renameForm, priority, dueDateForm, moveForm, checkbox);
+    const notesForm = document.createElement('form');
+    notesForm.className = 'task-notes-form';
+    const notesLabel = document.createElement('label');
+    notesLabel.textContent = 'Task notes';
+    const notesInput = document.createElement('textarea');
+    notesInput.setAttribute('aria-label', 'Task notes');
+    notesInput.value = task.notes || '';
+    notesInput.disabled = activeProjectArchived;
+    const saveNotes = document.createElement('button');
+    saveNotes.type = 'submit';
+    saveNotes.textContent = 'Save notes';
+    saveNotes.disabled = activeProjectArchived;
+    notesForm.append(notesLabel, notesInput, saveNotes);
+    notesForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ notes: notesInput.value }),
+      });
+      if (!update.ok) {
+        taskAlert.textContent = 'Unable to save task notes';
+        taskAlert.hidden = false;
+        return;
+      }
+      taskAlert.hidden = true;
+      await refreshTasks();
+    });
+
+    row.append(title, renameForm, priority, dueDateForm, moveForm, notesForm, checkbox);
     taskList.append(row);
   }
 }

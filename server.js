@@ -20,6 +20,7 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     task_order INTEGER
   );
@@ -47,6 +48,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 }
 if (!taskColumns.some((column) => column.name === 'task_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER');
+}
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 database.exec(`
   WITH ordered AS (
@@ -169,7 +173,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     return json(response, 200, database.prepare(
-      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY task_order, id'
+      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY task_order, id'
     ).all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
 
@@ -270,6 +274,12 @@ const server = createServer(async (request, response) => {
         database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?')
           .run(canonicalDate, taskId, projectId);
         return json(response, 200, { id: taskId, projectId, dueDate: canonicalDate });
+      }
+      if (Object.hasOwn(input, 'notes')) {
+        if (typeof input.notes !== 'string') return json(response, 400, { error: 'Task notes must be text' });
+        database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?')
+          .run(input.notes, taskId, projectId);
+        return json(response, 200, { id: taskId, projectId, notes: input.notes });
       }
       if (typeof input.completed !== 'boolean') return json(response, 400, { error: 'Completion state is required' });
       database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?')
