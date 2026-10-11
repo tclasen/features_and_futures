@@ -87,6 +87,15 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/api/projects/active' && req.method === 'GET') {
     return sendJson(res, 200, database.prepare('SELECT id, name FROM projects WHERE archived = 0 ORDER BY id').all().map((p) => ({ ...p, id: Number(p.id) })));
   }
+  if (url.pathname === '/api/directory' && req.method === 'GET') {
+    return sendJson(res, 200, database.prepare(`
+      SELECT t.id, t.project_id AS projectId, p.name AS projectName, p.archived,
+        t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id
+      ORDER BY p.id, COALESCE(pos.position, t.sort_order), t.id
+    `).all().map((task) => ({ ...task, id: Number(task.id), projectId: Number(task.projectId), archived: Boolean(task.archived), completed: Boolean(task.completed), deleted: Boolean(task.deleted), priority: task.priority || 'Normal', dueDate: task.dueDate || '', notes: task.notes || '' })));
+  }
   if (url.pathname === '/api/projects/import' && req.method === 'POST') {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -312,6 +321,10 @@ const server = createServer(async (req, res) => {
     return res.end(css);
   }
   if (req.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    return res.end(indexHtml);
+  }
+  if (req.method === 'GET' && url.pathname === '/directory') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(indexHtml);
   }
