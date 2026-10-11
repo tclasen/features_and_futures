@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low','Normal','High')),
   due_date TEXT,
+  notes TEXT NOT NULL DEFAULT '',
   sort_order INTEGER
 );`);
 
@@ -37,6 +38,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 );
 INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, sort_order FROM tasks;`);
+
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -98,7 +103,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
     if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
-    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(tasksMatch[1])));
+    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(tasksMatch[1])));
   }
   if (tasksMatch && req.method === 'POST') {
     let raw = '';
@@ -133,6 +138,10 @@ const server = http.createServer(async (req, res) => {
         }
         db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destination.id, position, taskId);
         return send(200, JSON.stringify({ ok: true }));
+      }
+      if (Object.hasOwn(payload, 'notes')) {
+        const result = db.prepare(`UPDATE tasks SET notes = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(String(payload.notes ?? ''), taskMatch[1]);
+        return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
       }
       if (Object.hasOwn(payload, 'dueDate')) {
         const rawDate = String(payload.dueDate ?? '').trim();
