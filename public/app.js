@@ -733,6 +733,7 @@ async function showDirectory() {
   const scope = selectControl('Project scope', ['Active', 'Archived']);
   const completion = selectControl('Task filter', ['All', 'Open', 'Completed', 'Deleted']);
   const priority = selectControl('Priority filter', ['All', 'Low', 'Normal', 'High']);
+  const directoryOrder = selectControl('Directory order', ['Original', 'Priority', 'Due date', 'Title']);
   let appliedRange = { from: '', through: '' };
   const rangeForm = element('form', { className: 'due-range-form' });
   const fromLabel = element('label', { text: 'Due from' });
@@ -813,7 +814,7 @@ async function showDirectory() {
     if (currentRequest !== requestVersion) return;
     loading = false;
     results.replaceChildren();
-    const rows = tasks.filter((task) => task.archived === (scope.value === 'Archived'))
+    let rows = tasks.filter((task) => task.archived === (scope.value === 'Archived'))
       .filter((task) => completion.value === 'Deleted' ? task.deleted : !task.deleted && (
         completion.value === 'All' || (completion.value === 'Open' && !task.completed)
           || (completion.value === 'Completed' && task.completed)))
@@ -825,6 +826,31 @@ async function showDirectory() {
           && (!appliedRange.through || task.dueDate <= appliedRange.through);
       })
       .filter((task) => matchesSearch(task.title, appliedSearch));
+    const priorityRank = { High: 0, Normal: 1, Low: 2 };
+    const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+    const compareCodePoints = (left, right) => {
+      const leftPoints = Array.from(left, (character) => character.codePointAt(0));
+      const rightPoints = Array.from(right, (character) => character.codePointAt(0));
+      for (let index = 0; index < Math.min(leftPoints.length, rightPoints.length); index += 1) {
+        if (leftPoints[index] !== rightPoints[index]) return leftPoints[index] - rightPoints[index];
+      }
+      return leftPoints.length - rightPoints.length;
+    };
+    if (directoryOrder.value !== 'Original') {
+      const compare = directoryOrder.value === 'Priority'
+        ? (left, right) => priorityRank[left.priority] - priorityRank[right.priority]
+        : directoryOrder.value === 'Due date'
+          ? (left, right) => {
+            if (!left.dueDate) return right.dueDate ? 1 : 0;
+            if (!right.dueDate) return -1;
+            return left.dueDate < right.dueDate ? -1 : left.dueDate > right.dueDate ? 1 : 0;
+          }
+          : (left, right) => compareCodePoints(asciiLower(left.title), asciiLower(right.title));
+      rows = rows.map((task, originalIndex) => ({ task, originalIndex }))
+        .sort((left, right) => compare(left.task, right.task)
+          || left.originalIndex - right.originalIndex)
+        .map(({ task }) => task);
+    }
     visibleRows = rows;
     const eligible = scope.value === 'Active' && completion.value !== 'Deleted'
       ? rows.filter((task) => !task.deleted && !task.archived)
@@ -868,7 +894,7 @@ async function showDirectory() {
   }
   completeVisible.addEventListener('click', () => updateVisibleTasks(true));
   reopenVisible.addEventListener('click', () => updateVisibleTasks(false));
-  for (const control of [scope, completion, priority]) {
+  for (const control of [scope, completion, priority, directoryOrder]) {
     control.addEventListener('change', () => renderRows().catch(showLoadError));
   }
   await renderRows();
