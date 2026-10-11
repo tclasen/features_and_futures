@@ -67,14 +67,25 @@ async function render() {
     const priorityFilterLabel = element('label', { for: 'priority-filter' }, 'Priority filter');
     const priorityFilter = element('select', { id: 'priority-filter' });
     for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', { value }, value));
+    const dueFromLabel = element('label', { for: 'due-from' }, 'Due from');
+    const dueFrom = element('input', { id: 'due-from', type: 'text', 'aria-label': 'Due from' });
+    const dueThroughLabel = element('label', { for: 'due-through' }, 'Due through');
+    const dueThrough = element('input', { id: 'due-through', type: 'text', 'aria-label': 'Due through' });
+    const applyDueRange = element('button', { type: 'button' }, 'Apply due range');
+    const rangeAlert = element('p', { role: 'alert', hidden: '' });
+    let appliedFrom = '', appliedThrough = '';
     const tasks = element('section', { 'aria-label': 'Tasks' });
-    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter, tasks);
+    app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter,
+      dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rangeAlert, tasks);
     const refresh = async () => {
       const items = await request(`/api/projects/${encodeURIComponent(match[1])}/tasks`);
       tasks.replaceChildren();
       for (const task of items) {
         if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+        if ((appliedFrom || appliedThrough) && (!task.dueDate ||
+          (appliedFrom && task.dueDate < appliedFrom) ||
+          (appliedThrough && task.dueDate > appliedThrough))) continue;
         const row = element('div', { 'data-testid': 'task-row', class: 'project-row' });
         row.append(element('span', {}, task.title));
         const renameInput = element('input', { type: 'text', 'aria-label': 'New task title', value: task.title });
@@ -125,6 +136,25 @@ async function render() {
         row.append(checkbox); tasks.append(row);
       }
     };
+    const validCalendarDate = value => {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return false;
+      const [, y, m, d] = match.map(Number);
+      if (y < 1 || m < 1 || m > 12) return false;
+      const days = [31, y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return d >= 1 && d <= days[m - 1];
+    };
+    applyDueRange.addEventListener('click', async () => {
+      const from = dueFrom.value.trim(), through = dueThrough.value.trim();
+      if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+        rangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates'; rangeAlert.hidden = false; return;
+      }
+      if (from && through && from > through) {
+        rangeAlert.textContent = 'Due from must not be after Due through'; rangeAlert.hidden = false; return;
+      }
+      appliedFrom = from; appliedThrough = through; rangeAlert.hidden = true;
+      await refresh();
+    });
     filter.addEventListener('change', refresh);
     priorityFilter.addEventListener('change', refresh);
     form.addEventListener('submit', async event => {
