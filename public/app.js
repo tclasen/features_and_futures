@@ -3,13 +3,116 @@ const app = document.querySelector('#app');
 async function request(path, options) {
   const response = await fetch(path, options);
   const body = await response.json();
-  if (!response.ok) throw new Error(body.error || 'Unable to load projects');
+  if (!response.ok) throw new Error(body.error || 'Unable to complete request');
   return body;
 }
 
 function showError(container, message) {
   container.textContent = message;
   container.hidden = false;
+}
+
+async function renderTasks(projectId) {
+  const section = document.createElement('section');
+  section.setAttribute('aria-label', 'Tasks');
+  section.innerHTML = `
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="create-controls">
+        <input id="task-title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <p role="alert" hidden></p>
+    <div class="task-filter">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter">
+        <option value="all">All</option>
+        <option value="open">Open</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
+    <div id="tasks"></div>
+  `;
+  app.append(section);
+  const form = section.querySelector('form');
+  const input = section.querySelector('input');
+  const button = form.querySelector('button');
+  const alert = section.querySelector('[role="alert"]');
+  const filter = section.querySelector('select');
+  const list = section.querySelector('#tasks');
+  const endpoint = `/api/projects/${projectId}/tasks`;
+  let tasks = [];
+
+  function displayTasks() {
+    list.replaceChildren();
+    for (const task of tasks) {
+      if (filter.value === 'open' && task.completed) continue;
+      if (filter.value === 'completed' && !task.completed) continue;
+      const row = document.createElement('div');
+      row.dataset.testid = 'task-row';
+      row.className = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        alert.hidden = true;
+        try {
+          const updated = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          Object.assign(task, updated);
+          displayTasks();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          showError(alert, error.message);
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+      row.append(title, checkbox);
+      list.append(row);
+    }
+  }
+
+  filter.addEventListener('change', displayTasks);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    if (!input.value.trim()) {
+      showError(alert, 'Task title is required');
+      return;
+    }
+    button.disabled = true;
+    try {
+      tasks.push(await request(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      }));
+      displayTasks();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  try {
+    tasks = await request(endpoint);
+    displayTasks();
+    button.disabled = false;
+  } catch (error) {
+    showError(alert, error.message);
+  }
 }
 
 async function render() {
@@ -21,6 +124,7 @@ async function render() {
       const project = await request(`/api/projects/${match[1]}`);
       app.querySelector('h1').textContent = project.name;
       document.title = `${project.name} — Workboard`;
+      await renderTasks(project.id);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';
       showError(app.querySelector('[role="alert"]'), error.message);

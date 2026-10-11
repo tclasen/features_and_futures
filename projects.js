@@ -1,10 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createTaskStore } from './tasks.js';
 
 export function openProjects(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
   const database = new DatabaseSync(databasePath);
+  database.exec('PRAGMA foreign_keys = ON');
   database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,6 +18,7 @@ export function openProjects(databasePath) {
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
 
   return {
+    tasks: createTaskStore(database),
     list: () => list.all(),
     get: (id) => get.get(id),
     create(name) {

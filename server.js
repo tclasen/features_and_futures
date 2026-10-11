@@ -49,6 +49,29 @@ const server = createServer(async (request, response) => {
       }
       return json(response, 201, projects.create(body.name));
     }
+    const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
+    if (tasksMatch) {
+      const [, projectId, taskId] = tasksMatch;
+      if (!projects.get(projectId)) return json(response, 404, { error: 'Project not found' });
+      if (!taskId && request.method === 'GET') {
+        return json(response, 200, projects.tasks.list(projectId));
+      }
+      if (!taskId && request.method === 'POST') {
+        const body = await readJson(request);
+        if (typeof body?.title !== 'string' || !body.title.trim()) {
+          return json(response, 400, { error: 'Task title is required' });
+        }
+        return json(response, 201, projects.tasks.create(projectId, body.title));
+      }
+      if (taskId && request.method === 'PATCH') {
+        const body = await readJson(request);
+        if (typeof body?.completed !== 'boolean') {
+          return json(response, 400, { error: 'Completion must be a boolean' });
+        }
+        const task = projects.tasks.setCompleted(projectId, taskId, body.completed);
+        return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
+      }
+    }
     const projectMatch = path.match(/^\/api\/projects\/([1-9]\d*)$/);
     if (request.method === 'GET' && projectMatch) {
       const project = projects.get(projectMatch[1]);
