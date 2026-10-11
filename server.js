@@ -25,6 +25,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Add priorities to databases created before Task 006.
+const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -93,7 +98,7 @@ const server = createServer(async (req, res) => {
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskRoute && req.method === 'GET') {
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1]));
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1]));
     return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (taskRoute && req.method === 'POST') {
@@ -125,6 +130,11 @@ const server = createServer(async (req, res) => {
         if (!title) return sendJson(res, 400, { error: 'Task title is required' });
         db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
         return sendJson(res, 200, { id: taskId, title, completed: Boolean(task.completed) });
+      }
+      if (Object.hasOwn(payload, 'priority')) {
+        if (!['Low', 'Normal', 'High'].includes(payload.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+        db.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(payload.priority, taskId);
+        return sendJson(res, 200, { id: taskId, priority: payload.priority });
       }
       if (typeof payload.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
       db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, taskId);
