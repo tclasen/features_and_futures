@@ -195,8 +195,8 @@ test('due ranges intersect filters, validate inclusively and survive edits witho
     assert.deepEqual(rows(html), ['Start', 'End']);
     assert.match(html, /id="due-from"[^>]*value="2024-02-29"/);
     assert.match(html, /id="due-through"[^>]*value="2024-03-01"/);
-    // Every edit and completion/priority filter form carries the applied boundaries.
-    for (const form of html.matchAll(/<form[^>]*>[\s\S]*?<\/form>/g)) {
+    // Every project-scoped form carries boundaries; Projects navigation resets state.
+    for (const form of html.matchAll(/<form[^>]*action="\/projects\/[^\"]*"[^>]*>[\s\S]*?<\/form>/g)) {
       assert.match(form[0], /name="dueFrom" value="2024-02-29"/);
       assert.match(form[0], /name="dueThrough" value="2024-03-01"/);
     }

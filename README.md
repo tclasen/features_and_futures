@@ -49,6 +49,13 @@ New tasks append after reserved positions of tasks currently away. Movement pres
 title, completion, priority and due date, and keeps the source page's filters and due range. Summaries reflect
 current ownership. Moves and task ordering persist across restarts. Archived projects
 cannot send or receive tasks; controls are disabled when no destination is available.
+Project search and Search projects match project names within the selected archive
+filter. Task search and Search tasks match titles within all selected task filters.
+Both use substring matching with ASCII case ignored and surrounding query whitespace
+trimmed; internal whitespace is significant. Searches retain other filters and task
+search survives edits and moves. Archived pages still support searching. Opening the
+list (including Projects) or opening a project from the list resets its search to empty.
+Search never changes saved data or all-task summaries.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -65,5 +72,6 @@ task priorities, project-default migration and inheritance, edits, isolation, co
 due-date migration, calendar validation, clearing and isolation, archive restrictions,
 inclusive due ranges, combined membership, invalid-range preservation, edit re-evaluation,
 task moves, destination eligibility, persistent per-project return ordering, legacy-order migration, move summaries,
-source-filter preservation, archive restrictions, and persistence across server restarts.
+source-filter preservation, ASCII substring search, search/filter intersections and
+preservation through edits, archive restrictions, and persistence across server restarts.
 Temporary files are removed afterward.
