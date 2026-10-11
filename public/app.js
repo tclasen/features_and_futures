@@ -219,6 +219,46 @@ function taskDueDateForm(project, task, endpoint, onDueDateChange) {
   return form;
 }
 
+function taskMoveForm(project, task, endpoint, destinations, onMove) {
+  const form = element('form');
+  const label = element('label', 'Destination project');
+  const select = element('select');
+  select.id = `destination-project-${task.id}`;
+  label.htmlFor = select.id;
+  for (const destination of destinations) {
+    const option = element('option', destination.name);
+    option.value = String(destination.id);
+    select.append(option);
+  }
+  const disabled = project.archived || destinations.length === 0;
+  select.disabled = disabled;
+  const submit = element('button', 'Move task');
+  submit.type = 'submit';
+  submit.disabled = disabled;
+  form.append(label, select, submit);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (disabled) return;
+    submit.disabled = true;
+    select.disabled = true;
+    try {
+      await request(`${endpoint}/${task.id}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination_project_id: Number(select.value) }),
+      });
+      app.querySelector('[role="alert"]')?.remove();
+      onMove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = disabled;
+      select.disabled = disabled;
+    }
+  });
+  return form;
+}
+
 function defaultPriorityControl(project) {
   const controls = element('div');
   const label = element('label', 'Default task priority');
@@ -310,7 +350,8 @@ async function renderTasks(project) {
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
   app.append(defaultPriorityControl(project), form, filterControls, dueRangeForm, list);
-  const tasks = await request(endpoint);
+  const [tasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
+  const destinations = projects.filter(destination => !destination.archived && destination.id !== project.id);
 
   function displayTasks() {
     list.replaceChildren();
@@ -351,7 +392,11 @@ async function renderTasks(project) {
       row.append(element('span', task.title), checkbox,
         taskRenameForm(project, task, endpoint, displayTasks),
         taskPriorityControl(project, task, endpoint, displayTasks),
-        taskDueDateForm(project, task, endpoint, displayTasks));
+        taskDueDateForm(project, task, endpoint, displayTasks),
+        taskMoveForm(project, task, endpoint, destinations, () => {
+          tasks.splice(tasks.indexOf(task), 1);
+          displayTasks();
+        }));
       list.append(row);
     }
   }

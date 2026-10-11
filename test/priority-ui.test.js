@@ -95,7 +95,7 @@ function descendants(node) {
   return node.children.flatMap(child => [child, ...descendants(child)]);
 }
 
-async function projectUI(archived = false, dueDates = []) {
+async function projectUI(archived = false, dueDates = [], projects = []) {
   const tasks = [
     { id: 1, title: 'High open', priority: 'High', completed: false },
     { id: 2, title: 'Low done', priority: 'Low', completed: true },
@@ -109,6 +109,7 @@ async function projectUI(archived = false, dueDates = []) {
   const { app, renderTasks } = await setup(async (path, options) => {
     let body = [];
     if (path.endsWith('/tasks')) body = tasks;
+    if (path === '/api/projects') body = projects;
     if (options) {
       const changes = JSON.parse(options.body);
       requests.push({ path, changes });
@@ -131,6 +132,52 @@ async function projectUI(archived = false, dueDates = []) {
   };
   return { app, project, tasks, requests, nodes, byId, rows, titles, change };
 }
+
+test('move controls list only eligible destinations and retain source filters after moving', async () => {
+  const projects = [
+    { id: 1, name: 'Source', archived: false },
+    { id: 2, name: 'Renamed destination', archived: false },
+    { id: 3, name: 'Archived', archived: true },
+    { id: 4, name: 'Last destination', archived: false },
+  ];
+  const ui = await projectUI(false, ['2024-01-01', '', '', '2024-01-02'], projects);
+  await ui.change('task-filter', 'All');
+  await ui.change('priority-filter', 'High');
+  ui.byId('due-from').value = '2024-01-01';
+  ui.byId('due-through').value = '2024-01-02';
+  const rangeForm = ui.nodes().find(node => node.children.includes(ui.byId('due-from')));
+  rangeForm.listeners.submit({ preventDefault() {} });
+  assert.deepEqual(ui.titles(), ['High open', 'High done']);
+  const select = ui.byId('destination-project-1');
+  const moveForm = ui.rows()[0].children.find(node => node.children.includes(select));
+  assert.equal(moveForm.children[0].textContent, 'Destination project');
+  assert.equal(moveForm.children[0].htmlFor, select.id);
+  assert.deepEqual(Array.from(select.children, option => [option.value, option.textContent]),
+    [['2', 'Renamed destination'], ['4', 'Last destination']]);
+  assert.equal(select.disabled, false);
+  assert.equal(moveForm.children[2].textContent, 'Move task');
+  select.value = '4';
+  await moveForm.listeners.submit({ preventDefault() {} });
+  assert.deepEqual(ui.requests, [{ path: '/api/projects/1/tasks/1/move', changes: { destination_project_id: 4 } }]);
+  assert.deepEqual(ui.titles(), ['High done']);
+  assert.equal(ui.byId('task-filter').value, 'All');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('due-from').value, '2024-01-01');
+  assert.equal(ui.byId('due-through').value, '2024-01-02');
+  await ui.change('priority-filter', 'All');
+  assert.deepEqual(ui.titles(), ['High done']);
+  for (const disabledUI of [await projectUI(true, [], projects), await projectUI(false, [], projects.slice(0, 1))]) {
+    for (const row of disabledUI.rows()) {
+      const form = row.children.find(node => node.children[0]?.textContent === 'Destination project');
+      assert.equal(form.children[1].disabled, true);
+      assert.equal(form.children[2].disabled, true);
+      await form.listeners.submit({ preventDefault() {} });
+    }
+    assert.equal(disabledUI.requests.length, 0);
+  }
+  const restored = await projectUI(false, [], projects);
+  assert.equal(restored.byId('destination-project-1').disabled, false);
+});
 
 test('priority and completion filters intersect in creation order without changing data', async () => {
   const ui = await projectUI();
@@ -302,7 +349,7 @@ test('archived projects keep both filters usable and task editing disabled', asy
   assert.deepEqual(ui.titles(), ['Normal done']);
   const controls = descendants(ui.rows()[0]).filter(node =>
     ['input', 'button', 'select'].includes(node.tagName));
-  assert.equal(controls.length, 6);
+  assert.equal(controls.length, 8);
   assert.ok(controls.every(control => control.disabled));
   assert.equal(JSON.stringify(ui.tasks), original);
   assert.equal(ui.requests.length, 0);

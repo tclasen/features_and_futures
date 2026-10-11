@@ -43,6 +43,77 @@ async function stop(child) {
   await exit;
 }
 
+test('moves append, preserve all task data and summaries, and persist through repeated moves', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-'));
+  const database = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  let running;
+  try {
+    running = await start(port, database);
+    const get = async path => (await fetch(`${running.base}${path}`)).json();
+    const mutate = (path, method, body) => fetch(`${running.base}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const create = async (path, body) => (await mutate(path, 'POST', body)).json();
+    const source = await create('/api/projects', { name: 'Source' });
+    const destination = await create('/api/projects', { name: 'Destination' });
+    const archived = await create('/api/projects', { name: 'Archived' });
+    const sourcePath = `/api/projects/${source.id}`;
+    const destinationPath = `/api/projects/${destination.id}`;
+    const archivedPath = `/api/projects/${archived.id}`;
+    const sourceTasks = `${sourcePath}/tasks`;
+    const destinationTasks = `${destinationPath}/tasks`;
+    // The oldest task must append after newer tasks, not sort by its ID.
+    const first = await create(sourceTasks, { title: 'Oldest' });
+    const remaining = await create(sourceTasks, { title: 'Remaining' });
+    const existing = await create(destinationTasks, { title: 'Existing' });
+    for (const changes of [{ completed: true }, { priority: 'High' }, { due_date: '0001-01-01' }]) {
+      await mutate(`${sourceTasks}/${first.id}`, 'PATCH', changes);
+    }
+    const saved = { ...first, completed: true, priority: 'High', due_date: '0001-01-01' };
+    await mutate(destinationPath, 'PATCH', { default_priority: 'Low' });
+    await mutate(archivedPath, 'PATCH', { archived: true });
+    const move = (path, id, destinationId) => mutate(`${path}/${id}/move`, 'POST', { destination_project_id: destinationId });
+    for (const invalid of [source.id, null, '2', 1.5]) {
+      assert.equal((await move(sourceTasks, first.id, invalid)).status, 400);
+    }
+    assert.equal((await move(sourceTasks, first.id, 99999)).status, 404);
+    assert.equal((await move(sourceTasks, first.id, archived.id)).status, 409);
+    assert.equal((await move(destinationTasks, first.id, source.id)).status, 404);
+    assert.equal((await move(sourceTasks, 99999, destination.id)).status, 404);
+    assert.deepEqual(await get(sourceTasks), [saved, remaining]);
+    await mutate(sourcePath, 'PATCH', { archived: true });
+    assert.equal((await move(sourceTasks, first.id, destination.id)).status, 409);
+    await mutate(sourcePath, 'PATCH', { archived: false });
+    const response = await move(sourceTasks, first.id, destination.id);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), saved);
+    assert.deepEqual(await get(sourceTasks), [remaining]);
+    assert.deepEqual(await get(destinationTasks), [existing, saved]);
+    assert.deepEqual(await get(sourcePath), { ...source, total: 1 });
+    assert.deepEqual(await get(destinationPath), { ...destination, default_priority: 'Low', total: 2, completed: 1 });
+    assert.equal((await mutate(`${sourceTasks}/${first.id}`, 'PATCH', { title: 'Wrong source' })).status, 404);
+    const newlyCreated = await create(destinationTasks, { title: 'After move' });
+    assert.equal(newlyCreated.priority, 'Low');
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(destinationTasks), [existing, saved, newlyCreated]);
+    assert.deepEqual(await get(sourceTasks), [remaining]);
+    await move(destinationTasks, first.id, source.id);
+    await move(destinationTasks, existing.id, source.id);
+    assert.deepEqual(await get(sourceTasks), [remaining, saved, existing]);
+    assert.deepEqual(await get(destinationTasks), [newlyCreated]);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(sourceTasks), [remaining, saved, existing]);
+    assert.deepEqual(await get(sourcePath), { ...source, total: 3, completed: 1 });
+    assert.deepEqual(await get(destinationPath), { ...destination, default_priority: 'Low', total: 1 });
+  } finally {
+    if (running && running.child.exitCode === null) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('due dates validate, remain independent, and persist through edits, archive and restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
   const database = join(directory, 'projects.sqlite');

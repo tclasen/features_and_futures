@@ -58,6 +58,14 @@ renaming, creation, and default changes retain them. Range controls remain usabl
 when archived. Reopening a project starts with empty boundaries and All selected
 for both task filters. Range selections are page-local, not persisted.
 
+Every task row has a Destination project selector and Move task button. Destinations
+are other active projects in project creation order, using their current names.
+Moving appends the task to its destination while preserving its identity, title,
+completion, priority and due date. The source remains open with all filters retained;
+both summaries reflect current ownership. Archived projects cannot send or receive
+tasks, and moving is disabled when no eligible destination exists. Moves and ordering
+persist across reloads and restarts; destination defaults do not affect moved tasks.
+
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
@@ -69,5 +77,5 @@ filter retention and immediate row updates after edits, independent project defa
 new-task inheritance, default validation and archive protection, due-date validation,
 clearing, independence, filter retention and archive protection, inclusive due-range intersections,
 invalid-range preservation, live membership updates, archived range controls, shared date-validator serving,
-legacy database migration, and
-persistence through process restarts.
+legacy database migration, move destination eligibility, append ordering, repeated moves,
+source filter retention, ownership and summary updates, and persistence through process restarts.
