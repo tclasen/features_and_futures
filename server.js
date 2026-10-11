@@ -40,6 +40,10 @@ if (!taskColumns.some(column => column.name === 'sort_order')) {
   db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
   db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
 }
+// Notes were added after the initial task schema; existing rows start empty.
+if (!taskColumns.some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Keep a task's slot in every project it has visited so a later return can
 // restore its former position. Existing tasks start with their current order.
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -133,8 +137,8 @@ const server = createServer(async (req, res) => {
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskRoute && req.method === 'GET') {
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(taskRoute[1]));
-    return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
+    const tasks = db.prepare("SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id").all(Number(taskRoute[1]));
+    return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed), notes: task.notes ?? '' })));
   }
   if (taskRoute && req.method === 'POST') {
     try {
@@ -203,6 +207,11 @@ const server = createServer(async (req, res) => {
         }
         db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, taskId);
         return sendJson(res, 200, { id: taskId, dueDate: dueDate || null });
+      }
+      if (Object.hasOwn(payload, 'notes')) {
+        if (typeof payload.notes !== 'string') return sendJson(res, 400, { error: 'Invalid task notes' });
+        db.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(payload.notes, taskId);
+        return sendJson(res, 200, { id: taskId, notes: payload.notes });
       }
       if (typeof payload.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
       db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, taskId);
