@@ -67,6 +67,21 @@ const server = createServer(async (req, res) => {
     const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived, Number(archiveMatch[1]));
     return result.changes ? sendJson(res, 200, { archived: Boolean(archived) }) : sendJson(res, 404, { error: 'Project not found' });
   }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (renameMatch && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let data;
+    try { data = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+    const id = Number(renameMatch[1]);
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(id);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 403, { error: 'Archived project' });
+    database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+    return sendJson(res, 200, { id, name });
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && req.method === 'GET') {
     const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));

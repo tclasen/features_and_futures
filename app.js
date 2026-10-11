@@ -10,6 +10,9 @@ const taskAlert = document.querySelector('#task-alert');
 const taskContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const projectFilter = document.querySelector('#project-filter');
+const renameForm = document.querySelector('#rename-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameAlert = document.querySelector('#rename-alert');
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
@@ -62,12 +65,39 @@ async function showRoute() {
   const project = await response.json();
   document.querySelector('#detail-name').textContent = project.name;
   document.querySelector('#archived-notice').hidden = !project.archived;
+  renameInput.value = project.name;
+  renameInput.disabled = project.archived;
+  renameForm.querySelector('button[type="submit"]').disabled = project.archived;
+  renameAlert.hidden = true;
   taskForm.querySelector('button[type="submit"]').disabled = project.archived;
   taskInput.disabled = project.archived;
   detailView.hidden = false;
   listView.hidden = true;
   await loadTasks(Number(match[1]), project.archived);
 }
+
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = renameInput.value.trim();
+  if (!name) {
+    renameAlert.textContent = 'Project name is required';
+    renameAlert.hidden = false;
+    renameInput.focus();
+    return;
+  }
+  const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
+  if (!projectId) return;
+  const response = await fetch(`/api/projects/${projectId}`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (response.ok) {
+    const project = await response.json();
+    document.querySelector('#detail-name').textContent = project.name;
+    renameInput.value = project.name;
+    renameAlert.hidden = true;
+  }
+});
 
 async function loadTasks(projectId, archived = false) {
   const response = await fetch(`/api/projects/${projectId}/tasks`);
