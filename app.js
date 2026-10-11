@@ -51,8 +51,48 @@ async function populateProjects(list) {
 async function renderProject(id) {
   const project = await request('/api/projects').then(projects => projects.find(item => String(item.id) === id));
   if (!project) { location.replace('/'); return; }
-  app.replaceChildren(element('button', 'Projects', { type: 'button' }), element('h1', project.name));
-  app.querySelector('button').addEventListener('click', () => { location.href = '/'; });
+  const back = element('button', 'Projects', { type: 'button' });
+  back.addEventListener('click', () => { location.href = '/'; });
+  const heading = element('h1', project.name);
+  const form = document.createElement('form');
+  const input = element('input', undefined, { id: 'task-title', name: 'title', type: 'text' });
+  input.setAttribute('aria-label', 'Task title');
+  form.append(input, element('button', 'Create task', { type: 'submit' }));
+  const error = element('p', '', { id: 'error', role: 'alert', hidden: '' });
+  const filterLabel = element('label', 'Task filter', { for: 'task-filter' });
+  const filter = element('select', undefined, { id: 'task-filter' });
+  filter.setAttribute('aria-label', 'Task filter');
+  for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+  const list = element('section', undefined, { 'aria-label': 'Tasks' });
+  const refresh = async () => {
+    const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
+    const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
+    list.replaceChildren(...shown.map(task => {
+      const row = element('div', undefined, { 'data-testid': 'task-row' });
+      row.append(element('span', task.title));
+      const checkbox = element('input', undefined, { type: 'checkbox' });
+      checkbox.checked = Boolean(task.completed);
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        try {
+          await request(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+          await refresh();
+        } catch { checkbox.checked = !checkbox.checked; }
+      });
+      row.append(checkbox);
+      return row;
+    }));
+  };
+  filter.addEventListener('change', () => refresh().catch(() => {}));
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); error.hidden = true;
+    try {
+      await request(`/api/projects/${encodeURIComponent(id)}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: input.value }) });
+      input.value = ''; await refresh();
+    } catch (cause) { error.textContent = cause.message; error.hidden = false; }
+  });
+  app.replaceChildren(back, heading, form, error, filterLabel, filter, list);
+  await refresh();
 }
 
 const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
