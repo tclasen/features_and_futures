@@ -99,7 +99,9 @@ const server = createServer(async (req, res) => {
   if (taskRoute && req.method === 'POST') {
     try {
       const projectId = Number(taskRoute[1]);
-      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
+      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) return sendJson(res, 404, { error: 'Project not found' });
+      if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
       const payload = await readJson(req);
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
@@ -113,10 +115,20 @@ const server = createServer(async (req, res) => {
   if (taskUpdate && req.method === 'PATCH') {
     try {
       const payload = await readJson(req);
+      const taskId = Number(taskUpdate[1]);
+      const task = db.prepare(`SELECT t.id, t.completed, p.archived
+        FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?`).get(taskId);
+      if (!task) return sendJson(res, 404, { error: 'Task not found' });
+      if (task.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
+      if (Object.hasOwn(payload, 'title')) {
+        const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+        if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+        db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
+        return sendJson(res, 200, { id: taskId, title, completed: Boolean(task.completed) });
+      }
       if (typeof payload.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, Number(taskUpdate[1]));
-      if (!result.changes) return sendJson(res, 404, { error: 'Task not found' });
-      return sendJson(res, 200, { id: Number(taskUpdate[1]), completed: payload.completed });
+      db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, taskId);
+      return sendJson(res, 200, { id: taskId, completed: payload.completed });
     } catch {
       return sendJson(res, 400, { error: 'Invalid request' });
     }
