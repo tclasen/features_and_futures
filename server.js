@@ -15,6 +15,15 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_order INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, task_order)
+);
+INSERT OR IGNORE INTO task_project_positions(task_id, project_id, task_order)
+SELECT id, project_id, task_order FROM tasks ORDER BY project_id, task_order, id;`);
 db.exec('PRAGMA foreign_keys = ON');
 function isValidDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -43,7 +52,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id=? ORDER BY task_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (project.archived) return send(409, { error: 'Archived project' });
-      try { const data = await readBody(); if (typeof data.title !== 'string' || !data.title.trim()) return send(400, { error: 'Task title is required' }); const title = data.title.trim(); const order = db.prepare('SELECT COALESCE(MAX(task_order),0)+1 AS next FROM tasks WHERE project_id=?').get(projectId).next; const result = db.prepare('INSERT INTO tasks(project_id,title,priority,task_order) VALUES (?,?,?,?)').run(projectId, title, project.default_priority, order); return send(201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority }); } catch { return send(400, { error: 'Invalid request' }); }
+      try { const data = await readBody(); if (typeof data.title !== 'string' || !data.title.trim()) return send(400, { error: 'Task title is required' }); const title = data.title.trim(); const order = db.prepare('SELECT COALESCE(MAX(task_order),0)+1 AS next FROM task_project_positions WHERE project_id=?').get(projectId).next; const result = db.prepare('INSERT INTO tasks(project_id,title,priority,task_order) VALUES (?,?,?,?)').run(projectId, title, project.default_priority, order); const taskId = Number(result.lastInsertRowid); db.prepare('INSERT INTO task_project_positions(task_id,project_id,task_order) VALUES (?,?,?)').run(taskId, projectId, order); return send(201, { id: taskId, title, completed: false, priority: project.default_priority }); } catch { return send(400, { error: 'Invalid request' }); }
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
@@ -89,8 +98,13 @@ const server = http.createServer(async (req, res) => {
       const destination = db.prepare('SELECT id, archived FROM projects WHERE id=?').get(destinationId);
       if (!task || !destination) return send(404, { error: 'Task or project not found' });
       if (task.archived || destination.archived || task.project_id === destinationId) return send(409, { error: 'Invalid move' });
-      const order = db.prepare('SELECT COALESCE(MAX(task_order),0)+1 AS next FROM tasks WHERE project_id=?').get(destinationId).next;
-      db.prepare('UPDATE tasks SET project_id=?, task_order=? WHERE id=?').run(destinationId, order, task.id);
+      let position = db.prepare('SELECT task_order FROM task_project_positions WHERE task_id=? AND project_id=?').get(task.id, destinationId);
+      if (!position) {
+        const order = db.prepare('SELECT COALESCE(MAX(task_order),0)+1 AS next FROM task_project_positions WHERE project_id=?').get(destinationId).next;
+        db.prepare('INSERT INTO task_project_positions(task_id,project_id,task_order) VALUES (?,?,?)').run(task.id, destinationId, order);
+        position = { task_order: order };
+      }
+      db.prepare('UPDATE tasks SET project_id=?, task_order=? WHERE id=?').run(destinationId, position.task_order, task.id);
       return send(200, { status: 'ok' });
     } catch { return send(400, { error: 'Invalid request' }); }
   }
