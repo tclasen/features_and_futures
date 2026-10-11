@@ -60,3 +60,12 @@ conversion, default to empty for existing and new tasks, and persist across
 restarts. Saving a date preserves all other task data, both filters, and project
 summaries. Archived projects disable due-date controls and reject saves until
 restored.
+
+Project pages also offer Due from and Due through textboxes with Apply due range.
+The trimmed Gregorian boundaries are inclusive; either blank boundary is unbounded.
+With any boundary present, undated tasks are excluded. With both blank, all dates
+and undated tasks match. The range intersects completion and priority selections
+and preserves creation order and all-task summaries. Invalid or reversed ranges
+show an alert and retain the previously applied range. The applied range stays in
+the URL and all editing forms, including validation errors, and remains usable
+in archived projects. Opening a project from the list starts with empty boundaries.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDueDate } from '../task-dates.js';
+import { normalizeDueDate, normalizeDueRange, INVALID_DUE_RANGE_MESSAGE, REVERSED_DUE_RANGE_MESSAGE } from '../task-dates.js';
 import { openProjects } from '../projects.js';
 
 test('due dates validate Gregorian boundaries, exact format and whitespace without rollover', () => {
@@ -49,4 +49,53 @@ test('due-date updates isolate tasks, preserve other fields and guard ownership 
   } finally {
     projects.close();
   }
+});
+
+test('due ranges intersect filters inclusively, exclude undated tasks only when bounded and preserve data', () => {
+  const projects = openProjects(':memory:');
+  try {
+    projects.create('Dates');
+    const dates = ['', '0001-01-01', '2024-02-28', '2024-02-29', '2024-03-01', '9999-12-31'];
+    dates.forEach((date, index) => {
+      projects.createTask(1, `Task ${index}`);
+      projects.setTaskDueDate(1, index + 1, date);
+      projects.setTaskCompleted(1, index + 1, index % 2 === 0);
+      projects.setTaskPriority(1, index + 1, index % 2 === 0 ? 'High' : 'Low');
+    });
+    const original = projects.listTasks(1);
+    const summary = projects.list();
+    for (const [dueFrom, dueThrough, ids] of [
+      ['', '', [1, 2, 3, 4, 5, 6]],
+      ['2024-02-28', '2024-03-01', [3, 4, 5]],
+      ['', '2024-02-29', [2, 3, 4]],
+      ['2024-02-29', '', [4, 5, 6]],
+      ['2024-02-29', '2024-02-29', [4]],
+      ['0001-01-01', '9999-12-31', [2, 3, 4, 5, 6]],
+    ]) {
+      for (const completion of ['All', 'Open', 'Completed']) {
+        for (const priority of ['All', 'Low', 'Normal', 'High']) {
+          const expected = original.filter((task) => ids.includes(task.id) &&
+            (completion === 'All' || Boolean(task.completed) === (completion === 'Completed')) &&
+            (priority === 'All' || task.priority === priority));
+          assert.deepEqual(projects.listTasks(1, completion, priority, { dueFrom, dueThrough }), expected);
+        }
+      }
+    }
+    assert.deepEqual(projects.listTasks(1), original);
+    assert.deepEqual(projects.list(), summary);
+  } finally {
+    projects.close();
+  }
+});
+
+test('due range normalization shares calendar rules and distinguishes reversed boundaries', () => {
+  assert.deepEqual(normalizeDueRange(' 2024-02-29 ', ' 2024-03-01 '), {
+    dueFrom: '2024-02-29', dueThrough: '2024-03-01',
+  });
+  assert.deepEqual(normalizeDueRange(' \t ', ''), { dueFrom: '', dueThrough: '' });
+  for (const invalid of ['1900-02-29', '0000-01-01', '10000-01-01', '2024-2-29', '2024-04-31']) {
+    assert.deepEqual(normalizeDueRange(invalid, ''), { error: INVALID_DUE_RANGE_MESSAGE });
+    assert.deepEqual(normalizeDueRange('', invalid), { error: INVALID_DUE_RANGE_MESSAGE });
+  }
+  assert.deepEqual(normalizeDueRange('2024-03-01', '2024-02-29'), { error: REVERSED_DUE_RANGE_MESSAGE });
 });

@@ -1,4 +1,14 @@
 export const INVALID_DUE_DATE_MESSAGE = 'Due date must be a valid YYYY-MM-DD date';
+export const INVALID_DUE_RANGE_MESSAGE = 'Due range must use valid YYYY-MM-DD dates';
+export const REVERSED_DUE_RANGE_MESSAGE = 'Due from must not be after Due through';
+
+export function normalizeDueRange(from = '', through = '') {
+  const dueFrom = normalizeDueDate(from);
+  const dueThrough = normalizeDueDate(through);
+  if (dueFrom === null || dueThrough === null) return { error: INVALID_DUE_RANGE_MESSAGE };
+  if (dueFrom && dueThrough && dueFrom > dueThrough) return { error: REVERSED_DUE_RANGE_MESSAGE };
+  return { dueFrom, dueThrough };
+}
 
 // Calendar days are validated directly, without timezone conversion or date rollover.
 // An empty string clears the date; null indicates invalid input.

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { openProjects } from './projects.js';
 import { projectsPage, projectPage, notFoundPage } from './views.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
-import { normalizeDueDate, INVALID_DUE_DATE_MESSAGE } from './task-dates.js';
+import { normalizeDueDate, normalizeDueRange, INVALID_DUE_DATE_MESSAGE } from './task-dates.js';
 
 const projects = openProjects(process.env.DB_PATH || 'data/workboard.sqlite');
 const stylesheet = readFileSync(new URL('./public/styles.css', import.meta.url));
@@ -18,20 +18,25 @@ function priorityFilter(value) {
 }
 
 function projectFilters(parameters) {
+  const range = normalizeDueRange(parameters.get('dueFrom') || '', parameters.get('dueThrough') || '');
   return {
     completion: taskFilter(parameters.get('filter')),
     priority: priorityFilter(parameters.get('priorityFilter')),
+    dueFrom: range.dueFrom || '',
+    dueThrough: range.dueThrough || '',
   };
 }
 
 function renderProject(project, filters, error = '') {
-  return projectPage(project, projects.listTasks(project.id, filters.completion, filters.priority),
-    filters.completion, error, filters.priority);
+  return projectPage(project, projects.listTasks(project.id, filters.completion, filters.priority, filters),
+    filters.completion, error, filters.priority, filters);
 }
 
 function projectLocation(projectId, filters) {
   const query = new URLSearchParams({ filter: filters.completion });
   if (filters.priority !== 'All') query.set('priorityFilter', filters.priority);
+  if (filters.dueFrom) query.set('dueFrom', filters.dueFrom);
+  if (filters.dueThrough) query.set('dueThrough', filters.dueThrough);
   return `/projects/${projectId}?${query}`;
 }
 
@@ -103,6 +108,19 @@ const server = createServer(async (request, response) => {
         const filters = projectFilters(url.searchParams);
         return send(response, 200, 'text/html; charset=utf-8',
           renderProject(project, filters));
+      }
+    }
+    const dueRangeMatch = path.match(/^\/projects\/([1-9]\d*)\/due-range$/);
+    if (request.method === 'POST' && dueRangeMatch && Number.isSafeInteger(Number(dueRangeMatch[1]))) {
+      const project = projects.find(Number(dueRangeMatch[1]));
+      if (project) {
+        const form = await readForm(request);
+        const filters = projectFilters(form);
+        const range = normalizeDueRange(form.get('rangeFrom') || '', form.get('rangeThrough') || '');
+        if (range.error) {
+          return send(response, 400, 'text/html; charset=utf-8', renderProject(project, filters, range.error));
+        }
+        return redirect(response, projectLocation(project.id, { ...filters, ...range }));
       }
     }
     const defaultPriorityMatch = path.match(/^\/projects\/([1-9]\d*)\/default-priority$/);

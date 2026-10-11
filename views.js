@@ -54,15 +54,22 @@ export function projectsPage(projects, error = '', filter = 'Active') {
     </section>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', error = '', priorityFilter = 'All') {
+export function projectPage(project, tasks = [], filter = 'All', error = '', priorityFilter = 'All', dueRange = {}) {
   const projectPath = `/projects/${project.id}`;
+  const { dueFrom = '', dueThrough = '' } = dueRange;
+  const rangeFields = `
+    <input type="hidden" name="dueFrom" value="${escapeHtml(dueFrom)}">
+    <input type="hidden" name="dueThrough" value="${escapeHtml(dueThrough)}">`;
+  const filterFields = `
+    <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+    <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+    ${rangeFields}`;
   return page(project.name, `
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="${projectPath}/rename" method="post">
-      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-      <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+      ${filterFields}
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
         <input id="new-project-name" name="name" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
@@ -70,8 +77,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
       </div>
     </form>
     <form action="${projectPath}/default-priority" method="post" data-auto-submit>
-      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-      <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+      ${filterFields}
       <label for="default-task-priority">Default task priority</label>
       <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''}>
         ${TASK_PRIORITIES.map((priority) =>
@@ -79,8 +85,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
       </select>
     </form>
     <form action="${projectPath}/tasks" method="post">
-      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-      <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+      ${filterFields}
       <label for="task-title">Task title</label>
       <div class="form-controls">
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -89,6 +94,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="${projectPath}" method="get" class="task-filter" data-auto-submit>
+      ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter">
         ${['All', 'Open', 'Completed'].map((option) =>
@@ -100,18 +106,24 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
           `<option${option === priorityFilter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
+    <form action="${projectPath}/due-range" method="post" class="due-range">
+      ${filterFields}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(dueFrom)}" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(dueThrough)}" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <section aria-label="Tasks" class="task-list">
       ${tasks.length ? tasks.map((task) => `
         <div data-testid="task-row" class="task-row">
           <span>${escapeHtml(task.title)}</span>
           <form action="${projectPath}/tasks/${task.id}/completion" method="post" data-auto-submit>
-            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+            ${filterFields}
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
           </form>
           <form action="${projectPath}/tasks/${task.id}/priority" method="post" data-auto-submit>
-            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+            ${filterFields}
             <label for="task-priority-${task.id}">Task priority</label>
             <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}>
               ${TASK_PRIORITIES.map((priority) =>
@@ -119,15 +131,13 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
             </select>
           </form>
           <form action="${projectPath}/tasks/${task.id}/rename" method="post" class="task-rename">
-            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+            ${filterFields}
             <label for="new-task-title-${task.id}">New task title</label>
             <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
           <form action="${projectPath}/tasks/${task.id}/due-date" method="post" class="task-due-date">
-            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
-            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
+            ${filterFields}
             <label for="task-due-date-${task.id}">Task due date</label>
             <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>

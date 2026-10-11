@@ -47,7 +47,9 @@ export function openProjects(databasePath) {
   const listTasks = database.prepare(`
     SELECT id, title, completed, priority, due_date FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
-      AND (? IS NULL OR priority = ?) ORDER BY id
+      AND (? IS NULL OR priority = ?)
+      AND (? = '' OR due_date >= ?)
+      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY id
   `);
   const insertTask = database.prepare(`
     INSERT INTO tasks (project_id, title, priority)
@@ -91,10 +93,12 @@ export function openProjects(databasePath) {
       if (!TASK_PRIORITIES.includes(priority)) return false;
       return updateDefaultPriority.run(priority, id).changes > 0;
     },
-    listTasks(projectId, filter = 'All', priorityFilter = 'All') {
+    listTasks(projectId, filter = 'All', priorityFilter = 'All', dueRange = {}) {
       const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
       const priority = TASK_PRIORITIES.includes(priorityFilter) ? priorityFilter : null;
-      return listTasks.all(projectId, completed, completed, priority, priority);
+      const { dueFrom = '', dueThrough = '' } = dueRange;
+      return listTasks.all(projectId, completed, completed, priority, priority,
+        dueFrom, dueFrom, dueThrough, dueThrough);
     },
     createTask(projectId, title) {
       const trimmedTitle = title.trim();
