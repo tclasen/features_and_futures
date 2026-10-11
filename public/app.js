@@ -330,12 +330,14 @@ async function renderDirectory() {
   const alert = element('p', { role: 'alert', hidden: '' });
   const completeVisible = element('button', { type: 'button' }, 'Complete visible tasks');
   const reopenVisible = element('button', { type: 'button' }, 'Reopen visible tasks');
+  const deleteVisible = element('button', { type: 'button' }, 'Delete visible tasks');
+  const restoreVisible = element('button', { type: 'button' }, 'Restore visible tasks');
   const summary = element('p', { 'data-testid': 'directory-summary' }, '0/0 completed');
   const owners = element('section', { 'aria-label': 'Directory project summaries' });
   const emptyMessage = element('p', {}, 'No matching tasks');
   emptyMessage.hidden = true;
   const rows = element('section', { 'aria-label': 'Directory results' });
-  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, summary, owners, emptyMessage, rows);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, deleteVisible, restoreVisible, summary, owners, emptyMessage, rows);
   let query = '', appliedFrom = '', appliedThrough = '';
   let matchingTasks = [];
   const renderRows = async () => {
@@ -406,6 +408,10 @@ async function renderDirectory() {
     const completedTasks = eligible.filter(task => Boolean(task.completed));
     completeVisible.disabled = openTasks.length === 0;
     reopenVisible.disabled = completedTasks.length === 0;
+    const liveTasks = scope.value === 'Active' && taskFilter.value !== 'Deleted' ? matchingTasks.filter(task => !task.deleted) : [];
+    const deletedTasks = scope.value === 'Active' && taskFilter.value === 'Deleted' ? matchingTasks.filter(task => task.deleted) : [];
+    deleteVisible.disabled = liveTasks.length === 0;
+    restoreVisible.disabled = deletedTasks.length === 0;
   };
   const bulkCompletion = async (tasks, completed) => {
     completeVisible.disabled = reopenVisible.disabled = true;
@@ -414,6 +420,13 @@ async function renderDirectory() {
   };
   completeVisible.addEventListener('click', () => bulkCompletion(matchingTasks.filter(task => !task.deleted && !task.completed), true));
   reopenVisible.addEventListener('click', () => bulkCompletion(matchingTasks.filter(task => !task.deleted && task.completed), false));
+  const bulkDeletion = async (tasks, deleted) => {
+    deleteVisible.disabled = restoreVisible.disabled = true;
+    await request('/api/directory/deletion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleted, taskIds: tasks.map(task => task.id) }) });
+    await renderRows();
+  };
+  deleteVisible.addEventListener('click', () => bulkDeletion(matchingTasks.filter(task => !task.deleted), true));
+  restoreVisible.addEventListener('click', () => bulkDeletion(matchingTasks.filter(task => task.deleted), false));
   const refresh = () => renderRows();
   for (const control of [scope, taskFilter, priorityFilter, directoryOrder]) control.addEventListener('change', refresh);
   searchButton.addEventListener('click', () => { query = search.value.trim(); refresh(); });

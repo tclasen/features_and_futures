@@ -94,6 +94,18 @@ const server = http.createServer(async (req, res) => {
   };
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(200, JSON.stringify({ status: 'ok' }));
+    if (req.method === 'PATCH' && url.pathname === '/api/directory/deletion') {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      let payload;
+      try { payload = JSON.parse(raw); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+      if (typeof payload?.deleted !== 'boolean' || !Array.isArray(payload.taskIds) || payload.taskIds.some(id => typeof id !== 'string')) return send(400, JSON.stringify({ error: 'Invalid deletion update' }));
+      transaction(() => {
+        const update = db.prepare(`UPDATE tasks SET deleted = ? WHERE id = ? AND deleted = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+        for (const id of new Set(payload.taskIds)) update.run(payload.deleted ? 1 : 0, id, payload.deleted ? 0 : 1);
+      });
+      return send(200, JSON.stringify({ status: 'ok' }));
+    }
     if (req.method === 'PATCH' && url.pathname === '/api/directory/completion') {
       let raw = '';
       for await (const chunk of req) raw += chunk;
