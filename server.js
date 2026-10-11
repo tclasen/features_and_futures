@@ -16,7 +16,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -27,9 +28,18 @@ db.exec(`
     created_at INTEGER NOT NULL
   )
 `);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount,
+  COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  GROUP BY p.id ORDER BY p.created_at, p.rowid`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
+const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -53,6 +63,15 @@ async function handle(req, res) {
 
   if (url.pathname === '/api/projects' && req.method === 'GET') {
     return sendJson(res, 200, listProjects.all());
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
+  if (req.method === 'POST' && archiveMatch) {
+    const projectId = decodeURIComponent(archiveMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    const archived = archiveMatch[2] === 'archive' ? 1 : 0;
+    updateArchive.run(archived, projectId);
+    return sendJson(res, 200, { ...project, archived });
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let payload;
