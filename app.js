@@ -240,6 +240,33 @@ async function renderProject(id) {
         drawTasks();
       });
       row.append(renameForm, renameAlert);
+      const dueDateForm = element('form');
+      const dueDateInput = element('input', undefined, { type: 'text', 'aria-label': 'Task due date', placeholder: 'YYYY-MM-DD', autocomplete: 'off' });
+      dueDateInput.value = task.dueDate || '';
+      const dueDateButton = element('button', 'Save due date', { type: 'submit' });
+      dueDateInput.disabled = project.archived;
+      dueDateButton.disabled = project.archived;
+      const dueDateAlert = element('span', '', { role: 'alert', hidden: '' });
+      dueDateForm.append(dueDateInput, dueDateButton);
+      dueDateForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const dueDate = dueDateInput.value.trim();
+        const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ dueDate }),
+        });
+        if (!result.ok) {
+          dueDateAlert.textContent = 'Due date must be a valid YYYY-MM-DD date';
+          dueDateAlert.hidden = false;
+          dueDateInput.value = task.dueDate || '';
+          return;
+        }
+        const saved = await result.json();
+        task.dueDate = saved.dueDate;
+        dueDateInput.value = task.dueDate || '';
+        dueDateAlert.hidden = true;
+      });
+      row.append(dueDateForm, dueDateAlert);
       tasks.append(row);
     }
   };

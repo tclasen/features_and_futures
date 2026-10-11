@@ -30,6 +30,9 @@ try { database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT 
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
@@ -40,11 +43,12 @@ const findProject = database.prepare(`SELECT p.id, p.name, p.archived, p.default
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
   FROM projects p WHERE p.id = ?`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = database.prepare("UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?");
+const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const updateDefaultPriority = database.prepare("UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0");
@@ -52,6 +56,18 @@ const updateDefaultPriority = database.prepare("UPDATE projects SET default_task
 function sendJson(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
+}
+
+function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
 }
 
 async function sendFile(response, filename, contentType) {
@@ -141,6 +157,12 @@ const server = createServer(async (request, response) => {
       if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
       const result = updatePriority.run(body.priority, taskId, projectId);
       return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found' });
+    }
+    if (typeof body.dueDate === 'string') {
+      const dueDate = body.dueDate.trim();
+      if (dueDate && !isValidDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      const result = updateDueDate.run(dueDate || null, taskId, projectId);
+      return result.changes ? sendJson(response, 200, { ok: true, dueDate: dueDate || null }) : sendJson(response, 404, { error: 'Task not found' });
     }
     if (typeof body.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
     const result = updateTask.run(body.completed ? 1 : 0, taskId, projectId);
