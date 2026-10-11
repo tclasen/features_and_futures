@@ -53,7 +53,7 @@ test('combined filters preserve selections through edits, errors, archives and r
     assert.deepEqual(rows(text), ['Renamed']);
     assert.equal(selected(text, 'task-filter'), 'Open');
     assert.equal(selected(text, 'priority-filter'), 'High');
-    assert.equal((text.match(/name="priorityFilter" value="High"/g) || []).length, 8);
+    assert.equal((text.match(/name="priorityFilter" value="High"/g) || []).length, 9);
     for (const [path, input, message] of [
       ['/projects/1/tasks/1/rename', { title: ' ' }, 'Task title is required'],
       ['/projects/1/tasks', { title: ' ' }, 'Task title is required'],
@@ -81,7 +81,8 @@ test('combined filters preserve selections through edits, errors, archives and r
     text = await html('/projects/1');
     assert.equal(selected(text, 'priority-filter'), 'All');
     assert.deepEqual(rows(text), ['Renamed', 'Second', 'Third', 'Fourth']);
-    assert.doesNotMatch(text, / disabled/);
+    assert.doesNotMatch(text, /<(?:input|select)[^>]*name="(?:completed|priority|title|due_date)"[^>]* disabled/);
+    assert.match(text, /name="destination" disabled/); // No other active projects exist.
     assert.match(await html('/'), /2\/4 completed/);
   } finally {
     if (child) await stop();
