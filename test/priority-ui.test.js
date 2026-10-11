@@ -181,6 +181,62 @@ test('task edits reapply both filters while retaining their selected values', as
   assert.equal(ui.requests.length, 3);
 });
 
+test('due-date controls save and clear without replacing rows or resetting filters', async () => {
+  const ui = await projectUI();
+  await ui.change('task-filter', 'Open');
+  await ui.change('priority-filter', 'High');
+  const input = ui.byId('task-due-date-1');
+  const form = ui.rows()[0].children.find(node => node.children.includes(input));
+  assert.equal(input.type, 'text');
+  assert.equal(input.value, '');
+  assert.equal(form.children[0].textContent, 'Task due date');
+  assert.equal(form.children[0].htmlFor, input.id);
+  assert.equal(form.children[2].textContent, 'Save due date');
+  const rows = ui.rows();
+  for (const value of ['2024-02-29', '']) {
+    input.value = value;
+    await form.listeners.submit({ preventDefault() {} });
+    assert.equal(ui.tasks[0].due_date, value);
+    assert.equal(input.value, value);
+    assert.deepEqual(ui.rows(), rows);
+    assert.equal(ui.byId('task-filter').value, 'Open');
+    assert.equal(ui.byId('priority-filter').value, 'High');
+  }
+  const rename = ui.rows()[0].children.find(node => node.tagName === 'form');
+  input.value = '2025-01-01';
+  await form.listeners.submit({ preventDefault() {} });
+  rename.children[1].value = 'Renamed';
+  await rename.listeners.submit({ preventDefault() {} });
+  assert.equal(ui.byId('task-due-date-1').value, '2025-01-01');
+  assert.equal(ui.tasks[0].priority, 'High');
+  assert.equal(ui.tasks[0].completed, false);
+  const archived = await projectUI(true);
+  for (const row of archived.rows()) {
+    const dueForm = row.children.find(node => node.children.some(child => child.name === 'due_date'));
+    assert.equal(dueForm.children[1].disabled, true);
+    assert.equal(dueForm.children[2].disabled, true);
+  }
+});
+
+test('invalid due-date saves display an alert and preserve the saved value', async () => {
+  const task = { id: 1, title: 'Saved', completed: false, priority: 'Normal', due_date: '2024-02-29' };
+  const { app, renderTasks } = await setup(async (path, options) => ({
+    ok: !options,
+    json: async () => options ? { error: 'Due date must be a valid YYYY-MM-DD date' } :
+      path.endsWith('/tasks') ? [task] : [],
+  }));
+  await renderTasks({ id: 1, archived: false, default_priority: 'Normal' });
+  const input = descendants(app).find(node => node.name === 'due_date');
+  const form = descendants(app).find(node => node.children.includes(input));
+  input.value = '2023-02-29';
+  await form.listeners.submit({ preventDefault() {} });
+  assert.equal(input.value, '2024-02-29');
+  assert.equal(task.due_date, '2024-02-29');
+  assert.equal(form.children[2].disabled, false);
+  assert.equal(descendants(app).find(node => node.attributes.role === 'alert').textContent,
+    'Due date must be a valid YYYY-MM-DD date');
+});
+
 test('project default control saves independently without changing tasks or filters', async () => {
   const ui = await projectUI();
   const select = ui.byId('default-task-priority');
@@ -241,7 +297,7 @@ test('archived projects keep both filters usable and task editing disabled', asy
   assert.deepEqual(ui.titles(), ['Normal done']);
   const controls = descendants(ui.rows()[0]).filter(node =>
     ['input', 'button', 'select'].includes(node.tagName));
-  assert.equal(controls.length, 4);
+  assert.equal(controls.length, 6);
   assert.ok(controls.every(control => control.disabled));
   assert.equal(JSON.stringify(ui.tasks), original);
   assert.equal(ui.requests.length, 0);

@@ -40,6 +40,13 @@ tasks or either filter selection. Defaults persist through reloads, restarts,
 renaming, archival, and restoration. Archived projects disable default edits until
 restored.
 
+Each task has an optional Task due date textbox and Save due date button. Dates
+are trimmed and must be real Gregorian calendar dates in YYYY-MM-DD format, with
+years 0001–9999. Empty or whitespace-only input clears the date. Invalid dates
+show an alert and leave the saved date unchanged. Dates persist independently,
+without timezone conversion or changes to other task data, filters, or summaries.
+Archived projects disable due-date editing until restored.
+
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
@@ -48,5 +55,6 @@ routes, task ownership, completion updates, archive/restore restrictions, summar
 project and task rename validation and identity preservation, independent task priorities,
 priority validation and archive restrictions, combined priority/completion filtering,
 filter retention and immediate row updates after edits, independent project defaults,
-new-task inheritance, default validation and archive protection, legacy database migration, and
+new-task inheritance, default validation and archive protection, due-date validation,
+clearing, independence, filter retention and archive protection, legacy database migration, and
 persistence through process restarts.

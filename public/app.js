@@ -179,6 +179,43 @@ function taskPriorityControl(project, task, endpoint, onPriorityChange) {
   return controls;
 }
 
+function taskDueDateForm(project, task, endpoint) {
+  const form = element('form');
+  const label = element('label', 'Task due date');
+  const input = element('input');
+  input.id = `task-due-date-${task.id}`;
+  label.htmlFor = input.id;
+  input.type = 'text';
+  input.name = 'due_date';
+  input.value = task.due_date ?? '';
+  input.disabled = project.archived;
+  const submit = element('button', 'Save due date');
+  submit.type = 'submit';
+  submit.disabled = project.archived;
+  form.append(label, input, submit);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    submit.disabled = true;
+    try {
+      const updated = await request(`${endpoint}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ due_date: input.value }),
+      });
+      task.due_date = updated.due_date;
+      input.value = task.due_date;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      input.value = task.due_date ?? '';
+      showError(error.message);
+    } finally {
+      submit.disabled = project.archived;
+    }
+  });
+  return form;
+}
+
 function defaultPriorityControl(project) {
   const controls = element('div');
   const label = element('label', 'Default task priority');
@@ -287,7 +324,8 @@ async function renderTasks(project) {
       });
       row.append(element('span', task.title), checkbox,
         taskRenameForm(project, task, endpoint, displayTasks),
-        taskPriorityControl(project, task, endpoint, displayTasks));
+        taskPriorityControl(project, task, endpoint, displayTasks),
+        taskDueDateForm(project, task, endpoint));
       list.append(row);
     }
   }

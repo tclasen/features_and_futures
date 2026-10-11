@@ -43,6 +43,76 @@ async function stop(child) {
   await exit;
 }
 
+test('due dates validate, remain independent, and persist through edits, archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  const database = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  let running;
+  try {
+    running = await start(port, database);
+    const get = async path => (await fetch(`${running.base}${path}`)).json();
+    const mutate = (path, method, body) => fetch(`${running.base}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const project = await (await mutate('/api/projects', 'POST', { name: 'Dates' })).json();
+    const other = await (await mutate('/api/projects', 'POST', { name: 'Other' })).json();
+    const projectPath = `/api/projects/${project.id}`;
+    const tasksPath = `${projectPath}/tasks`;
+    const task = await (await mutate(tasksPath, 'POST', { title: 'First' })).json();
+    const second = await (await mutate(tasksPath, 'POST', { title: 'Second' })).json();
+    const taskPath = `${tasksPath}/${task.id}`;
+    assert.equal(task.due_date, '');
+    let saved = { ...task };
+    for (const due_date of [' 0001-01-01 ', '9999-12-31', '2000-02-29', '2024-02-29']) {
+      const response = await mutate(taskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 200);
+      saved = { ...saved, due_date: due_date.trim() };
+      assert.deepEqual(await response.json(), saved);
+      assert.deepEqual(await get(tasksPath), [saved, second]);
+    }
+    for (const due_date of ['0000-01-01', '10000-01-01', '1900-02-29', '2023-02-29',
+      '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32',
+      '2024-1-01', '2024-01-1', '2024-01-01T00:00:00Z', 'not a date', null, 42]) {
+      const response = await mutate(taskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await get(tasksPath), [saved, second]);
+    }
+    assert.equal((await mutate(taskPath, 'PATCH', { due_date: '', completed: true })).status, 400);
+    assert.equal((await mutate(`/api/projects/${other.id}/tasks/${task.id}`, 'PATCH', { due_date: '' })).status, 404);
+    await mutate(taskPath, 'PATCH', { title: 'Renamed' });
+    await mutate(taskPath, 'PATCH', { completed: true });
+    await mutate(taskPath, 'PATCH', { priority: 'High' });
+    saved = { ...saved, title: 'Renamed', completed: true, priority: 'High' };
+    const summary = { ...project, total: 2, completed: 1 };
+    assert.deepEqual(await get(projectPath), summary);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(tasksPath), [saved, second]);
+    await mutate(projectPath, 'PATCH', { archived: true });
+    assert.equal((await mutate(taskPath, 'PATCH', { due_date: '' })).status, 409);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(tasksPath), [saved, second]);
+    assert.equal((await mutate(taskPath, 'PATCH', { due_date: '2025-01-01' })).status, 409);
+    await mutate(projectPath, 'PATCH', { archived: false });
+    for (const due_date of ['', ' \t\n ']) {
+      const response = await mutate(taskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 200);
+      saved = { ...saved, due_date: '' };
+      assert.deepEqual(await response.json(), saved);
+    }
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(tasksPath), [saved, second]);
+    assert.deepEqual(await get(projectPath), summary);
+    assert.deepEqual(await get(`/api/projects/${other.id}/tasks`), []);
+  } finally {
+    if (running && running.child.exitCode === null) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('renaming preserves identity, order, tasks and summaries across restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
   const database = join(directory, 'projects.sqlite');
@@ -320,7 +390,7 @@ test('legacy databases migrate without losing project IDs or tasks', async () =>
     const projects = await (await fetch(`${running.base}/api/projects`)).json();
     assert.deepEqual(projects, [{ id: 42, name: 'Existing project', archived: false, default_priority: 'Normal', completed: 1, total: 1 }]);
     const tasks = await (await fetch(`${running.base}/api/projects/42/tasks`)).json();
-    assert.deepEqual(tasks, [{ id: 1, title: 'Existing task', completed: true, priority: 'Normal' }]);
+    assert.deepEqual(tasks, [{ id: 1, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' }]);
   } finally {
     if (running && running.child.exitCode === null) await stop(running.child);
     await rm(directory, { recursive: true, force: true });
