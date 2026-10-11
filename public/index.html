@@ -148,7 +148,17 @@
       const priorityFilter = element('select', undefined, priorityFilterLabel);
       priorityFilter.setAttribute('aria-label', 'Priority filter');
       for (const value of ['All', 'Low', 'Normal', 'High']) element('option', value, priorityFilter);
+      const rangeForm = element('form', undefined, app);
+      const fromInput = element('input', undefined, rangeForm);
+      fromInput.type = 'text';
+      fromInput.setAttribute('aria-label', 'Due from');
+      const throughInput = element('input', undefined, rangeForm);
+      throughInput.type = 'text';
+      throughInput.setAttribute('aria-label', 'Due through');
+      const rangeButton = element('button', 'Apply due range', rangeForm);
+      rangeButton.type = 'submit';
       const list = element('section', undefined, app);
+      let appliedFrom = '', appliedThrough = '';
       let taskRenderVersion = 0;
       const renderTasks = async () => {
         const renderVersion = ++taskRenderVersion;
@@ -158,6 +168,7 @@
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if ((appliedFrom || appliedThrough) && (!task.dueDate || (appliedFrom && task.dueDate < appliedFrom) || (appliedThrough && task.dueDate > appliedThrough))) continue;
           const row = element('div', undefined, list);
           row.dataset.testid = 'task-row';
           row.className = 'task-row';
@@ -219,6 +230,25 @@
       };
       filter.addEventListener('change', renderTasks);
       priorityFilter.addEventListener('change', renderTasks);
+      rangeForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const from = fromInput.value.trim(), through = throughInput.value.trim();
+        const validDate = value => {
+          if (!value) return true;
+          const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+          if (!match) return false;
+          const [, ys, ms, ds] = match;
+          const y = Number(ys), m = Number(ms), d = Number(ds);
+          const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+          const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+          return y >= 1 && m >= 1 && m <= 12 && d >= 1 && d <= days[m - 1];
+        };
+        if (!validDate(from) || !validDate(through)) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return; }
+        if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return; }
+        appliedFrom = from; appliedThrough = through;
+        alert.hidden = true;
+        renderTasks();
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const result = await request(`/api/projects/${id}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: input.value }) });
