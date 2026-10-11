@@ -59,6 +59,9 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
   const saveDueDate = (projectId, taskId, due_date) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date }),
   });
+  const moveTask = (projectId, taskId, destination_project_id) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_project_id }),
+  });
   const tasks = async projectId => (await get(`/api/projects/${projectId}/tasks`)).json();
   const archiveProject = (projectId, archived) => fetch(`${origin}/api/projects/${projectId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -327,6 +330,63 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     await start();
     assert.deepEqual(await tasks(first.id), savedTasks);
     assert.deepEqual(await tasks(second.id), [otherTask, otherInherited]);
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
+
+    // Moving an older task appends it, preserving every saved field and identity.
+    assert.equal((await completeTask(first.id, firstTask.id, true)).status, 200);
+    firstTask.completed = true;
+    assert.equal((await saveDueDate(first.id, firstTask.id, '2028-02-29')).status, 200);
+    firstTask.due_date = '2028-02-29';
+    assert.equal((await setDefault(second.id, 'Normal')).status, 200);
+    second.default_priority = 'Normal';
+    for (const invalid of [first.id, 0, -1, null, '2', 1.5]) {
+      assert.equal((await moveTask(first.id, firstTask.id, invalid)).status, 400);
+    }
+    assert.equal((await moveTask(first.id, firstTask.id, 999999)).status, 404);
+    assert.equal((await moveTask(second.id, firstTask.id, first.id)).status, 404);
+    assert.equal((await archiveProject(second.id, true)).status, 200);
+    assert.equal((await moveTask(first.id, firstTask.id, second.id)).status, 409);
+    assert.equal((await archiveProject(first.id, true)).status, 200);
+    assert.equal((await moveTask(first.id, firstTask.id, third.id)).status, 409);
+    assert.deepEqual(await tasks(first.id), savedTasks);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited]);
+    assert.equal((await archiveProject(first.id, false)).status, 200);
+    assert.equal((await archiveProject(second.id, false)).status, 200);
+    const moved = await moveTask(first.id, firstTask.id, second.id);
+    assert.equal(moved.status, 200);
+    assert.deepEqual(await moved.json(), firstTask);
+    const remaining = savedTasks.filter(task => task.id !== firstTask.id);
+    assert.deepEqual(await tasks(first.id), remaining);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, firstTask]);
+    first.total--;
+    second.total++;
+    second.completed = 1;
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
+    assert.equal((await renameTask(first.id, firstTask.id, 'Wrong owner')).status, 404);
+    const laterTask = await (await createTask(second.id, 'Created after move')).json();
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, firstTask, laterTask]);
+    second.total++;
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), remaining);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, firstTask, laterTask]);
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
+    // A second move appends again; blank due dates also travel unchanged.
+    assert.equal((await moveTask(second.id, firstTask.id, first.id)).status, 200);
+    assert.equal((await moveTask(first.id, afterRestart.id, third.id)).status, 200);
+    const finalFirst = remaining.filter(task => task.id !== afterRestart.id).concat(firstTask);
+    assert.deepEqual(await tasks(first.id), finalFirst);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, laterTask]);
+    assert.deepEqual(await tasks(third.id), [afterRestart]);
+    first.completed = 1;
+    second.total--;
+    second.completed = 0;
+    third.total = 1;
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), finalFirst);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, laterTask]);
+    assert.deepEqual(await tasks(third.id), [afterRestart]);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
   } finally {
     await stop();

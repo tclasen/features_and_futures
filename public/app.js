@@ -55,6 +55,8 @@ function projectRow(project, onArchive) {
 async function renderProject(projectId) {
   const project = await request(`/api/projects/${projectId}`);
   let tasks = await request(`/api/projects/${projectId}/tasks`);
+  const destinations = (await request('/api/projects')).filter(candidate =>
+    !candidate.archived && candidate.id !== project.id);
   app.innerHTML = `
     <button type="button" id="back">Projects</button><h1></h1>
     <form id="rename-form">
@@ -286,7 +288,49 @@ async function renderProject(projectId) {
         } catch (error) { showError(error.message); }
         finally { saveDate.disabled = Boolean(project.archived); }
       });
-      row.append(title, checkbox, priorityControl, rename, dueDateForm);
+      const moveForm = document.createElement('form');
+      moveForm.className = 'task-move';
+      const destinationLabel = document.createElement('label');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      destinationLabel.textContent = 'Destination project';
+      const destination = document.createElement('select');
+      destination.id = destinationLabel.htmlFor;
+      for (const project of destinations) {
+        const option = document.createElement('option');
+        option.value = project.id;
+        option.textContent = project.name;
+        destination.append(option);
+      }
+      const move = document.createElement('button');
+      move.type = 'submit';
+      move.textContent = 'Move task';
+      const moveDisabled = Boolean(project.archived) || destinations.length === 0;
+      destination.disabled = moveDisabled;
+      move.disabled = moveDisabled;
+      const moveControls = document.createElement('div');
+      moveControls.className = 'form-controls';
+      moveControls.append(destination, move);
+      moveForm.append(destinationLabel, moveControls);
+      moveForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (moveDisabled) return;
+        move.disabled = true;
+        destination.disabled = true;
+        document.getElementById('error').hidden = true;
+        try {
+          await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+          });
+          tasks = tasks.filter(current => current.id !== task.id);
+          drawTasks();
+        } catch (error) { showError(error.message); }
+        finally {
+          move.disabled = moveDisabled;
+          destination.disabled = moveDisabled;
+        }
+      });
+      row.append(title, checkbox, priorityControl, rename, dueDateForm, moveForm);
       return row;
     }));
     document.getElementById('empty').hidden = visible.length > 0;
