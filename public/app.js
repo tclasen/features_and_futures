@@ -37,7 +37,7 @@ async function loadTasks() {
   const { from, through } = appliedDueRange;
   const query = normalizeSearch(document.querySelector('#task-search').value.trim());
   const shown = tasks.filter(task => {
-    const completionMatches = filter === 'All' || (filter === 'Completed') === task.completed;
+    const completionMatches = filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted && (filter === 'All' || (filter === 'Completed') === task.completed);
     const priorityMatches = priorityFilter === 'All' || task.priority === priorityFilter;
     const dateMatches = !from && !through ? true : Boolean(task.due_date) && (!from || task.due_date >= from) && (!through || task.due_date <= through);
     return completionMatches && priorityMatches && dateMatches && normalizeSearch(task.title).includes(query);
@@ -45,15 +45,16 @@ async function loadTasks() {
   const container = document.querySelector('#tasks'); container.replaceChildren();
   for (const task of shown) {
     const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'project-row';
+    const locked = Boolean(window.currentProjectArchived) || Boolean(task.deleted);
     const title = document.createElement('span'); title.textContent = task.title;
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.disabled = Boolean(window.currentProjectArchived); checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.disabled = locked; checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
       if (result.ok) await loadTasks(); else checkbox.checked = task.completed;
     });
     row.append(title, checkbox);
-    const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.value = task.title; renameInput.setAttribute('aria-label', 'New task title'); renameInput.disabled = Boolean(window.currentProjectArchived);
-    const renameButton = document.createElement('button'); renameButton.type = 'button'; renameButton.textContent = 'Rename task'; renameButton.disabled = Boolean(window.currentProjectArchived);
+    const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.value = task.title; renameInput.setAttribute('aria-label', 'New task title'); renameInput.disabled = locked;
+    const renameButton = document.createElement('button'); renameButton.type = 'button'; renameButton.textContent = 'Rename task'; renameButton.disabled = locked;
     renameButton.addEventListener('click', async () => {
       const newTitle = renameInput.value.trim();
       const message = document.querySelector('#task-alert');
@@ -63,7 +64,7 @@ async function loadTasks() {
       message.hidden = true; await loadTasks();
     });
     row.append(renameInput, renameButton);
-    const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority'); priority.disabled = Boolean(window.currentProjectArchived);
+    const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority'); priority.disabled = locked;
     for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; priority.append(option); }
     priority.value = task.priority || 'Normal';
     priority.addEventListener('change', async () => {
@@ -72,8 +73,8 @@ async function loadTasks() {
       else await loadTasks();
     });
     row.append(priority);
-    const dueDate = document.createElement('input'); dueDate.type = 'text'; dueDate.value = task.due_date || ''; dueDate.setAttribute('aria-label', 'Task due date'); dueDate.placeholder = 'YYYY-MM-DD'; dueDate.disabled = Boolean(window.currentProjectArchived);
-    const saveDate = document.createElement('button'); saveDate.type = 'button'; saveDate.textContent = 'Save due date'; saveDate.disabled = Boolean(window.currentProjectArchived);
+    const dueDate = document.createElement('input'); dueDate.type = 'text'; dueDate.value = task.due_date || ''; dueDate.setAttribute('aria-label', 'Task due date'); dueDate.placeholder = 'YYYY-MM-DD'; dueDate.disabled = locked;
+    const saveDate = document.createElement('button'); saveDate.type = 'button'; saveDate.textContent = 'Save due date'; saveDate.disabled = locked;
     saveDate.addEventListener('click', async () => {
       const message = document.querySelector('#task-alert');
       const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ due_date: dueDate.value }) });
@@ -84,21 +85,25 @@ async function loadTasks() {
     const destination = document.createElement('select'); destination.setAttribute('aria-label', 'Destination project');
     for (const project of activeProjects) { const option = document.createElement('option'); option.value = project.id; option.textContent = project.name; destination.append(option); }
     const moveButton = document.createElement('button'); moveButton.type = 'button'; moveButton.textContent = 'Move task';
-    destination.disabled = moveButton.disabled = Boolean(window.currentProjectArchived) || activeProjects.length === 0;
+    destination.disabled = moveButton.disabled = locked || activeProjects.length === 0;
     moveButton.addEventListener('click', async () => {
       const result = await fetch(`/api/tasks/${task.id}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destination_project_id: destination.value }) });
       if (result.ok) await loadTasks();
     });
     row.append(destination, moveButton);
-    const notes = document.createElement('textarea'); notes.setAttribute('aria-label', 'Task notes'); notes.value = task.notes || ''; notes.disabled = Boolean(window.currentProjectArchived);
-    const saveNotes = document.createElement('button'); saveNotes.type = 'button'; saveNotes.textContent = 'Save notes'; saveNotes.disabled = Boolean(window.currentProjectArchived);
+    const notes = document.createElement('textarea'); notes.setAttribute('aria-label', 'Task notes'); notes.value = task.notes || ''; notes.disabled = locked;
+    const saveNotes = document.createElement('button'); saveNotes.type = 'button'; saveNotes.textContent = 'Save notes'; saveNotes.disabled = locked;
     saveNotes.addEventListener('click', async () => {
       const message = document.querySelector('#task-alert');
       const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
       if (!result.ok) { message.textContent = 'Unable to save notes'; message.hidden = false; return; }
       message.hidden = true; await loadTasks();
     });
-    row.append(notes, saveNotes); container.append(row);
+    row.append(notes, saveNotes);
+    const stateButton = document.createElement('button'); stateButton.type = 'button'; stateButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+    stateButton.disabled = Boolean(window.currentProjectArchived);
+    stateButton.addEventListener('click', async () => { const action = task.deleted ? 'restore' : 'delete'; const result = await fetch(`/api/tasks/${task.id}/${action}`, { method: 'POST' }); if (result.ok) await loadTasks(); });
+    row.append(stateButton); container.append(row);
   }
 }
 
