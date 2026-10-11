@@ -1710,3 +1710,105 @@ test('directory bulk completion intersects all filters, protects read-only data,
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory ordering spans projects, retains view state, and leaves exports and remembered order intact', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title">([^<]*)<\/div>/g)].map((match) => match[1]);
+    const task = (title, priority, dueDate = '', extra = {}) => ({ title, priority, dueDate, completed: false, notes: 'literal notes', deleted: false, ...extra });
+    const importCopy = async (name, archived, tasks) => {
+      const response = await post('/imports/projects', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Normal', tasks },
+      }) });
+      return response.headers.get('location');
+    };
+    const first = await importCopy('First', false, [
+      task('zulu', 'Low', '2025-06-01'), task('alpha', 'High', '2024-02-29'),
+      task('Removed z', 'Low', '', { deleted: true }),
+    ]);
+    const second = await importCopy('Second', false, [
+      task('ALPHA', 'High', '2024-02-29'), task('Beta', 'Normal'),
+      task('early', 'Low', '0001-01-01'), task('Removed a', 'High', '', { deleted: true }),
+    ]);
+    const archived = await importCopy('Archived', true, [
+      task('z archive', 'Low'), task('a archive', 'High'),
+      task('z deleted', 'Low', '', { deleted: true }), task('a deleted', 'High', '', { deleted: true }),
+    ]);
+    const snapshot = async () => Promise.all([first, second, archived].map(async (path) => (await fetch(`${server.url}${path}/export`)).json()));
+    const before = await snapshot();
+    const state = { scope: 'Active', filter: 'All', priorityFilter: 'All', dueFrom: '', dueThrough: '', query: '', order: 'Original' };
+    const view = () => get(`/directory?${new URLSearchParams(state)}`);
+    assert.deepEqual(titles(await view()), ['zulu', 'alpha', 'ALPHA', 'Beta', 'early']);
+    for (const [order, expected] of [
+      ['Priority', ['alpha', 'ALPHA', 'Beta', 'zulu', 'early']],
+      ['Due date', ['early', 'alpha', 'ALPHA', 'zulu', 'Beta']],
+      ['Title', ['alpha', 'ALPHA', 'Beta', 'early', 'zulu']],
+    ]) {
+      state.order = order;
+      const html = await view();
+      assert.deepEqual(titles(html), expected);
+      assert.match(html, new RegExp(`<option selected>${order}</option>`));
+      const orderSelect = html.match(/<select id="directory-order"[\s\S]*?<\/select>/)[0];
+      assert.deepEqual([...orderSelect.matchAll(/<option[^>]*>([^<]*)/g)].map((match) => match[1]), ['Original', 'Priority', 'Due date', 'Title']);
+      for (const form of html.matchAll(/<form[^>]*action="\/directory[^"\s]*"[\s\S]*?<\/form>/g)) {
+        assert.match(form[0], /name="order"/);
+      }
+    }
+    assert.deepEqual(await snapshot(), before);
+    state.scope = 'Archived'; state.order = 'Priority';
+    assert.deepEqual(titles(await view()), ['a archive', 'z archive']);
+    state.filter = 'Deleted'; state.order = 'Title';
+    assert.deepEqual(titles(await view()), ['a deleted', 'z deleted']);
+    state.scope = 'Active';
+    assert.deepEqual(titles(await view()), ['Removed a', 'Removed z']);
+    Object.assign(state, { filter: 'Open', priorityFilter: 'High', query: ' ALpha ', dueFrom: '2024-02-29', dueThrough: '2024-02-29', order: 'Due date' });
+    assert.deepEqual(titles(await view()), ['alpha', 'ALPHA']);
+    const invalid = await post('/directory/due-range', { ...state, rangeFrom: '2023-02-29', rangeThrough: '' });
+    assert.equal(invalid.status, 422);
+    const invalidHtml = await invalid.text();
+    assert.deepEqual(titles(invalidHtml), ['alpha', 'ALPHA']);
+    assert.match(invalidHtml, /<option selected>Due date/);
+    const applied = await post('/directory/due-range', { ...state, rangeFrom: '0001-01-01', rangeThrough: '2025-12-31' });
+    assert.equal(new URL(applied.headers.get('location'), server.url).searchParams.get('order'), 'Due date');
+    const completed = await post('/directory/complete', state);
+    const location = completed.headers.get('location');
+    assert.equal(new URL(location, server.url).searchParams.get('order'), 'Due date');
+    const emptyHtml = await get(location);
+    assert.deepEqual(titles(emptyHtml), []);
+    assert.match(emptyHtml, /No matching tasks/);
+    assert.match(emptyHtml, /<option selected>Due date/);
+    state.filter = 'Completed';
+    assert.deepEqual(titles(await view()), ['alpha', 'ALPHA']);
+    const after = await snapshot();
+    const expected = structuredClone(before);
+    expected[0].project.tasks[1].completed = true;
+    expected[1].project.tasks[0].completed = true;
+    assert.deepEqual(after, expected);
+    assert.match(await get('/directory'), /<option selected>Original/);
+    const moved = (await get(first)).match(/action="([^" ]*\/tasks\/[^/" ]+)"/)[1];
+    const id = moved.split('/').at(-1);
+    await post(`${moved}/move`, { destination: second.split('/').at(-1) });
+    await post(`${second}/tasks/${id}/move`, { destination: first.split('/').at(-1) });
+    assert.deepEqual(await snapshot(), after);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await snapshot(), after);
+    assert.deepEqual(titles(await view()), ['alpha', 'ALPHA']);
+    const reopened = await post('/directory/reopen', state);
+    assert.equal(new URL(reopened.headers.get('location'), server.url).searchParams.get('order'), 'Due date');
+    assert.deepEqual(titles(await get(reopened.headers.get('location'))), []);
+    assert.deepEqual(await snapshot(), before);
+    assert.match(await get('/directory'), /<option selected>Original/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

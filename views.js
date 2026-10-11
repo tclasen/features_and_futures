@@ -1,3 +1,5 @@
+import { directoryOrders } from './directory-order.js';
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -217,13 +219,14 @@ ${escapeHtml(task.notes)}</textarea>
   `);
 }
 
-export function renderDirectory(tasks, { scope, filter, priority, range, query }, error = '') {
+export function renderDirectory(tasks, { scope, filter, priority, range, query, order = 'Original' }, error = '') {
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
   const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
-  const selections = `<input type="hidden" name="scope" value="${escapeHtml(scope)}">
+  const selections = `<input type="hidden" name="order" value="${escapeHtml(order)}">
+    <input type="hidden" name="scope" value="${escapeHtml(scope)}">
     <input type="hidden" name="filter" value="${escapeHtml(filter)}">
     <input type="hidden" name="priorityFilter" value="${escapeHtml(priority)}">`;
   const select = (label, id, name, options, selected) => `
@@ -241,6 +244,7 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query }
       ${select('Project scope', 'project-scope', 'scope', ['Active', 'Archived'], scope)}
       ${select('Task filter', 'task-filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'], filter)}
       ${select('Priority filter', 'priority-filter', 'priorityFilter', ['All', 'Low', 'Normal', 'High'], priority)}
+      ${select('Directory order', 'directory-order', 'order', directoryOrders, order)}
       <noscript><button type="submit">Apply filter</button></noscript>
     </form>
     <form class="create" method="get" action="/directory">

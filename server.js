@@ -8,6 +8,7 @@ import { isValidDueDate, dueRangeError, matchesDueRange } from './dates.js';
 import { normalizeSearch, matchesSearch } from './search.js';
 import { exportProject } from './export.js';
 import { parseProjectImport } from './import.js';
+import { directoryOrder, orderDirectoryTasks } from './directory-order.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const databasePath = process.env.DB_PATH ?? './data/workboard.sqlite';
@@ -198,6 +199,7 @@ function matchesTask(task, filter, priority, range, query) {
 function directoryState(params) {
   return {
     scope: projectFilter(params.get('scope')),
+    order: directoryOrder(params.get('order')),
     filter: taskFilter(params.get('filter')),
     priority: priorityFilter(params.get('priorityFilter')),
     range: readDueRange(params),
@@ -206,8 +208,9 @@ function directoryState(params) {
 }
 
 function directoryTasks(state) {
-  return listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+  const tasks = listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
     .filter((task) => matchesTask(task, state.filter, state.priority, state.range, state.query));
+  return orderDirectoryTasks(tasks, state.order);
 }
 
 function directoryPage(state, error = '') {
@@ -216,7 +219,7 @@ function directoryPage(state, error = '') {
 
 function directoryLocation(state) {
   return `/directory?${new URLSearchParams({
-    scope: state.scope, filter: state.filter, priorityFilter: state.priority,
+    scope: state.scope, filter: state.filter, priorityFilter: state.priority, order: state.order,
     dueFrom: state.range.from, dueThrough: state.range.through, query: state.query,
   })}`;
 }
