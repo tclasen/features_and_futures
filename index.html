@@ -124,25 +124,47 @@
     async function loadProjects(list, filter) {
       const projects = await fetch('/api/projects').then(response => response.json());
       const visibleProjects = projects.filter(project => project.archived === (filter === 'Archived'));
-      list.replaceChildren(...visibleProjects.map(project => {
-        const row = element('div', undefined, { 'data-testid': 'project-row', class: 'project-row' });
-        const name = element('span', project.name, { class: 'project-name' });
-        const open = element('button', 'Open project');
-        open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-        const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary', class: 'project-summary' });
-        const action = element('button', project.archived ? 'Restore project' : 'Archive project', { class: 'secondary' });
-        action.addEventListener('click', async () => {
-          await fetch(`/api/projects/${project.id}/archive`, {
-            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ archived: !project.archived })
+      const rows = new Map([...list.querySelectorAll('[data-project-id]')]
+        .map(row => [row.dataset.projectId, row]));
+      const orderedRows = visibleProjects.map(project => {
+        let row = rows.get(String(project.id));
+        if (!row) {
+          row = element('div', undefined, {
+            'data-testid': 'project-row', 'data-project-id': project.id, class: 'project-row'
           });
-          await loadProjects(list, filter);
-        });
-        const actions = element('span', undefined, { class: 'project-actions' });
-        actions.append(summary, open, action);
-        row.append(name, actions);
+          const name = element('span', undefined, { class: 'project-name' });
+          const actions = element('span', undefined, { class: 'project-actions' });
+          const summary = element('span', undefined, {
+            'data-testid': 'project-summary', class: 'project-summary'
+          });
+          const open = element('button', 'Open project');
+          open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
+          const action = element('button', undefined, { class: 'secondary' });
+          action.addEventListener('click', async () => {
+            const archived = action.dataset.archived === 'true';
+            await fetch(`/api/projects/${project.id}/archive`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ archived: !archived })
+            });
+            await loadProjects(list, filter);
+          });
+          actions.append(summary, open, action);
+          row.append(name, actions);
+        }
+        rows.delete(String(project.id));
+        row.querySelector('.project-name').textContent = project.name;
+        row.querySelector('[data-testid="project-summary"]').textContent =
+          `${project.completedCount}/${project.totalCount} completed`;
+        const action = row.querySelector('.project-actions button.secondary');
+        action.textContent = project.archived ? 'Restore project' : 'Archive project';
+        action.dataset.archived = String(project.archived);
         return row;
-      }));
+      });
+      for (const obsolete of rows.values()) obsolete.remove();
+      for (const [index, row] of orderedRows.entries()) {
+        const current = list.children[index];
+        if (current !== row) list.insertBefore(row, current || null);
+      }
     }
     async function loadTasks(projectId, list, filter, archived = false) {
       const tasks = await fetch(`/api/projects/${projectId}/tasks`).then(response => response.json());
