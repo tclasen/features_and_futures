@@ -182,7 +182,7 @@ function renderPage(pathname, search = '') {
   let content;
   if (pathname === '/') {
     const requestedFilter = new URLSearchParams(search).get('filter');
-    const archivedView = requestedFilter === 'Archived';
+    const archivedView = requestedFilter?.toLowerCase() === 'archived';
     const rows = listProjects.all().filter((project) => Boolean(project.archived) === archivedView).map((project) => `
       <section data-testid="project-row" data-project-id="${project.id}"><span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
