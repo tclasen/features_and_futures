@@ -19,6 +19,7 @@ db.exec('PRAGMA foreign_keys = ON');
 const listProjects = db.prepare('SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid');
 const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const getProject = db.prepare('SELECT id, archived FROM projects WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
@@ -41,6 +42,21 @@ const server = http.createServer(async (req, res) => {
       createProject.run(project.id, name, Date.now());
       res.writeHead(201, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(project));
     } catch { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Invalid request' })); }
+    return;
+  }
+  const renameRoute = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (renameRoute && req.method === 'PATCH') {
+    const projectId = decodeURIComponent(renameRoute[1]);
+    const project = getProject.get(projectId);
+    if (!project) { res.writeHead(404); res.end('Not found'); return; }
+    if (project.archived) { res.writeHead(403); res.end('Archived project'); return; }
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const name = String(JSON.parse(body).name ?? '').trim();
+      if (!name) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Project name is required' })); return; }
+      renameProject.run(name, projectId);
+      res.writeHead(204); res.end();
+    } catch { res.writeHead(400); res.end('Invalid request'); }
     return;
   }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
