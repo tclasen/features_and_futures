@@ -64,7 +64,66 @@ async function projectPage(projectId) {
   document.title = `${project.name} · Workboard`;
   const back = element('button', { type: 'button' }, 'Projects');
   back.addEventListener('click', () => { window.location.href = '/'; });
-  app.replaceChildren(back, element('h1', {}, project.name));
+  const heading = element('h1', {}, project.name);
+  const form = element('form', { class: 'create-form' });
+  const label = element('label', { for: 'task-title' }, 'Task title');
+  const input = element('input', { id: 'task-title', name: 'title', type: 'text' });
+  const submit = element('button', { type: 'submit' }, 'Create task');
+  form.append(label, input, submit);
+  const alert = element('p', { role: 'alert', class: 'alert' });
+  const filterLabel = element('label', { for: 'task-filter' }, 'Task filter');
+  const filter = element('select', { id: 'task-filter' });
+  for (const option of ['All', 'Open', 'Completed']) {
+    filter.append(element('option', { value: option.toLowerCase() }, option));
+  }
+  const list = element('section', { 'aria-label': 'Tasks' });
+  app.replaceChildren(back, heading, form, alert, filterLabel, filter, list);
+
+  async function loadTasks() {
+    const tasksResponse = await fetch(`/api/projects/${projectId}/tasks`);
+    const tasks = await tasksResponse.json();
+    list.replaceChildren();
+    for (const task of tasks) {
+      if (filter.value === 'open' && task.completed) continue;
+      if (filter.value === 'completed' && !task.completed) continue;
+      const row = element('div', { 'data-testid': 'task-row', class: 'task-row' });
+      const checkbox = element('input', {
+        type: 'checkbox',
+        'aria-label': `Complete ${task.title}`,
+      });
+      checkbox.checked = task.completed;
+      checkbox.addEventListener('change', async () => {
+        await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        await loadTasks();
+      });
+      row.append(checkbox, element('span', {}, task.title));
+      list.append(row);
+    }
+  }
+
+  filter.addEventListener('change', loadTasks);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    alert.textContent = '';
+    const createResponse = await fetch(`/api/projects/${projectId}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: input.value }),
+    });
+    const result = await createResponse.json();
+    if (!createResponse.ok) {
+      alert.textContent = result.error || 'Unable to create task';
+      return;
+    }
+    input.value = '';
+    await loadTasks();
+  });
+
+  await loadTasks();
 }
 
 const match = window.location.pathname.match(/^\/projects\/(\d+)\/?$/);
