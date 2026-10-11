@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. The server binds to `0.0.0.0`; the defaults are
 port `8080` and database `data/workboard.sqlite`. Keep the SQLite file to retain
-projects, tasks, completion state, and priorities across restarts. `GET /health` returns
+projects, tasks, completion state, priorities, and project defaults across restarts. `GET /health` returns
 `{"status":"ok"}`.
 
 Open a project to create tasks, change completion with each task's checkbox, and
@@ -39,10 +39,16 @@ filter membership, and completion summaries. Archived projects disable task
 renaming until restored. Renamed titles persist across restarts.
 
 Each task row has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Changes save immediately and persist
+Existing tasks default to Normal. Changes save immediately and persist
 across restarts without changing task order, ownership, completion, or summaries.
 Renaming preserves priority. Archived projects disable priority controls until
 restored, retaining their saved values.
+
+Each project has a Default task priority selector with Low, Normal, and High
+options, initially Normal. Changes save immediately and apply only to tasks
+created afterward in that project. Existing tasks and both filter selections
+remain unchanged. Defaults persist through renaming, restarts, archival, and
+restoration. Archived projects display the saved default with the selector disabled.
 
 Run the integration checks:
 
@@ -54,6 +60,7 @@ The checks use a temporary SQLite file and verify validation, creation order,
 project pages, safe rendering, task completion and filters, project isolation,
 health, database migration, archive/restore, completion summaries, archived write
 protection, project and task renaming with identity and data preservation, task
-priority defaults and independence, combined completion and priority filtering,
+priority defaults and independence, project default migration and inheritance,
+combined completion and priority filtering,
 selection preservation through edits and validation, and persistence after server
 restarts.
