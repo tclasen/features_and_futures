@@ -21,6 +21,10 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
 
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+
 const escape = (value) => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[char]);
@@ -87,7 +91,7 @@ function taskFilter(value) {
 }
 
 function projectPage(res, project, filter = 'All', error = '') {
-  const tasks = db.prepare(`SELECT id, title, completed FROM tasks WHERE project_id = ?
+  const tasks = db.prepare(`SELECT id, title, completed, priority FROM tasks WHERE project_id = ?
     ${filter === 'All' ? '' : 'AND completed = ?'} ORDER BY id`)
     .all(...(filter === 'All' ? [project.id] : [project.id, filter === 'Completed' ? 1 : 0]));
   sendHtml(res, 200, page(project.name, `<h1>${escape(project.name)}</h1>
@@ -119,7 +123,13 @@ ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' sel
 <input type="hidden" name="filter" value="${filter}">
 <label for="new-task-title-${task.id}">New task title</label>
 <div class="create"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
-</form></div>`).join('')}
+</form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+<input type="hidden" name="filter" value="${filter}">
+<label for="task-priority-${task.id}">Task priority</label>
+<select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+${['Low', 'Normal', 'High'].map(option => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
+</select></form></div>`).join('')}
 ${tasks.length ? '' : '<p>No tasks to show.</p>'}</section>`));
 }
 
@@ -191,7 +201,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/rename)?)?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/(?:rename|priority))?)?$/.exec(url.pathname);
     if (req.method === 'POST' && taskMatch) {
       const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(taskMatch[1]);
       if (project) {
@@ -201,7 +211,19 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await formBody(req);
         const filter = taskFilter(body.get('filter'));
-        if (taskMatch[3]) {
+        if (taskMatch[3] === '/priority') {
+          const priority = body.get('priority');
+          if (!['Low', 'Normal', 'High'].includes(priority)) {
+            sendHtml(res, 400, page('Invalid priority', '<p role="alert">Invalid task priority</p>'));
+            return;
+          }
+          const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?')
+            .run(priority, taskMatch[2], project.id);
+          if (!result.changes) {
+            sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
+            return;
+          }
+        } else if (taskMatch[3] === '/rename') {
           const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskMatch[2], project.id);
           if (!task) {
             sendHtml(res, 404, page('Not found', '<h1>Not found</h1>'));
