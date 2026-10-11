@@ -33,6 +33,9 @@ const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!taskColumns.some(column => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -116,7 +119,7 @@ const server = createServer(async (req, res) => {
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskRoute && req.method === 'GET') {
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1]));
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1]));
     return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (taskRoute && req.method === 'POST') {
@@ -153,6 +156,23 @@ const server = createServer(async (req, res) => {
         if (!['Low', 'Normal', 'High'].includes(payload.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
         db.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(payload.priority, taskId);
         return sendJson(res, 200, { id: taskId, priority: payload.priority });
+      }
+      if (Object.hasOwn(payload, 'dueDate')) {
+        const dueDate = typeof payload.dueDate === 'string' ? payload.dueDate.trim() : '';
+        if (dueDate) {
+          const match = dueDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!match) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          const year = Number(match[1]);
+          const month = Number(match[2]);
+          const day = Number(match[3]);
+          const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+          const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+          if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) {
+            return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+        }
+        db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, taskId);
+        return sendJson(res, 200, { id: taskId, dueDate: dueDate || null });
       }
       if (typeof payload.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
       db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, taskId);
