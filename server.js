@@ -335,6 +335,17 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
     .filter(task => matchesTask(task, filter, priority, range))
     // Stable sorting retains Original order for ties; only this view is sorted.
     .sort((a, b) => compareDirectoryTasks(a, b, order));
+  const ownersById = new Map();
+  for (const task of tasks) {
+    if (!ownersById.has(task.project_id)) {
+      ownersById.set(task.project_id, { id: task.project_id, name: task.project_name, total: 0, completed: 0 });
+    }
+    const owner = ownersById.get(task.project_id);
+    owner.total += 1;
+    owner.completed += task.completed ? 1 : 0;
+  }
+  // Project IDs track creation order, independently of the directory task sort.
+  const owners = [...ownersById.values()].sort((a, b) => a.id - b.id);
   const hidden = values => Object.entries(values).map(([name, value]) =>
     `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`).join('');
   const state = { scope, filter, priorityFilter: priority, order };
@@ -372,6 +383,12 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <button type="submit" name="completed" value="0"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
     <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
+    <section class="projects" aria-label="Directory owners">${owners.map(owner => `
+      <div class="project" data-testid="directory-owner-row">
+        <div data-testid="directory-owner-name" style="white-space: pre-wrap">${escapeHtml(owner.name)}</div>
+        <div data-testid="directory-owner-summary">${owner.completed}/${owner.total} completed</div>
+        <form method="get" action="/projects/${owner.id}"><button type="submit">Open project</button></form>
+      </div>`).join('')}</section>
     <section class="tasks" aria-label="Directory tasks">${tasks.length ? tasks.map(task => `
       <div class="task" data-testid="directory-task-row">
         <div data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</div>

@@ -112,6 +112,9 @@ The directory summary shows completed/total tasks in the current resolved result
 including retained completion flags in Deleted views. All filters and bulk actions
 refresh these counts; changing order does not affect them. Empty results show
 0/0 completed alongside No matching tasks.
+A separate owner list shows each represented project's name, matching completion
+counts and Open project navigation in project creation order, regardless of task
+sorting. Projects with identical names retain independent rows and totals.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -154,4 +157,6 @@ comparison, literal title whitespace, date ordering, retained action state, arch
 and deleted views, unchanged exports and Original defaults.
 Directory summary tests cover scope and filter intersections, deleted completion flags,
 empty results, order independence, invalid-range preservation, bulk updates and unchanged exports.
+Owner totals are checked against matching task rows and global totals, including
+duplicate project names, renaming, independent navigation and project creation order.
 Temporary files are removed afterward.

@@ -46,6 +46,21 @@ test('directory summary counts only resolved matches across scopes, filters, ord
       const completed = [...html.matchAll(/data-testid="directory-task-completion">Completed/g)].length;
       assert.equal(expected, `${completed}/${rows} completed`);
       assert.equal(html.includes('No matching tasks'), rows === 0);
+      const owners = [...html.matchAll(/data-testid="directory-owner-row">([\s\S]*?)<\/form>\s*<\/div>/g)].map(match => {
+        const id = Number(match[1].match(/action="\/projects\/(\d+)"/)[1]);
+        const counts = match[1].match(/directory-owner-summary">(\d+)\/(\d+) completed/);
+        return { id, completed: Number(counts[1]), total: Number(counts[2]) };
+      });
+      assert.deepEqual(owners.map(owner => owner.id), [...new Set(owners.map(owner => owner.id))].sort((a, b) => a - b));
+      assert.equal(owners.reduce((sum, owner) => sum + owner.total, 0), rows);
+      assert.equal(owners.reduce((sum, owner) => sum + owner.completed, 0), completed);
+      for (const owner of owners) {
+        assert.ok(owner.total > 0);
+        const taskRows = [...html.matchAll(/data-testid="directory-task-row">([\s\S]*?)<\/form>\s*<\/div>/g)]
+          .filter(match => match[1].includes(`action="/projects/${owner.id}"`));
+        assert.equal(owner.total, taskRows.length);
+        assert.equal(owner.completed, taskRows.filter(match => match[1].includes('directory-task-completion">Completed')).length);
+      }
     };
     const snapshots = await Promise.all([1, 2, 3].map(id => get(`/projects/${id}/export`)));
     for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
@@ -70,6 +85,25 @@ test('directory summary counts only resolved matches across scopes, filters, ord
     check(await get('/directory?filter=Deleted'), '2/4 completed');
     check(await get('/directory?scope=Archived'), '2/3 completed');
     check(await get('/directory?search=other&filter=Completed'), '2/2 completed');
+
+    // Duplicate names are legal: owner rows and navigation remain identity-based.
+    for (const id of [1, 2]) await post(`/projects/${id}/rename`, { name: '  Same <owner>  ' });
+    let html = await get('/directory?order=Title');
+    check(html, '2/6 completed');
+    assert.equal([...html.matchAll(/directory-owner-name"[^>]*>Same &lt;owner&gt;<\/div>/g)].length, 2);
+    assert.match(html, /directory-owner-summary">1\/3 completed/);
+    const ownerActions = [...html.matchAll(/directory-owner-row">[\s\S]*?action="([^\"]+)"/g)].map(match => match[1]);
+    assert.deepEqual(ownerActions, ['/projects/1', '/projects/2']);
+    for (const action of ownerActions) {
+      const detail = await get(action);
+      assert.match(detail, /<h1>Same &lt;owner&gt;<\/h1>/);
+      assert.match(detail, /id="task-filter"[^>]*>\s*<option selected>All/);
+    }
+    await post('/projects/2/rename', { name: 'Second owner' });
+    html = await get('/directory?order=Priority');
+    check(html, '2/6 completed');
+    assert.equal([...html.matchAll(/directory-owner-name"[^>]*>Same &lt;owner&gt;<\/div>/g)].length, 1);
+    assert.match(html, /directory-owner-name"[^>]*>Second owner<\/div>/);
   } finally {
     if (child && child.exitCode === null) { const exited = once(child, 'exit'); child.kill(); await exited; }
     await rm(temp, { recursive: true, force: true });
