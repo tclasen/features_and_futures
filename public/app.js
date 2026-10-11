@@ -124,6 +124,16 @@ async function showProject(projectId) {
   }
   filterLabel.append(filter);
   app.append(filterLabel);
+  const priorityFilterLabel = element('label', { text: 'Priority filter', className: 'filter-label' });
+  const priorityFilter = element('select');
+  priorityFilter.setAttribute('aria-label', 'Priority filter');
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', { text: value });
+    option.value = value;
+    priorityFilter.append(option);
+  }
+  priorityFilterLabel.append(priorityFilter);
+  app.append(priorityFilterLabel);
   const taskList = element('section', { className: 'task-list', testId: 'task-list' });
   app.append(taskList);
 
@@ -134,7 +144,8 @@ async function showProject(projectId) {
     taskList.replaceChildren();
     const visibleTasks = tasks.filter((task) => filter.value === 'All'
       || (filter.value === 'Open' && !task.completed)
-      || (filter.value === 'Completed' && task.completed));
+      || (filter.value === 'Completed' && task.completed)).filter((task) =>
+      priorityFilter.value === 'All' || task.priority === priorityFilter.value);
     for (const task of visibleTasks) {
       const row = element('div', { className: 'task-row', testId: 'task-row' });
       const checkboxLabel = element('label', { className: 'task-checkbox' });
@@ -221,6 +232,7 @@ async function showProject(projectId) {
           if (!response.ok) throw new Error('Could not update task priority');
           task.priority = priority.value;
           alert.hidden = true;
+          await loadTasks();
         } catch {
           priority.value = previousPriority;
           alert.textContent = 'Could not update task priority';
@@ -235,6 +247,7 @@ async function showProject(projectId) {
     }
   }
   filter.addEventListener('change', () => { loadTasks().catch(() => { alert.textContent = 'Could not load tasks'; alert.hidden = false; }); });
+  priorityFilter.addEventListener('change', () => { loadTasks().catch(() => { alert.textContent = 'Could not load tasks'; alert.hidden = false; }); });
   await loadTasks();
 }
 
