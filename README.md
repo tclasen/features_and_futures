@@ -26,7 +26,7 @@ retain creation order. The selected filter is stored in the project page URL.
 The project list initially shows Active projects; choose Archived to open or
 restore archived projects. Archiving preserves tasks and completion state but
 disables task creation and completion changes, including direct POST requests.
-Each project summary counts all its tasks regardless of task filters. Existing
+Each project summary counts all its live tasks regardless of task filters. Existing
 SQLite databases are migrated automatically, with existing projects initially
 active. Archive state and task data persist across restarts.
 
@@ -119,3 +119,12 @@ notes field to each task. Notes persist through restarts, edits, moves, and reme
 return positions without affecting other task fields, summaries, or search matching.
 Saving retains all applied filters and search. Archived projects display saved
 notes but disable editing and reject direct saves until restored.
+
+Task filter also offers Deleted after All, Open, and Completed. The first three
+filters and project summaries count only live tasks. Delete task preserves all
+saved fields, ownership, and remembered positions; Restore task returns the same
+task at its reserved position. Both actions retain the applied filters, range,
+and search. Deleted rows remain readable with all editing and move controls
+disabled, and direct editing requests are rejected until restoration. Archived
+projects also disable deletion and restoration. Deletion survives restarts;
+existing databases initialize every earlier task as live without changing data.

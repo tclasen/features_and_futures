@@ -133,7 +133,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
       ${rangeAndSearchInputs}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
-        ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+        ${['All', 'Open', 'Completed', 'Deleted'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <label for="priority-filter">Priority filter</label>
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
@@ -161,19 +161,21 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
       <button type="submit">Search tasks</button>
     </form>
     <div class="projects">
-      ${tasks.map((task) => `<div class="task-row" data-testid="task-row">
+      ${tasks.map((task) => {
+        const readOnly = project.archived || task.deleted;
+        return `<div class="task-row" data-testid="task-row">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
           ${rangeAndSearchInputs}
-          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${readOnly ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
         </form>
         <form class="task-filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
           ${rangeAndSearchInputs}
           <label for="task-priority-${task.id}">Task priority</label>
-          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+          <select id="task-priority-${task.id}" name="priority"${readOnly ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${TASK_PRIORITIES.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
           </select>
         </form>
@@ -183,8 +185,8 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
           ${rangeAndSearchInputs}
           <label for="new-task-title-${task.id}">New task title</label>
-          <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${readOnly ? ' disabled' : ''}>
+          <button type="submit"${readOnly ? ' disabled' : ''}>Rename task</button>
         </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
           ${errors.taskDueDate?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskDueDate.message)}</p>` : ''}
@@ -192,16 +194,16 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
           ${rangeAndSearchInputs}
           <label for="task-due-date-${task.id}">Task due date</label>
-          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${readOnly ? ' disabled' : ''}>
+          <button type="submit"${readOnly ? ' disabled' : ''}>Save due date</button>
         </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
           ${rangeAndSearchInputs}
           <label for="task-notes-${task.id}">Task notes</label>
-          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>${escapeTextarea(task.notes)}</textarea>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${readOnly ? ' disabled' : ''}>${escapeTextarea(task.notes)}</textarea>
+          <button type="submit"${readOnly ? ' disabled' : ''}>Save notes</button>
         </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
           ${errors.taskMove?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskMove.message)}</p>` : ''}
@@ -209,11 +211,18 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           <input type="hidden" name="priorityFilter" value="${priorityFilter}">
           ${rangeAndSearchInputs}
           <label for="destination-project-${task.id}">Destination project</label>
-          <select id="destination-project-${task.id}" name="destination"${project.archived || !destinations.length ? ' disabled' : ''}>
+          <select id="destination-project-${task.id}" name="destination"${readOnly || !destinations.length ? ' disabled' : ''}>
             ${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
           </select>
-          <button type="submit"${project.archived || !destinations.length ? ' disabled' : ''}>Move task</button>
+          <button type="submit"${readOnly || !destinations.length ? ' disabled' : ''}>Move task</button>
         </form>
-      </div>`).join('')}
+        <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/${task.deleted ? 'restore' : 'delete'}">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+          ${rangeAndSearchInputs}
+          <button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
+        </form>
+      </div>`;
+      }).join('')}
     </div>`);
 }
