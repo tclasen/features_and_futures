@@ -65,12 +65,12 @@ function send(response, status, type, body) {
   response.end(body);
 }
 
-async function readForm(request) {
+async function readForm(request, sizeLimit = 64 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 64 * 1024) {
+    if (size > sizeLimit) {
       const error = new Error('Request too large');
       error.status = 413;
       throw error;
@@ -107,6 +107,20 @@ const server = createServer(async (request, response) => {
           projectsPage(projects.list(filter, search), 'Project name is required', filter, search));
       }
       return redirect(response, projectsLocation(filter, search));
+    }
+    if (request.method === 'POST' && path === '/projects/import') {
+      // Portable exports can contain many tasks; allow their complete form body.
+      const form = await readForm(request, Infinity);
+      const filter = projectFilter(form.get('filter'));
+      const search = normalizeSearchQuery(form.get('search') || '');
+      const json = form.get('json') || '';
+      const name = form.get('importedName') || '';
+      const result = projects.importProject(json, name);
+      if (result.error) {
+        return send(response, 400, 'text/html; charset=utf-8',
+          projectsPage(projects.list(filter, search), result.error, filter, search, { json, name }));
+      }
+      return redirect(response, `/projects/${result.id}`);
     }
     const archiveMatch = path.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
     if (request.method === 'POST' && archiveMatch && Number.isSafeInteger(Number(archiveMatch[1]))) {

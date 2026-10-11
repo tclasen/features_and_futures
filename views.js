@@ -26,7 +26,7 @@ function page(title, content) {
 </html>`;
 }
 
-export function projectsPage(projects, error = '', filter = 'Active', search = '') {
+export function projectsPage(projects, error = '', filter = 'Active', search = '', importFields = {}) {
   return page('Projects', `
     <h1>Workboard</h1>
     <form action="/projects" method="post" class="create-project">
@@ -37,6 +37,15 @@ export function projectsPage(projects, error = '', filter = 'Active', search = '
         <input id="project-name" name="name" type="text" autocomplete="off">
         <button type="submit">Create project</button>
       </div>
+    </form>
+    <form action="/projects/import" method="post" class="project-import">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <input type="hidden" name="search" value="${escapeHtml(search)}">
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json" rows="6">${textareaContent(importFields.json || '')}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <input id="imported-project-name" name="importedName" type="text" value="${escapeHtml(importFields.name || '')}" autocomplete="off">
+      <button type="submit">Import project</button>
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="/" method="get" class="project-filter" data-auto-submit>

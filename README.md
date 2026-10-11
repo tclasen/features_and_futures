@@ -122,3 +122,14 @@ priority and all current live/deleted tasks in stored order. Each task includes
 title, completion, priority, due date, notes and deletion state. Notes line breaks
 use LF in the export only; saved data and remembered return positions are unchanged.
 Export ignores page filters and searches and never modifies the open page or data.
+
+The home page imports version 1 exports through Project JSON and Imported project
+name. The trimmed override names a new independent project; imports never merge
+or overwrite existing records. All required fields, types and Gregorian dates
+are validated before a single SQLite transaction creates the project, tasks and
+their initial ordering positions. Invalid documents show Invalid project JSON;
+blank overrides show Project name is required. Rejections retain both submitted
+fields and change no saved data. Imported titles retain their exact text, notes
+use LF line endings, and archive/deletion flags, explicit priorities and task order
+are preserved. Additional properties cannot set internal identities. Successful
+imports open the new project with the usual empty search/range and All filters.

@@ -302,6 +302,91 @@ test('priorities migrate, render saved options, preserve task data, and survive 
   }
 });
 
+test('project import retains rejected input, opens independent copies and persists across process restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-import-http-'));
+  let server;
+  try {
+    const path = join(directory, 'workboard.sqlite');
+    server = await start(path);
+    const post = (route, values = {}) => fetch(`${server.url}${route}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const page = async (route) => (await fetch(`${server.url}${route}`)).text();
+    const download = async (id) => (await fetch(`${server.url}/projects/${id}/download`)).json();
+    const home = await page('/');
+    assert.match(home, /<label for="project-json">Project JSON<\/label>/);
+    assert.match(home, /<textarea id="project-json" name="json" rows="6">\n<\/textarea>/);
+    assert.match(home, /<label for="imported-project-name">Imported project name<\/label>/);
+    assert.match(home, />Import project<\/button>/);
+    await post('/projects', { name: 'Original' });
+    await post('/projects/1/tasks', { title: '  Match\tTITLE  ' });
+    await post('/projects/1/tasks', { title: 'Second' });
+    await post('/projects/1/tasks/1/completion', { completed: 'on' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    await post('/projects/1/tasks/1/notes', { notes: '\n  😀 <literal>\nnext  ' });
+    await post('/projects/1/tasks/1/delete');
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/archive');
+    const original = await download(1);
+    const listBefore = await page('/?filter=Archived');
+    const json = '\n  </textarea><script>literal</script>\n  ';
+    const importedName = '  Copy "<& 😀  ';
+    const invalid = await post('/projects/import', { json, importedName, filter: 'Archived' });
+    assert.equal(invalid.status, 400);
+    const rejected = await invalid.text();
+    assert.match(rejected, /role="alert">Invalid project JSON/);
+    assert.match(rejected, /rows="6">\n\n  &lt;\/textarea&gt;&lt;script&gt;literal&lt;\/script&gt;\n  <\/textarea>/);
+    assert.match(rejected, /name="importedName" type="text" value="  Copy &quot;&lt;&amp; 😀  "/);
+    assert.equal(await page('/?filter=Archived'), listBefore);
+    const blank = await post('/projects/import', { json: JSON.stringify(original), importedName: ' \t ' });
+    assert.equal(blank.status, 400);
+    assert.match(await blank.text(), /role="alert">Project name is required/);
+    const laterInvalid = structuredClone(original);
+    laterInvalid.project.tasks[1].dueDate = '1900-02-29';
+    assert.equal((await post('/projects/import', { json: JSON.stringify(laterInvalid), importedName })).status, 400);
+    assert.equal(await page('/?filter=Archived'), listBefore);
+    assert.deepEqual(await download(1), original);
+
+    // Import an export larger than the ordinary edit-form limit.
+    const imported = structuredClone(original);
+    imported.project.tasks[0].notes += '\n' + '😀'.repeat(20000);
+    const success = await post('/projects/import', { json: JSON.stringify(imported), importedName });
+    assert.equal(success.status, 303);
+    assert.equal(success.headers.get('location'), '/projects/2');
+    imported.project.name = importedName.trim();
+    assert.deepEqual(await download(2), imported);
+    const detail = await page('/projects/2');
+    assert.match(detail, /Archived project/);
+    assert.match(detail, /<option selected>All<\/option>/);
+    assert.match(detail, /id="task-search" name="search" type="text" value=""/);
+    assert.match(detail, /id="due-from" name="rangeFrom" type="text" value=""/);
+    assert.match(detail, /disabled>Create task/);
+    const deleted = await page('/projects/2?filter=Deleted&search=match');
+    assert.match(deleted, /disabled>Restore task/);
+    assert.match(deleted, /name="notes" rows="4" disabled>/);
+    assert.equal((await post('/projects/2/tasks/3/restore')).status, 409);
+    await server.stop();
+    server = await start(path);
+    assert.deepEqual(await download(2), imported);
+    assert.equal(await page('/projects/2'), detail);
+    await post('/projects/2/restore');
+    await post('/projects/2/tasks', { title: 'Later' });
+    assert.equal((await post('/projects/2/tasks/3/restore', { filter: 'Deleted' })).headers.get('location'), '/projects/2?filter=Deleted');
+    const restored = await page('/projects/2');
+    const titles = [...restored.matchAll(/data-testid="task-row"[^>]*>\s*<span>(.*?)<\/span>/g)].map((m) => m[1]);
+    assert.deepEqual(titles, ['Match\tTITLE', 'Second', 'Later']);
+    await post('/projects/2/tasks/3/rename', { title: 'Independent' });
+    assert.deepEqual(await download(1), original);
+    const health = await fetch(`${server.url}/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: databasePath },

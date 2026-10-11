@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { matchesSearch } from './search.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
 import { normalizeDueDate } from './task-dates.js';
+import { parseProjectImport } from './project-import.js';
 
 export function openProjects(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -87,6 +88,13 @@ export function openProjects(databasePath) {
     WHERE tasks.project_id = ? ORDER BY ordering.position, tasks.id
   `);
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const insertImportedProject = database.prepare(`
+    INSERT INTO projects (name, archived, default_task_priority) VALUES (?, ?, ?)
+  `);
+  const insertImportedTask = database.prepare(`
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
@@ -148,6 +156,22 @@ export function openProjects(databasePath) {
     list: (filter = 'Active', search = '') => list.all(filter === 'Archived' ? 1 : 0)
       .filter((project) => matchesSearch(project.name, search)),
     find: (id) => find.get(id),
+    importProject(json, overrideName) {
+      const name = typeof overrideName === 'string' ? overrideName.trim() : '';
+      if (!name) return { error: 'Project name is required' };
+      const project = parseProjectImport(json);
+      if (!project) return { error: 'Invalid project JSON' };
+      return transaction(() => {
+        const id = Number(insertImportedProject.run(name, project.archived ? 1 : 0,
+          project.defaultPriority).lastInsertRowid);
+        for (const task of project.tasks) {
+          const inserted = insertImportedTask.run(id, task.title, task.completed ? 1 : 0,
+            task.priority, task.dueDate, task.notes, task.deleted ? 1 : 0);
+          rememberPosition.run(inserted.lastInsertRowid, id, id);
+        }
+        return { id };
+      });
+    },
     exportProject(id) {
       const project = find.get(id);
       if (!project) return null;
