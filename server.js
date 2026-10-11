@@ -18,8 +18,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low','Normal','High'))
 );`);
+
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -69,7 +74,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
     if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
-    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1])));
+    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1])));
   }
   if (tasksMatch && req.method === 'POST') {
     let raw = '';
@@ -90,6 +95,11 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     try {
       const payload = JSON.parse(raw);
+      if (Object.hasOwn(payload, 'priority')) {
+        if (!['Low', 'Normal', 'High'].includes(payload.priority)) return send(400, JSON.stringify({ error: 'Invalid priority' }));
+        const result = db.prepare(`UPDATE tasks SET priority = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(payload.priority, taskMatch[1]);
+        return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
+      }
       if (Object.hasOwn(payload, 'title')) {
         const title = String(payload.title ?? '').trim();
         if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
