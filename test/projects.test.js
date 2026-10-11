@@ -1711,6 +1711,105 @@ test('directory bulk completion intersects all filters, protects read-only data,
   }
 });
 
+test('directory summary counts resolved intersections, retained deleted completion, and bulk updates', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-summary-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const task = (title, completed, priority = 'High', dueDate = '2024-02-29', deleted = false) => ({
+      title, completed, priority, dueDate, deleted, notes: 'not searched',
+    });
+    const importCopy = async (name, archived, tasks) => {
+      const response = await post('/imports/projects', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Normal', tasks },
+      }) });
+      assert.equal(response.status, 303);
+      return response.headers.get('location');
+    };
+    const first = await importCopy('First', false, [
+      task('Match one', false), task('Match two', true),
+      task('Other', true, 'Low', ''), task('Removed', true, 'High', '', true),
+    ]);
+    const second = await importCopy('Second', false, [
+      task('MATCH three', false), task('Match low', true, 'Low'),
+      task('Removed open', false, 'High', '', true),
+    ]);
+    const archived = await importCopy('Archived', true, [
+      task('Archived live', true), task('Archived deleted', true, 'Normal', '', true),
+      task('Archived deleted open', false, 'Low', '', true),
+    ]);
+    const snapshot = async () => Promise.all([first, second, archived].map(async (path) =>
+      (await fetch(`${server.url}${path}/export`)).json()));
+    const before = await snapshot();
+    const check = (html, completed, total) => {
+      const summaries = [...html.matchAll(/data-testid="directory-summary">([^<]*)<\/p>/g)];
+      assert.deepEqual(summaries.map((match) => match[1]), [`${completed}/${total} completed`]);
+      assert.equal((html.match(/data-testid="directory-task-row"/g) ?? []).length, total);
+      assert.equal(html.includes('role="status">No matching tasks'), total === 0);
+    };
+    check(await get('/directory'), 3, 5);
+    const state = { scope: 'Active', filter: 'All', priorityFilter: 'High',
+      dueFrom: '2024-02-29', dueThrough: '2024-02-29', query: 'match', order: 'Original' };
+    const view = () => get(`/directory?${new URLSearchParams(state)}`);
+    for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+      state.order = order;
+      check(await view(), 1, 3);
+    }
+    for (const [filter, completed, total] of [['Open', 0, 2], ['Completed', 1, 1], ['Deleted', 0, 0]]) {
+      state.filter = filter;
+      check(await view(), completed, total);
+    }
+    Object.assign(state, { filter: 'All', query: 'no match' });
+    check(await view(), 0, 0);
+    Object.assign(state, { query: 'match' });
+    for (const [rangeFrom, rangeThrough] of [['2023-02-29', ''], ['2025-01-01', '2024-01-01']]) {
+      const invalid = await post('/directory/due-range', { ...state, rangeFrom, rangeThrough });
+      assert.equal(invalid.status, 422);
+      check(await invalid.text(), 1, 3);
+    }
+    const applied = await post('/directory/due-range', { ...state, rangeFrom: '2025-01-01', rangeThrough: '' });
+    check(await get(applied.headers.get('location')), 0, 0);
+    for (const [scope, filter, completed, total] of [
+      ['Active', 'Deleted', 1, 2], ['Archived', 'All', 1, 1], ['Archived', 'Deleted', 1, 2],
+    ]) {
+      check(await get(`/directory?${new URLSearchParams({ scope, filter })}`), completed, total);
+    }
+    assert.deepEqual(await snapshot(), before);
+    state.filter = 'Open';
+    const completed = await post('/directory/complete', state);
+    check(await get(completed.headers.get('location')), 0, 0);
+    state.filter = 'All';
+    check(await view(), 3, 3);
+    state.filter = 'Completed';
+    check(await view(), 3, 3);
+    await server.stop();
+    server = await startServer(databasePath);
+    check(await view(), 3, 3);
+    const reopened = await post('/directory/reopen', state);
+    check(await get(reopened.headers.get('location')), 0, 0);
+    state.filter = 'All';
+    check(await view(), 0, 3);
+    const expected = structuredClone(before);
+    expected[0].project.tasks[1].completed = false;
+    assert.deepEqual(await snapshot(), expected);
+    const home = await get('/');
+    assert.deepEqual([...home.matchAll(/data-testid="project-summary">([^<]*)/g)].map((match) => match[1]),
+      ['1/3 completed', '1/2 completed']);
+    await server.stop();
+    server = await startServer(databasePath);
+    check(await view(), 0, 3);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('directory ordering spans projects, retains view state, and leaves exports and remembered order intact', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
   const databasePath = join(directory, 'workboard.sqlite');

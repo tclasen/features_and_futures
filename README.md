@@ -42,7 +42,9 @@ The home page provides `Project JSON`, `Imported project name`, and `Import proj
 
 `Directory order` offers Original, Priority (High, Normal, Low), Due date (ascending, undated last), and Title (ASCII-case-folded literal Unicode code point order). Ties retain Original order across the entire result. Ordering survives filter, search, range and bulk-action changes, including validation errors, but never changes stored task order, exports or remembered return positions. A new directory opening resets to Original.
 
-Directory ordering tests cover cross-project sorting, stable ties, Unicode and literal whitespace, archived/deleted views, view-state retention, unchanged exports, movement/returns and process restarts.
+The read-only `directory-summary` displays `{completed}/{total} completed` for exactly the resolved matching rows, including retained completion flags in Deleted views. It updates with filters, search, range and bulk actions; ordering does not affect counts. Empty results show `0/0 completed` alongside `No matching tasks`. Project summaries still count only their own live tasks.
+
+Directory ordering and summary tests cover cross-project sorting, stable ties, Unicode and literal whitespace, archived/deleted views, combined filters, validation errors, bulk updates, empty counts, view-state retention, unchanged exports, movement/returns and process restarts.
 
 Directory integration tests cover imported live/deleted tasks, active/archived scopes, combined filters, title-only matching, exact escaped notes, invalid-range preservation, default navigation, unchanged exports, bulk-action eligibility, cross-project completion/reopening, read-only enforcement, all-field and remembered-position preservation, subsequent movement/returns, empty results, and real restart persistence.
 
