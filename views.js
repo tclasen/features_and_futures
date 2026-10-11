@@ -124,7 +124,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
       ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
-        ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+        ${['All', 'Open', 'Completed', 'Deleted'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <label for="priority-filter">Priority filter</label>
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
@@ -146,52 +146,60 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
       <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(range.through)}">
       <button type="submit">Apply due range</button>
     </form>
-    ${tasks.length ? `<ul class="tasks">${tasks.map((task) => `
+    ${tasks.length ? `<ul class="tasks">${tasks.map((task) => {
+      const readOnly = project.archived || task.deleted;
+      const taskMoveDisabled = moveDisabled || task.deleted;
+      return `
       <li class="task" data-testid="task-row">
         <form method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}">
           ${filterFields}
           <label>
-            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${readOnly ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             <span>${escapeHtml(task.title)}</span>
           </label>
-          <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
+          <noscript><button type="submit"${readOnly ? ' disabled' : ''}>Save completion</button></noscript>
         </form>
         <form class="task-priority" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/priority">
           ${filterFields}
           <label for="task-priority-${escapeHtml(task.id)}">Task priority</label>
-          <select id="task-priority-${escapeHtml(task.id)}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+          <select id="task-priority-${escapeHtml(task.id)}" name="priority"${readOnly ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${['Low', 'Normal', 'High'].map((option) => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
           </select>
-          <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save priority</button></noscript>
+          <noscript><button type="submit"${readOnly ? ' disabled' : ''}>Save priority</button></noscript>
         </form>
         <form class="create task-due-date" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/due-date">
           ${filterFields}
           <label for="task-due-date-${escapeHtml(task.id)}">Task due date</label>
-          <input id="task-due-date-${escapeHtml(task.id)}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          <input id="task-due-date-${escapeHtml(task.id)}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${readOnly ? ' disabled' : ''}>
+          <button type="submit"${readOnly ? ' disabled' : ''}>Save due date</button>
         </form>
         <form class="create task-notes" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/notes">
           ${filterFields}
           <label for="task-notes-${escapeHtml(task.id)}">Task notes</label>
-          <textarea id="task-notes-${escapeHtml(task.id)}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+          <textarea id="task-notes-${escapeHtml(task.id)}" name="notes" rows="4"${readOnly ? ' disabled' : ''}>
 ${escapeHtml(task.notes)}</textarea>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+          <button type="submit"${readOnly ? ' disabled' : ''}>Save notes</button>
         </form>
         <form class="create task-move" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/move">
           ${filterFields}
           <label for="destination-project-${escapeHtml(task.id)}">Destination project</label>
-          <select id="destination-project-${escapeHtml(task.id)}" name="destination"${moveDisabled ? ' disabled' : ''}>
+          <select id="destination-project-${escapeHtml(task.id)}" name="destination"${taskMoveDisabled ? ' disabled' : ''}>
             ${destinations.map((destination) => `<option value="${escapeHtml(destination.id)}">${escapeHtml(destination.name)}</option>`).join('')}
           </select>
-          <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
+          <button type="submit"${taskMoveDisabled ? ' disabled' : ''}>Move task</button>
         </form>
         <form class="create task-rename" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/rename">
           ${filterFields}
           <label for="new-task-title-${escapeHtml(task.id)}">New task title</label>
-          <input id="new-task-title-${escapeHtml(task.id)}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
-          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          <input id="new-task-title-${escapeHtml(task.id)}" name="title" type="text" value="${escapeHtml(task.title)}"${readOnly ? ' disabled' : ''}>
+          <button type="submit"${readOnly ? ' disabled' : ''}>Rename task</button>
         </form>
-      </li>`).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
+        <form class="create task-deletion" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/${task.deleted ? 'restore' : 'delete'}">
+          ${filterFields}
+          <button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
+        </form>
+      </li>`;
+    }).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
   `);
 }
 

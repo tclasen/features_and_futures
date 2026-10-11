@@ -46,6 +46,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+// Soft deletion preserves task data and all remembered ordering positions.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 // Remember positions even while a task belongs elsewhere. Seed legacy tasks in
 // their current order; restarting must never overwrite an established position.
 database.exec(`
@@ -62,7 +66,7 @@ database.exec(`
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
-  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.deleted = 0
   WHERE projects.archived = ?
   GROUP BY projects.position ORDER BY projects.position
 `);
@@ -71,11 +75,13 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
 const listTasks = database.prepare(`
-  SELECT tasks.id, title, completed, priority, due_date, notes
+  SELECT tasks.id, title, completed, priority, due_date, notes, deleted
   FROM tasks JOIN task_project_positions AS ordering
     ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
   WHERE tasks.project_id = ? ORDER BY ordering.position
 `);
+const findTask = database.prepare('SELECT deleted FROM tasks WHERE project_id = ? AND id = ?');
+const updateTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, priority) VALUES (?, ?, ?, ?)');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
@@ -140,7 +146,7 @@ function projectsLocation(filter, query) {
 }
 
 function taskFilter(value) {
-  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+  return ['All', 'Open', 'Completed', 'Deleted'].includes(value) ? value : 'All';
 }
 
 function priorityFilter(value) {
@@ -155,7 +161,8 @@ function readDueRange(params) {
 
 function renderFilteredProject(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, query = '') {
   const tasks = listTasks.all(project.id).filter((task) =>
-    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+    (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
+      (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))) &&
     (priority === 'All' || task.priority === priority) && matchesDueRange(task.due_date, range) &&
     matchesSearch(task.title, query));
   return renderProject(project, tasks, filter, error, priority, range, listDestinations.all(project.id), query);
@@ -324,7 +331,7 @@ const server = http.createServer(async (request, response) => {
       sendHtml(response, project ? 200 : 404, project ? renderFilteredProject(project, taskFilter(searchParams.get('filter')), '', priorityFilter(searchParams.get('priorityFilter')), readDueRange(searchParams), normalizeSearch(searchParams.get('query'))) : renderNotFound());
       return;
     }
-    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority|due-date|move|notes))?)?$/);
+    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+)(?:\/(rename|priority|due-date|move|notes|delete|restore))?)?$/);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (!project) {
@@ -338,8 +345,20 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       if (taskMatch[2]) {
+        const task = findTask.get(project.id, taskMatch[2]);
+        if (!task) {
+          sendHtml(response, 404, renderNotFound());
+          return;
+        }
+        const action = taskMatch[3];
+        if (task.deleted && action !== 'restore') {
+          sendHtml(response, 403, projectPage(project, filter, 'Deleted tasks cannot be changed', priority));
+          return;
+        }
         let result;
-        if (taskMatch[3] === 'move') {
+        if (action === 'delete' || action === 'restore') {
+          result = updateTaskDeleted.run(action === 'delete' ? 1 : 0, project.id, taskMatch[2]);
+        } else if (action === 'move') {
           const destination = findProject.get(form.get('destination') ?? '');
           if (!destination || destination.archived || destination.id === project.id) {
             sendHtml(response, 422, projectPage(project, filter, 'Choose an active destination project', priority));
