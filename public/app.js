@@ -59,7 +59,16 @@ async function loadTasks() {
       if (!result.ok) priority.value = task.priority || 'Normal';
       else await loadTasks();
     });
-    row.append(priority); container.append(row);
+    row.append(priority);
+    const dueDate = document.createElement('input'); dueDate.type = 'text'; dueDate.value = task.due_date || ''; dueDate.setAttribute('aria-label', 'Task due date'); dueDate.placeholder = 'YYYY-MM-DD'; dueDate.disabled = Boolean(window.currentProjectArchived);
+    const saveDate = document.createElement('button'); saveDate.type = 'button'; saveDate.textContent = 'Save due date'; saveDate.disabled = Boolean(window.currentProjectArchived);
+    saveDate.addEventListener('click', async () => {
+      const message = document.querySelector('#task-alert');
+      const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ due_date: dueDate.value }) });
+      if (!result.ok) { message.textContent = result.status === 400 ? 'Due date must be a valid YYYY-MM-DD date' : 'Unable to save due date'; message.hidden = false; return; }
+      message.hidden = true; await loadTasks();
+    });
+    row.append(dueDate, saveDate); container.append(row);
   }
 }
 

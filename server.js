@@ -9,11 +9,20 @@ const dbPath = process.env.DB_PATH || join(root, 'workboard.sqlite');
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 db.exec('PRAGMA foreign_keys = ON');
+function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 const port = Number(process.env.PORT || 8080);
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const server = http.createServer(async (req, res) => {
@@ -30,7 +39,7 @@ const server = http.createServer(async (req, res) => {
     const projectId = Number(tasksMatch[1]);
     const project = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id=?').get(projectId);
     if (!project) return send(404, { error: 'Project not found' });
-    if (req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id=? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    if (req.method === 'GET') return send(200, db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id=? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     if (req.method === 'POST') {
       if (project.archived) return send(409, { error: 'Archived project' });
       try { const data = await readBody(); if (typeof data.title !== 'string' || !data.title.trim()) return send(400, { error: 'Task title is required' }); const title = data.title.trim(); const result = db.prepare('INSERT INTO tasks(project_id,title,priority) VALUES (?,?,?)').run(projectId, title, project.default_priority); return send(201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority }); } catch { return send(400, { error: 'Invalid request' }); }
@@ -40,6 +49,16 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'PATCH' && taskMatch) {
     try {
       const data = await readBody();
+      if (Object.hasOwn(data, 'due_date')) {
+        if (typeof data.due_date !== 'string') return send(400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const value = data.due_date.trim();
+        if (value && !isValidDate(value)) return send(400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const dueDate = value || null;
+        const result = db.prepare('UPDATE tasks SET due_date=? WHERE id=? AND project_id IN (SELECT id FROM projects WHERE archived=0)').run(dueDate, Number(taskMatch[1]));
+        if (result.changes) return send(200, { due_date: dueDate });
+        const task = db.prepare('SELECT t.id FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=?').get(Number(taskMatch[1]));
+        return task ? send(409, { error: 'Archived project' }) : send(404, { error: 'Task not found' });
+      }
       if (typeof data.title === 'string') {
         if (!data.title.trim()) return send(400, { error: 'Task title is required' });
         const title = data.title.trim();
