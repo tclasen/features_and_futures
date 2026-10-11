@@ -142,6 +142,10 @@ const page = `<!doctype html>
       const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Task filter');
       for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
       filterLabel.append(filter);
+      const priorityFilterLabel = document.createElement('label'); priorityFilterLabel.textContent = 'Priority filter';
+      const priorityFilter = document.createElement('select'); priorityFilter.setAttribute('aria-label', 'Priority filter');
+      for (const value of ['All', 'Low', 'Normal', 'High']) { const option = document.createElement('option'); option.textContent = value; option.value = value; priorityFilter.append(option); }
+      priorityFilterLabel.append(priorityFilter);
       const list = document.createElement('section'); list.id = 'tasks';
       async function refreshTasks() {
         const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks');
@@ -149,6 +153,7 @@ const page = `<!doctype html>
         const tasks = await result.json(); list.replaceChildren();
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
           const row = document.createElement('div'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed;
           checkbox.disabled = project.archived;
@@ -184,6 +189,7 @@ const page = `<!doctype html>
         }
       }
       filter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
+      priorityFilter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
       form.addEventListener('submit', async (event) => {
         event.preventDefault(); const title = input.value.trim();
         if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; input.focus(); return; }
@@ -191,7 +197,7 @@ const page = `<!doctype html>
         if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
         alert.hidden = true; input.value = ''; await refreshTasks();
       });
-      section.append(renameForm, renameAlert, form, alert, filterLabel, list); app.replaceChildren(section); await refreshTasks();
+      section.append(renameForm, renameAlert, form, alert, filterLabel, priorityFilterLabel, list); app.replaceChildren(section); await refreshTasks();
     }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
