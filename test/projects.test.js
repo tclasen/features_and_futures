@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: migration, validation, filters, archiving, renaming, summaries, and persistence', async () => {
+test('projects and tasks: migration, validation, filters, archiving, renaming, priorities, summaries, and persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Start with the original schema to verify existing databases are upgraded.
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -353,11 +353,102 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, s
     await stop();
     await start();
     assert.equal(await projectHtml(), restoredTaskDetail);
+
+    const priorityPath = completionPath.replace('/completion', '/priority');
+    const secondPriorityPath = /action="([^"]+\/priority)"/.exec(rows(restoredTaskDetail)[1])[1];
+    function priorityOptions(row) {
+      return /<select id="task-priority-\d+"[^>]*>([\s\S]*?)<\/select>/.exec(row)[1].trim();
+    }
+    for (const row of rows(restoredTaskDetail)) {
+      assert.match(row, /<label for="task-priority-\d+">Task priority<\/label>/);
+      assert.equal(priorityOptions(row), '<option>Low</option><option selected>Normal</option><option>High</option>');
+    }
+    const priorityChanged = await post(priorityPath, { priority: 'High', filter: 'Completed' });
+    assert.equal(priorityChanged.status, 303);
+    assert.equal(priorityChanged.headers.get('location'), `${paths[0]}?filter=Completed`);
+    const highDetail = await projectHtml();
+    // Priority changes only the selected option, preserving identity, title, and completion.
+    assert.equal(highDetail, restoredTaskDetail.replace(
+      '<option>Low</option><option selected>Normal</option><option>High</option>',
+      '<option>Low</option><option>Normal</option><option selected>High</option>'));
+    assert.equal(rows(await projectHtml(`${paths[0]}?filter=Completed`)).length, 1);
+    assert.equal(rows(await projectHtml(`${paths[0]}?filter=Open`)).length, 2);
+    assert.equal(await (await fetch(baseUrl)).text(), restoredRenamedListing);
+    assert.equal(await projectHtml(paths[1]), otherDetail);
+    await post(secondPriorityPath, { priority: 'Low' });
+    const mixedPriorities = await projectHtml();
+    assert.equal(priorityOptions(rows(mixedPriorities)[0]), '<option>Low</option><option>Normal</option><option selected>High</option>');
+    assert.equal(priorityOptions(rows(mixedPriorities)[1]), '<option selected>Low</option><option>Normal</option><option>High</option>');
+    assert.equal(priorityOptions(rows(mixedPriorities)[2]), '<option>Low</option><option selected>Normal</option><option>High</option>');
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(priorityPath, { priority })).status, 422);
+      assert.equal(await projectHtml(), mixedPriorities);
+    }
+    assert.equal((await post(priorityPath.replace(paths[0], paths[1]), { priority: 'Low' })).status, 404);
+    assert.equal((await post(`${paths[0]}/tasks/999999/priority`, { priority: 'Low' })).status, 404);
+    assert.equal(await projectHtml(), mixedPriorities);
+    await post(taskRenamePath, { title: 'Priority retained' });
+    const priorityRenamed = await projectHtml();
+    assert.match(rows(priorityRenamed)[0], /aria-label="Complete Priority retained" checked/);
+    assert.equal(priorityOptions(rows(priorityRenamed)[0]), priorityOptions(rows(mixedPriorities)[0]));
+    assert.equal(await (await fetch(baseUrl)).text(), restoredRenamedListing);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(), priorityRenamed);
+    assert.equal(await projectHtml(paths[1]), otherDetail);
+    await post(`${paths[0]}/archive`, {});
+    const archivedPriorities = await projectHtml();
+    assert.ok(rows(archivedPriorities).every(row => /<select id="task-priority-\d+"[^>]* disabled/.test(row)));
+    assert.equal((await post(priorityPath, { priority: 'Low' })).status, 403);
+    assert.equal(await projectHtml(), archivedPriorities);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(), archivedPriorities);
+    await post(`${paths[0]}/restore`, {});
+    assert.equal(await projectHtml(), priorityRenamed);
+    await post(priorityPath, { priority: 'Normal' });
+    assert.equal(priorityOptions(rows(await projectHtml())[0]), '<option>Low</option><option selected>Normal</option><option>High</option>');
+    assert.equal(priorityOptions(rows(await projectHtml())[1]), priorityOptions(rows(mixedPriorities)[1]));
+    await post(`${paths[0]}/tasks`, { title: 'New normal task' });
+    assert.equal(priorityOptions(rows(await projectHtml())[3]), '<option>Low</option><option selected>Normal</option><option>High</option>');
     assert.equal((await fetch(`${baseUrl}/projects/999999`)).status, 404);
     assert.equal((await post('/projects/999999/rename', { name: 'Missing project' })).status, 404);
     assert.equal((await post('/projects/999999/tasks', { title: 'Missing project' })).status, 404);
     assert.equal((await post('/projects/999999/archive', {})).status, 404);
     assert.equal((await post('/projects/999999/restore', {})).status, 404);
+
+    // Replace the fixture with a populated Task 005 database to check backfilled priorities.
+    await stop();
+    await rm(join(directory, 'projects.sqlite'));
+    const previous = new DatabaseSync(join(directory, 'projects.sqlite'));
+    previous.exec(`
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+      );
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+      );
+      INSERT INTO projects (id, name) VALUES (17, 'Existing project');
+      INSERT INTO tasks (id, project_id, title, completed) VALUES
+        (23, 17, 'Existing completed task', 1), (24, 17, 'Existing open task', 0);
+    `);
+    previous.close();
+    await start();
+    const migratedDetail = await projectHtml('/projects/17');
+    assert.equal(rows(migratedDetail).length, 2);
+    assert.match(rows(migratedDetail)[0], /aria-label="Complete Existing completed task" checked/);
+    assert.match(rows(migratedDetail)[1], /aria-label="Complete Existing open task" onchange/);
+    for (const row of rows(migratedDetail)) {
+      assert.equal(priorityOptions(row), '<option>Low</option><option selected>Normal</option><option>High</option>');
+    }
+    assert.match(await (await fetch(baseUrl)).text(), /data-testid="project-summary">1\/2 completed/);
+    assert.equal((await post('/projects/17/tasks/23/priority', { priority: 'High' })).status, 303);
+    const migratedUpdated = await projectHtml('/projects/17');
+    await stop();
+    await start();
+    assert.equal(await projectHtml('/projects/17'), migratedUpdated);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
