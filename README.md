@@ -27,4 +27,9 @@ On an active project page, use New project name and Rename project to change
 its name while preserving its URL, creation order, tasks, and summary. Archived
 projects must be restored before renaming.
 
+Each task row provides New task title and Rename task. Renaming preserves task
+order, project ownership, completion, and summary counts, and updates the
+completion checkbox label. Archived projects must be restored before task
+renaming is enabled.
+
 Run the integration checks with `npm test`.
