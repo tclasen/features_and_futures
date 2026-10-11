@@ -73,10 +73,13 @@ export function renderProjects(projects, filter = 'Active', error = '') {
   `);
 }
 
-export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All') {
+export function renderProject(project, tasks = [], filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }) {
   const projectPath = `/projects/${escapeHtml(project.id)}`;
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
+      <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   const filterFields = `<input type="hidden" name="filter" value="${escapeHtml(filter)}">
-      <input type="hidden" name="priorityFilter" value="${escapeHtml(priority)}">`;
+      <input type="hidden" name="priorityFilter" value="${escapeHtml(priority)}">
+      ${rangeFields}`;
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
@@ -105,6 +108,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <form class="task-filter" method="get" action="${projectPath}">
+      ${rangeFields}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -114,6 +118,14 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
         ${['All', 'Low', 'Normal', 'High'].map((option) => `<option${priority === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <noscript><button type="submit">Apply filter</button></noscript>
+    </form>
+    <form class="create due-range" method="post" action="${projectPath}/due-range">
+      ${filterFields}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(range.from)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(range.through)}">
+      <button type="submit">Apply due range</button>
     </form>
     ${tasks.length ? `<ul class="tasks">${tasks.map((task) => `
       <li class="task" data-testid="task-row">

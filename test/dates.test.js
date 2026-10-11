@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidDueDate } from '../dates.js';
+import { isValidDueDate, dueRangeError, matchesDueRange } from '../dates.js';
+
+test('due ranges validate and match inclusive calendar-day boundaries', () => {
+  assert.equal(dueRangeError('', ''), '');
+  assert.equal(dueRangeError('0001-01-01', '9999-12-31'), '');
+  assert.match(dueRangeError('1900-02-29', ''), /valid YYYY-MM-DD/);
+  assert.match(dueRangeError('', '2025-04-31'), /valid YYYY-MM-DD/);
+  assert.match(dueRangeError('2025-03-02', '2025-03-01'), /must not be after/);
+  const range = { from: '2025-03-01', through: '2025-03-03' };
+  for (const date of ['2025-03-01', '2025-03-02', '2025-03-03']) {
+    assert.equal(matchesDueRange(date, range), true);
+  }
+  for (const date of ['', '2025-02-28', '2025-03-04']) {
+    assert.equal(matchesDueRange(date, range), false);
+  }
+  assert.equal(matchesDueRange('', { from: '', through: '' }), true);
+  assert.equal(matchesDueRange('', { from: '', through: '9999-12-31' }), false);
+  assert.equal(matchesDueRange('0001-01-01', { from: '', through: '0001-01-01' }), true);
+  assert.equal(matchesDueRange('9999-12-31', { from: '9999-12-31', through: '' }), true);
+});
 
 test('due dates require exact Gregorian calendar days in years 0001–9999', () => {
   for (const value of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '2025-04-30']) {

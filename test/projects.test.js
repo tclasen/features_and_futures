@@ -727,3 +727,120 @@ test('due dates migrate, validate, clear, and persist independently with archive
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('due ranges intersect filters, retain applied state through edits, and work when archived', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-ranges-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    await post('/projects', { name: 'Range project' });
+    const path = (await get('/')).match(/action="(\/projects\/[a-zA-Z0-9-]+)"/)[1];
+    for (const title of ['Before', 'Start', 'Middle', 'End', 'After', 'Undated']) {
+      await post(`${path}/tasks`, { title });
+    }
+    let html = await get(path);
+    const tasks = [...html.matchAll(/action="([^\"]+\/tasks\/[a-zA-Z0-9-]+)"/g)].map((match) => match[1]);
+    const dates = ['2025-02-28', '2025-03-01', '2025-03-02', '2025-03-03', '2025-03-04'];
+    for (let index = 0; index < dates.length; index++) {
+      await post(`${tasks[index]}/due-date`, { dueDate: dates[index] });
+    }
+    await post(`${tasks[1]}/priority`, { priority: 'High' });
+    await post(`${tasks[3]}/priority`, { priority: 'High' });
+    await post(tasks[3], { completed: '1' });
+    const summary = await get('/');
+    const titles = (page) => [...page.matchAll(/aria-label="Complete ([^\"]+)"/g)].map((match) => match[1]);
+    const fields = { filter: 'All', priorityFilter: 'All', dueFrom: '2025-03-01', dueThrough: '2025-03-03' };
+    const location = (values) => `${path}?${new URLSearchParams(values)}`;
+    const apply = (rangeFrom, rangeThrough, state = fields) => post(`${path}/due-range`, { ...state, rangeFrom, rangeThrough });
+    let response = await apply(' 2025-03-01 ', '2025-03-03 ');
+    assert.equal(response.status, 303);
+    let filtered = response.headers.get('location');
+    html = await get(filtered);
+    assert.deepEqual(titles(html), ['Start', 'Middle', 'End']);
+    assert.match(html, /name="rangeFrom" type="text" value="2025-03-01"/);
+    assert.match(html, /name="rangeThrough" type="text" value="2025-03-03"/);
+    // Applied range is included in every editing form and the combobox form.
+    for (const form of html.matchAll(/<form[^>]*action="([^\"]+)"[^>]*>([\s\S]*?)<\/form>/g)) {
+      if (form[1].startsWith(path)) {
+        assert.match(form[2], /name="dueFrom" value="2025-03-01"/);
+        assert.match(form[2], /name="dueThrough" value="2025-03-03"/);
+      }
+    }
+    assert.deepEqual(titles(await get(location({ ...fields, filter: 'Open', priorityFilter: 'High' }))), ['Start']);
+    assert.deepEqual(titles(await get(location({ ...fields, filter: 'Completed', priorityFilter: 'High' }))), ['End']);
+    for (const [from, through, message] of [
+      ['2025-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['', '1900-02-29', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2025-3-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2025-03-04', '2025-03-01', 'Due from must not be after Due through'],
+    ]) {
+      response = await apply(from, through);
+      assert.equal(response.status, 422);
+      const invalid = await response.text();
+      assert.ok(invalid.includes(`role="alert">${message}`));
+      assert.deepEqual(titles(invalid), ['Start', 'Middle', 'End']);
+      assert.match(invalid, /name="rangeFrom" type="text" value="2025-03-01"/);
+    }
+    response = await apply('', '2025-03-01');
+    assert.deepEqual(titles(await get(response.headers.get('location'))), ['Before', 'Start']);
+    response = await apply('2025-03-03', '');
+    assert.deepEqual(titles(await get(response.headers.get('location'))), ['End', 'After']);
+    response = await apply('2025-03-01', '2025-03-01');
+    assert.deepEqual(titles(await get(response.headers.get('location'))), ['Start']);
+    response = await apply(' \t ', '');
+    assert.equal(titles(await get(response.headers.get('location'))).length, 6);
+    const state = { ...fields, filter: 'Open', priorityFilter: 'High' };
+    response = await post(`${tasks[1]}/rename`, { ...state, title: 'Renamed start' });
+    filtered = response.headers.get('location');
+    assert.deepEqual(titles(await get(filtered)), ['Renamed start']);
+    response = await post(`${tasks[1]}/due-date`, { ...state, dueDate: '2025-03-04' });
+    assert.equal(response.headers.get('location'), filtered);
+    assert.deepEqual(titles(await get(filtered)), []);
+    await post(`${tasks[1]}/due-date`, { ...state, dueDate: '2025-03-01' });
+    await post(tasks[1], { ...state, completed: '1' });
+    assert.deepEqual(titles(await get(filtered)), []);
+    await post(tasks[1], { ...state });
+    await post(`${tasks[1]}/priority`, { ...state, priority: 'Low' });
+    assert.deepEqual(titles(await get(filtered)), []);
+    await post(`${tasks[1]}/priority`, { ...state, priority: 'High' });
+    assert.deepEqual(titles(await get(filtered)), ['Renamed start']);
+    for (const [suffix, values] of [
+      ['/rename', { name: 'Renamed project' }],
+      ['/default-priority', { priority: 'High' }],
+      ['/tasks', { title: 'New undated' }],
+    ]) {
+      response = await post(`${path}${suffix}`, { ...state, ...values });
+      assert.equal(response.headers.get('location'), filtered);
+      assert.deepEqual(titles(await get(filtered)), ['Renamed start']);
+    }
+    assert.match(summary, /1\/6 completed/);
+    assert.match(await get('/'), /1\/7 completed/);
+    html = await get(filtered);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await get(filtered), html);
+    const reopened = await get(path);
+    assert.equal(titles(reopened).length, 7);
+    assert.match(reopened, /name="rangeFrom" type="text" value=""/);
+    assert.match(reopened, /name="rangeThrough" type="text" value=""/);
+    await post(`${path}/archive`);
+    html = await get(filtered);
+    assert.match(html, /Archived project/);
+    assert.match(html, /name="dueDate" type="text" value="2025-03-01" disabled/);
+    const rangeForm = html.match(/<form class="create due-range"[\s\S]*?<\/form>/)[0];
+    assert.doesNotMatch(rangeForm, /disabled/);
+    response = await apply('2025-03-03', '2025-03-03', { ...state, filter: 'Completed' });
+    assert.deepEqual(titles(await get(response.headers.get('location'))), ['End']);
+    await post(`${path}/restore`);
+    assert.deepEqual(titles(await get(filtered)), ['Renamed start']);
+    assert.doesNotMatch(await get(filtered), / disabled/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
