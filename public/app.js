@@ -13,8 +13,10 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const taskList = document.querySelector('#task-list');
 let projectId;
+let savedDefaultTaskPriority;
 let archived = false;
 let projects = [];
 let tasks = [];
@@ -225,6 +227,25 @@ function renderTasks() {
 taskFilter.addEventListener('change', renderTasks);
 priorityFilter.addEventListener('change', renderTasks);
 
+defaultTaskPriority.addEventListener('change', async () => {
+  if (!projectId || archived) return;
+  defaultTaskPriority.disabled = true;
+  showTaskAlert('');
+  try {
+    const project = await request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_task_priority: defaultTaskPriority.value }),
+    });
+    savedDefaultTaskPriority = project.default_task_priority;
+  } catch (error) {
+    showTaskAlert(error.message);
+  } finally {
+    defaultTaskPriority.value = savedDefaultTaskPriority;
+    defaultTaskPriority.disabled = archived;
+  }
+});
+
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (archived) return;
@@ -293,6 +314,9 @@ async function initialize() {
       const project = await request(`/api/projects/${match[1]}`);
       projectId = project.id;
       archived = Boolean(project.archived);
+      savedDefaultTaskPriority = project.default_task_priority;
+      defaultTaskPriority.value = savedDefaultTaskPriority;
+      defaultTaskPriority.disabled = archived;
       document.querySelector('#archived-message').hidden = !archived;
       document.querySelector('#project-heading').textContent = project.name;
       document.title = `${project.name} · Workboard`;

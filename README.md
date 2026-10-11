@@ -11,7 +11,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Open `http://localhost:8080`. The server binds to `0.0.0.0`.
 `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`.
 Use the same database path across restarts to retain projects, tasks, completion state,
-archive state, renamed project names and task titles, and task priorities. Existing databases are upgraded automatically.
+archive state, renamed project names and task titles, task priorities, and project task-priority defaults. Existing databases are upgraded automatically.
 `GET /health` returns `{"status":"ok"}`.
 
 Verify:
@@ -41,9 +41,15 @@ summary counts. Blank titles show an alert. Archived projects disable these cont
 until restored.
 
 Each task row has a Task priority combobox with Low, Normal, and High options.
-Existing and new tasks default to Normal. Priority changes persist independently
+Existing tasks default to Normal during migration. Priority changes persist independently
 without affecting titles, completion, order, ownership, or summaries. Archived
 projects disable priority editing until restored.
+
+Each project page has a Default task priority combobox with Low, Normal, and High
+options. Projects initially default to Normal; new tasks inherit the project's saved
+default. Changing the default leaves existing tasks and both filter selections alone.
+Defaults persist independently through reloads, restarts, renaming, and archive/restore.
+Archived projects display their saved default with editing disabled until restored.
 
 The integration test uses an isolated database, exercises project and task validation,
 creation order, project isolation, and completion updates, and restarts the server to
@@ -58,3 +64,6 @@ completion summaries, and priority persistence through renaming, archive/restore
 filter changes, and server restarts.
 Combined-filter checks cover every completion/priority combination, selection retention,
 task edits leaving the matching list, rename membership, and archived filtering.
+Project-default checks cover migration, independent defaults, future-task inheritance,
+unchanged existing tasks and filters, save-error recovery, archived restrictions,
+renaming, restoration, and restart persistence.

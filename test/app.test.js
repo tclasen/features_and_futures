@@ -460,3 +460,104 @@ test('priority filter has an accessible label and exactly the required ordered o
     ['All', 'Low', 'Normal', 'High']);
   assert.match(select, /<option value="all" selected>All<\/option>/);
 });
+
+test('default priority saves without changing filters or existing rows and loads in archived and restored pages', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const project = { id: 'example', name: 'Example', archived: false, default_task_priority: 'Normal' };
+  const savedTasks = [
+    { id: 'one', title: 'Original', completed: false, priority: 'Normal' },
+  ];
+  let failNextWrite = false;
+  const writes = [];
+  const loadPage = async () => {
+    const elements = new Map();
+    const element = selector => {
+      if (!elements.has(selector)) elements.set(selector, new Element());
+      return elements.get(selector);
+    };
+    for (const form of ['#project-form', '#task-form', '#rename-form']) {
+      element(form).button = new Element();
+    }
+    element('#task-filter').value = 'all';
+    element('#priority-filter').value = 'all';
+    await runInNewContext(source, {
+      document: { querySelector: element, createElement: () => new Element() },
+      window: { location: { pathname: '/projects/example' } },
+      fetch: async (path, options) => {
+        let body;
+        if (!options) body = path.endsWith('/tasks') ? savedTasks : project;
+        else {
+          writes.push({ path, ...options });
+          if (failNextWrite) {
+            failNextWrite = false;
+            return { ok: false, json: async () => ({ error: 'Save failed' }) };
+          }
+          assert.equal(project.archived, false);
+          const input = JSON.parse(options.body);
+          if (options.method === 'POST') {
+            body = { id: 'two', title: input.title, completed: false, priority: project.default_task_priority };
+            savedTasks.push(body);
+          } else {
+            Object.assign(project, input);
+            body = project;
+          }
+        }
+        return { ok: true, json: async () => structuredClone(body) };
+      },
+    });
+    return element;
+  };
+  const element = await loadPage();
+  const defaultPriority = element('#default-task-priority');
+  assert.equal(defaultPriority.value, 'Normal');
+  assert.equal(defaultPriority.disabled, false);
+  element('#task-filter').value = 'open';
+  await element('#task-filter').dispatch('change');
+  element('#priority-filter').value = 'Normal';
+  await element('#priority-filter').dispatch('change');
+  const originalRow = element('#task-list').children[0];
+  defaultPriority.value = 'High';
+  await defaultPriority.dispatch('change');
+  assert.equal(writes[0].path, '/api/projects/example');
+  assert.deepEqual(JSON.parse(writes[0].body), { default_task_priority: 'High' });
+  assert.equal(defaultPriority.value, 'High');
+  assert.equal(defaultPriority.disabled, false);
+  assert.equal(element('#task-filter').value, 'open');
+  assert.equal(element('#priority-filter').value, 'Normal');
+  assert.equal(element('#task-list').children[0], originalRow);
+  assert.equal(originalRow.children[3].value, 'Normal');
+  element('#task-title').value = 'Inherited';
+  await element('#task-form').dispatch('submit');
+  assert.equal(savedTasks[1].priority, 'High');
+  assert.equal(element('#task-list').children.length, 1);
+  assert.equal(element('#priority-filter').value, 'Normal');
+  failNextWrite = true;
+  defaultPriority.value = 'Low';
+  await defaultPriority.dispatch('change');
+  assert.equal(defaultPriority.value, 'High');
+  assert.equal(defaultPriority.disabled, false);
+  assert.equal(element('#task-alert').textContent, 'Save failed');
+  assert.equal(element('#task-filter').value, 'open');
+  assert.equal(element('#priority-filter').value, 'Normal');
+  project.archived = true;
+  const archived = await loadPage();
+  assert.equal(archived('#default-task-priority').value, 'High');
+  assert.equal(archived('#default-task-priority').disabled, true);
+  const writeCount = writes.length;
+  await archived('#default-task-priority').dispatch('change');
+  assert.equal(writes.length, writeCount);
+  project.archived = false;
+  const restored = await loadPage();
+  assert.equal(restored('#default-task-priority').value, 'High');
+  assert.equal(restored('#default-task-priority').disabled, false);
+  assert.deepEqual(restored('#task-list').children.map(row => row.children[3].value), ['Normal', 'High']);
+});
+
+test('default task priority has an accessible label and exactly the required ordered options', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+  const select = html.match(/<select id="default-task-priority" disabled>([\s\S]*?)<\/select>/)[1];
+  assert.deepEqual([...select.matchAll(/<option[^>]*>([^<]+)<\/option>/g)].map(match => match[1]),
+    ['Low', 'Normal', 'High']);
+  assert.match(select, /<option value="Normal" selected>Normal<\/option>/);
+});

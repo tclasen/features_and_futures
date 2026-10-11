@@ -70,7 +70,7 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
       body: JSON.stringify({ name }),
     });
     assert.deepEqual(await get('/health'), { status: 'ok' });
-    const existing = { id: 'legacy', name: 'Existing project', archived: false, total: 1, completed: 1 };
+    const existing = { id: 'legacy', name: 'Existing project', archived: false, default_task_priority: 'Normal', total: 1, completed: 1 };
     assert.deepEqual(await get('/api/projects'), [existing]);
     const legacyTasks = [{ id: 'legacy-task', title: 'Existing task', completed: true, priority: 'Normal' }];
     assert.deepEqual(await get('/api/projects/legacy/tasks'), legacyTasks);
@@ -277,6 +277,78 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     server = await start(databasePath);
     assert.deepEqual(await get('/api/projects'), [existing, first, second]);
     assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project defaults affect only future tasks and persist through rename, archive, restore, and restart', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'defaults-test-'));
+  let server;
+  try {
+    const databasePath = resolve(directory, 'defaults.sqlite');
+    server = await start(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(server.url + path, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const first = await api('/api/projects', 'POST', { name: 'First' }, 201);
+    const second = await api('/api/projects', 'POST', { name: 'Second' }, 201);
+    const path = `/api/projects/${first.id}`;
+    const otherPath = `/api/projects/${second.id}`;
+    assert.equal(first.default_task_priority, 'Normal');
+    assert.equal(second.default_task_priority, 'Normal');
+    const original = await api(`${path}/tasks`, 'POST', { title: 'Original' }, 201);
+    assert.equal(original.priority, 'Normal');
+    for (const invalid of ['', 'high', 'Urgent', null, 123]) {
+      await api(path, 'PATCH', { default_task_priority: invalid }, 400);
+      assert.equal((await api(path)).default_task_priority, 'Normal');
+    }
+    await api(path, 'PATCH', { default_task_priority: 'High' });
+    const inherited = await api(`${path}/tasks`, 'POST', { title: 'Inherited' }, 201);
+    assert.equal(inherited.priority, 'High');
+    await api(`${path}/tasks/${inherited.id}`, 'PATCH', { completed: true });
+    inherited.completed = true;
+    await api(`${path}/tasks/${inherited.id}`, 'PATCH', { title: 'Renamed task' });
+    inherited.title = 'Renamed task';
+    const unchanged = [original, inherited];
+    await api(path, 'PATCH', { default_task_priority: 'Low' });
+    assert.deepEqual(await api(`${path}/tasks`), unchanged);
+    assert.equal((await api(otherPath)).default_task_priority, 'Normal');
+    const otherTask = await api(`${otherPath}/tasks`, 'POST', { title: 'Other' }, 201);
+    assert.equal(otherTask.priority, 'Normal');
+    await api(otherPath, 'PATCH', { default_task_priority: 'High' });
+    await api(path, 'PATCH', { name: 'Renamed project' });
+    const renamed = await api(path);
+    assert.equal(renamed.default_task_priority, 'Low');
+    assert.equal(renamed.completed, 1);
+    assert.equal(renamed.total, 2);
+    await api(path, 'PATCH', { archived: true });
+    await api(path, 'PATCH', { default_task_priority: 'Normal' }, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await api(path), { ...renamed, archived: true });
+    assert.deepEqual(await api(`${path}/tasks`), unchanged);
+    assert.equal((await api(otherPath)).default_task_priority, 'High');
+    await api(path, 'PATCH', { archived: false });
+    const lowTask = await api(`${path}/tasks`, 'POST', { title: 'After restoration' }, 201);
+    assert.equal(lowTask.priority, 'Low');
+    await api(path, 'PATCH', { default_task_priority: 'Normal' });
+    assert.deepEqual(await api(`${path}/tasks`), [...unchanged, lowTask]);
+    assert.deepEqual(await api(`${otherPath}/tasks`), [otherTask]);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal((await api(path)).default_task_priority, 'Normal');
+    assert.deepEqual(await api(`${path}/tasks`), [...unchanged, lowTask]);
+    assert.deepEqual((await api('/api/projects')).map(project => project.id), [first.id, second.id]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
