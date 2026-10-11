@@ -171,7 +171,7 @@ const page = `<!doctype html>
           priority.addEventListener('change', async () => {
             const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
             if (!update.ok) { priority.value = task.priority; return; }
-            task.priority = priority.value;
+            await refreshTasks();
           });
           const renameLabel = document.createElement('label'); renameLabel.textContent = 'New task title';
           const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New task title'); renameInput.value = task.title;
