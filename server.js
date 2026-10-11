@@ -40,6 +40,9 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET sort_order = id');
@@ -53,7 +56,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 )`);
 database.exec(`INSERT OR IGNORE INTO task_project_positions (project_id, task_id, sort_order)
   SELECT project_id, id, sort_order FROM tasks ORDER BY sort_order, id`);
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
 const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, (SELECT default_priority FROM projects WHERE id = ?), COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1))");
 const rememberPosition = database.prepare('INSERT INTO task_project_positions (project_id, task_id, sort_order) VALUES (?, ?, ?)');
 const getRememberedPosition = database.prepare('SELECT sort_order AS sortOrder FROM task_project_positions WHERE project_id = ? AND task_id = ?');
@@ -64,9 +67,10 @@ const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
+const updateTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  SUM(CASE WHEN t.deleted = 0 THEN 1 ELSE 0 END) AS totalCount, COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
 const root = path.dirname(new URL(import.meta.url).pathname);
@@ -178,6 +182,12 @@ const server = http.createServer(async (req, res) => {
         const bodyData = JSON.parse(body);
         if (getProject.get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
         const taskId = Number(taskRoute[2]);
+        if (Object.hasOwn(bodyData, 'deleted')) {
+          if (typeof bodyData.deleted !== 'boolean') return send(res, 400, JSON.stringify({ error: 'Invalid deleted state' }));
+          const result = updateTaskDeleted.run(bodyData.deleted ? 1 : 0, taskId, projectId);
+          if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+          return send(res, 200, JSON.stringify(listTasks.all(projectId).find(task => task.id === taskId)));
+        }
         if (Object.hasOwn(bodyData, 'notes')) {
           if (typeof bodyData.notes !== 'string') return send(res, 400, JSON.stringify({ error: 'Invalid notes' }));
           const result = updateTaskNotes.run(bodyData.notes, taskId, projectId);
