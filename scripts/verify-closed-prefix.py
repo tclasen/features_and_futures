@@ -103,13 +103,19 @@ def main():
         deliveries[key] = {'identity': list(key), 'request_id': row['request_id'], 'request_sha256': sha(request),
                            'packet_sha256': hashlib.sha256(packet.encode()).hexdigest(),
                            'profile_sha256': hashlib.sha256(profile.encode()).hexdigest()}
-    assert set(deliveries) == closed
+    launch_failures = []
+    for key in sorted(closed - set(deliveries)):
+        from orchestrator.pm_launch_incidents import verify
+        launch_failures.append(verify(run, events, usage,
+            dict(zip(('builder_id', 'task_id', 'attempt_id'), key))))
+    assert set(deliveries) <= closed
+    assert len(deliveries) + len(launch_failures) == len(closed)
     for bid in sorted(builders):
         for stage in range(1, through + 1):
             path = run / 'builders' / bid / f'isolation-task-{stage:03d}.json'
             assert verify_isolation(json.loads(path.read_text())['probe'])
             isolation.append({'path': str(path.relative_to(ROOT)), 'sha256': sha(path)})
-    proof = {'verified': True, 'utc': timestamp(), 'run_id': args.run, 'through': through,
+    proof = {'verified': True, 'verified_pre_inference_pm_launch_failures': launch_failures, 'utc': timestamp(), 'run_id': args.run, 'through': through,
              'model_calls': 0, 'controller_sha256': sha(Path(__file__)),
              'audit_files': {name: sha(audit / name) for name in ('verified.json', 'events.jsonl', 'usage.jsonl')},
              'manifest_sha256': sha(run / 'manifest.json'), 'checkpoints': checkpoints,

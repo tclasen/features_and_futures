@@ -3,6 +3,8 @@ import json
 import os
 import subprocess
 import uuid
+import hashlib
+from urllib.parse import quote
 from pathlib import Path
 
 
@@ -102,7 +104,32 @@ def execute_attempt(sandbox, harness, model, key, gateway_port, prompt, output,
     if harness == "pi":
         if smoke:
             command += ["--no-tools"]
-        command += [prompt]
+        if len(prompt.encode("utf-8")) >= 120000:
+            # Preserve the single native CLI message without Linux MAX_ARG_STRLEN.
+            # Native request equivalence is archived under v014 pi-prompt-transport002.
+            config_root = next(arg.split("=", 1)[1] for arg in command
+                               if arg.startswith("PI_CODING_AGENT_DIR="))
+            prompt_path = config_root + "/prompt.txt"
+            writer = "import pathlib,sys;pathlib.Path(sys.argv[1]).write_bytes(sys.stdin.buffer.read())"
+            prepared = invoke(["sbx", "exec", "-i", sandbox, "python3", "-c", writer, prompt_path], stdin=prompt)
+            if prepared.returncode:
+                raise RuntimeError("Could not prepare exact native prompt file: " + prepared.stderr)
+            shim = ('import {readFileSync} from "node:fs";process.argv.push(readFileSync('
+                    + json.dumps(prompt_path) + ',"utf8"));')
+            native_pos = command.index(sandbox) + 1
+            assert command[native_pos] == "pi"
+            command[native_pos:native_pos+1] = ["node", "--import",
+                "data:text/javascript," + quote(shim, safe=""),
+                "/usr/local/share/npm-global/bin/pi"]
+            (output / "prompt-transport.json").write_text(json.dumps({
+                "transport": "exact-utf8-file-to-native-argv-v1",
+                "prompt_bytes": len(prompt.encode("utf-8")),
+                "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                "native_entry": "/usr/local/share/npm-global/bin/pi",
+                "equivalence_evidence": "experiments/instruction-effects/revisions/research-v014/preflight/pi-prompt-transport002/verified.json",
+            }, indent=2) + "\n")
+        else:
+            command += [prompt]
         stdin = None
     else:
         stdin = prompt

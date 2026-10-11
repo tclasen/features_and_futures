@@ -22,6 +22,14 @@ def augment(run, manifest, events, usage, tasks, builders, problems, state):
     for row in usage:
         key = tuple(row[k] for k in ('builder_id', 'task_id', 'attempt_id'))
         grouped.setdefault(key, []).append(row)
+    launch_failures = []
+    for marker in [e for e in events if e['kind'] == 'pm_launch_attempt_retained']:
+        identity = {k: marker[k] for k in ('builder_id', 'task_id', 'attempt_id')}
+        try:
+            from .pm_launch_incidents import verify
+            launch_failures.append(verify(run, events, usage, identity))
+        except (AssertionError, ValueError, KeyError, OSError) as error:
+            analysis_problems.append('PM launch evidence gate: ' + repr(identity) + ': ' + str(error))
     incident_count = 0
     permitted_unknowns = set()
     for key, records in grouped.items():
@@ -74,7 +82,7 @@ def augment(run, manifest, events, usage, tasks, builders, problems, state):
         outcomes = [t['first_assessed_submission_accepted'] for t in tasks if t['builder_id'] == row['builder_id']]
         row['first_assessed_submission_acceptance'] = (sum(outcomes) / len(outcomes)
                                                       if outcomes and all(type(x) is bool for x in outcomes) else None)
-    return {'analysis_method': manifest['research']['analysis_method'],
+    return {'verified_pre_inference_pm_launch_failures': launch_failures, 'analysis_method': manifest['research']['analysis_method'],
             'analysis_ready': state['status'] in ('completed', 'awaiting_frozen_round') and not analysis_problems,
             'analysis_problems': analysis_problems,
             'native_accounting_complete': bool(usage) and all(u['counts'] is not None for u in usage),
@@ -101,6 +109,11 @@ def artifact_hashes(run, usage):
             paths.add(folder/'requests'/(row['request_id']+'.'+suffix))
         for name in ('submission.tar','result.json','infrastructure-incident.json','working-tree.tar.gz','working-tree-checksum.json','native-history.bundle','native-working-tree.tar.gz','native-git.json'):
             if (folder/name).exists(): paths.add(folder/name)
+    for incident in (run/'tasks').glob('*/attempts/*/*/pm-launch-incident.json'):
+        paths.add(incident)
+        details=json.loads(incident.read_text())
+        paths.update(incident.parent/name for name in details['original_file_sha256'])
+        paths.add(incident.parent/'feedback.json')
     for index in (run/'builders').glob('*/checkpoints/*/index.json'):
         paths.add(index)
         paths.update(index.parent/name for name in json.loads(index.read_text())['checksums'])
