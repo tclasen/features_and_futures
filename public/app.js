@@ -493,6 +493,12 @@ document.querySelector('#back-button').addEventListener('click', () => {
   window.location.href = '/';
 });
 
+document.querySelector('#download-project').addEventListener('click', () => {
+  if (projectId) {
+    window.location.href = `/api/projects/${encodeURIComponent(projectId)}/export`;
+  }
+});
+
 async function initialize() {
   const match = window.location.pathname.match(/^\/projects\/([^/]+)$/);
   if (match) {
@@ -502,7 +508,6 @@ async function initialize() {
       const project = await request(`/api/projects/${match[1]}`);
       projectId = project.id;
       const download = document.querySelector('#download-project');
-      download.href = `/api/projects/${encodeURIComponent(projectId)}/export`;
       download.hidden = false;
       archived = Boolean(project.archived);
       savedDefaultTaskPriority = project.default_task_priority;
