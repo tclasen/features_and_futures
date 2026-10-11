@@ -561,3 +561,94 @@ test('default task priority has an accessible label and exactly the required ord
     ['Low', 'Normal', 'High']);
   assert.match(select, /<option value="Normal" selected>Normal<\/option>/);
 });
+
+test('due-date controls preserve filters, saved values, and archived restrictions across page loads', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const tasks = [
+    { id: 'a', title: 'First', completed: true, priority: 'High', due_date: '' },
+    { id: 'b', title: 'Second', completed: false, priority: 'Low', due_date: '0001-01-01' },
+  ];
+  let archived = false;
+  let writes = 0;
+  const loadPage = async () => {
+    const elements = new Map();
+    const element = selector => {
+      if (!elements.has(selector)) elements.set(selector, new Element());
+      return elements.get(selector);
+    };
+    for (const form of ['#project-form', '#task-form', '#rename-form']) element(form).button = new Element();
+    element('#task-filter').value = 'all';
+    element('#priority-filter').value = 'all';
+    await runInNewContext(source, {
+      document: { querySelector: element, createElement: () => new Element() },
+      window: { location: { pathname: '/projects/example' } },
+      fetch: async (path, options) => {
+        if (!options) return { ok: true, json: async () => path.endsWith('/tasks')
+          ? structuredClone(tasks) : { id: 'example', name: 'Example', archived } };
+        writes++;
+        const input = JSON.parse(options.body);
+        if (input.due_date === 'invalid') return { ok: false, json: async () => ({
+          error: 'Due date must be a valid YYYY-MM-DD date',
+        }) };
+        const task = tasks.find(task => path.endsWith(`/${task.id}`));
+        Object.assign(task, input);
+        return { ok: true, json: async () => ({ ...task }) };
+      },
+    });
+    return element;
+  };
+  let element = await loadPage();
+  const rows = () => element('#task-list').children;
+  assert.deepEqual(rows().map(row => row.children[4].children[0].value), ['', '0001-01-01']);
+  for (const row of rows()) {
+    const [input, button] = row.children[4].children;
+    assert.equal(input.type, 'text');
+    assert.equal(input.attributes['aria-label'], 'Task due date');
+    assert.equal(button.textContent, 'Save due date');
+    assert.equal(input.disabled, false);
+    assert.equal(button.disabled, false);
+  }
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').dispatch('change');
+  element('#priority-filter').value = 'High';
+  await element('#priority-filter').dispatch('change');
+  const form = rows()[0].children[4];
+  form.children[0].value = '  2024-02-29  ';
+  await form.dispatch('submit');
+  assert.equal(form.children[0].value, '2024-02-29');
+  assert.equal(tasks[0].due_date, '2024-02-29');
+  form.children[0].value = 'invalid';
+  await form.dispatch('submit');
+  assert.equal(element('#task-alert').hidden, false);
+  assert.equal(element('#task-alert').textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.equal(tasks[0].due_date, '2024-02-29');
+  assert.equal(form.children[0].disabled, false);
+  assert.equal(form.children[1].disabled, false);
+  const rename = rows()[0].children[2];
+  rename.children[0].value = 'Renamed';
+  await rename.dispatch('submit');
+  assert.equal(tasks[0].due_date, '2024-02-29');
+  assert.equal(element('#task-filter').value, 'completed');
+  assert.equal(element('#priority-filter').value, 'High');
+  assert.equal(rows().length, 1);
+  element = await loadPage();
+  assert.equal(rows()[0].children[4].children[0].value, '2024-02-29');
+  archived = true;
+  element = await loadPage();
+  assert.ok(rows().every(row => row.children[4].children.every(control => control.disabled)));
+  const writeCount = writes;
+  await rows()[0].children[4].dispatch('submit');
+  assert.equal(writes, writeCount);
+  archived = false;
+  element = await loadPage();
+  assert.equal(rows()[0].children[4].children[0].value, '2024-02-29');
+  assert.ok(rows().every(row => row.children[4].children.every(control => !control.disabled)));
+  rows()[0].children[4].children[0].value = ' \t ';
+  await rows()[0].children[4].dispatch('submit');
+  assert.equal(rows()[0].children[4].children[0].value, '');
+  assert.equal(tasks[1].due_date, '0001-01-01');
+  assert.equal(tasks[0].completed, true);
+  assert.equal(tasks[0].priority, 'High');
+  element = await loadPage();
+  assert.equal(rows()[0].children[4].children[0].value, '');
+});
