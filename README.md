@@ -24,10 +24,12 @@ Each project page has a `Priority filter` with All/Low/Normal/High options. It c
 
 `Default task priority` sets the priority inherited by subsequent tasks in that project. Existing and new projects initially use Normal. Changing the default preserves existing tasks and both selected filters. Each project's default persists through reloads, server restarts, renaming, archival, and restoration. Archived projects show the saved default in a disabled combobox.
 
+Each task row has a `Task due date` textbox and `Save due date` button. Dates are optional: blank input clears the saved date. Nonempty input is trimmed and must be a real Gregorian date in `YYYY-MM-DD` format with a year from 0001 through 9999. Invalid input shows an alert and preserves the saved date. Dates persist across restarts without timezone conversion and do not change other task data, selected filters, or summaries. Archived projects disable due-date editing until restored.
+
 Run verification:
 
 ```sh
 npm test
 ```
 
-The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, combined priority and completion filtering, edits under selected filters, project default inheritance and isolation, archive/restore behavior, renaming and identity preservation, completion summaries, and persistence across server restarts.
+The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, combined priority and completion filtering, edits under selected filters, project default inheritance and isolation, due-date validation and clearing, archive/restore behavior, renaming and identity preservation, completion summaries, and persistence across server restarts.

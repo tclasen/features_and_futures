@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: migration, validation, filters, archiving, renaming, priorities, defaults, summaries, and persistence', async () => {
+test('projects and tasks: migration, validation, filters, archiving, renaming, priorities, defaults, due dates, summaries, and persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Start with the original schema to verify existing databases are upgraded.
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -592,6 +592,72 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     assert.equal((await post('/projects/999999/archive', {})).status, 404);
     assert.equal((await post('/projects/999999/restore', {})).status, 404);
 
+    // Due dates validate calendar days without changing tasks, filters, or summaries.
+    const dueDatePath = priorityPath.replace('/priority', '/due-date');
+    const dueFilters = { filter: 'Completed', priorityFilter: 'High' };
+    const dueUrl = `${paths[0]}?filter=Completed&priorityFilter=High`;
+    const beforeDates = await projectHtml();
+    const dueSummary = await (await fetch(baseUrl)).text();
+    const otherBeforeDates = await projectHtml(paths[1]);
+    const dueInput = /<input id="task-due-date-\d+"[^>]*>/;
+    const dueValue = row => /name="dueDate" type="text" value="([^"]*)"/.exec(row)[1];
+    assert.ok(rows(beforeDates).every(row => dueValue(row) === ''));
+    assert.match(rows(beforeDates)[0], /<label for="task-due-date-\d+">Task due date<\/label>/);
+    assert.match(rows(beforeDates)[0], />Save due date<\/button>/);
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '2026-04-30']) {
+      const saved = await post(dueDatePath, { ...dueFilters, dueDate: `  ${date}  ` });
+      assert.equal(saved.status, 303);
+      assert.equal(saved.headers.get('location'), dueUrl);
+      const html = await projectHtml(dueUrl);
+      assert.equal(dueValue(rows(html)[0]), date);
+      assert.equal(selectedFilter(html, 'task-filter'), 'Completed');
+      assert.equal(selectedFilter(html, 'priority-filter'), 'High');
+    }
+    const savedDates = await projectHtml();
+    assert.equal(savedDates.replace('value="2026-04-30"', 'value=""'), beforeDates);
+    assert.equal(await projectHtml(paths[1]), otherBeforeDates);
+    assert.equal(await (await fetch(baseUrl)).text(), dueSummary);
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2023-02-29', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '2026-01-32', '2026-1-01', '2026-01-1', '2026-01-01T00:00:00Z', '<invalid>']) {
+      const rejected = await post(dueDatePath, { ...dueFilters, dueDate: date });
+      assert.equal(rejected.status, 422);
+      const html = await rejected.text();
+      assert.match(html, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.equal(dueValue(rows(html)[0]), '2026-04-30');
+      assert.equal(selectedFilter(html, 'task-filter'), 'Completed');
+      assert.equal(selectedFilter(html, 'priority-filter'), 'High');
+      assert.equal(await projectHtml(), savedDates);
+    }
+    assert.equal((await post(dueDatePath.replace(paths[0], paths[1]), { dueDate: '2026-01-01' })).status, 404);
+    assert.equal((await post(`${paths[0]}/tasks/999999/due-date`, { dueDate: '2026-01-01' })).status, 404);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(), savedDates);
+    await post(taskRenamePath, { ...dueFilters, title: 'Dated task' });
+    assert.equal(dueValue(rows(await projectHtml(dueUrl))[0]), '2026-04-30');
+    const renamedDates = await projectHtml();
+    await post(`${paths[0]}/archive`, {});
+    const archivedDates = await projectHtml(dueUrl);
+    assert.match(dueInput.exec(rows(archivedDates)[0])[0], / disabled/);
+    assert.match(rows(archivedDates)[0], /<button type="submit" disabled>Save due date<\/button>/);
+    assert.equal((await post(dueDatePath, { dueDate: '' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(dueUrl), archivedDates);
+    await post(`${paths[0]}/restore`, {});
+    assert.equal(await projectHtml(), renamedDates);
+    for (const empty of ['', '  \t\n']) {
+      await post(dueDatePath, { dueDate: '2024-02-29' });
+      const cleared = await post(dueDatePath, { ...dueFilters, dueDate: empty });
+      assert.equal(cleared.headers.get('location'), dueUrl);
+      assert.equal(dueValue(rows(await projectHtml(dueUrl))[0]), '');
+    }
+    const clearedDates = await projectHtml();
+    await stop();
+    await start();
+    assert.equal(await projectHtml(), clearedDates);
+    assert.equal(await (await fetch(baseUrl)).text(), dueSummary);
+    assert.equal(await projectHtml(paths[1]), otherBeforeDates);
+
     // Replace the fixture with a populated Task 005 database to check backfilled priorities.
     await stop();
     await rm(join(directory, 'projects.sqlite'));
@@ -618,11 +684,19 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     assert.match(rows(migratedDetail)[1], /aria-label="Complete Existing open task" onchange/);
     for (const row of rows(migratedDetail)) {
       assert.equal(priorityOptions(row), '<option>Low</option><option selected>Normal</option><option>High</option>');
+      assert.equal(dueValue(row), '');
     }
     assert.match(await (await fetch(baseUrl)).text(), /data-testid="project-summary">1\/2 completed/);
     assert.equal((await post('/projects/17/tasks/23/priority', { priority: 'High' })).status, 303);
     const migratedUpdated = await projectHtml('/projects/17');
     await stop();
+    await start();
+    assert.equal(await projectHtml('/projects/17'), migratedUpdated);
+    // Task 008 databases receive empty dates while retaining all existing data.
+    await stop();
+    const task008 = new DatabaseSync(join(directory, 'projects.sqlite'));
+    task008.exec('ALTER TABLE tasks DROP COLUMN due_date');
+    task008.close();
     await start();
     assert.equal(await projectHtml('/projects/17'), migratedUpdated);
     // A populated Task 007 database already has task priorities but no project defaults.

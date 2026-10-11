@@ -19,7 +19,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id),
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT NOT NULL DEFAULT ''
   );
 `);
 // Upgrade databases created before project archiving was introduced.
@@ -35,6 +36,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 const taskPriorities = ['Low', 'Normal', 'High'];
+// Tasks from earlier checkpoints have no due date.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -47,11 +52,22 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function validDueDate(value) {
+  if (value === '') return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -236,6 +252,15 @@ function projectPage(project, filter = 'All', priority = 'All', error = '') {
               ${taskPriorities.map(priority => `<option${priority === task.priority ? ' selected' : ''}>${priority}</option>`).join('')}
             </select>
           </form>
+          <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priority}">
+            <label for="task-due-date-${task.id}">Task due date</label>
+            <div class="controls">
+              <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+              <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+            </div>
+          </form>
         </div>`).join('') : '<p class="empty">No tasks match this filter.</p>'}
     </section>`);
 }
@@ -347,7 +372,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)\/(completion|rename|priority))?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)\/(completion|rename|priority|due-date))?$/.exec(url.pathname);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (project) {
@@ -379,6 +404,13 @@ const server = http.createServer(async (request, response) => {
               return;
             }
             result = updateTaskPriority.run(newPriority, taskMatch[2], project.id);
+          } else if (taskMatch[3] === 'due-date') {
+            const dueDate = (form.get('dueDate') || '').trim();
+            if (!validDueDate(dueDate)) {
+              sendHtml(response, 422, projectPage(project, filter, priority, 'Due date must be a valid YYYY-MM-DD date'));
+              return;
+            }
+            result = updateTaskDueDate.run(dueDate, taskMatch[2], project.id);
           } else {
             result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
           }
