@@ -27,13 +27,47 @@
 <script>
   const app = document.querySelector('#app');
   const projectPath = location.pathname.match(/^\/projects\/(\d+)$/);
+  const directoryPage = location.pathname === '/directory';
   async function loadProjects() {
     const response = await fetch('/api/projects');
     if (!response.ok) throw new Error('Could not load projects');
     return response.json();
   }
   function go(path) { location.href = path; }
-  if (projectPath) {
+  if (directoryPage) {
+    app.innerHTML = `<button type="button" id="back">Projects</button><h1>Task directory</h1>
+      <label>Project scope<select id="scope"><option>Active</option><option>Archived</option></select></label>
+      <label>Task filter<select id="filter"><option>All</option><option>Open</option><option>Completed</option><option>Deleted</option></select></label>
+      <label>Priority filter<select id="priority"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label>
+      <label>Directory search<input id="query" aria-label="Directory search"></label><button id="search" type="button">Search directory</button>
+      <label>Due from<input id="from"></label><label>Due through<input id="through"></label><button id="apply" type="button">Apply due range</button>
+      <div id="alert" role="alert"></div><section id="results"></section>`;
+    app.querySelector('#back').onclick = () => go('/');
+    let query = '', range = { from: '', through: '' };
+    const key = value => value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, c => c.toLowerCase());
+    const valid = value => { const m = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/); if (!m) return false; const [y, mo, d] = m.slice(1).map(Number); const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0); return y >= 1 && mo >= 1 && mo <= 12 && d >= 1 && d <= [31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1]; };
+    async function renderDirectory() {
+      const rows = await (await fetch('/api/directory')).json();
+      const filter = app.querySelector('#filter').value, priority = app.querySelector('#priority').value;
+      const visible = rows.filter(t => t.archived === (app.querySelector('#scope').value === 'Archived') &&
+        (filter === 'Deleted' ? t.deleted : !t.deleted && (filter === 'All' || (filter === 'Completed') === t.completed)) &&
+        (priority === 'All' || t.priority === priority) && key(t.title).includes(key(query)) &&
+        ((!range.from && !range.through) || (t.dueDate && (!range.from || t.dueDate >= range.from) && (!range.through || t.dueDate <= range.through))));
+      const section = app.querySelector('#results'); section.replaceChildren();
+      for (const task of visible) {
+        const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
+        const put = (id, text) => { const el = document.createElement('span'); el.dataset.testid = id; el.textContent = text; row.append(el); };
+        put('directory-task-title', task.title); put('directory-project-name', task.projectName);
+        put('directory-task-completion', task.completed ? 'Completed' : 'Open'); put('directory-task-priority', task.priority);
+        put('directory-task-due-date', task.dueDate); put('directory-task-notes', task.notes);
+        const open = document.createElement('button'); open.textContent = 'Open project'; open.onclick = () => go(`/projects/${task.projectId}`); row.append(open); section.append(row);
+      }
+    }
+    app.querySelector('#search').onclick = () => { query = app.querySelector('#query').value.trim(); renderDirectory(); };
+    app.querySelector('#apply').onclick = () => { const from = app.querySelector('#from').value.trim(), through = app.querySelector('#through').value.trim(), alert = app.querySelector('#alert'); if ((from && !valid(from)) || (through && !valid(through))) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; return; } if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; return; } range = { from, through }; alert.textContent = ''; renderDirectory(); };
+    for (const id of ['scope','filter','priority']) app.querySelector(`#${id}`).onchange = renderDirectory;
+    renderDirectory();
+  } else if (projectPath) {
     loadProjects().then(projects => {
       const project = projects.find(item => String(item.id) === projectPath[1]);
       if (!project) { app.innerHTML = '<h1>Project not found</h1>'; return; }
@@ -195,6 +229,7 @@
     }).catch(() => { app.innerHTML = '<h1>Unable to load project</h1>'; });
   } else {
     app.innerHTML = `<h1>Workboard</h1>
+      <button type="button" id="directory-link">Task directory</button>
       <form id="create-form"><label>Project name<input name="name" aria-label="Project name"></label><button type="submit">Create project</button></form>
       <form id="import-form"><label>Project JSON<textarea name="json" aria-label="Project JSON"></textarea></label><label>Imported project name<input name="name" aria-label="Imported project name"></label><button type="submit">Import project</button></form>
       <div id="alert" role="alert" aria-live="polite"></div>
@@ -202,6 +237,7 @@
       <label>Project search<input id="project-search-query" aria-label="Project search"></label><button type="button" id="search-projects">Search projects</button>
       <section id="projects" aria-label="Projects"></section>`;
     const alert = app.querySelector('#alert');
+    app.querySelector('#directory-link').onclick = () => go('/directory');
     const form = app.querySelector('#create-form');
     app.querySelector('#import-form').addEventListener('submit', async event => {
       event.preventDefault();

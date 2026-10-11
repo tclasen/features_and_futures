@@ -87,6 +87,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, JSON.stringify(listProjects.all()));
   }
+  if (req.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = database.prepare(`SELECT p.id AS projectId, p.name AS projectName, p.archived,
+      t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      ORDER BY p.id, t.sort_order, t.id`).all();
+    return send(res, 200, JSON.stringify(rows.map(row => ({ ...row, archived: Boolean(row.archived), completed: Boolean(row.completed), deleted: Boolean(row.deleted), notes: row.notes || '', dueDate: row.dueDate || '' }))));
+  }
   const exportRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
   if (req.method === 'GET' && exportRoute) {
     const projectId = Number(exportRoute[1]);
@@ -312,7 +319,7 @@ const server = http.createServer(async (req, res) => {
     const project = getProject.get(Number(url.pathname.split('/')[2]));
     if (!project) return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
   }
-  if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/\d+$/.test(url.pathname))) {
     try {
       return send(res, 200, await readFile(path.join(root, 'public', 'index.html'), 'utf8'), 'text/html; charset=utf-8');
     } catch {
