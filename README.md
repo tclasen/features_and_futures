@@ -72,6 +72,12 @@ Restoration reuses the original reserved position without changing saved fields,
 retains current filters (so restoring from Deleted removes the row). Archived projects
 allow reading either live or deleted tasks but disable deletion and restoration.
 Deletion persists across restarts; upgrades initialize existing tasks as live.
+Every project page offers Download project, including archived or empty projects.
+It downloads UTF-8 `workboard-project.json` with format `workboard-project`, version 1,
+and the project's name, archive state, default priority and all current live/deleted
+tasks in stored order, regardless of filters. Each task includes title, completion,
+priority, due date, notes and deletion state. Notes use LF line endings in the export
+only; saved data, remembered positions and current filters remain unchanged.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -95,4 +101,7 @@ filter preservation, movement/return ordering, archive restrictions and restart 
 Deletion tests cover live-data migration, filter intersections, summary exclusion,
 read-only deleted controls, rejected edits, archive restrictions, reverse-order
 restoration into reserved positions, preserved task fields and restart persistence.
+Export tests cover legacy defaults, empty projects, Unicode and literal text,
+LF-only exported notes without storage changes, filter independence, archive/deleted
+readability, movement/return ordering, project isolation and restart persistence.
 Temporary files are removed afterward.

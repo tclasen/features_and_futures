@@ -226,6 +226,7 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
+    <form method="get" action="/projects/${project.id}/export"><button type="submit">Download project</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create" method="post" action="/projects/${project.id}/rename">
       <input type="hidden" name="filter" value="${filter}">
@@ -450,6 +451,37 @@ const server = http.createServer(async (req, res) => {
       archiveProject.run(archived ? 1 : 0, id);
       res.writeHead(303, { Location: `/?${new URLSearchParams({ filter: archived ? 'Active' : 'Archived', search: searchQuery(form.get('search')) })}` });
       res.end();
+    } else if (req.method === 'GET' && /^\/projects\/\d+\/export$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
+      if (!project) {
+        sendHtml(res, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const document = {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_priority,
+          tasks: listTasks.all(id).map(task => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            // Browser textarea line endings are portable LF in the export only.
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted)
+          }))
+        }
+      };
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+        'Cache-Control': 'no-store'
+      });
+      res.end(JSON.stringify(document));
     } else if (req.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
