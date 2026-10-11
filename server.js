@@ -88,7 +88,8 @@ const page = `<!doctype html>
           body: JSON.stringify({ name })
         });
         if (!response.ok) throw new Error('Project creation failed');
-        window.location.reload();
+        // Newly created projects are active, so return to the default list view.
+        window.location.assign('/');
       } catch {
         alert.textContent = 'Unable to create project';
       }
