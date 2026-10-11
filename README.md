@@ -78,6 +78,17 @@ Remembered positions and moves persist across restarts. Archived
 projects cannot send or receive tasks. Move controls are disabled in archived
 projects and when no eligible destination exists.
 
+Use Project search and Search projects to find project names within the selected
+Active or Archived list. Use Task search and Search tasks to find task titles
+within the selected completion, priority, and due-range filters. Searches trim
+surrounding query whitespace and ignore ASCII letter case; internal whitespace
+remains significant. Blank queries match everything allowed by the other filters.
+Applied searches stay selected through filter changes and task edits, including
+moves, and do not change saved data or all-task summaries. Search remains usable
+in archived projects. Opening a project from the list starts with an empty task
+query; opening the list or returning with Projects starts with an empty project
+query.
+
 Run the integration checks:
 
 ```sh
@@ -94,4 +105,6 @@ due-date calendar validation and clearing, selection preservation through edits
 and validation, inclusive due-range intersections and invalid-range preservation,
 task moves with first-arrival and remembered return ordering, migration of
 existing order, destination eligibility, filter retention and
-data preservation, and persistence after server restarts.
+data preservation, project/task search matching and filter intersections, query
+retention through edits and errors, navigation resets, and persistence after
+server restarts.

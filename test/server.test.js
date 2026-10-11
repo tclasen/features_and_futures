@@ -679,7 +679,8 @@ test('combined filters retain selections, re-evaluate edits, and work through ar
     assert.deepEqual([...select(initial, 'priority-filter').matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)]
       .map(match => match[1]), ['All', 'Low', 'Normal', 'High']);
     // Both selectors share a GET form, so changing either submits the other value too.
-    const filterForm = initial.match(/<form class="filter"[\s\S]*?<\/form>/)[0];
+    const filterForm = [...initial.matchAll(/<form class="filter"[\s\S]*?<\/form>/g)]
+      .map(match => match[0]).find(form => form.includes('id="task-filter"'));
     assert.match(filterForm, /method="get"/);
     assert.match(filterForm, /name="filter" onchange="this.form.requestSubmit\(\)"/);
     assert.match(filterForm, /name="priorityFilter" onchange="this.form.requestSubmit\(\)"/);
@@ -1282,6 +1283,188 @@ test('remembered project positions survive migration, reverse returns, empty pro
     for (const task of [3, 1, 4]) await move(2, task, 1);
     await assertOrder(1, ['First edited away', 'Middle', 'Last', 'New at home', 'Resident']);
     assert.match(await html('/'), /project-summary">1\/5 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project search trims boundaries, folds only ASCII, intersects archive state and resets on navigation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-project-search-'));
+  let server;
+  try {
+    server = await start(join(directory, 'workboard.sqlite'));
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const names = page => [...page.matchAll(/<li data-testid="project-row">[\s\S]*?<span>([^<]+)<\/span>/g)]
+      .map(match => match[1]);
+    for (const name of ['Alpha Board', 'alpha  board', 'ALPHA archive', 'Beta', 'ÄBC', '<Alpha & "quoted">']) {
+      await post('/projects', { name });
+    }
+    await post('/projects/3/archive');
+    await post('/projects/1/tasks', { title: 'First' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const baseline = await html('/');
+    const search = async (query, filter = 'Active') => html(`/?${new URLSearchParams({ search: query, filter })}`);
+    assert.deepEqual(names(await search(' \tALpHA\n')), ['Alpha Board', 'alpha  board', '&lt;Alpha &amp; &quot;quoted&quot;&gt;']);
+    assert.deepEqual(names(await search('alpha board')), ['Alpha Board']);
+    assert.deepEqual(names(await search('alpha  board')), ['alpha  board']);
+    assert.deepEqual(names(await search('äbc')), []);
+    assert.deepEqual(names(await search('Äbc')), ['ÄBC']);
+    assert.deepEqual(names(await search(' \n')), names(baseline));
+    assert.deepEqual(names(await search('aLpHa', 'Archived')), ['ALPHA archive']);
+    const page = await search('alpha');
+    assert.match(page, /project-summary">1\/1 completed/);
+    assert.match(page, /<label for="project-search">Project search<\/label>/);
+    assert.match(page, />Search projects<\/button>/);
+    const filterForm = [...page.matchAll(/<form[\s\S]*?<\/form>/g)]
+      .map(match => match[0]).find(form => form.includes('id="project-filter"'));
+    assert.match(filterForm, /name="search" value="alpha"/);
+    const openForm = page.match(/<form method="get" action="\/projects\/1">[\s\S]*?<\/form>/)[0];
+    assert.doesNotMatch(openForm, /name="search"/);
+    const project = await html('/projects/1');
+    assert.match(project, /id="task-search"[^>]*value=""/);
+    assert.match(project, /<form method="get" action="\/">/);
+    assert.equal(await html('/'), baseline);
+    const escaped = await search('<Alpha & "quoted">');
+    assert.match(escaped, /id="project-search"[^>]*value="&lt;Alpha &amp; &quot;quoted&quot;&gt;"/);
+    assert.equal((await post('/projects/1/archive', { search: 'alpha' })).headers.get('location'), '/?search=alpha');
+    assert.deepEqual(names(await search('alpha')), ['alpha  board', '&lt;Alpha &amp; &quot;quoted&quot;&gt;']);
+    assert.equal((await post('/projects/1/restore', { search: 'alpha' })).headers.get('location'), '/?filter=Archived&search=alpha');
+    assert.equal(await html('/'), baseline);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task search intersects all filters, survives edits and errors, and preserves moves, archive rules and restart data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-search-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const titles = page => [...page.matchAll(/<li data-testid="task-row">[\s\S]*?<span>([^<]+)<\/span>/g)]
+      .map(match => match[1]);
+    const pathFor = state => `/projects/1?${new URLSearchParams(state)}`;
+    await post('/projects', { name: 'Source' });
+    await post('/projects', { name: 'Destination' });
+    const tasks = [
+      { title: 'Alpha one', completed: false, priority: 'High', date: '2024-02-29' },
+      { title: 'ALPHA  two', completed: true, priority: 'High', date: '2024-03-01' },
+      { title: 'Alpha outside', completed: false, priority: 'Low', date: '2024-03-02' },
+      { title: 'Beta', completed: false, priority: 'Normal', date: '' },
+      { title: 'Alpha undated', completed: false, priority: 'High', date: '' },
+      { title: 'ÄBC', completed: false, priority: 'Normal', date: '' },
+    ];
+    for (const [index, task] of tasks.entries()) {
+      await post('/projects/1/tasks', { title: task.title });
+      await post(`/projects/1/tasks/${index + 1}/priority`, { priority: task.priority });
+      await post(`/projects/1/tasks/${index + 1}/due-date`, { dueDate: task.date });
+      if (task.completed) await post(`/projects/1/tasks/${index + 1}`, { completed: '1' });
+    }
+    const originalList = await html('/');
+    for (const search of ['', ' \tALPHA\n', 'alpha  ', 'alpha  two', 'äbc', 'Äbc', 'absent']) {
+      for (const filter of ['All', 'Open', 'Completed']) {
+        for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
+          for (const [dueFrom, dueThrough] of [['', ''], ['2024-02-29', '2024-03-01']]) {
+            const page = await html(pathFor({ filter, priorityFilter, dueFrom, dueThrough, search }));
+            const fold = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+            assert.deepEqual(titles(page), tasks.filter(task =>
+              fold(task.title).includes(fold(search.trim())) &&
+              (filter === 'All' || task.completed === (filter === 'Completed')) &&
+              (priorityFilter === 'All' || task.priority === priorityFilter) &&
+              ((!dueFrom && !dueThrough) || (task.date && task.date >= dueFrom && task.date <= dueThrough)))
+              .map(task => task.title));
+          }
+        }
+      }
+    }
+    assert.equal(await html('/'), originalList);
+    const state = { filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-01', search: 'alpha' };
+    const path = pathFor(state);
+    const assertState = page => {
+      assert.match(page, /id="task-search"[^>]*value="alpha"/);
+      assert.match(page, /id="task-filter"[\s\S]*?<option selected>Open<\/option>/);
+      assert.match(page, /id="priority-filter"[\s\S]*?<option selected>High<\/option>/);
+      assert.match(page, /id="due-from"[^>]*value="2024-02-29"/);
+      assert.match(page, /id="due-through"[^>]*value="2024-03-01"/);
+    };
+    const page = await html(path);
+    assertState(page);
+    assert.deepEqual(titles(page), ['Alpha one']);
+    // All editing and filter forms carry the applied query, including the due-range form.
+    for (const match of page.matchAll(/<form[^>]*action="\/projects\/1[^\"]*"[\s\S]*?<\/form>/g)) {
+      assert.match(match[0], /name="search"[^>]*value="alpha"/);
+    }
+    const edit = async (endpoint, values) => {
+      const response = await post(endpoint, { ...state, ...values });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), path);
+      const page = await html(path);
+      assertState(page);
+      return titles(page);
+    };
+    assert.deepEqual(await edit('/projects/1/tasks/1/rename', { title: 'No match' }), []);
+    assert.deepEqual(await edit('/projects/1/tasks/1/rename', { title: 'Alpha renamed' }), ['Alpha renamed']);
+    assert.deepEqual(await edit('/projects/1/tasks/1', { completed: '1' }), []);
+    assert.deepEqual(await edit('/projects/1/tasks/1', {}), ['Alpha renamed']);
+    assert.deepEqual(await edit('/projects/1/tasks/1/priority', { priority: 'Low' }), []);
+    assert.deepEqual(await edit('/projects/1/tasks/1/priority', { priority: 'High' }), ['Alpha renamed']);
+    assert.deepEqual(await edit('/projects/1/tasks/1/due-date', { dueDate: '' }), []);
+    assert.deepEqual(await edit('/projects/1/tasks/1/due-date', { dueDate: '2024-03-01' }), ['Alpha renamed']);
+    await edit('/projects/1/rename', { name: 'Renamed source' });
+    const beforeDefault = await html('/');
+    await edit('/projects/1/default-priority', { priority: 'High' });
+    assert.equal(await html('/'), beforeDefault);
+    assert.deepEqual(await edit('/projects/1/tasks', { title: 'Alpha new' }), ['Alpha renamed']);
+    assert.deepEqual(await edit('/projects/1/tasks/7/due-date', { dueDate: '2024-02-29' }), ['Alpha renamed', 'Alpha new']);
+    for (const [endpoint, values] of [
+      ['/projects/1/tasks/1/rename', { title: ' ' }],
+      ['/projects/1/tasks/1/due-date', { dueDate: '2024-02-30' }],
+      ['/projects/1/due-range', { dueFrom: 'bad', appliedDueFrom: state.dueFrom, appliedDueThrough: state.dueThrough }],
+    ]) {
+      const response = await post(endpoint, { ...state, ...values });
+      assert.equal(response.status, 400);
+      const failed = await response.text();
+      assertState(failed);
+      assert.deepEqual(titles(failed), ['Alpha renamed', 'Alpha new']);
+    }
+    const apply = await post('/projects/1/due-range', state);
+    assert.equal(apply.headers.get('location'), path);
+    assert.deepEqual(await edit('/projects/1/tasks/1/move', { destination: '2' }), ['Alpha new']);
+    assert.deepEqual(titles(await html('/projects/2?search=ALPHA')), ['Alpha renamed']);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(titles(await html(path)), ['Alpha renamed', 'Alpha new']);
+    // Clearing search still intersects the other three filters.
+    assert.deepEqual(titles(await html(pathFor({ ...state, search: ' \n' }))), ['Alpha renamed', 'Alpha new']);
+    const saved = await html(path);
+    const summaries = await html('/');
+    await post('/projects/1/archive');
+    const archived = await html(path);
+    assertState(archived);
+    assert.deepEqual(titles(archived), ['Alpha renamed', 'Alpha new']);
+    assert.doesNotMatch(archived, /disabled>Search tasks/);
+    assert.doesNotMatch(archived, /id="task-search"[^>]*disabled/);
+    assert.deepEqual(titles(await html(pathFor({ ...state, search: 'new' }))), ['Alpha new']);
+    assert.equal((await post('/projects/1/tasks/1/rename', { ...state, title: 'Changed' })).status, 403);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html(path), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html(path), saved);
+    assert.equal(await html('/'), summaries);
+    const reopened = await html('/projects/1');
+    assert.match(reopened, /id="task-search"[^>]*value=""/);
+    assert.match(reopened, /id="due-from"[^>]*value=""/);
+    assert.deepEqual(titles(reopened), ['Alpha renamed', 'ALPHA  two', 'Alpha outside', 'Beta', 'Alpha undated', 'ÄBC', 'Alpha new']);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
