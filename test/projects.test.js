@@ -50,6 +50,9 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
   const completeTask = (projectId, taskId, completed) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
   });
+  const renameTask = (projectId, taskId, title) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+  });
   const tasks = async projectId => (await get(`/api/projects/${projectId}/tasks`)).json();
   const archiveProject = (projectId, archived) => fetch(`${origin}/api/projects/${projectId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -115,6 +118,22 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1 });
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    for (const title of ['', ' \t\n ', null, 123]) {
+      const invalid = await renameTask(first.id, firstTask.id, title);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Task title is required' });
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    }
+    assert.equal((await renameTask(second.id, firstTask.id, 'Wrong project')).status, 404);
+    assert.equal((await renameTask(first.id, 999999, 'Missing task')).status, 404);
+    assert.equal((await renameTask(999999, firstTask.id, 'Missing project')).status, 404);
+    const renamedTaskResponse = await renameTask(first.id, firstTask.id, '  Renamed completed task  ');
+    assert.equal(renamedTaskResponse.status, 200);
+    firstTask.title = 'Renamed completed task';
+    assert.deepEqual(await renamedTaskResponse.json(), firstTask);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     for (const name of ['', ' \t\n ', null]) {
       const invalid = await renameProject(first.id, name);
       assert.equal(invalid.status, 400);
@@ -143,6 +162,7 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), first);
     assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
+    assert.equal((await renameTask(first.id, firstTask.id, 'Blocked task rename')).status, 409);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     await start();
@@ -153,6 +173,7 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.deepEqual(await tasks(second.id), [otherTask]);
     assert.equal((await createTask(first.id, 'Still blocked after restart')).status, 409);
     assert.equal((await renameProject(first.id, 'Still blocked rename')).status, 409);
+    assert.equal((await renameTask(first.id, firstTask.id, 'Still blocked task rename')).status, 409);
     const restoredResponse = await archiveProject(first.id, false);
     assert.equal(restoredResponse.status, 200);
     first.archived = 0;
@@ -161,6 +182,15 @@ test('projects and tasks: validation, ownership, completion, rename, archive, su
     assert.equal(restoredRename.status, 200);
     first.name = 'Restored project';
     assert.deepEqual(await restoredRename.json(), first);
+    const restoredTaskRename = await renameTask(first.id, firstTask.id, '  Restored task  ');
+    assert.equal(restoredTaskRename.status, 200);
+    firstTask.title = 'Restored task';
+    assert.deepEqual(await restoredTaskRename.json(), firstTask);
+    const openTaskRename = await renameTask(first.id, secondTask.id, '  Renamed open task  ');
+    assert.equal(openTaskRename.status, 200);
+    secondTask.title = 'Renamed open task';
+    assert.deepEqual(await openTaskRename.json(), secondTask);
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     const reopenedResponse = await completeTask(first.id, firstTask.id, false);
     assert.equal(reopenedResponse.status, 200);

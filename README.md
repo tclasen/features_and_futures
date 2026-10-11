@@ -20,3 +20,7 @@ filtering, but task creation, completion changes, and renaming are disabled.
 Use New project name and Rename project on an active project page to rename it.
 Names are trimmed and required; renaming preserves the URL, creation order,
 tasks, and completion summary and persists across restarts.
+
+Each task row provides New task title and Rename task. Renaming trims and
+requires a title while preserving ownership, order, completion, and summaries.
+Task renaming persists across restarts and is disabled in archived projects.

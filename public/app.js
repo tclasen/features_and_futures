@@ -143,7 +143,42 @@ async function renderProject(projectId) {
           showError(error.message);
         } finally { checkbox.disabled = false; }
       });
-      row.append(title, checkbox);
+      const rename = document.createElement('form');
+      rename.className = 'task-rename';
+      const label = document.createElement('label');
+      label.htmlFor = `new-task-title-${task.id}`;
+      label.textContent = 'New task title';
+      const input = document.createElement('input');
+      input.id = label.htmlFor;
+      input.type = 'text';
+      input.value = task.title;
+      input.disabled = Boolean(project.archived);
+      const button = document.createElement('button');
+      button.type = 'submit';
+      button.textContent = 'Rename task';
+      button.disabled = Boolean(project.archived);
+      const controls = document.createElement('div');
+      controls.className = 'form-controls';
+      controls.append(input, button);
+      rename.append(label, controls);
+      rename.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        const newTitle = input.value.trim();
+        if (!newTitle) { showError('Task title is required'); input.focus(); return; }
+        button.disabled = true;
+        document.getElementById('error').hidden = true;
+        try {
+          const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle }),
+          });
+          tasks = tasks.map(current => current.id === saved.id ? saved : current);
+          drawTasks();
+        } catch (error) { showError(error.message); }
+        finally { button.disabled = Boolean(project.archived); }
+      });
+      row.append(title, checkbox, rename);
       return row;
     }));
     document.getElementById('empty').hidden = visible.length > 0;
