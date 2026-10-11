@@ -30,10 +30,12 @@ Each project page provides `Due from`, `Due through`, and `Apply due range`. Bla
 
 Each task row provides `Destination project` and `Move task`. Destinations are other active projects, listed by project creation order with their current names. Moving to a project for the first time appends the task after all established positions. Returning to a previous project restores its remembered position, even when tasks return in a different order. New tasks follow established positions, including those of tasks currently elsewhere. Movement preserves current identity, title, completion, priority, and due date. The source stays open with its selected filters and applied due range. Both summaries reflect current ownership. Moves and task order persist across restarts. Archived projects cannot send or receive tasks; move controls are also disabled when no eligible destination exists.
 
+Project search and task search match substrings using ASCII case-insensitive comparison, trimming only query edges. Project search intersects Active/Archived; task search intersects completion, priority, and due-range filters. Applied queries stay in place through filter changes and task edits, and searches remain usable while archived. Opening either page through its navigation button starts with an empty query. Searches leave saved data and all-task summaries unchanged.
+
 Run verification:
 
 ```sh
 npm test
 ```
 
-The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, combined priority and completion filtering, edits under selected filters, project default inheritance and isolation, due-date validation and clearing, inclusive due-range intersections and validation, edits under applied ranges, archive/restore behavior, renaming and identity preservation, task moves, remembered return order, completion summaries, and persistence across server restarts.
+The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, combined priority and completion filtering, edits under selected filters, project default inheritance and isolation, due-date validation and clearing, inclusive due-range intersections and validation, edits under applied ranges, archive/restore behavior, renaming and identity preservation, task moves, remembered return order, search matching and filter intersections, edits under applied searches, completion summaries, and persistence across server restarts.

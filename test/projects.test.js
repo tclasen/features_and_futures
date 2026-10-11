@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks: migration, validation, filters, archiving, renaming, priorities, defaults, due dates, summaries, and persistence', async () => {
+test('projects and tasks: migration, validation, filters, archiving, renaming, priorities, defaults, due dates, search, summaries, and persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Start with the original schema to verify existing databases are upgraded.
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -939,6 +939,102 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     await stop();
     await start();
     assert.equal(await projectHtml(orderA), restoredOrder);
+
+    {
+      // Search uses ASCII case folding, trims edges only, and intersects filters.
+      const searchProject = await newProject('Search ALPHA  Team É');
+      const searchOther = await newProject('Search alpha Team é');
+      const projectNames = html => [...html.matchAll(/data-testid="project-row">\s*<span>(.*?)<\/span>/g)].map(match => match[1]);
+      const listingSearch = async (search, filter = 'Active') =>
+        (await fetch(`${baseUrl}/?${new URLSearchParams({ filter, search })}`)).text();
+      assert.deepEqual(projectNames(await listingSearch('  ALPHA  ')), ['Search ALPHA  Team É', 'Search alpha Team é']);
+      assert.deepEqual(projectNames(await listingSearch('alpha  team')), ['Search ALPHA  Team É']);
+      assert.deepEqual(projectNames(await listingSearch('É')), ['Search ALPHA  Team É']);
+      assert.deepEqual(projectNames(await listingSearch('é')), ['Search alpha Team é']);
+      assert.deepEqual(projectNames(await listingSearch('   ')), projectNames(await projectHtml('/')));
+      const archivedSearch = await post(`${searchProject}/archive`, { filter: 'Active', search: 'alpha' });
+      assert.equal(archivedSearch.headers.get('location'), '/?search=alpha');
+      assert.deepEqual(projectNames(await listingSearch('alpha')), ['Search alpha Team é']);
+      const archivedListing = await listingSearch('alpha', 'Archived');
+      assert.deepEqual(projectNames(archivedListing), ['Search ALPHA  Team É']);
+      assert.match(archivedListing, /id="project-search" name="search" type="text" value="alpha"/);
+      assert.match(archivedListing, /name="search" value="alpha"/);
+      await post(`${searchProject}/restore`, { filter: 'Archived', search: 'alpha' });
+
+      for (const title of ['ALPHA  dated É', 'Alpha dated é', 'Alpha undated', 'Unrelated']) {
+        await post(`${searchProject}/tasks`, { title });
+      }
+      const searchTasks = rows(await projectHtml(searchProject)).map(row => `${searchProject}/tasks/${taskId(row)}`);
+      for (const path of searchTasks.slice(0, 2)) {
+        await post(`${path}/priority`, { priority: 'High' });
+        await post(`${path}/due-date`, { dueDate: '2032-02-29' });
+      }
+      await post(`${searchTasks[1]}/completion`, { completed: '1' });
+      const searchState = { filter: 'Open', priorityFilter: 'High', dueFrom: '2032-02-29', dueThrough: '2032-02-29', search: 'alpha' };
+      const searchUrl = `${searchProject}?${new URLSearchParams(searchState)}`;
+      const searchHtml = await projectHtml(searchUrl);
+      assert.deepEqual(taskTitles(searchHtml), ['ALPHA  dated É']);
+      assert.equal(await summaryFor(searchProject), '1/4 completed');
+      assert.match(searchHtml, /<label for="task-search">Task search<\/label>/);
+      assert.match(searchHtml, />Search tasks<\/button>/);
+      for (const form of searchHtml.matchAll(/<form[^>]*>([\s\S]*?)<\/form>/g)) {
+        if (!/name="filter"/.test(form[1])) continue;
+        assert.match(form[1], /name="search"[^>]*value="alpha"/);
+        assert.match(form[1], /name="dueFrom" value="2032-02-29"/);
+        assert.match(form[1], /name="dueThrough" value="2032-02-29"/);
+        assert.match(form[1], /name="priorityFilter"/);
+      }
+      async function searchEdit(path, fields, expected) {
+        const result = await post(path, { ...searchState, ...fields });
+        assert.equal(result.status, 303);
+        assert.equal(result.headers.get('location'), searchUrl);
+        assert.deepEqual(taskTitles(await projectHtml(searchUrl)), expected);
+      }
+      await searchEdit(`${searchTasks[0]}/rename`, { title: 'Beta renamed' }, []);
+      await searchEdit(`${searchTasks[0]}/rename`, { title: 'Alpha renamed' }, ['Alpha renamed']);
+      await searchEdit(`${searchTasks[0]}/priority`, { priority: 'Low' }, []);
+      await searchEdit(`${searchTasks[0]}/priority`, { priority: 'High' }, ['Alpha renamed']);
+      await searchEdit(`${searchTasks[0]}/completion`, { completed: '1' }, []);
+      await searchEdit(`${searchTasks[0]}/completion`, {}, ['Alpha renamed']);
+      await searchEdit(`${searchTasks[0]}/due-date`, { dueDate: '' }, []);
+      await searchEdit(`${searchTasks[0]}/due-date`, { dueDate: '2032-02-29' }, ['Alpha renamed']);
+      await searchEdit(`${searchProject}/rename`, { name: 'Search renamed' }, ['Alpha renamed']);
+      await searchEdit(`${searchProject}/default-task-priority`, { priority: 'High' }, ['Alpha renamed']);
+      await searchEdit(`${searchProject}/tasks`, { title: 'Alpha newly created' }, ['Alpha renamed']);
+      const invalidSearchEdit = await post(`${searchTasks[0]}/due-date`, { ...searchState, dueDate: '2031-02-29' });
+      assert.equal(invalidSearchEdit.status, 422);
+      assert.deepEqual(taskTitles(await invalidSearchEdit.text()), ['Alpha renamed']);
+      const invalidSearchRange = await post(`${searchProject}/due-range`, { ...searchState, rangeFrom: 'invalid', rangeThrough: '' });
+      assert.equal(invalidSearchRange.status, 422);
+      assert.deepEqual(taskTitles(await invalidSearchRange.text()), ['Alpha renamed']);
+      const appliedSearchRange = await post(`${searchProject}/due-range`, { ...searchState, rangeFrom: ' 2032-02-29 ', rangeThrough: '2032-02-29' });
+      assert.equal(appliedSearchRange.headers.get('location'), searchUrl);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?${new URLSearchParams({ ...searchState, filter: 'Completed' })}`)), ['Alpha dated é']);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?search=alpha++dated`)), []);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?search=é`)), ['Alpha dated é']);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?search=+++ALPHA+++`)), ['Alpha renamed', 'Alpha dated é', 'Alpha undated', 'Alpha newly created']);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?${new URLSearchParams({ ...searchState, search: '   ' })}`)), ['Alpha renamed']);
+      await searchEdit(`${searchTasks[0]}/move`, { destinationProject: searchOther.split('/').at(-1) }, []);
+      await post(`${searchOther}/tasks/${searchTasks[0].split('/').at(-1)}/move`, { destinationProject: searchProject.split('/').at(-1) });
+      assert.deepEqual(taskTitles(await projectHtml(searchUrl)), ['Alpha renamed']);
+      assert.deepEqual(taskTitles(await projectHtml(searchProject)), ['Alpha renamed', 'Alpha dated é', 'Alpha undated', 'Unrelated', 'Alpha newly created']);
+      const savedSearch = await projectHtml(searchUrl);
+      await stop();
+      await start();
+      assert.equal(await projectHtml(searchUrl), savedSearch);
+      await post(`${searchProject}/archive`, {});
+      const archivedTaskSearch = await projectHtml(searchUrl);
+      assert.match(archivedTaskSearch, /id="task-search" name="search" type="text" value="alpha">/);
+      assert.match(archivedTaskSearch, /<button type="submit">Search tasks<\/button>/);
+      assert.match(rows(archivedTaskSearch)[0], /name="completed"[^>]* disabled/);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?search=undated`)), ['Alpha undated']);
+      await post(`${searchProject}/restore`, {});
+      assert.equal(await projectHtml(searchUrl), savedSearch);
+      assert.match(await projectHtml(searchProject), /id="task-search" name="search" type="text" value=""/);
+      assert.match(await projectHtml('/'), /id="project-search" name="search" type="text" value=""/);
+      assert.deepEqual(taskTitles(await projectHtml(`${searchProject}?search=%22%3E%3Cscript%3E`)), []);
+      assert.match(await projectHtml(`${searchProject}?search=%22%3E%3Cscript%3E`), /value="&quot;&gt;&lt;script&gt;"/);
+    }
 
     // Replace the fixture with a populated Task 005 database to check backfilled priorities.
     await stop();
