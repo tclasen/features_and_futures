@@ -172,7 +172,7 @@ function matchesSearch(text, query) {
   return fold(text).includes(fold(query));
 }
 
-function projectsPage(error = '', filter = 'Active', query = '') {
+function projectsPage(error = '', filter = 'Active', query = '', imported = { json: '', name: '' }) {
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
     .filter(project => matchesSearch(project.name, query));
   return page('Projects', `<h1>Workboard</h1>
@@ -183,6 +183,15 @@ function projectsPage(error = '', filter = 'Active', query = '') {
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text">
       <button type="submit">Create project</button>
+    </form>
+    <form class="create" method="post" action="/projects/import">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="search" value="${escapeHtml(query)}">
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="projectJson" rows="8">${escapeHtml(imported.json).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;')}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <input id="imported-project-name" name="importedName" type="text" value="${escapeHtml(imported.name)}">
+      <button type="submit">Import project</button>
     </form>
     <form class="filter" method="get" action="/">
       <input type="hidden" name="search" value="${escapeHtml(query)}">
@@ -225,6 +234,30 @@ function validDueDate(value) {
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day <= days[month - 1];
 }
+
+function validateImport(json) {
+  let document;
+  try { document = JSON.parse(json); } catch { return null; }
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const nonblank = value => typeof value === 'string' && Boolean(value.trim());
+  const priority = value => ['Low', 'Normal', 'High'].includes(value);
+  if (!object(document) || document.format !== 'workboard-project' || document.version !== 1) return null;
+  const project = document.project;
+  if (!object(project) || !nonblank(project.name) || typeof project.archived !== 'boolean' ||
+      !priority(project.defaultPriority) || !Array.isArray(project.tasks)) return null;
+  for (const task of project.tasks) {
+    if (!object(task) || !nonblank(task.title) || typeof task.completed !== 'boolean' ||
+        !priority(task.priority) || typeof task.dueDate !== 'string' ||
+        (task.dueDate !== '' && !validDueDate(task.dueDate)) || typeof task.notes !== 'string' ||
+        typeof task.deleted !== 'boolean') return null;
+  }
+  return project;
+}
+
+const importProject = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const importTask = db.prepare(`INSERT INTO tasks
+  (project_id, title, completed, priority, due_date, notes, deleted, position)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
 
 function dueRange(params) {
   // Applied search travels with the applied range through every task-page form.
@@ -389,6 +422,27 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ status: 'ok' }));
     } else if (req.method === 'GET' && url.pathname === '/') {
       sendHtml(res, 200, projectsPage('', projectFilter(url.searchParams.get('filter')), searchQuery(url.searchParams.get('search'))));
+    } else if (req.method === 'POST' && url.pathname === '/projects/import') {
+      const form = await readForm(req);
+      const submitted = { json: form.get('projectJson') || '', name: form.get('importedName') || '' };
+      const name = submitted.name.trim();
+      const imported = validateImport(submitted.json);
+      const error = !name ? 'Project name is required' : !imported ? 'Invalid project JSON' : '';
+      if (error) {
+        sendHtml(res, 200, projectsPage(error, projectFilter(form.get('filter')), searchQuery(form.get('search')), submitted));
+        return;
+      }
+      let id;
+      transaction(() => {
+        id = importProject.run(name, Number(imported.archived), imported.defaultPriority).lastInsertRowid;
+        imported.tasks.forEach((task, index) => {
+          const taskId = importTask.run(id, task.title, Number(task.completed), task.priority,
+            task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted), index + 1).lastInsertRowid;
+          rememberPosition.run(taskId, id, id);
+        });
+      });
+      res.writeHead(303, { Location: `/projects/${id}` });
+      res.end();
     } else if (req.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(req);
       const name = (form.get('name') || '').trim();

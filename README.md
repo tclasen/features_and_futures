@@ -78,6 +78,14 @@ and the project's name, archive state, default priority and all current live/del
 tasks in stored order, regardless of filters. Each task includes title, completion,
 priority, due date, notes and deletion state. Notes use LF line endings in the export
 only; saved data, remembered positions and current filters remain unchanged.
+The home page provides Project JSON, Imported project name and Import project.
+Paste a version-1 export and enter a nonblank name for a new independent copy.
+The complete document is validated before any writes; invalid JSON or fields show
+Invalid project JSON and retain both inputs without changing existing data. Blank
+names show Project name is required. Successful imports open the new project,
+preserving supplied task order, exact titles, LF notes, explicit priorities, dates,
+completion, deletion, archive state and project default. Imported tasks establish
+fresh remembered positions; existing identities and projects are never merged.
 Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -104,4 +112,8 @@ restoration into reserved positions, preserved task fields and restart persisten
 Export tests cover legacy defaults, empty projects, Unicode and literal text,
 LF-only exported notes without storage changes, filter independence, archive/deleted
 readability, movement/return ordering, project isolation and restart persistence.
+Import tests cover required fields and types, late-task validation failures, invalid
+calendar dates, atomic rejection and retained inputs, independent identities, exact
+text and LF notes, empty/archived imports, deletion restoration, reserved ordering,
+move/return behavior and restart persistence.
 Temporary files are removed afterward.
