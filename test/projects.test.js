@@ -1985,3 +1985,153 @@ test('project imports validate atomically and preserve independent portable stat
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('read-only task directory intersects filters, preserves literal fields and order, and resets navigation', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'directory-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('First owner'), ('Second owner');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy title', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const rows = page => [...page.matchAll(/<div data-testid="directory-task-row"[\s\S]*?<\/form>\s*<\/div>/g)].map(match => match[0]);
+    const titles = page => [...page.matchAll(/data-testid="directory-task-title">([^<]*)/g)].map(match => match[1]);
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_positions', 'sqlite_sequence'].map(table =>
+          database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row => ({ ...row })));
+      } finally { database.close(); }
+    };
+    const notes = '  雪 <script>&"\n\nline\t  \n trailing  ';
+    await post('/projects/1/tasks', { title: 'Find  THIS\t title' });
+    await post('/projects/1/tasks/2', { completed: '1' });
+    await post('/projects/1/tasks/2/priority', { priority: 'High' });
+    await post('/projects/1/tasks/2/due-date', { dueDate: '2000-02-29' });
+    await post('/projects/1/tasks/2/notes', { notes });
+    await post('/projects/1/tasks', { title: 'Find this title deleted' });
+    await post('/projects/1/tasks/3/delete');
+    await post('/projects/1/tasks', { title: 'Later' });
+    await post('/projects/2/tasks', { title: 'Find this title second' });
+    await post('/projects/2/tasks/5/priority', { priority: 'High' });
+    await post('/projects/2/tasks/5/due-date', { dueDate: '2000-03-01' });
+    await post('/projects/1/tasks/2/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/2/move', { destinationProject: '1' });
+    const document = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Portable', archived: true, defaultPriority: 'Low', tasks: [
+        { title: 'Find\tthis  title archive', completed: true, priority: 'High', dueDate: '2000-02-29', notes, deleted: false },
+        { title: 'Reserved deleted', completed: false, priority: 'Low', dueDate: '', notes: 'deleted notes', deleted: true },
+      ] },
+    };
+    await post('/projects/import', { json: JSON.stringify(document), name: 'Archived owner' });
+    const before = snapshot();
+    const home = await html('/');
+    assert.match(home, /action="\/directory"><button class="secondary">Task directory/);
+    let page = await html('/directory');
+    assert.deepEqual(titles(page), ['Legacy title', 'Find  THIS\t title', 'Later', 'Find this title second']);
+    for (const [id, options, selected] of [
+      ['project-scope', ['Active', 'Archived'], 'Active'],
+      ['task-filter', ['All', 'Open', 'Completed', 'Deleted'], 'All'],
+      ['priority-filter', ['All', 'Low', 'Normal', 'High'], 'All'],
+    ]) {
+      const select = new RegExp(`<select id="${id}"[\\s\\S]*?<\\/select>`).exec(page)[0];
+      assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]*)/g)].map(match => match[1]), options);
+      assert.ok(select.includes(`<option selected>${selected}</option>`));
+    }
+    for (const id of ['directory-search', 'due-from', 'due-through']) {
+      assert.match(page, new RegExp(`id="${id}"[^>]*value=""`));
+    }
+    const resultRows = rows(page);
+    assert.equal(resultRows.length, 4);
+    for (const row of resultRows) {
+      assert.doesNotMatch(row, /<(?:input|select|textarea)\b/);
+      assert.equal([...row.matchAll(/<button\b/g)].length, 1);
+      assert.match(row, />Open project<\/button>/);
+    }
+    assert.match(resultRows[0], /directory-task-completion">Open/);
+    assert.match(resultRows[0], /directory-task-priority">Normal/);
+    assert.match(resultRows[0], /directory-task-due-date"><\/p>/);
+    assert.match(resultRows[0], /directory-task-notes" class="directory-notes"><\/div>/);
+    assert.match(resultRows[1], /directory-project-name">First owner/);
+    assert.match(resultRows[1], /directory-task-completion">Completed/);
+    assert.match(resultRows[1], /directory-task-priority">High/);
+    assert.match(resultRows[1], /directory-task-due-date">2000-02-29/);
+    assert.match(resultRows[1], /directory-task-notes" class="directory-notes">  雪 &lt;script&gt;&amp;&quot;\n\nline\t  \n trailing  <\/div>/);
+    const view = { scope: 'Active', filter: 'Completed', priorityFilter: 'High',
+      dueFrom: '2000-02-29', dueThrough: '2000-02-29', directorySearch: '  FIND\t this  title  ' };
+    const path = values => `/directory?${new URLSearchParams(values)}`;
+    page = await html(path(view));
+    assert.deepEqual(titles(page), ['Find  THIS\t title']);
+    assert.match(page, /name="directorySearch" value="FIND\t this  title"/);
+    assert.match(page, /name="dueFrom" value="2000-02-29"/);
+    assert.match(page, /name="dueThrough" value="2000-02-29"/);
+    const forms = [...page.matchAll(/<form\b[\s\S]*?<\/form>/g)].map(match => match[0]);
+    const search = forms.find(form => form.includes('id="directory-search"'));
+    assert.match(search, /name="scope" value="Active"/);
+    assert.match(search, /name="filter" value="Completed"/);
+    assert.match(search, /name="priorityFilter" value="High"/);
+    assert.match(search, /name="dueFrom" value="2000-02-29"/);
+    for (const query of ['First owner', '雪', 'script']) {
+      assert.deepEqual(titles(await html(path({ directorySearch: query }))), []);
+    }
+    assert.deepEqual(titles(await html(path({ filter: 'Deleted' }))), ['Find this title deleted']);
+    assert.deepEqual(titles(await html(path({ filter: 'Open' }))), ['Legacy title', 'Later', 'Find this title second']);
+    assert.deepEqual(titles(await html(path({ priorityFilter: 'High', dueFrom: '2000-03-01' }))), ['Find this title second']);
+    assert.deepEqual(titles(await html(path({ dueThrough: '2000-02-29' }))), ['Find  THIS\t title']);
+    assert.deepEqual(titles(await html(path({ ...view, scope: 'Archived' }))), ['Find\tthis  title archive']);
+    assert.deepEqual(titles(await html(path({ scope: 'Archived', filter: 'Deleted' }))), ['Reserved deleted']);
+    const valid = await post('/directory/due-range', { ...view, dueFrom: ' 2000-02-29 ', dueThrough: ' 2000-02-29 ' });
+    assert.equal(valid.status, 303);
+    const location = valid.headers.get('location');
+    assert.deepEqual(titles(await html(location)), ['Find  THIS\t title']);
+    const applied = { ...view, appliedDueFrom: '2000-02-29', appliedDueThrough: '2000-02-29' };
+    for (const [from, through, message] of [
+      ['1900-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['0000-01-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2000-03-01', '2000-02-29', 'Due from must not be after Due through'],
+    ]) {
+      const response = await post('/directory/due-range', { ...applied, dueFrom: from, dueThrough: through });
+      assert.equal(response.status, 400);
+      page = await response.text();
+      assert.ok(page.includes(`role="alert" class="alert">${message}`));
+      assert.deepEqual(titles(page), ['Find  THIS\t title']);
+      assert.match(page, /name="appliedDueFrom" value="2000-02-29"/);
+      assert.match(page, /name="directorySearch" value="FIND\t this  title"/);
+      assert.match(page, /<option selected>Completed/);
+      assert.match(page, /<option selected>High/);
+    }
+    page = await html(path({ scope: 'Archived' }));
+    assert.match(page, /action="\/projects\/3"/);
+    const project = await html('/projects/3');
+    assert.match(project, /Archived project/);
+    assert.match(project, /<option selected>All/);
+    assert.match(project, /id="task-search"[^>]*value=""/);
+    assert.match(project, /id="due-from"[^>]*value=""/);
+    assert.match(project, /<button type="submit" disabled>Save notes/);
+    assert.match(page, /action="\/"><button class="secondary">Projects/);
+    assert.match(await html('/'), /id="project-search"[^>]*value=""/);
+    assert.deepEqual(snapshot(), before);
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), before);
+    assert.deepEqual(titles(await html('/directory')), ['Legacy title', 'Find  THIS\t title', 'Later', 'Find this title second']);
+    assert.deepEqual(titles(await html(path({ scope: 'Archived', filter: 'Deleted' }))), ['Reserved deleted']);
+    assert.deepEqual(await (await fetch(`${server.base}/health`)).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
