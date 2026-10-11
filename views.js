@@ -75,7 +75,7 @@ export function projectListPage(projects, error = '', filter = 'Active') {
     </div>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', priorityFilter = 'All', errors = {}, range = { from: '', through: '' }) {
+export function projectPage(project, tasks = [], filter = 'All', priorityFilter = 'All', errors = {}, range = { from: '', through: '' }, destinations = []) {
   const rangeInputs = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -168,6 +168,17 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           <label for="task-due-date-${task.id}">Task due date</label>
           <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
+        <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
+          ${errors.taskMove?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskMove.message)}</p>` : ''}
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+          ${rangeInputs}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <select id="destination-project-${task.id}" name="destination"${project.archived || !destinations.length ? ' disabled' : ''}>
+            ${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${project.archived || !destinations.length ? ' disabled' : ''}>Move task</button>
         </form>
       </div>`).join('')}
     </div>`);

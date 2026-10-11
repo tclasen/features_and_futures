@@ -82,3 +82,13 @@ fields, separately from draft range inputs, so task edits, validation errors,
 renaming, creation, default changes, and combobox changes retain the applied range.
 Range controls remain available while archived. Reopening from the project list
 uses the bare project URL and resets both boundaries to empty.
+
+Each task row provides Destination project and Move task controls. Destinations
+are other active projects in project creation order, using their current names.
+Moving appends the task to the destination while preserving its identity, title,
+completion, priority, and due date. The source stays open with its filters intact;
+both summaries count their updated ownership. Task order is stored independently
+of identity, and existing databases migrate without changing their current order.
+Archived projects cannot send or receive tasks. Controls are disabled when the
+source is archived or there are no eligible destinations, and direct requests
+validate ownership and destination eligibility before changing data.
