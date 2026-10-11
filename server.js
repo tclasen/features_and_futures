@@ -103,7 +103,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && projectTasks) {
     const id = Number(projectTasks[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(id)) return send(res, 404, { error: 'Not found' });
-    return send(res, 200, db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position,id').all(id));
+    return send(res, 200, db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted FROM tasks t LEFT JOIN task_project_positions pp ON pp.task_id=t.id AND pp.project_id=t.project_id WHERE t.project_id = ? ORDER BY COALESCE(pp.position,t.position), t.id').all(id));
   }
   if (req.method === 'POST' && projectTasks) {
     try {
