@@ -26,7 +26,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
   due_date TEXT NOT NULL DEFAULT '',
-  notes TEXT NOT NULL DEFAULT ''
+  notes TEXT NOT NULL DEFAULT '',
+  deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))
 )`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
@@ -36,6 +37,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 }
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
 }
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
@@ -52,8 +56,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
 );
 INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
   SELECT id, project_id, position FROM tasks;`);
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
-const findTask = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const findTask = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
 const rememberedPosition = db.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?');
@@ -76,10 +80,11 @@ const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? A
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
-const taskData = task => ({ ...task, completed: Boolean(task.completed) });
+const setTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
+const taskData = task => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) });
 const projectQuery = `SELECT projects.id, projects.name, projects.archived, projects.default_priority,
-  (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total,
-  (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed
+  (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND deleted = 0) AS total,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND deleted = 0 AND completed = 1) AS completed
   FROM projects`;
 const listProjects = db.prepare(`${projectQuery} ORDER BY projects.id`);
 const findProject = db.prepare(`${projectQuery} WHERE projects.id = ?`);
@@ -144,8 +149,15 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
       }
       if (req.method === 'PATCH' && taskId) {
-        if (!findTask.get(projectId, taskId)) return sendJson(res, 404, { error: 'Task not found' });
+        const task = findTask.get(projectId, taskId);
+        if (!task) return sendJson(res, 404, { error: 'Task not found' });
         const input = await readJson(req);
+        if (input && Object.hasOwn(input, 'deleted')) {
+          if (typeof input.deleted !== 'boolean') return sendJson(res, 400, { error: 'Deletion state must be a boolean' });
+          setTaskDeleted.run(Number(input.deleted), projectId, taskId);
+          return sendJson(res, 200, taskData(findTask.get(projectId, taskId)));
+        }
+        if (task.deleted) return sendJson(res, 409, { error: 'Deleted task must be restored before editing' });
         if (input && Object.hasOwn(input, 'destination_project_id')) {
           const destinationId = input.destination_project_id;
           if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === Number(projectId)) {

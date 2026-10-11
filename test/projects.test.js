@@ -61,7 +61,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     }
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [existing]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/1/tasks`)).json(), [
-      { id: 1, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '' },
+      { id: 1, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '', deleted: false },
     ]);
     const firstResponse = await create('  First project  ');
     assert.equal(firstResponse.status, 201);

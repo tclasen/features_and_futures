@@ -34,7 +34,7 @@ class Node {
   }
 }
 
-async function projectPage(archived = false, defaultPriority = 'Normal', dates, otherProjects = [], notes = {}) {
+async function projectPage(archived = false, defaultPriority = 'Normal', dates, otherProjects = [], notes = {}, deletedIds = []) {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, priority, completed: false, due_date: '', notes: '' },
@@ -42,6 +42,7 @@ async function projectPage(archived = false, defaultPriority = 'Normal', dates, 
   ]);
   if (dates) tasks.forEach((task, index) => { task.due_date = dates[index]; });
   tasks.forEach(task => { task.notes = notes[task.id] ?? ''; });
+  tasks.forEach(task => { task.deleted = deletedIds.includes(task.id); });
   const mutations = [];
   const project = { id: 1, name: 'Example', archived: Number(archived), default_priority: defaultPriority, total: 6, completed: 3 };
   const document = {
@@ -95,6 +96,86 @@ async function projectPage(archived = false, defaultPriority = 'Normal', dates, 
   };
   return { app, project, tasks, mutations, byId, rows, titles, change };
 }
+
+test('deletion and restoration retain intersecting filters, saved fields, and row order', async () => {
+  const page = await projectPage(false, 'Low', undefined, [{ id: 2, name: 'Destination', archived: 0 }], { 6: '  Saved\n雪  ' });
+  assert.deepEqual(page.byId('task-filter').children.map(option => option.value), ['All', 'Open', 'Completed', 'Deleted']);
+  await page.change('task-filter', 'Completed');
+  await page.change('priority-filter', 'High');
+  page.byId('due-from').value = '2026-10-01';
+  page.byId('due-through').value = '2026-10-31';
+  await page.app.find(node => node.attributes.class === 'due-range-form').fire('submit');
+  page.byId('task-search').value = '  HIGH\tcompleted  ';
+  const search = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-search'));
+  await search.fire('submit');
+  const original = structuredClone(page.tasks[5]);
+  await page.rows()[0].find(node => node.textContent === 'Delete task').fire('click');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.byId('task-filter').value, 'Completed');
+  assert.equal(page.byId('priority-filter').value, 'High');
+  assert.equal(page.byId('due-from').value, '2026-10-01');
+  assert.equal(page.byId('due-through').value, '2026-10-31');
+  assert.equal(page.byId('task-search').value, 'HIGH\tcompleted');
+  assert.deepEqual(page.tasks[5], { ...original, deleted: true });
+  await page.change('task-filter', 'Deleted');
+  assert.deepEqual(page.titles(), ['High completed']);
+  const row = page.rows()[0];
+  for (const id of ['task-priority-6', 'new-task-title-6', 'task-due-date-6', 'task-notes-6', 'destination-project-6']) {
+    assert.equal(page.byId(id).disabled, true);
+  }
+  assert.equal(row.children[0].disabled, true);
+  for (const title of ['Rename task', 'Save due date', 'Save notes', 'Move task']) {
+    assert.equal(row.find(node => node.textContent === title).disabled, true);
+  }
+  assert.equal(page.byId('task-notes-6').value, original.notes);
+  await row.find(node => node.textContent === 'Restore task').fire('click');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.byId('task-filter').value, 'Deleted');
+  assert.deepEqual(page.tasks[5], original);
+  await page.change('task-filter', 'Completed');
+  assert.deepEqual(page.titles(), ['High completed']);
+  assert.equal(page.byId('task-notes-6').disabled, false);
+  await page.change('priority-filter', 'All');
+  page.byId('due-from').value = '';
+  page.byId('due-through').value = '';
+  await page.app.find(node => node.attributes.class === 'due-range-form').fire('submit');
+  page.byId('task-search').value = '';
+  await search.fire('submit');
+  await page.change('task-filter', 'All');
+  assert.deepEqual(page.titles(), page.tasks.map(task => task.title));
+});
+
+test('deleted rows intersect search, priority and date filters in archived projects', async () => {
+  const page = await projectPage(true, 'Normal', undefined, [], { 6: 'Saved notes' }, [1, 4, 6]);
+  assert.deepEqual(page.titles(), ['Low completed', 'Normal open', 'High open']);
+  for (const row of page.rows()) assert.equal(row.find(node => node.textContent === 'Delete task').disabled, true);
+  await page.change('task-filter', 'Open');
+  assert.deepEqual(page.titles(), ['Normal open', 'High open']);
+  await page.change('task-filter', 'Completed');
+  assert.deepEqual(page.titles(), ['Low completed']);
+  await page.change('task-filter', 'Deleted');
+  assert.deepEqual(page.titles(), ['Low open', 'Normal completed', 'High completed']);
+  await page.change('priority-filter', 'High');
+  page.byId('due-from').value = '2026-10-11';
+  page.byId('due-through').value = '2026-10-11';
+  await page.app.find(node => node.attributes.class === 'due-range-form').fire('submit');
+  const search = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-search'));
+  page.byId('task-search').value = 'HIGH';
+  await search.fire('submit');
+  assert.deepEqual(page.titles(), ['High completed']);
+  const restore = page.rows()[0].find(node => node.textContent === 'Restore task');
+  assert.equal(restore.disabled, true);
+  await restore.fire('click');
+  assert.deepEqual(page.mutations, []);
+  assert.equal(page.byId('task-notes-6').value, 'Saved notes');
+  assert.equal(page.byId('task-notes-6').disabled, true);
+  page.byId('task-search').value = 'absent';
+  await search.fire('submit');
+  assert.deepEqual(page.titles(), []);
+  page.byId('task-search').value = '';
+  await search.fire('submit');
+  assert.deepEqual(page.titles(), ['High completed']);
+});
 
 test('notes save exact plain text, retain every filter, and never add search matches', async () => {
   const page = await projectPage();

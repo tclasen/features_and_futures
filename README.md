@@ -15,11 +15,11 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Visit `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
 
 Within a project, create tasks, check or uncheck completion, and use Task filter
-to show All, Open, or Completed tasks. Projects, tasks, and completion persist in
+to show All, Open, Completed, or Deleted tasks. Projects, tasks, and completion persist in
 the configured SQLite file across restarts.
 
 Use Project filter to view Active or Archived projects. Archive and restore
-projects from their rows; summaries count all completed and total tasks.
+projects from their rows; summaries count completed and total live tasks.
 Archived project pages allow viewing and filtering tasks, with creation and
 completion controls disabled. Existing databases are upgraded automatically.
 
@@ -97,3 +97,12 @@ and return-order restoration. They do not participate in search or affect
 filters or completion summaries. Archived projects show notes with editing
 disabled; restoration enables editing again. Existing databases initialize
 only the new notes field to empty while retaining prior task data.
+
+Use Delete task to keep a task in the Deleted filter while removing it from live
+filters and completion summaries. Deleted tasks retain all fields and remembered
+positions across restarts, with editing and movement disabled. Restore task
+returns the task to its reserved position without changing saved fields. The
+Deleted filter intersects priority, due range, and title search; deletion and
+restoration preserve those controls. Archived projects allow reading deleted
+tasks but disable deletion and restoration until the project is restored.
+Existing databases upgrade all earlier tasks as live.
