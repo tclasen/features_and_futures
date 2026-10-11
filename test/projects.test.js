@@ -1732,3 +1732,114 @@ test('deletion migrates live tasks and restores fields, reserved order, filters 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('portable project export includes unfiltered current state without changing data or remembered order', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'export-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO projects (name) VALUES ('Original  Project 雪'), ('Other'), ('Empty');
+    INSERT INTO tasks (project_id, title, completed)
+      VALUES (1, 'First  Title <literal>', 1), (1, 'Second', 0), (2, 'Other project task', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = async (path, values = {}) => {
+      const response = await fetch(`${server.base}${path}`, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+      assert.equal(response.status, 303);
+    };
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_positions'].map(table =>
+          database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row => ({ ...row })));
+      } finally { database.close(); }
+    };
+    const download = async (id, query = '') => {
+      const response = await fetch(`${server.base}/projects/${id}/export${query}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await response.arrayBuffer()));
+    };
+    const defaultTask = title => ({ title, completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'Original  Project 雪', archived: false, defaultPriority: 'Normal',
+        tasks: [{ ...defaultTask('First  Title <literal>'), completed: true }, defaultTask('Second')],
+      },
+    };
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(await download(3), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Empty', archived: false, defaultPriority: 'Normal', tasks: [] },
+    });
+    const notes = '  Leading 雪 📝\r\n<literal>&"\rAnother line\nTrailing  ';
+    await post('/projects/1/tasks/1/notes', { notes });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '0001-01-01' });
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    await post('/projects/1/tasks/2/delete');
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'New' });
+    await post('/projects/1/rename', { name: 'Renamed  PROJECT 雪' });
+    expected.project.name = 'Renamed  PROJECT 雪';
+    expected.project.defaultPriority = 'Low';
+    Object.assign(expected.project.tasks[0], { priority: 'High', dueDate: '0001-01-01', notes: notes.replace(/\r\n?/g, '\n') });
+    expected.project.tasks[1].deleted = true;
+    expected.project.tasks.push({ ...defaultTask('New'), priority: 'Low' });
+    const query = '?filter=Deleted&priorityFilter=High&dueFrom=9999-12-31&taskSearch=absent';
+    const beforePage = await html(`/projects/1${query}`);
+    assert.doesNotMatch(beforePage, /data-testid="task-row"/);
+    const control = /<form method="get" action="\/projects\/1\/export">[\s\S]*?<\/form>/.exec(beforePage);
+    assert.ok(control);
+    assert.match(control[0], />Download project<\/button>/);
+    assert.doesNotMatch(control[0], /disabled/);
+    const before = snapshot();
+    assert.deepEqual(await download(1, query), expected);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(await html(`/projects/1${query}`), beforePage);
+    assert.equal(snapshot()[1][0].notes, notes);
+    await post('/projects/1/tasks/1/delete');
+    await post('/projects/1/tasks/4/delete');
+    await post('/projects/1/archive');
+    expected.project.archived = true;
+    expected.project.tasks.forEach(task => { task.deleted = true; });
+    const archivedPage = await html(`/projects/1${query}`);
+    assert.match(archivedPage, /Archived project/);
+    assert.match(archivedPage, /<button type="submit" class="secondary">Download project<\/button>/);
+    const archivedSnapshot = snapshot();
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), archivedSnapshot);
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), archivedSnapshot);
+    assert.equal((await fetch(`${server.base}/projects/999/export`)).status, 404);
+    await post('/projects/1/restore');
+    await post('/projects/1/tasks/1/restore');
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    assert.deepEqual((await download(2)).project.tasks, [defaultTask('Other project task'), { ...expected.project.tasks[0], deleted: false }]);
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    expected.project.archived = false;
+    expected.project.tasks[0].deleted = false;
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot()[2], archivedSnapshot[2]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

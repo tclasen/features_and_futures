@@ -245,6 +245,9 @@ function projectPage(project, filter, priority = 'All', error = '', range = { fr
     <header><p class="eyebrow">PROJECT</p><h1>${escapeHtml(project.name)}</h1>
       ${project.archived ? '<p>Archived project</p>' : ''}
     </header>
+    <form method="get" action="/projects/${project.id}/export">
+      <button type="submit" class="secondary">Download project</button>
+    </form>
     ${error ? `<p role="alert" class="alert">${escapeHtml(error)}</p>` : ''}
     <section aria-labelledby="rename-project-heading">
       <h2 id="rename-project-heading">Rename project</h2>
@@ -435,6 +438,35 @@ const server = createServer(async (request, response) => {
       const result = setArchived.run(archiveRoute[2] === 'archive' ? 1 : 0, archiveRoute[1]);
       if (result.changes) {
         redirect(response, archiveRoute[2] === 'archive' ? '/' : '/?filter=Archived');
+        return;
+      }
+    }
+    const exportRoute = /^\/projects\/([1-9]\d*)\/export$/.exec(url.pathname);
+    if (request.method === 'GET' && exportRoute) {
+      const project = findProject.get(exportRoute[1]);
+      if (project) {
+        const document = {
+          format: 'workboard-project',
+          version: 1,
+          project: {
+            name: project.name,
+            archived: Boolean(project.archived),
+            defaultPriority: project.default_priority,
+            tasks: listTasks.all(project.id).map(task => ({
+              title: task.title,
+              completed: Boolean(task.completed),
+              priority: task.priority,
+              dueDate: task.due_date,
+              notes: task.notes.replace(/\r\n?/g, '\n'),
+              deleted: Boolean(task.deleted),
+            })),
+          },
+        };
+        response.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="workboard-project.json"',
+        });
+        response.end(JSON.stringify(document, null, 2));
         return;
       }
     }
