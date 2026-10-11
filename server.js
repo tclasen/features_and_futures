@@ -21,6 +21,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER'); } catch {}
 db.exec('UPDATE tasks SET task_order = id WHERE task_order IS NULL');
 // Keep a stable slot for each task in every project it has visited. The live
@@ -50,6 +51,7 @@ const page = `<!doctype html>
     form { display: flex; gap: 12px; align-items: end; margin-bottom: 24px; }
     label { display: grid; gap: 7px; flex: 1; font-weight: 600; }
     input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #aab5c2; border-radius: 6px; font: inherit; background: white; }
+    textarea { box-sizing: border-box; width: 100%; min-height: 84px; padding: 10px 12px; border: 1px solid #aab5c2; border-radius: 6px; font: inherit; background: white; }
     button { padding: 10px 15px; border: 0; border-radius: 6px; background: #155eef; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #004eeb; }
     [role="alert"] { margin: 0 0 16px; color: #b42318; }
@@ -252,6 +254,15 @@ const page = `<!doctype html>
             await refreshTasks();
           });
           dueLabel.append(dueInput);
+          const notesLabel = document.createElement('label'); notesLabel.textContent = 'Task notes';
+          const notesInput = document.createElement('textarea'); notesInput.setAttribute('aria-label', 'Task notes'); notesInput.value = task.notes || '';
+          notesInput.disabled = project.archived;
+          const notesButton = document.createElement('button'); notesButton.type = 'button'; notesButton.textContent = 'Save notes'; notesButton.disabled = project.archived;
+          notesButton.addEventListener('click', async () => {
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notesInput.value }) });
+            if (update.ok) await refreshTasks();
+          });
+          notesLabel.append(notesInput);
           const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority');
           for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; priority.append(option); }
           priority.value = task.priority;
@@ -273,7 +284,7 @@ const page = `<!doctype html>
             if (!update.ok) { renameAlert.textContent = 'Could not rename task'; renameAlert.hidden = false; return; }
             await refreshTasks();
           });
-          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert, dueLabel, dueButton, dueAlert);
+          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert, dueLabel, dueButton, dueAlert, notesLabel, notesButton);
           const destinationLabel = document.createElement('label'); destinationLabel.textContent = 'Destination project';
           const destination = document.createElement('select'); destination.setAttribute('aria-label', 'Destination project');
           const destinations = eligible.filter(item => String(item.id) !== String(id));
@@ -394,7 +405,7 @@ const server = http.createServer(async (req, res) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && req.method === 'GET') {
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(tasksMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
-    const tasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY task_order, id').all(tasksMatch[1]);
+    const tasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY task_order, id').all(tasksMatch[1]);
     return sendJson(res, 200, tasks.map((task) => ({ ...task, id: String(task.id), completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
@@ -485,6 +496,13 @@ const server = http.createServer(async (req, res) => {
         if (!result.changes) {
           const task = db.prepare('SELECT projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(taskMatch[1]);
           return task ? sendJson(res, 409, { error: 'Archived projects cannot rename tasks' }) : sendJson(res, 404, { error: 'Task not found' });
+        }
+      } else if (typeof body.notes === 'string') {
+        result = db.prepare(`UPDATE tasks SET notes = ? WHERE id = ?
+          AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND projects.archived = 0)`).run(body.notes, taskMatch[1]);
+        if (!result.changes) {
+          const task = db.prepare('SELECT projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(taskMatch[1]);
+          return task ? sendJson(res, 409, { error: 'Archived projects cannot change task notes' }) : sendJson(res, 404, { error: 'Task not found' });
         }
       } else return sendJson(res, 400, { error: 'Invalid task update' });
       return result.changes ? sendJson(res, 200, { status: 'ok' }) : sendJson(res, 404, { error: 'Task not found' });
