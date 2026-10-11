@@ -95,8 +95,12 @@ const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND proje
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const taskFilter = (value) => ['Open', 'Completed'].includes(value) ? value : 'All';
 const priorityFilter = (value) => ['Low', 'Normal', 'High'].includes(value) ? value : 'All';
-const readRange = (params) => ({ from: params.get('rangeFrom') || '', through: params.get('rangeThrough') || '' });
-const projectLocation = (id, filter, priority, range = {}) => `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}${range.from || range.through ? `&${new URLSearchParams({ rangeFrom: range.from || '', rangeThrough: range.through || '' })}` : ''}`;
+const readSearch = (params, key) => (params.get('searchQuery') ?? params.get(key) ?? '').trim();
+const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+const matchesSearch = (value, query) => asciiLower(value).includes(asciiLower(query));
+const readRange = (params) => ({ from: params.get('rangeFrom') || '', through: params.get('rangeThrough') || '', search: readSearch(params, 'taskSearch') });
+const projectLocation = (id, filter, priority, range = {}) => `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}${range.from || range.through ? `&${new URLSearchParams({ rangeFrom: range.from || '', rangeThrough: range.through || '' })}` : ''}${range.search ? `&${new URLSearchParams({ taskSearch: range.search })}` : ''}`;
+const projectsLocation = (filter, search) => `/?${new URLSearchParams({ filter, projectSearch: search })}`;
 const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
@@ -146,11 +150,12 @@ function page(title, content) {
 </style></head><body><main>${content}</main></body></html>`;
 }
 
-function projectsPage(error = '', enteredName = '', filter = 'Active') {
-  const projects = listProjects.all(filter === 'Archived' ? 1 : 0);
+function projectsPage(error = '', enteredName = '', filter = 'Active', search = '') {
+  const projects = listProjects.all(filter === 'Archived' ? 1 : 0).filter((project) => matchesSearch(project.name, search));
   return page('Projects', `<h1>Workboard</h1>
     <form class="create" action="/projects" method="post">
       <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="projectSearch" value="${escape(search)}">
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text" value="${escape(enteredName)}"${error ? ' aria-invalid="true" aria-describedby="project-error"' : ''}>
       ${error ? `<div id="project-error" role="alert">${escape(error)}</div>` : ''}
@@ -158,6 +163,13 @@ function projectsPage(error = '', enteredName = '', filter = 'Active') {
     </form>
     <section class="projects" aria-label="Projects">
       <form action="/" method="get">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="project-search">Project search</label>
+        <input id="project-search" name="searchQuery" type="text" value="${escape(search)}">
+        <button type="submit">Search projects</button>
+      </form>
+      <form action="/" method="get">
+        <input type="hidden" name="projectSearch" value="${escape(search)}">
         <label for="project-filter">Project filter</label>
         <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
           ${['Active', 'Archived'].map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
@@ -167,7 +179,7 @@ function projectsPage(error = '', enteredName = '', filter = 'Active') {
         <span>${escape(project.name)}</span>
         <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
-        <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post"><button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button></form>
+        <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post"><input type="hidden" name="projectSearch" value="${escape(search)}"><button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button></form>
       </div>`).join('')}
     </section>`);
 }
@@ -178,6 +190,7 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
   const tasks = listTasks.all(project.id).filter((task) =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) &&
+    matchesSearch(task.title, range.search || '') &&
     ((!range.from && !range.through) || (task.due_date &&
       (!range.from || task.due_date >= range.from) &&
       (!range.through || task.due_date <= range.through))));
@@ -209,6 +222,13 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
       <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <section class="tasks" aria-label="Tasks">
+      <form action="/projects/${project.id}" method="get">
+        <input type="hidden" name="filter" value="${filter}">
+        <input type="hidden" name="priorityFilter" value="${priority}">
+        <label for="task-search">Task search</label>
+        <input id="task-search" name="searchQuery" type="text" value="${escape(range.search || '')}">
+        <button type="submit">Search tasks</button>
+      </form>
       <form action="/projects/${project.id}/due-range" method="post">
         <input type="hidden" name="filter" value="${filter}">
         <input type="hidden" name="priorityFilter" value="${priority}">
@@ -270,6 +290,7 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '', ren
         </form>
       </div>`).join('')}
     </section>`).replace(/<form\b[^>]*action="\/projects\/[^>]*>/g, (form) => `${form}
+      <input type="hidden" name="taskSearch" value="${escape(range.search || '')}">
       <input type="hidden" name="rangeFrom" value="${escape(range.from || '')}">
       <input type="hidden" name="rangeThrough" value="${escape(range.through || '')}">`);
 }
@@ -300,15 +321,15 @@ const server = http.createServer(async (request, response) => {
       return response.end(JSON.stringify({ status: 'ok' }));
     }
     if (request.method === 'GET' && url.pathname === '/') {
-      return sendHtml(response, 200, projectsPage('', '', projectFilter(url.searchParams.get('filter'))));
+      return sendHtml(response, 200, projectsPage('', '', projectFilter(url.searchParams.get('filter')), readSearch(url.searchParams, 'projectSearch')));
     }
     if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
       const enteredName = form.get('name') || '';
       const name = enteredName.trim();
-      if (!name) return sendHtml(response, 200, projectsPage('Project name is required', enteredName, projectFilter(form.get('filter'))));
+      if (!name) return sendHtml(response, 200, projectsPage('Project name is required', enteredName, projectFilter(form.get('filter')), readSearch(form, 'projectSearch')));
       createProject.run(name);
-      response.writeHead(303, { Location: '/' });
+      response.writeHead(303, { Location: projectsLocation(projectFilter(form.get('filter')), readSearch(form, 'projectSearch')) });
       return response.end();
     }
     const rangeMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/due-range$/);
@@ -316,7 +337,7 @@ const server = http.createServer(async (request, response) => {
       const project = getProject.get(rangeMatch[1]);
       if (!project) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
       const form = await readForm(request);
-      const range = { from: (form.get('dueFrom') || '').trim(), through: (form.get('dueThrough') || '').trim() };
+      const range = { from: (form.get('dueFrom') || '').trim(), through: (form.get('dueThrough') || '').trim(), search: readSearch(form, 'taskSearch') };
       let error = '';
       if ((range.from && !validDueDate(range.from)) || (range.through && !validDueDate(range.through))) {
         error = 'Due range must use valid YYYY-MM-DD dates';
@@ -346,8 +367,9 @@ const server = http.createServer(async (request, response) => {
     const archiveMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
     if (request.method === 'POST' && archiveMatch) {
       if (!getProject.get(archiveMatch[1])) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
+      const form = await readForm(request);
       setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
-      response.writeHead(303, { Location: archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived' });
+      response.writeHead(303, { Location: projectsLocation(archiveMatch[2] === 'archive' ? 'Active' : 'Archived', readSearch(form, 'projectSearch')) });
       return response.end();
     }
     const defaultPriorityMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/default-priority$/);

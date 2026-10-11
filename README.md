@@ -30,6 +30,7 @@ and inheritance without changing existing tasks, Gregorian due-date validation a
 due-date migration and independence, inclusive due-range filtering intersecting completion
 and priority, range validation and retention across edits, moves between active projects with
 first-arrival append ordering, restored per-project return positions (including reverse-order returns),
-preserved task data, destination eligibility, archive protection, and persistence
-across server restarts. Test databases are
+preserved task data, destination eligibility, archive protection, project and task substring
+search with ASCII-only case folding, search/filter intersections and retention through edits,
+empty search on reopening, and persistence across server restarts. Test databases are
 created beneath `data/` and removed afterward.
