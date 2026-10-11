@@ -446,7 +446,8 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     await stop();
     await start();
     assert.equal(await tasksPage(), savedDefaults);
-    assert.equal(await (await fetch(`${base}/projects/2`)).text(), secondProject);
+    // Another project's rename updates destination labels, not this project's task data.
+    assert.equal(await (await fetch(`${base}/projects/2`)).text(), secondProject.replace('<option value="1">Restored name</option>', '<option value="1">Default preserved</option>'));
     await post(`${detailPath}/archive`, {});
     const archivedDefaults = await tasksPage('?filter=Open&priorityFilter=Low');
     assert.match(archivedDefaults, /id="default-task-priority" name="priority" disabled/);
