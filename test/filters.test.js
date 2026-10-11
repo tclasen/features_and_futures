@@ -476,13 +476,19 @@ test('task search intersects every filter, uses ASCII case only, and remains usa
     assert.deepEqual(page.mutations, []);
   }
   const page = await projectPage();
-  page.byId('new-task-title-1').value = 'ÉCHO  Mixed';
+  const title = 'ÉCHO  \t\t Mixed';
+  page.byId('new-task-title-1').value = title;
   await page.rows()[0].find(node => node.attributes.class === 'task-rename-form').fire('submit');
   const form = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-search'));
-  for (const [query, expected] of [['écho', []], ['ÉcHo  mIX', ['ÉCHO  Mixed']], ['ÉCHO Mixed', []], ['', page.tasks.map(task => task.title)]]) {
+  for (const [query, expected] of [
+    ['écho', []], ['ÉcHo  mIX', [title]], ['ÉCHO Mixed', [title]],
+    [' \tÉCHO\t \tMiXeD\t ', [title]], ['ÉCHO\nMixed', []],
+    ['ÉCHO\u00a0Mixed', []], ['', page.tasks.map(task => task.title)],
+  ]) {
     page.byId('task-search').value = query;
     await form.fire('submit');
     assert.deepEqual(page.titles(), expected);
+    assert.equal(page.tasks[0].title, title);
   }
 });
 
@@ -583,10 +589,17 @@ test('project search intersects archive state, preserves summaries and order, an
   await filter.fire('change');
   assert.deepEqual(page.names(), ['Alpha  Team', 'ALPHA Team', 'Last alpha  team']);
   await page.search('alpha  team');
-  assert.deepEqual(page.names(), ['Alpha  Team', 'Last alpha  team']);
+  assert.deepEqual(page.names(), ['Alpha  Team', 'ALPHA Team', 'Last alpha  team']);
+  await page.search(' \tALPHA\t \tTEAM\t ');
+  assert.deepEqual(page.names(), ['Alpha  Team', 'ALPHA Team', 'Last alpha  team']);
+  await page.search('alpha\nteam');
+  assert.deepEqual(page.names(), []);
+  await page.search('alpha\u00a0team');
+  assert.deepEqual(page.names(), []);
+  await page.search('alpha team');
   await page.rows()[0].find(node => node.textContent === 'Archive project').fire('click');
-  assert.deepEqual(page.names(), ['Last alpha  team']);
-  await page.rows()[0].find(node => node.textContent === 'Open project').fire('click');
+  assert.deepEqual(page.names(), ['ALPHA Team', 'Last alpha  team']);
+  await page.rows()[1].find(node => node.textContent === 'Open project').fire('click');
   assert.equal(page.location.href, '/projects/4');
   await page.search('écho');
   assert.deepEqual(page.names(), []);

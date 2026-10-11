@@ -24,8 +24,8 @@ function showAlert(message) {
   alert.hidden = !message;
 }
 
-function asciiLower(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 function searchForm(kind, onSearch) {
@@ -37,7 +37,7 @@ function searchForm(kind, onSearch) {
   form.addEventListener('submit', event => {
     event.preventDefault();
     input.value = input.value.trim();
-    onSearch(asciiLower(input.value));
+    onSearch(normalizeSearch(input.value));
   });
   return form;
 }
@@ -110,7 +110,7 @@ async function renderTasks(project) {
   function drawTasks() {
     list.replaceChildren();
     for (const task of tasks) {
-      if (!asciiLower(task.title).includes(appliedQuery)) continue;
+      if (!normalizeSearch(task.title).includes(appliedQuery)) continue;
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       if (appliedFrom || appliedThrough) {
@@ -377,7 +377,7 @@ async function render() {
     list.replaceChildren();
     for (const project of projects) {
       if (Boolean(project.archived) === (filter.value === 'Archived') &&
-        asciiLower(project.name).includes(appliedQuery)) {
+        normalizeSearch(project.name).includes(appliedQuery)) {
         list.append(projectRow(project, drawProjects));
       }
     }

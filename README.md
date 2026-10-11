@@ -80,7 +80,9 @@ when the source is archived or no eligible destination exists.
 Use Project search and Search projects to match project names, together with
 Project filter. Use Task search and Search tasks to match task titles, together
 with completion, priority, and the applied due range. Searches trim surrounding
-query whitespace, preserve internal whitespace, and ignore ASCII letter case.
+query whitespace, treat each run of ASCII spaces and horizontal tabs as one
+space for matching, and ignore ASCII letter case. Stored names and titles keep
+their original internal whitespace and case.
 Blank queries match everything allowed by the other filters. Editing or moving
 tasks retains the applied query and filters and immediately refreshes matching
 rows. Search also works in archived projects without enabling task edits.
