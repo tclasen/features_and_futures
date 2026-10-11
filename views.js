@@ -98,6 +98,7 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
+    <button type="button" onclick="window.location.href='/projects/${project.id}/export'">Download project</button>
     <form class="create-form task-create" method="post" action="/projects/${project.id}/rename">
       ${errors.projectRename ? `<p role="alert">${escapeHtml(errors.projectRename)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">

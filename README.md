@@ -128,3 +128,11 @@ and search. Deleted rows remain readable with all editing and move controls
 disabled, and direct editing requests are rejected until restoration. Archived
 projects also disable deletion and restoration. Deletion survives restarts;
 existing databases initialize every earlier task as live without changing data.
+
+Every project page provides Download project, including archived and empty projects.
+`GET /projects/<id>/export` downloads UTF-8 JSON as `workboard-project.json` with
+format `workboard-project`, version `1`, and the project's name, archive state,
+default priority, and all current live/deleted tasks in stored order. Export ignores
+page filters and includes each task's title, completion, priority, due date, notes,
+and deletion state. Notes line endings become LF in the portable document only.
+Downloading does not change stored data, remembered positions, or page controls.

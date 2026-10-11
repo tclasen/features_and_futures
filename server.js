@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { projectListPage, projectPage } from './views.js';
+import { projectExport } from './project-export.js';
 import { normalizeSearch, matchesSearch } from './search.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
 import { normalizeDueDate, normalizeDueRange, matchesDueRange } from './task-dates.js';
@@ -200,7 +201,7 @@ async function readForm(request) {
 const server = createServer(async (request, response) => {
   try {
     const { pathname, searchParams } = new URL(request.url, 'http://localhost');
-    const projectRoute = pathname.match(/^\/projects\/(?<projectId>[1-9]\d*)(?:\/tasks(?:\/(?<taskId>[1-9]\d*)(?:\/(?<taskAction>rename|priority|due-date|notes|move|delete|restore))?)?|\/(?<projectAction>archive|restore|rename|default-priority|due-range))?$/);
+    const projectRoute = pathname.match(/^\/projects\/(?<projectId>[1-9]\d*)(?:\/tasks(?:\/(?<taskId>[1-9]\d*)(?:\/(?<taskAction>rename|priority|due-date|notes|move|delete|restore))?)?|\/(?<projectAction>archive|restore|rename|default-priority|due-range|export))?$/);
     if (request.method === 'GET' && pathname === '/health') {
       send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     } else if (request.method === 'GET' && pathname === '/') {
@@ -223,7 +224,10 @@ const server = createServer(async (request, response) => {
         send(response, 404, 'Project not found', 'text/plain; charset=utf-8');
         return;
       }
-      if (request.method === 'GET' && pathname === `/projects/${id}`) {
+      if (request.method === 'GET' && projectAction === 'export') {
+        response.setHeader('Content-Disposition', 'attachment; filename="workboard-project.json"');
+        send(response, 200, JSON.stringify(projectExport(project, listTasks.all(id))), 'application/json; charset=utf-8');
+      } else if (request.method === 'GET' && pathname === `/projects/${id}`) {
         send(response, 200, renderProject(project, taskFilter(searchParams.get('filter')), priorityFilter(searchParams.get('priorityFilter')), {}, appliedDueRange(searchParams), normalizeSearch(searchParams.get('search'))));
       } else if (request.method === 'POST' && projectAction === 'due-range') {
         const form = await readForm(request);
@@ -268,7 +272,7 @@ const server = createServer(async (request, response) => {
         }
         setDefaultTaskPriority.run(newPriority, id);
         redirect(response, projectLocation(id, taskFilter(form.get('filter')), priorityFilter(form.get('priorityFilter')), appliedDueRange(form), normalizeSearch(form.get('search'))));
-      } else if (request.method === 'POST' && projectAction) {
+      } else if (request.method === 'POST' && ['archive', 'restore'].includes(projectAction)) {
         const archive = projectAction === 'archive';
         const form = await readForm(request);
         setProjectArchived.run(archive ? 1 : 0, id);

@@ -7,6 +7,125 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('download exports all owned tasks in remembered order without changing data or filters', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return ['projects', 'tasks', 'task_project_positions'].map((table) => (
+        database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
+      ));
+    } finally { database.close(); }
+  };
+  try {
+    // Start with the original schema to verify the public defaults on upgrade.
+    const legacy = new DatabaseSync(databasePath);
+    try {
+      legacy.exec(`
+        CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO projects (name) VALUES ('MiXeD  Project 日本語'), ('Other'), ('Empty');
+        INSERT INTO tasks (project_id, title, completed) VALUES
+          (1, 'First  task', 1), (1, 'Second task', 0), (2, 'Other task', 0);
+      `);
+    } finally { legacy.close(); }
+    server = await startServer(databasePath);
+    const post = async (path, values = {}) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+      });
+      assert.equal(response.status, 303);
+    };
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const download = async (id, query = '') => {
+      const response = await fetch(`${server.url}/projects/${id}/export${query}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    const initial = await download(1);
+    assert.deepEqual(initial, {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'MiXeD  Project 日本語', archived: false, defaultPriority: 'Normal',
+        tasks: [
+          { title: 'First  task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+          { title: 'Second task', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    });
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2028-02-29' });
+    const notes = ' \r\nUnicode 日本語 📝\r</textarea><script>&"\n\t ';
+    await post('/projects/1/tasks/1/notes', { notes });
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual((await download(1)).project.tasks.map((task) => task.title), ['Second task']);
+    await post('/projects/1/tasks', { title: 'Third task' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    await post('/projects/1/tasks/1/delete');
+    const expected = {
+      ...initial,
+      project: {
+        ...initial.project, defaultPriority: 'Low',
+        tasks: [
+          { ...initial.project.tasks[0], priority: 'High', dueDate: '2028-02-29', notes: notes.replace(/\r\n?/g, '\n'), deleted: true },
+          initial.project.tasks[1],
+          { title: 'Third task', completed: false, priority: 'Low', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    const query = `?${new URLSearchParams({
+      filter: 'Deleted', priorityFilter: 'Low', dueFrom: '9999-01-01',
+      dueThrough: '9999-12-31', search: 'no match',
+    })}`;
+    const pagePath = `/projects/1${query}`;
+    const page = await get(pagePath);
+    assert.doesNotMatch(page, /data-testid="task-row"/);
+    assert.match(page, /<button type="button" onclick="window.location.href='\/projects\/1\/export'">Download project<\/button>/);
+    const saved = snapshot();
+    assert.deepEqual(await download(1, query), expected);
+    assert.deepEqual(snapshot(), saved);
+    assert.equal(await get(pagePath), page);
+    assert.equal((await fetch(`${server.url}/projects/1/export`, { method: 'POST' })).status, 404);
+    assert.deepEqual(snapshot(), saved);
+    assert.equal((await fetch(`${server.url}/projects/999/export`)).status, 404);
+    assert.deepEqual((await download(3)).project.tasks, []);
+    await post('/projects/1/tasks/2/delete');
+    await post('/projects/1/tasks/4/delete');
+    expected.project.tasks.forEach((task) => { task.deleted = true; });
+    await post('/projects/1/archive');
+    expected.project.archived = true;
+    const archivedPage = await get(pagePath);
+    assert.match(archivedPage, />Download project<\/button>/);
+    assert.deepEqual(await download(1), expected);
+    const archivedState = snapshot();
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(await download(1, query), expected);
+    assert.deepEqual(snapshot(), archivedState);
+    assert.equal(await get(pagePath), archivedPage);
+    assert.equal(snapshot()[1][0].notes, notes);
+    assert.deepEqual((await download(2)).project.tasks.map((task) => task.title), ['Other task']);
+    await post('/projects/1/restore');
+    await post('/projects/1/tasks/1/restore');
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    expected.project.archived = false;
+    expected.project.tasks[0].deleted = false;
+    assert.deepEqual(await download(1), expected);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('notes migrate safely and preserve plain text, task data, filters, movement and archive restrictions', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
   const databasePath = join(directory, 'workboard.sqlite');
