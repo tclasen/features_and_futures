@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 async function start(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -83,6 +84,106 @@ test('project validation, navigation, creation order, and restart persistence', 
     server = await start(databasePath);
     assert.equal(await (await fetch(server.url)).text(), html);
     assert.equal(await (await fetch(`${server.url}${projectPath}`)).text(), detail);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('existing projects migrate, summaries count all tasks, and archive/restore preserve saved state', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    // Seed the previous schema to verify upgrades preserve IDs and task state.
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO projects (name) VALUES ('Existing');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1), (1, 'Pending', 0);
+    `);
+    database.close();
+    server = await start(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const page = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const rows = (html) => [...html.matchAll(/<div data-testid="project-row"[\s\S]*?<\/div>/g)]
+      .map((match) => match[0]);
+    let html = await page('/');
+    assert.match(html, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(html, /<option selected>Active<\/option><option>Archived<\/option>/);
+    assert.match(rows(html)[0], /data-testid="project-summary">1\/2 completed/);
+    assert.match(rows(html)[0], />Archive project<\/button>/);
+    await post('/projects', { name: 'New' });
+    html = await page('/');
+    assert.equal(rows(html).length, 2);
+    assert.match(rows(html)[1], /data-testid="project-summary">0\/0 completed/);
+    await post('/projects/2/tasks', { title: 'Another' });
+    await post('/projects/2/tasks/3/completion', { completed: 'on' });
+    assert.match(rows(await page('/'))[1], /data-testid="project-summary">1\/1 completed/);
+    await page('/projects/1?filter=Completed');
+    assert.match(rows(await page('/'))[0], /data-testid="project-summary">1\/2 completed/);
+
+    assert.equal((await post('/projects/999/archive')).status, 404);
+    assert.equal((await post('/projects/1/archive')).status, 303);
+    assert.equal(rows(await page('/')).length, 1);
+    assert.doesNotMatch(await page('/'), /Existing/);
+    const archivedList = await page('/?filter=Archived');
+    assert.equal(rows(archivedList).length, 1);
+    assert.match(rows(archivedList)[0], /Existing/);
+    assert.match(rows(archivedList)[0], /data-testid="project-summary">1\/2 completed/);
+    assert.match(rows(archivedList)[0], />Open project<\/button>/);
+    assert.match(rows(archivedList)[0], />Restore project<\/button>/);
+    assert.doesNotMatch(rows(archivedList)[0], />Archive project<\/button>/);
+    const archivedPage = await page('/projects/1');
+    assert.match(archivedPage, /<p>Archived project<\/p>/);
+    assert.match(archivedPage, /<button type="submit" disabled>Create task<\/button>/);
+    assert.equal((archivedPage.match(/type="checkbox"[^>]* disabled/g) || []).length, 2);
+    assert.match(archivedPage, /aria-label="Complete Done" checked disabled/);
+    assert.match(await page('/projects/1?filter=Completed'), /Complete Done/);
+    assert.doesNotMatch(await page('/projects/1?filter=Completed'), /Complete Pending/);
+    assert.match(await page('/projects/1?filter=Open'), /Complete Pending/);
+    assert.doesNotMatch(await page('/projects/1?filter=Open'), /Complete Done/);
+    assert.equal((await post('/projects/1/tasks', { title: 'Blocked' })).status, 409);
+    assert.equal((await post('/projects/1/tasks/1/completion')).status, 409);
+    assert.equal((await post('/projects/1/tasks/2/completion', { completed: 'on' })).status, 409);
+    assert.equal(await page('/projects/1'), archivedPage);
+
+    const invalid = await post('/projects', { name: ' ', filter: 'Archived' });
+    assert.equal(invalid.status, 400);
+    const invalidHtml = await invalid.text();
+    assert.match(invalidHtml, /Project name is required/);
+    assert.match(invalidHtml, /<option selected>Archived/);
+    assert.equal(rows(invalidHtml).length, 1);
+
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.equal(await page('/?filter=Archived'), archivedList);
+    assert.equal(await page('/projects/1'), archivedPage);
+    assert.equal((await post('/projects/1/restore')).status, 303);
+    assert.equal(rows(await page('/?filter=Archived')).length, 0);
+    html = await page('/');
+    assert.equal(rows(html).length, 2);
+    assert.match(rows(html)[0], /Existing/);
+    assert.match(rows(html)[0], /data-testid="project-summary">1\/2 completed/);
+    assert.doesNotMatch(await page('/projects/1'), /Archived project| disabled/);
+    assert.equal((await post('/projects/1/tasks/2/completion', { completed: 'on' })).status, 303);
+    await post('/projects/1/tasks', { title: 'After restore' });
+    assert.match(rows(await page('/'))[0], /data-testid="project-summary">2\/3 completed/);
+    await server.stop();
+    server = undefined;
+    server = await start(databasePath);
+    assert.equal(rows(await page('/?filter=Archived')).length, 0);
+    assert.match(rows(await page('/'))[0], /data-testid="project-summary">2\/3 completed/);
+    assert.match(await page('/projects/1'), /After restore/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

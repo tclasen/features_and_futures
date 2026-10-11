@@ -11,6 +11,10 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function projectFilter(value) {
+  return value === 'Archived' ? 'Archived' : 'Active';
+}
+
 function redirect(response, location) {
   response.writeHead(303, { Location: location });
   response.end();
@@ -50,15 +54,23 @@ const server = createServer(async (request, response) => {
       return send(response, 200, 'text/javascript; charset=utf-8', formScript);
     }
     if (request.method === 'GET' && path === '/') {
-      return send(response, 200, 'text/html; charset=utf-8', projectsPage(projects.list()));
+      const filter = projectFilter(url.searchParams.get('filter'));
+      return send(response, 200, 'text/html; charset=utf-8', projectsPage(projects.list(filter), '', filter));
     }
     if (request.method === 'POST' && path === '/projects') {
       const form = await readForm(request);
+      const filter = projectFilter(form.get('filter'));
       if (!projects.create(form.get('name') || '')) {
         return send(response, 400, 'text/html; charset=utf-8',
-          projectsPage(projects.list(), 'Project name is required'));
+          projectsPage(projects.list(filter), 'Project name is required', filter));
       }
       return redirect(response, '/');
+    }
+    const archiveMatch = path.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
+    if (request.method === 'POST' && archiveMatch && Number.isSafeInteger(Number(archiveMatch[1]))) {
+      if (projects.setArchived(Number(archiveMatch[1]), archiveMatch[2] === 'archive')) {
+        return redirect(response, archiveMatch[2] === 'restore' ? '/?filter=Archived' : '/');
+      }
     }
     const match = path.match(/^\/projects\/([1-9]\d*)$/);
     if (request.method === 'GET' && match && Number.isSafeInteger(Number(match[1]))) {
@@ -75,6 +87,9 @@ const server = createServer(async (request, response) => {
         (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
       const project = projects.find(Number(taskMatch[1]));
       if (project) {
+        if (project.archived) {
+          return send(response, 409, 'text/plain; charset=utf-8', 'Archived project');
+        }
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
         if (taskMatch[2]) {
