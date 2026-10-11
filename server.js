@@ -63,6 +63,8 @@ const findProject = database.prepare(`SELECT p.id, p.name, p.archived, p.default
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0) AS totalCount
   FROM projects p WHERE p.id = ?`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const importProject = database.prepare('INSERT INTO projects (name, archived, default_task_priority) VALUES (?, ?, ?)');
+const importTask = database.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
 const listTasks = database.prepare("SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id");
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM task_project_positions WHERE project_id = ?), 0))');
 const createTaskPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
@@ -95,6 +97,21 @@ function isValidDate(value) {
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day >= 1 && day <= days[month - 1];
+}
+
+function validateProjectDocument(document) {
+  const priorities = ['Low', 'Normal', 'High'];
+  if (!document || typeof document !== 'object' || Array.isArray(document) ||
+      document.format !== 'workboard-project' || document.version !== 1 ||
+      !document.project || typeof document.project !== 'object' || Array.isArray(document.project)) return false;
+  const project = document.project;
+  if (typeof project.name !== 'string' || !project.name.trim() || typeof project.archived !== 'boolean' ||
+      !priorities.includes(project.defaultPriority) || !Array.isArray(project.tasks)) return false;
+  return project.tasks.every(task => task && typeof task === 'object' && !Array.isArray(task) &&
+    typeof task.title === 'string' && !!task.title.trim() && typeof task.completed === 'boolean' &&
+    priorities.includes(task.priority) && typeof task.dueDate === 'string' &&
+    (task.dueDate === '' || isValidDate(task.dueDate)) && typeof task.notes === 'string' &&
+    typeof task.deleted === 'boolean');
 }
 
 async function sendFile(response, filename, contentType) {
@@ -131,6 +148,29 @@ const server = createServer(async (request, response) => {
     const trimmedName = name.trim();
     const result = createProject.run(trimmedName);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), name: trimmedName });
+  }
+  if (request.method === 'POST' && url.pathname === '/api/import') {
+    let body;
+    try { body = await readRequestJson(request); } catch { return sendJson(response, 400, { error: 'Invalid project JSON' }); }
+    if (!body || typeof body !== 'object' || typeof body.name !== 'string' || !body.name.trim()) return sendJson(response, 400, { error: 'Project name is required' });
+    let document;
+    try { document = JSON.parse(body.document); } catch { return sendJson(response, 400, { error: 'Invalid project JSON' }); }
+    if (!validateProjectDocument(document)) return sendJson(response, 400, { error: 'Invalid project JSON' });
+    let projectId;
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      const projectResult = importProject.run(body.name.trim(), document.project.archived ? 1 : 0, document.project.defaultPriority);
+      projectId = Number(projectResult.lastInsertRowid);
+      document.project.tasks.forEach((task, index) => {
+        const taskResult = importTask.run(projectId, task.title, task.completed ? 1 : 0, task.priority, task.dueDate || null, task.notes.replace(/\r\n?/g, '\n'), task.deleted ? 1 : 0, index);
+        createTaskPosition.run(Number(taskResult.lastInsertRowid), projectId, index);
+      });
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+    return sendJson(response, 201, { id: projectId });
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'PATCH' && projectMatch) {

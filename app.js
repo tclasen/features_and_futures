@@ -59,6 +59,33 @@ async function renderList() {
   form.append(input, submit);
   const alert = element('p', '', { id: 'alert', role: 'alert', hidden: '' });
   const projects = element('section', undefined, { id: 'projects', 'aria-label': 'Projects' });
+  const importForm = element('form');
+  const importJson = element('textarea', undefined, { 'aria-label': 'Project JSON', rows: '8' });
+  const importName = element('input', undefined, { type: 'text', 'aria-label': 'Imported project name', autocomplete: 'off' });
+  const importButton = element('button', 'Import project', { type: 'submit' });
+  importForm.append(importJson, importName, importButton);
+  const importAlert = element('p', '', { role: 'alert', hidden: '' });
+  importForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!importName.value.trim()) {
+      importAlert.textContent = 'Project name is required';
+      importAlert.hidden = false;
+      return;
+    }
+    const result = await fetch('/api/import', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ document: importJson.value, name: importName.value }),
+    });
+    if (!result.ok) {
+      const error = await result.json();
+      importAlert.textContent = error.error === 'Project name is required' ? error.error : 'Invalid project JSON';
+      importAlert.hidden = false;
+      return;
+    }
+    const imported = await result.json();
+    history.pushState({}, '', `/projects/${imported.id}`);
+    renderProject(imported.id);
+  });
   const filter = element('select', undefined, { 'aria-label': 'Project filter' });
   filter.append(element('option', 'Active', { value: 'active' }), element('option', 'Archived', { value: 'archived' }));
   const searchForm = element('form');
@@ -66,7 +93,7 @@ async function renderList() {
   const searchButton = element('button', 'Search projects', { type: 'submit' });
   searchForm.append(searchInput, searchButton);
   let appliedQuery = '';
-  app.append(form, alert, filter, projects);
+  app.append(form, alert, filter, projects, importForm, importAlert);
 
   const drawProjects = async () => {
     const allProjects = await loadProjects();
