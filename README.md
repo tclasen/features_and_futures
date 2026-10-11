@@ -85,10 +85,18 @@ uses the bare project URL and resets both boundaries to empty.
 
 Each task row provides Destination project and Move task controls. Destinations
 are other active projects in project creation order, using their current names.
-Moving appends the task to the destination while preserving its identity, title,
+Moving to a project for the first time appends the task while preserving its identity, title,
 completion, priority, and due date. The source stays open with its filters intact;
 both summaries count their updated ownership. Task order is stored independently
 of identity, and existing databases migrate without changing their current order.
 Archived projects cannot send or receive tasks. Controls are disabled when the
 source is archived or there are no eligible destinations, and direct requests
 validate ownership and destination eligibility before changing data.
+
+Each task remembers its ordering position separately in every project it visits.
+Returning restores that position relative to other tasks, even when multiple tasks
+return in a different order. New tasks and first-time arrivals come after all
+established positions, including those reserved by tasks currently away. Positions
+persist across restarts, project renaming, archival, and restoration. Returning
+keeps current task fields rather than restoring old values. Creation and movement
+save ownership and remembered positions together in a SQLite transaction.
