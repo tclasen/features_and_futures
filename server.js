@@ -39,6 +39,7 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -188,12 +189,8 @@ const server = createServer(async (request, response) => {
     try {
       const projectId = Number(taskMatch[1]);
       const taskId = Number(taskMatch[2]);
-      const { completed } = await readBody(request);
-      if (typeof completed !== 'boolean') {
-        sendJson(response, 400, { error: 'Completion must be a boolean' });
-        return;
-      }
-      if (!getTask.get(taskId, projectId)) {
+      const task = getTask.get(taskId, projectId);
+      if (!task) {
         sendJson(response, 404, { error: 'Task not found' });
         return;
       }
@@ -201,7 +198,38 @@ const server = createServer(async (request, response) => {
         sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
         return;
       }
-      updateTask.run(completed ? 1 : 0, taskId, projectId);
+      const body = await readBody(request);
+      if (typeof body.completed !== 'boolean') {
+        sendJson(response, 400, { error: 'Completion must be a boolean' });
+        return;
+      }
+      updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+      sendJson(response, 200, getTask.get(taskId, projectId));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
+  const renameTaskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/title$/);
+  if (request.method === 'PATCH' && renameTaskMatch) {
+    try {
+      const projectId = Number(renameTaskMatch[1]);
+      const taskId = Number(renameTaskMatch[2]);
+      const task = getTask.get(taskId, projectId);
+      if (!task) {
+        sendJson(response, 404, { error: 'Task not found' });
+        return;
+      }
+      if (getProject.get(projectId).archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
+      const { title } = await readBody(request);
+      if (typeof title !== 'string' || !title.trim()) {
+        sendJson(response, 400, { error: 'Task title is required' });
+        return;
+      }
+      renameTask.run(title.trim(), taskId, projectId);
       sendJson(response, 200, getTask.get(taskId, projectId));
     } catch {
       sendJson(response, 400, { error: 'Invalid request' });
