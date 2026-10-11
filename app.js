@@ -228,6 +228,28 @@ async function loadTasks(projectId, archived = false) {
         taskAlert.hidden = false;
       }
     });
+    const notes = document.createElement('textarea');
+    notes.value = task.notes || '';
+    notes.setAttribute('aria-label', 'Task notes');
+    notes.disabled = archived;
+    const saveNotes = document.createElement('button');
+    saveNotes.type = 'button';
+    saveNotes.textContent = 'Save notes';
+    saveNotes.disabled = archived;
+    saveNotes.addEventListener('click', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ notes: notes.value }),
+      });
+      if (response.ok) {
+        taskAlert.hidden = true;
+        await loadTasks(projectId, archived);
+      } else {
+        const error = await response.json();
+        taskAlert.textContent = error.error || 'Unable to save notes';
+        taskAlert.hidden = false;
+      }
+    });
     const label = document.createElement('label');
     label.className = 'task-check-label';
     const checkbox = document.createElement('input');
@@ -264,7 +286,7 @@ async function loadTasks(projectId, archived = false) {
       });
       if (moved.ok) await loadTasks(projectId, archived);
     });
-    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, move, label);
+    row.append(title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, move, label);
     taskContainer.append(row);
   }
 }

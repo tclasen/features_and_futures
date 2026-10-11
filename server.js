@@ -41,6 +41,9 @@ if (!taskColumns.some((column) => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
   database.exec('UPDATE tasks SET sort_order = id');
 }
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 database.exec('PRAGMA foreign_keys = ON');
 // Keep a task's position in every project it has visited. The task's current
 // project can change, but these rows preserve its place for a later return.
@@ -130,7 +133,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(res, 404, { error: 'Project not found' });
-    return sendJson(res, 200, database.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+    return sendJson(res, 200, database.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
       FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
       WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.sort_order), t.id`).all(projectId));
   }
@@ -201,6 +204,11 @@ const server = createServer(async (req, res) => {
       if (dueDate && !isValidDate(dueDate)) return sendJson(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
       database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, taskId);
       return sendJson(res, 200, { id: taskId, dueDate: dueDate || null });
+    }
+    if (Object.hasOwn(data, 'notes')) {
+      if (typeof data.notes !== 'string') return sendJson(res, 400, { error: 'Task notes must be text' });
+      database.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(data.notes, taskId);
+      return sendJson(res, 200, { id: taskId, notes: data.notes });
     }
     if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
     database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, taskId);
