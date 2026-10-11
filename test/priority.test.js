@@ -64,7 +64,7 @@ test('priorities migrate, remain independent and persist with archive protection
     assert.match(await html('/'), /1\/2 completed/);
     await post('/projects/1/archive');
     text = await html('/projects/1');
-    assert.equal((text.match(/name="priority" disabled/g) || []).length, 2);
+    assert.equal((text.match(/id="task-priority-\d+" name="priority" disabled/g) || []).length, 2);
     assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
     await stop();
     await start();

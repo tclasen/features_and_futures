@@ -21,6 +21,10 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
 
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
+
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
@@ -114,6 +118,13 @@ ${error ? `<p role="alert">${escape(error)}</p>` : ''}
 <label for="new-project-name">New project name</label>
 <div class="create"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
 </form>
+<form method="post" action="/projects/${project.id}/default-priority">
+<input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
+<label for="default-task-priority">Default task priority</label>
+<select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+${['Low', 'Normal', 'High'].map(option => `<option${project.default_priority === option ? ' selected' : ''}>${option}</option>`).join('')}
+</select></form>
 <form class="task-create" method="post" action="/projects/${project.id}/tasks">
 <input type="hidden" name="filter" value="${filter}">
 <input type="hidden" name="priorityFilter" value="${priority}">
@@ -191,7 +202,7 @@ const server = http.createServer(async (req, res) => {
     }
     const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(url.pathname);
     if (req.method === 'POST' && renameMatch) {
-      const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(renameMatch[1]);
+      const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(renameMatch[1]);
       if (project) {
         if (project.archived) {
           sendHtml(res, 403, page('Archived project', '<h1>Archived project</h1><p>Archived projects cannot be changed.</p>'));
@@ -211,6 +222,26 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
+    const defaultMatch = /^\/projects\/(\d+)\/default-priority$/.exec(url.pathname);
+    if (req.method === 'POST' && defaultMatch) {
+      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(defaultMatch[1]);
+      if (project) {
+        if (project.archived) {
+          sendHtml(res, 403, page('Archived project', '<h1>Archived project</h1><p>Archived projects cannot be changed.</p>'));
+          return;
+        }
+        const body = await formBody(req);
+        const priority = body.get('priority');
+        if (!['Low', 'Normal', 'High'].includes(priority)) {
+          sendHtml(res, 400, page('Invalid priority', '<p role="alert">Invalid task priority</p>'));
+          return;
+        }
+        db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(priority, project.id);
+        res.writeHead(303, { Location: projectLocation(project.id, taskFilter(body.get('filter')), priorityFilter(body.get('priorityFilter'))) });
+        res.end();
+        return;
+      }
+    }
     const archiveMatch = /^\/projects\/(\d+)\/(archive|restore)$/.exec(url.pathname);
     if (req.method === 'POST' && archiveMatch) {
       const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?')
@@ -223,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     }
     const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)(\/(?:rename|priority))?)?$/.exec(url.pathname);
     if (req.method === 'POST' && taskMatch) {
-      const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(taskMatch[1]);
+      const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(taskMatch[1]);
       if (project) {
         if (project.archived) {
           sendHtml(res, 403, page('Archived project', '<h1>Archived project</h1><p>Archived projects cannot be changed.</p>'));
@@ -269,7 +300,7 @@ const server = http.createServer(async (req, res) => {
             projectPage(res, project, filter, 'Task title is required', selectedPriority);
             return;
           }
-          db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(project.id, title);
+          db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(project.id, title, project.default_priority);
         }
         res.writeHead(303, { Location: projectLocation(project.id, filter, selectedPriority) });
         res.end();
@@ -278,7 +309,7 @@ const server = http.createServer(async (req, res) => {
     }
     const match = /^\/projects\/(\d+)$/.exec(url.pathname);
     if (req.method === 'GET' && match) {
-      const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(match[1]);
+      const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(match[1]);
       if (project) {
         projectPage(res, project, taskFilter(url.searchParams.get('filter')), '', priorityFilter(url.searchParams.get('priorityFilter')));
         return;

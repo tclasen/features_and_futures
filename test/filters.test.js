@@ -53,7 +53,7 @@ test('combined filters preserve selections through edits, errors, archives and r
     assert.deepEqual(rows(text), ['Renamed']);
     assert.equal(selected(text, 'task-filter'), 'Open');
     assert.equal(selected(text, 'priority-filter'), 'High');
-    assert.equal((text.match(/name="priorityFilter" value="High"/g) || []).length, 5);
+    assert.equal((text.match(/name="priorityFilter" value="High"/g) || []).length, 6);
     for (const [path, input, message] of [
       ['/projects/1/tasks/1/rename', { title: ' ' }, 'Task title is required'],
       ['/projects/1/tasks', { title: ' ' }, 'Task title is required'],
