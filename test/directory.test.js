@@ -139,3 +139,90 @@ test('directory is read-only, intersects all filters, preserves range on errors,
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('directory bulk completion preserves fields and filters, excludes archived/deleted tasks, and persists', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-bulk-'));
+  const dbPath = join(dir, 'db.sqlite');
+  let server;
+  let db;
+  try {
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = (path, data) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(data), redirect: 'manual',
+    });
+    const task = (title, fields = {}) => ({ title, completed: false, priority: 'High',
+      dueDate: '2024-02-29', notes: '  literal <b>雪</b>\n ', deleted: false, ...fields });
+    for (const [name, archived, tasks] of [
+      ['First', false, [task('Match one'), task('Match done', { completed: true }),
+        task('Match deleted', { deleted: true }), task('Other title'),
+        task('Match low', { priority: 'Low' }), task('Match undated', { dueDate: '' })]],
+      ['Second', false, [task('Match two')]],
+      ['Archived', true, [task('Match archived')]],
+    ]) {
+      const response = await post('/projects/import', { importedName: name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks },
+      }) });
+      assert.equal(response.status, 303);
+    }
+    db = new DatabaseSync(dbPath);
+    const tasks = () => db.prepare('SELECT * FROM tasks ORDER BY id').all().map(row => ({ ...row }));
+    const positions = () => db.prepare('SELECT * FROM task_positions ORDER BY project_id, position').all();
+    const before = tasks();
+    const beforePositions = positions();
+    const selection = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      dueFrom: '2024-02-29', dueThrough: '2024-02-29', search: ' match ' };
+    const initial = await get(`/directory?${new URLSearchParams(selection)}`);
+    assert.deepEqual(titles(initial), ['Match one', 'Match two']);
+    assert.match(initial, /value="1">Complete visible tasks/);
+    assert.match(initial, /value="0" disabled>Reopen visible tasks/);
+    assert.doesNotMatch(initial, /No matching tasks/);
+    const completed = await post('/directory/completion', { ...selection, completed: '1' });
+    assert.equal(completed.status, 303);
+    const location = completed.headers.get('location');
+    const params = new URL(location, server.url).searchParams;
+    for (const [key, value] of Object.entries(selection)) assert.equal(params.get(key), value.trim());
+    const empty = await get(location);
+    assert.deepEqual(titles(empty), []);
+    assert.match(empty, /role="status">No matching tasks/);
+    assert.match(empty, /value="1" disabled>Complete visible tasks/);
+    assert.match(empty, /value="0" disabled>Reopen visible tasks/);
+    assert.deepEqual(tasks(), before.map(row => ['Match one', 'Match two'].includes(row.title)
+      ? { ...row, completed: 1 } : row));
+    assert.deepEqual(positions(), beforePositions);
+    assert.match(await get('/'), /data-testid="project-summary">2\/5 completed/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/1 completed/);
+    const afterComplete = tasks();
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(tasks(), afterComplete);
+    assert.deepEqual(titles(await get(location)), []);
+    const completedSelection = { ...selection, filter: 'Completed' };
+    const reopened = await post('/directory/completion', { ...completedSelection, completed: '0' });
+    const reopenedHtml = await get(reopened.headers.get('location'));
+    assert.match(reopenedHtml, /<option selected>Completed/);
+    assert.match(reopenedHtml, /No matching tasks/);
+    assert.deepEqual(tasks(), before.map(row => row.title === 'Match done' ? { ...row, completed: 0 } : row));
+    const afterReopen = tasks();
+    for (const restricted of [{ scope: 'Archived', filter: 'All' }, { scope: 'Active', filter: 'Deleted' }]) {
+      const html = await get(`/directory?${new URLSearchParams(restricted)}`);
+      assert.match(html, /value="1" disabled>Complete visible tasks/);
+      assert.match(html, /value="0" disabled>Reopen visible tasks/);
+      for (const completed of ['0', '1']) await post('/directory/completion', { ...restricted, completed });
+      assert.deepEqual(tasks(), afterReopen);
+    }
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.equal(tasks()[0].completed, 0);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(tasks(), afterReopen);
+    assert.deepEqual(positions().filter(row => row.project_id === 1), beforePositions.filter(row => row.project_id === 1));
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(tasks(), afterReopen);
+  } finally {
+    db?.close();
+    if (server) await server.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
