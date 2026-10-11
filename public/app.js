@@ -789,6 +789,9 @@ async function showDirectory() {
   reopenVisible.type = 'button';
   bulkActions.append(completeVisible, reopenVisible);
   app.append(bulkActions);
+  const directorySummary = element('p', { testId: 'directory-summary' });
+  directorySummary.hidden = true;
+  app.append(directorySummary);
   const results = element('section', { className: 'task-list' });
   app.append(results);
   const emptyResult = element('p', { text: 'No matching tasks', className: 'empty-result' });
@@ -806,6 +809,7 @@ async function showDirectory() {
     const currentRequest = ++requestVersion;
     loading = true;
     emptyResult.hidden = true;
+    directorySummary.hidden = true;
     completeVisible.disabled = true;
     reopenVisible.disabled = true;
     const response = await fetch('/api/directory');
@@ -852,6 +856,9 @@ async function showDirectory() {
         .map(({ task }) => task);
     }
     visibleRows = rows;
+    const completedCount = rows.filter((task) => task.completed).length;
+    directorySummary.textContent = `${completedCount}/${rows.length} completed`;
+    directorySummary.hidden = false;
     const eligible = scope.value === 'Active' && completion.value !== 'Deleted'
       ? rows.filter((task) => !task.deleted && !task.archived)
       : [];
