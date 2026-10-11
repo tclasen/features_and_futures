@@ -32,6 +32,17 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'sort_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  const tasksToOrder = db.prepare('SELECT id, project_id AS projectId FROM tasks ORDER BY project_id, id').all();
+  const nextOrder = new Map();
+  const setOrder = db.prepare('UPDATE tasks SET sort_order = ? WHERE id = ?');
+  for (const task of tasksToOrder) {
+    const order = nextOrder.get(task.projectId) || 0;
+    setOrder.run(order, task.id);
+    nextOrder.set(task.projectId, order + 1);
+  }
+}
 db.exec('PRAGMA foreign_keys = ON');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
@@ -41,7 +52,7 @@ const findProject = db.prepare('SELECT id, name, archived, default_priority AS d
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order ASC, id ASC');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -336,6 +347,7 @@ const page = `<!doctype html>
       tasksList.style.margin = '0';
       tasksList.style.padding = '0';
       let tasks = await request('/api/projects/' + encodeURIComponent(id) + '/tasks');
+      let activeProjects = await request('/api/projects?filter=active');
       function drawTasks() {
         tasksList.replaceChildren();
         const visible = tasks.filter(task =>
@@ -434,7 +446,31 @@ const page = `<!doctype html>
               error.hidden = false;
             }
           });
-          row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate);
+          const destination = document.createElement('select');
+          destination.setAttribute('aria-label', 'Destination project');
+          const eligible = activeProjects.filter(item => Number(item.id) !== Number(id));
+          for (const item of eligible) {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            destination.append(option);
+          }
+          const moveButton = document.createElement('button');
+          moveButton.type = 'button';
+          moveButton.textContent = 'Move task';
+          destination.disabled = Boolean(project.archived) || eligible.length === 0;
+          moveButton.disabled = Boolean(project.archived) || eligible.length === 0;
+          moveButton.addEventListener('click', async () => {
+            try {
+              await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id) + '/move', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: Number(destination.value) }) });
+              tasks = tasks.filter(item => item.id !== task.id);
+              drawTasks();
+            } catch {
+              error.textContent = 'Unable to move task';
+              error.hidden = false;
+            }
+          });
+          row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton);
           tasksList.append(row);
         }
       }
@@ -582,6 +618,27 @@ const server = http.createServer(async (request, response) => {
     } catch { sendJson(response, 400, { error: 'Invalid request' }); }
     return;
   }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (request.method === 'PATCH' && moveMatch) {
+    try {
+      const sourceId = Number(moveMatch[1]);
+      const taskId = Number(moveMatch[2]);
+      const data = await readBody(request);
+      const destinationId = Number(data.destinationProjectId);
+      const source = findProject.get(sourceId);
+      const destination = findProject.get(destinationId);
+      const task = findTask.get(taskId, sourceId);
+      if (!source || !destination || !task) { sendJson(response, 404, { error: 'Project or task not found' }); return; }
+      if (source.archived || destination.archived || sourceId === destinationId) {
+        sendJson(response, 409, { error: 'Tasks can only move between different active projects' });
+        return;
+      }
+      const next = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+      db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, next, taskId, sourceId);
+      sendJson(response, 200, { ...task, projectId: destinationId });
+    } catch { sendJson(response, 400, { error: 'Invalid request' }); }
+    return;
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
@@ -603,7 +660,8 @@ const server = http.createServer(async (request, response) => {
         }
         const project = findProject.get(projectId);
         if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot create tasks' }); return; }
-        const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.defaultPriority || 'Normal');
+        const order = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+        const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.defaultPriority || 'Normal', order);
         sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority || 'Normal', dueDate: null });
       } catch { sendJson(response, 400, { error: 'Invalid request' }); }
       return;
