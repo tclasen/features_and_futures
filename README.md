@@ -150,7 +150,11 @@ range remain selected; results and project summaries reflect the saved completio
 state. Each action is disabled when no visible task needs that change, and both
 are disabled for Archived scope or Deleted tasks. Other fields and remembered
 positions remain unchanged. Empty resolved results show `No matching tasks`;
-the announcement is hidden while a new directory page is loading.
+the announcement is hidden while directory results are loading. Directory filters
+and bulk actions refresh in place, temporarily disabling controls while pending
+so subsequent actions use the latest saved result. The URL retains the resolved
+filters for reloads, without starting a competing page navigation. Failed updates
+show an alert and restore controls; validation retains the prior applied result.
 
 Use `Directory order` to view results in Original, Priority (High first), Due date
 (earliest first, undated last), or Title order. Title ordering folds only ASCII

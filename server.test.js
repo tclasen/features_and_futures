@@ -8,6 +8,135 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runInNewContext } from 'node:vm';
 
+test('directory updates resolve without navigation, guard pending actions, and retain reloadable results', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-updates-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const post = (path, fields) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Owner' });
+    await post('/projects/1/tasks', { title: 'Matching' });
+    await post('/projects/1/tasks', { title: 'Outside' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2028-02-29' });
+    const fields = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      dueFrom: '2028-02-29', dueThrough: '2028-02-29', searchQuery: 'matching',
+      order: 'Title', visiblePriority: 'Normal' };
+    const selectedUrl = app.url + '/directory?' + new URLSearchParams(fields);
+    let pageUrl = selectedUrl;
+    const scriptResponse = await fetch(app.url + '/directory.js');
+    assert.match(scriptResponse.headers.get('content-type'), /text\/javascript/);
+    const script = await scriptResponse.text();
+    const listeners = {};
+    const controls = [{ disabled: false }, { disabled: true }];
+    const priorityFields = [{ value: 'Normal' }, { value: 'Normal' }];
+    const empty = { hidden: false };
+    let errorAlert;
+    const main = {
+      innerHTML: '',
+      querySelectorAll() { return controls; },
+      querySelector() { return errorAlert; },
+      setAttribute(name, value) { this[name] = value; },
+      removeAttribute(name) { delete this[name]; },
+      prepend(alert) { errorAlert = alert; },
+    };
+    let requests = 0;
+    let release;
+    let fail = false;
+    const context = {
+      document: {
+        addEventListener(type, listener) { listeners[type] = listener; },
+        querySelector() { return main; },
+        querySelectorAll() { return priorityFields; },
+        getElementById() { return empty; },
+        createElement() {
+          return { setAttribute(name, value) { this[name] = value; },
+            remove() { errorAlert = undefined; } };
+        },
+      },
+      URL, URLSearchParams,
+      location: { href: selectedUrl },
+      history: { replaceState(_state, _unused, url) { pageUrl = url; } },
+      FormData: class { constructor(form) { return Object.entries(form.fields); } },
+      DOMParser: class {
+        parseFromString(html) {
+          const content = html.match(/<main>([\s\S]*)<\/main>/)?.[1];
+          return { querySelector() { return content === undefined ? null : { innerHTML: content }; } };
+        }
+      },
+      fetch: async (url, options) => {
+        requests++;
+        assert.equal(main['aria-busy'], 'true');
+        assert.ok(controls.every((control) => control.disabled));
+        assert.equal(empty.hidden, true, 'no empty announcement while loading');
+        if (release === undefined) await new Promise((resolve) => { release = resolve; });
+        if (fail) throw new Error('offline');
+        return fetch(url, options);
+      },
+    };
+    runInNewContext(script, context);
+    let prevented = false;
+    const submit = (path, method, values, button = null) => listeners.submit({
+      target: { action: app.url + path, method, fields: values }, submitter: button,
+      preventDefault() { prevented = true; },
+    });
+    const pending = submit('/directory/completion', 'post', fields, { name: 'completed', value: '1' });
+    assert.ok(prevented);
+    await submit('/directory/completion', 'post', fields, { name: 'completed', value: '1' });
+    assert.equal(requests, 1, 'a pending update cannot submit a second action');
+    release();
+    await pending;
+    assert.equal(main['aria-busy'], undefined);
+    assert.match(main.innerHTML, /directory-summary">0\/0 completed/);
+    assert.match(main.innerHTML, /No matching tasks/);
+    assert.doesNotMatch(main.innerHTML, /data-testid="directory-owner-row"/);
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== 'Active' && value !== 'Normal') assert.equal(new URL(pageUrl).searchParams.get(key), value);
+    }
+    const tasks = (await (await fetch(app.url + '/projects/1/download')).json()).project.tasks;
+    assert.deepEqual(tasks.map((task) => task.completed), [true, false]);
+    // Reloading is an ordinary GET, not a repeated bulk mutation. Real restart
+    // confirms the URL and saved result remain usable independently of the client.
+    const reloadPath = new URL(pageUrl).pathname + new URL(pageUrl).search;
+    await app.stop();
+    app = await launch(dbPath);
+    assert.match(await (await fetch(app.url + reloadPath)).text(), /No matching tasks/);
+
+    await submit('/directory', 'get', { ...fields, filter: 'Completed' });
+    assert.match(main.innerHTML, /data-testid="directory-task-title"[^>]*>Matching/);
+    assert.match(main.innerHTML, /directory-summary">1\/1 completed/);
+    assert.doesNotMatch(main.innerHTML, /No matching tasks/);
+    const resolvedUrl = pageUrl;
+    await submit('/directory/due-range', 'post', {
+      ...fields, filter: 'Completed', rangeFrom: '2027-02-29', rangeThrough: '',
+    });
+    assert.match(main.innerHTML, /role="alert">Due range must use valid YYYY-MM-DD dates/);
+    assert.match(main.innerHTML, /directory-summary">1\/1 completed/);
+    assert.equal(pageUrl, resolvedUrl, 'validation preserves the applied URL');
+
+    controls[0].disabled = false;
+    fail = true;
+    await submit('/directory/completion', 'post', fields, { name: 'completed', value: '0' });
+    assert.equal(controls[0].disabled, false);
+    assert.equal(controls[1].disabled, true, 'failure restores protected controls');
+    assert.equal(empty.hidden, false);
+    assert.equal(errorAlert.role, 'alert');
+    assert.equal(pageUrl, resolvedUrl);
+    assert.match(errorAlert.textContent, /Could not update task directory/);
+    listeners.change({ target: { id: 'visible-tasks-priority', value: 'Low' } });
+    assert.ok(priorityFields.every((field) => field.value === 'Low'));
+    prevented = false;
+    await submit('/projects/1', 'get', {});
+    assert.equal(prevented, false, 'owner navigation remains normal navigation');
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('directory bulk priority uses the current live intersections and preserves all other data across restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-priority-'));
   const dbPath = join(dir, 'workboard.sqlite');

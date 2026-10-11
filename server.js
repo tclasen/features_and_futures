@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const completionScript = readFileSync(new URL('./completion.js', import.meta.url), 'utf8');
+const directoryScript = readFileSync(new URL('./directory.js', import.meta.url), 'utf8');
 
 const dbPath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(dbPath), { recursive: true });
@@ -407,13 +408,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
         <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
       </div>`).join('') : '<p class="empty" id="directory-empty" role="status">No matching tasks</p>'}
     </section>
-    <script>
-      // The next document announces emptiness only after its results are resolved.
-      document.addEventListener('submit', () => {
-        const empty = document.getElementById('directory-empty');
-        if (empty) empty.hidden = true;
-      });
-    </script>`);
+    <script src="/directory.js" defer></script>`);
 }
 
 function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All', dueDateError = null, range = { from: '', through: '' }, rangeError = '', rangeDraft = range, search = '') {
@@ -594,9 +589,9 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    if (req.method === 'GET' && path === '/completion.js') {
+    if (req.method === 'GET' && ['/completion.js', '/directory.js'].includes(path)) {
       res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(completionScript);
+      res.end(path === '/directory.js' ? directoryScript : completionScript);
     } else if (req.method === 'GET' && path === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
