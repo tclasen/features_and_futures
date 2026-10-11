@@ -36,6 +36,7 @@ const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
@@ -143,6 +144,12 @@ function projectPage(project, filter, error = '') {
               aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}
               onchange="this.form.requestSubmit()">
           </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename-form">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="new-task-title-${task.id}">New task title</label>
+            <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </form>
         </div>`).join('') : '<p class="muted">No tasks to show.</p>'}
     </section>`);
 }
@@ -239,7 +246,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(\/rename)?)?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const project = findProject.get(taskRoute[1]);
       if (project) {
@@ -254,7 +261,17 @@ const server = createServer(async (request, response) => {
         }
         const filter = taskFilter(form.get('filter'));
         if (taskRoute[2]) {
-          const result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskRoute[2], project.id);
+          let result;
+          if (taskRoute[3]) {
+            const title = (form.get('title') ?? '').trim();
+            if (!title) {
+              sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+              return;
+            }
+            result = renameTask.run(title, taskRoute[2], project.id);
+          } else {
+            result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskRoute[2], project.id);
+          }
           if (!result.changes) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;
@@ -302,6 +319,10 @@ const styles = `
   .project-row, .task-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 16px 0; border-top: 1px solid #dce5e8; }
   .project-row span, .task-row span { overflow-wrap: anywhere; min-width: 0; font-weight: 600; }
   .project-row { flex-wrap: wrap; }
+  .task-row { flex-wrap: wrap; }
+  .task-row .task-rename-form { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .task-rename-form label { margin: 0; }
+  .task-rename-form input[type="text"] { flex: 1 1 180px; width: auto; min-width: 0; }
   .project-row form, .task-row form { flex-shrink: 0; }
   button:disabled, input:disabled { cursor: not-allowed; opacity: .6; }
   .alert { color: #a12626; }

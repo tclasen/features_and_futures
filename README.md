@@ -18,4 +18,6 @@ npm test
 
 On an active project page, enter a New project name and select Rename project. Names are trimmed and saved without changing the project URL, creation order, tasks, or completion counts. Blank names show an alert. Archived projects cannot be renamed until restored.
 
-Tests start isolated server processes and remove their temporary database directories after checking validation, creation order, navigation, task filters, project isolation, and restart persistence for both completed and open tasks, database migration, archive/restore, editing protection, completion summaries, and renaming with preserved project identity.
+Each task row provides New task title and Rename task controls. Task titles are trimmed and saved while preserving ownership, creation order, completion state, filter membership, and completion counts. Blank titles show an alert. Archived projects disable task renaming until restored.
+
+Tests start isolated server processes and remove their temporary database directories after checking validation, creation order, navigation, task filters, project isolation, and restart persistence for both completed and open tasks, database migration, archive/restore, editing protection, completion summaries, and project and task renaming with preserved identity.
