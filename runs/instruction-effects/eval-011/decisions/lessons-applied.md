@@ -37,3 +37,5 @@ L055 task016 after016: frozen notice reports ten consecutive identical full fail
 L056 checkpoint014 publication verified:196 independently restorable original archives, zero-finding exact-commit scan, clone cleanup, and392 remote history refs verified ([receipt](../reports/publication-prefix-014.json)). Live later-round snapshots remain explicitly scoped.
 
 L055 repair017 delivery verified: first native request contains full051 failure identity, sentinel evidence and own accepted015 checkpoint identity ([proof](../preflight/repair-observations/task016-b011-attempt017-feedback-delivery.json)). This establishes delivery, not comprehension or implementation cause.
+
+L055 task016 recovery after021 independently verified ([proof](../preflight/repair-observations/recovery-verified-cf374cbe22bb4ebb.json)); own accepted015 commit/tree match. Every original failure remains measured, later acceptance pending.
