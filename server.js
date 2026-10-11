@@ -140,6 +140,7 @@ function projectList(res, error = '', filter = 'Active', query = '', importJson 
     .filter(project => searchMatches(project.name, query));
   sendHtml(res, 200, page('Projects', `<h1>Workboard</h1>
 ${error ? `<p role="alert">${escape(error)}</p>` : ''}
+<form method="get" action="/directory"><button type="submit">Task directory</button></form>
 <form method="post" action="/projects">
 <input type="hidden" name="filter" value="${filter}">
 <input type="hidden" name="search" value="${escape(query)}">
@@ -329,6 +330,63 @@ ${rangeFields(range)}
 ${tasks.length ? '' : '<p>No tasks to show.</p>'}</section>`));
 }
 
+function directoryLocation(scope, filter, priority, range) {
+  return '/directory?' + new URLSearchParams({ scope, filter, priorityFilter: priority,
+    dueFrom: range.from, dueThrough: range.through, search: range.search || '' });
+}
+
+function directoryPage(res, scope, filter, priority, range, error = '') {
+  const tasks = db.prepare(`SELECT t.*, p.name AS project_name FROM projects p
+    JOIN tasks t ON t.project_id = p.id WHERE p.archived = ?
+    ORDER BY p.id, t.position, t.id`).all(scope === 'Archived' ? 1 : 0).filter(task =>
+      Boolean(task.deleted) === (filter === 'Deleted')
+      && (filter !== 'Open' || !task.completed)
+      && (filter !== 'Completed' || Boolean(task.completed))
+      && (priority === 'All' || task.priority === priority)
+      && (!(range.from || range.through) || Boolean(task.due_date))
+      && (!range.from || task.due_date >= range.from)
+      && (!range.through || task.due_date <= range.through)
+      && searchMatches(task.title, range.search || ''));
+  const select = (label, id, name, options, value) => `<label for="${id}">${label}</label>
+<select id="${id}" name="${name}" onchange="this.form.requestSubmit()">${options.map(option => `<option${option === value ? ' selected' : ''}>${option}</option>`).join('')}</select>`;
+  const selections = `<input type="hidden" name="scope" value="${scope}">
+<input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">`;
+  sendHtml(res, 200, page('Task directory', `<h1>Task directory</h1>
+<form method="get" action="/"><button type="submit">Projects</button></form>
+${error ? `<p role="alert">${escape(error)}</p>` : ''}
+<form method="get" action="/directory">
+${rangeFields(range)}
+${select('Project scope', 'project-scope', 'scope', ['Active', 'Archived'], scope)}
+${select('Task filter', 'task-filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'], filter)}
+${select('Priority filter', 'priority-filter', 'priorityFilter', ['All', 'Low', 'Normal', 'High'], priority)}
+</form>
+<form method="get" action="/directory">
+${selections}${rangeFields(range)}
+<input type="hidden" name="applyRange" value="1">
+<label for="due-from">Due from</label><input id="due-from" name="rangeFrom" type="text" value="${escape(range.from)}">
+<label for="due-through">Due through</label><input id="due-through" name="rangeThrough" type="text" value="${escape(range.through)}">
+<button type="submit">Apply due range</button>
+</form>
+<form method="get" action="/directory">
+${selections}
+<input type="hidden" name="dueFrom" value="${escape(range.from)}">
+<input type="hidden" name="dueThrough" value="${escape(range.through)}">
+<label for="directory-search">Directory search</label>
+<input id="directory-search" name="search" type="text" value="${escape(range.search || '')}">
+<button type="submit">Search directory</button>
+</form>
+<section aria-label="Directory tasks">${tasks.map(task => `<div class="task" data-testid="directory-task-row">
+<div data-testid="directory-task-title" style="white-space: pre-wrap">${escape(task.title)}</div>
+<div data-testid="directory-project-name" style="white-space: pre-wrap">${escape(task.project_name)}</div>
+<div data-testid="directory-task-completion">${task.completed ? 'Completed' : 'Open'}</div>
+<div data-testid="directory-task-priority">${escape(task.priority)}</div>
+<div data-testid="directory-task-due-date">${escape(task.due_date)}</div>
+<div data-testid="directory-task-notes" style="white-space: pre-wrap">${escape(task.notes)}</div>
+<form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
+</div>`).join('')}${tasks.length ? '' : '<p>No tasks to show.</p>'}</section>`));
+}
+
 async function formBody(req) {
   const chunks = [];
   let size = 0;
@@ -354,6 +412,28 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/') {
       projectList(res, '', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active', (url.searchParams.get('search') || '').trim());
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/directory') {
+      const scope = url.searchParams.get('scope') === 'Archived' ? 'Archived' : 'Active';
+      const filter = taskFilter(url.searchParams.get('filter'));
+      const priority = priorityFilter(url.searchParams.get('priorityFilter'));
+      const range = dueRange(url.searchParams);
+      let error = '';
+      if (url.searchParams.get('applyRange') === '1') {
+        const requested = { from: (url.searchParams.get('rangeFrom') || '').trim(),
+          through: (url.searchParams.get('rangeThrough') || '').trim(), search: range.search };
+        if ((requested.from && !validDueDate(requested.from)) || (requested.through && !validDueDate(requested.through))) {
+          error = 'Due range must use valid YYYY-MM-DD dates';
+        } else if (requested.from && requested.through && requested.from > requested.through) {
+          error = 'Due from must not be after Due through';
+        } else {
+          res.writeHead(303, { Location: directoryLocation(scope, filter, priority, requested) });
+          res.end();
+          return;
+        }
+      }
+      directoryPage(res, scope, filter, priority, range, error);
       return;
     }
     if (req.method === 'POST' && url.pathname === '/projects') {
