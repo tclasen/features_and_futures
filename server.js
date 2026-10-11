@@ -49,7 +49,7 @@ const server = http.createServer(async (req, res) => {
     const id = decodeURIComponent(exportMatch[1]);
     const project = exportProject.get(id);
     if (!project) return json(404, { error: 'Not found' });
-    return json(200, { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority, tasks: exportTasks.all(id).map(t => ({ title: t.title, completed: Boolean(t.completed), priority: t.priority || 'Normal', dueDate: t.dueDate || '', notes: String(t.notes || '').replace(/\\r\\n?/g, '\\n'), deleted: Boolean(t.deleted) })) } });
+    return json(200, { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority, tasks: exportTasks.all(id).map(t => ({ title: t.title, completed: Boolean(t.completed), priority: t.priority || 'Normal', dueDate: t.dueDate || '', notes: String(t.notes || '').replace(/\r\n?/g, '\n'), deleted: Boolean(t.deleted) })) } });
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') return json(200, getProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
@@ -58,6 +58,34 @@ const server = http.createServer(async (req, res) => {
     if (!getProject.get(id)) return json(404, { error: 'Not found' });
     setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, id);
     return json(200, { status: 'ok' });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/projects/import') {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid project JSON' }); }
+    const invalid = () => json(400, { error: 'Invalid project JSON' });
+    const doc = body?.document;
+    const validDate = value => {
+      if (value === '') return true;
+      const m = typeof value === 'string' && value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!m) return false;
+      const y = +m[1], month = +m[2], day = +m[3], leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+      const lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return y >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= lengths[month - 1];
+    };
+    const pr = doc?.project;
+    if (doc?.format !== 'workboard-project' || doc.version !== 1 || !pr || typeof pr !== 'object' || typeof pr.name !== 'string' || !pr.name.trim() || typeof pr.archived !== 'boolean' || !['Low','Normal','High'].includes(pr.defaultPriority) || !Array.isArray(pr.tasks) || pr.tasks.some(t => !t || typeof t !== 'object' || typeof t.title !== 'string' || !t.title.trim() || typeof t.completed !== 'boolean' || !['Low','Normal','High'].includes(t.priority) || typeof t.dueDate !== 'string' || !validDate(t.dueDate) || typeof t.notes !== 'string' || typeof t.deleted !== 'boolean')) return invalid();
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) return json(400, { error: 'Project name is required' });
+    const id = randomUUID(), now = Date.now();
+    try {
+      db.exec('BEGIN');
+      db.prepare('INSERT INTO projects (id,name,created_at,archived,default_priority) VALUES (?,?,?,?,?)').run(id,name,now,pr.archived ? 1 : 0,pr.defaultPriority);
+      const add = db.prepare('INSERT INTO tasks (id,project_id,title,completed,created_at,priority,due_date,notes,deleted) VALUES (?,?,?,?,?,?,?,?,?)');
+      const pos = db.prepare('INSERT INTO task_project_positions (task_id,project_id,position) VALUES (?,?,?)');
+      pr.tasks.forEach((t,i) => { const taskId=randomUUID(); add.run(taskId,id,t.title,t.completed?1:0,now+i,t.priority,t.dueDate || null,t.notes.replace(/\r\n?/g,'\n'),t.deleted?1:0); pos.run(taskId,id,i+1); });
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    return json(201, { id });
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
