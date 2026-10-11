@@ -139,3 +139,11 @@ original title, owner name, completion, priority, due date and literal notes.
 Directory rows contain no task editing controls. `Open project` opens the owner
 with default project filters, including archived owners; `Projects` returns home.
 Imported and upgraded tasks appear with their saved fields and public defaults.
+
+Use `Complete visible tasks` or `Reopen visible tasks` in the directory to update
+all matching live tasks across active projects. Current filters, search and due
+range remain selected; results and project summaries reflect the saved completion
+state. Each action is disabled when no visible task needs that change, and both
+are disabled for Archived scope or Deleted tasks. Other fields and remembered
+positions remain unchanged. Empty resolved results show `No matching tasks`;
+the announcement is hidden while a new directory page is loading.

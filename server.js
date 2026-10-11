@@ -283,9 +283,14 @@ function matchesTask(task, filter, priority, range, search) {
       (!range.through || task.due_date <= range.through))));
 }
 
-function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range) {
-  const tasks = listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
+function directoryTasks(scope, filter, priority, range, search) {
+  return listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
     .filter((task) => matchesTask(task, filter, priority, range, search));
+}
+
+function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range) {
+  const tasks = directoryTasks(scope, filter, priority, range, search);
+  const bulkDisabled = scope === 'Archived' || filter === 'Deleted';
   const state = `<input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priority}">
@@ -321,6 +326,11 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <label for="directory-search">Directory search</label>
       <div class="fields"><input id="directory-search" name="query" type="text" value="${escapeHtml(search)}"><button type="submit">Search directory</button></div>
     </form>
+    <form class="filter" method="post" action="/directory/completion">
+      ${state}
+      <button type="submit" name="completed" value="1"${bulkDisabled || !tasks.some((task) => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
+      <button type="submit" name="completed" value="0"${bulkDisabled || !tasks.some((task) => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
+    </form>
     <section class="projects" aria-label="Directory tasks">
       ${tasks.length ? tasks.map((task) => `<div class="task" data-testid="directory-task-row">
         <h2 data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</h2>
@@ -330,8 +340,15 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
         <p data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</p>
         <div data-testid="directory-task-notes" style="white-space: pre-wrap; overflow-wrap: anywhere">${escapeHtml(task.notes)}</div>
         <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
-      </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
-    </section>`);
+      </div>`).join('') : '<p class="empty" id="directory-empty" role="status">No matching tasks</p>'}
+    </section>
+    <script>
+      // The next document announces emptiness only after its results are resolved.
+      document.addEventListener('submit', () => {
+        const empty = document.getElementById('directory-empty');
+        if (empty) empty.hidden = true;
+      });
+    </script>`);
 }
 
 function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All', dueDateError = null, range = { from: '', through: '' }, rangeError = '', rangeDraft = range, search = '') {
@@ -520,7 +537,7 @@ const server = http.createServer(async (req, res) => {
       html(res, 200, directoryPage(projectFilter(url.searchParams.get('scope')),
         taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')),
         dueRange(url.searchParams), searchQuery(url.searchParams)));
-    } else if (req.method === 'POST' && ['/directory/search', '/directory/due-range'].includes(path)) {
+    } else if (req.method === 'POST' && ['/directory/search', '/directory/due-range', '/directory/completion'].includes(path)) {
       const form = await readForm(req);
       const scope = projectFilter(form.get('scope'));
       const filter = taskFilter(form.get('filter'));
@@ -529,6 +546,17 @@ const server = http.createServer(async (req, res) => {
       let search = searchQuery(form);
       if (path === '/directory/search') {
         search = (form.get('query') || '').trim();
+      } else if (path === '/directory/completion') {
+        const completed = form.get('completed');
+        if (scope === 'Active' && filter !== 'Deleted' && ['0', '1'].includes(completed)) {
+          transaction(() => {
+            for (const task of directoryTasks(scope, filter, priority, range, search)) {
+              if (task.completed !== Number(completed)) {
+                updateTask.run(Number(completed), task.id, task.project_id);
+              }
+            }
+          });
+        }
       } else {
         const draft = {
           from: (form.get('rangeFrom') || '').trim(),

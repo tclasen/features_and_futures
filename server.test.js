@@ -7,6 +7,122 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('directory bulk completion changes only eligible matching tasks and persists without changing fields or positions', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-bulk-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const snapshot = () => {
+      const db = new DatabaseSync(dbPath);
+      try {
+        return Object.fromEntries(['projects', 'tasks', 'task_positions'].map((table) =>
+          [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map((row) => ({ ...row }))]));
+      } finally { db.close(); }
+    };
+    const task = (title, extra = {}) => ({ title, completed: false, priority: 'High',
+      dueDate: '2024-02-29', notes: '  雪 <b>literal</b>\n trailing  ', deleted: false, ...extra });
+    for (const [name, archived, tasks] of [
+      ['First', false, [task('Match  FIRST'), task('Match completed', { completed: true }),
+        task('Match deleted', { deleted: true }), task('Match low', { priority: 'Low' }),
+        task('Match undated', { dueDate: '' }), task('Match outside', { dueDate: '2024-03-01' }), task('Other title')]],
+      ['Second', false, [task('Match\t SECOND')]],
+      ['Archived', true, [task('Match archived')]],
+    ]) {
+      const document = { format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks } };
+      assert.equal((await post('/projects/import', { name, json: JSON.stringify(document) })).status, 303);
+    }
+    // Establish an additional remembered position before bulk changes.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    const before = snapshot();
+    const selected = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      dueFrom: '2024-02-29', dueThrough: '2024-02-29', searchQuery: '  MATCH  ' };
+    const pathFor = (fields) => '/directory?' + new URLSearchParams(fields);
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title"[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
+    const buttons = (html, completeDisabled, reopenDisabled) => {
+      assert.match(html, new RegExp('value="1"' + (completeDisabled ? ' disabled' : '') + '>Complete visible tasks'));
+      assert.match(html, new RegExp('value="0"' + (reopenDisabled ? ' disabled' : '') + '>Reopen visible tasks'));
+    };
+    const initial = await get(pathFor(selected));
+    assert.deepEqual(titles(initial), ['Match  FIRST', 'Match\t SECOND']);
+    buttons(initial, false, true);
+    assert.doesNotMatch(initial, /No matching tasks/);
+    const completed = await post('/directory/completion', { ...selected, completed: '1' });
+    assert.equal(completed.status, 303);
+    const location = new URL(completed.headers.get('location'), app.url);
+    for (const key of ['filter', 'priorityFilter', 'dueFrom', 'dueThrough']) {
+      assert.equal(location.searchParams.get(key), selected[key]);
+    }
+    assert.equal(location.searchParams.get('searchQuery'), 'MATCH');
+    const empty = await get(location.pathname + location.search);
+    assert.deepEqual(titles(empty), []);
+    assert.match(empty, /role="status">No matching tasks<\/p>/);
+    buttons(empty, true, true);
+    const expected = structuredClone(before);
+    expected.tasks[0].completed = 1;
+    expected.tasks[7].completed = 1;
+    assert.deepEqual(snapshot(), expected);
+    const home = await get('/');
+    assert.match(home, /data-testid="project-summary">2\/6 completed/);
+    assert.match(home, /data-testid="project-summary">1\/1 completed/);
+    const completedView = { ...selected, filter: 'Completed' };
+    buttons(await get(pathFor(completedView)), true, false);
+    buttons(await get(pathFor({ ...selected, filter: 'All' })), true, false);
+    // No-op actions and direct requests against protected scopes leave all tables unchanged.
+    for (const fields of [
+      { ...selected, completed: '1' },
+      { ...selected, scope: 'Archived', completed: '1' },
+      { ...selected, filter: 'Deleted', completed: '1' },
+      { ...selected, completed: 'invalid' },
+    ]) {
+      await post('/directory/completion', fields);
+      assert.deepEqual(snapshot(), expected);
+    }
+    buttons(await get('/directory?scope=Archived'), true, true);
+    buttons(await get('/directory?filter=Deleted'), true, true);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(snapshot(), expected);
+    assert.deepEqual(titles(await get(pathFor(selected))), []);
+    assert.deepEqual(titles(await get(pathFor(completedView))), ['Match  FIRST', 'Match completed', 'Match\t SECOND']);
+    // Later movement preserves the bulk state and every portable field.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    const moved = snapshot().tasks[0];
+    assert.equal(moved.completed, 1);
+    assert.deepEqual({ ...moved, project_id: before.tasks[0].project_id, position: before.tasks[0].position }, expected.tasks[0]);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(snapshot(), expected);
+    const reopened = await post('/directory/completion', { ...completedView, completed: '0' });
+    const reopenLocation = new URL(reopened.headers.get('location'), app.url);
+    assert.equal(reopenLocation.searchParams.get('filter'), 'Completed');
+    const reopenedPage = await get(reopenLocation.pathname + reopenLocation.search);
+    assert.deepEqual(titles(reopenedPage), []);
+    assert.match(reopenedPage, /No matching tasks/);
+    const reopenedState = structuredClone(before);
+    reopenedState.tasks[1].completed = 0;
+    assert.deepEqual(snapshot(), reopenedState);
+    buttons(await get(pathFor({ ...selected, filter: 'All' })), false, true);
+    assert.deepEqual(titles(await get(pathFor(selected))), ['Match  FIRST', 'Match completed', 'Match\t SECOND']);
+    assert.match(await get('/'), /data-testid="project-summary">0\/6 completed/);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(snapshot(), reopenedState);
+    assert.match(await get(pathFor(completedView)), /No matching tasks/);
+    // Both actions are available for a mixed matching result set.
+    await post('/projects/1/tasks/1', { completed: '1' });
+    buttons(await get(pathFor({ ...selected, filter: 'All' })), false, false);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('notes migrate without changing existing data and survive edits, moves, archives, and restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
   const dbPath = join(dir, 'workboard.sqlite');
