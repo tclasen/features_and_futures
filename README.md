@@ -170,3 +170,15 @@ document properties cannot overwrite existing projects or task positions.
 Checks cover every required field and type, invalid later tasks and calendar dates,
 large Unicode notes, independent copies, deleted/archived restrictions, remembered
 positions after moves and returns, and persistence across server restarts.
+
+Task directory on the home page opens `/directory`, a read-only view of tasks across
+projects. Each opening starts with active projects, all live tasks, all priorities,
+and empty due boundaries and title search. Project scope, completion/deletion,
+priority, inclusive due range, and normalized title search intersect while retaining
+each other's applied values. Invalid ranges preserve the last applied range.
+Rows display original titles and owner names, completion, priority, due dates, and
+literal notes, ordered by project creation and remembered task position. Open project
+opens the owner with its usual default filters; Projects returns home. Viewing and
+filtering never modify stored data. Directory checks cover filter intersections,
+deleted and archived reading, literal fields, navigation defaults, migration,
+imported tasks, movement/return order, unchanged database records, and restarts.

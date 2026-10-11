@@ -1,4 +1,4 @@
-import { validDueDate } from './dates.js';
+import { matchesSearch, matchesTask, dueRangeError } from './filters.js';
 
 const projectsView = document.querySelector('#projects-view');
 const projectView = document.querySelector('#project-view');
@@ -39,12 +39,6 @@ let appliedDueThrough = '';
 let appliedProjectQuery = '';
 let appliedTaskQuery = '';
 
-function matchesSearch(text, query) {
-  const normalize = value => value.replace(/[ \t]+/g, ' ')
-    .replace(/[A-Z]/g, letter => letter.toLowerCase());
-  return normalize(text).includes(normalize(query));
-}
-
 projectSearchForm.addEventListener('submit', event => {
   event.preventDefault();
   appliedProjectQuery = projectSearch.value.trim();
@@ -63,12 +57,7 @@ dueRangeForm.addEventListener('submit', event => {
   event.preventDefault();
   const from = dueFrom.value.trim();
   const through = dueThrough.value.trim();
-  let error = '';
-  if (!validDueDate(from) || !validDueDate(through)) {
-    error = 'Due range must use valid YYYY-MM-DD dates';
-  } else if (from && through && from > through) {
-    error = 'Due from must not be after Due through';
-  }
+  const error = dueRangeError(from, through);
   dueRangeAlert.textContent = error;
   dueRangeAlert.hidden = !error;
   if (error) return;
@@ -205,17 +194,9 @@ function showTaskAlert(message) {
 function renderTasks() {
   taskList.replaceChildren();
   for (const task of tasks) {
-    if (Boolean(task.deleted) !== (taskFilter.value === 'deleted')) continue;
+    if (!matchesTask(task, taskFilter.value, priorityFilter.value,
+      appliedDueFrom, appliedDueThrough, appliedTaskQuery)) continue;
     const readOnly = archived || Boolean(task.deleted);
-    if (!matchesSearch(task.title, appliedTaskQuery)) continue;
-    if (taskFilter.value === 'open' && task.completed) continue;
-    if (taskFilter.value === 'completed' && !task.completed) continue;
-    if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
-    if (appliedDueFrom || appliedDueThrough) {
-      if (!task.due_date) continue;
-      if (appliedDueFrom && task.due_date < appliedDueFrom) continue;
-      if (appliedDueThrough && task.due_date > appliedDueThrough) continue;
-    }
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'task-row';
@@ -531,6 +512,11 @@ document.querySelector('#download-project').addEventListener('click', () => {
 });
 
 async function initialize() {
+  if (window.location.pathname === '/directory') {
+    projectsView.hidden = true;
+    projectView.hidden = true;
+    return;
+  }
   const match = window.location.pathname.match(/^\/projects\/([^/]+)$/);
   if (match) {
     projectsView.hidden = true;
@@ -572,5 +558,9 @@ async function initialize() {
     }
   }
 }
+
+document.querySelector('#task-directory').addEventListener('click', () => {
+  window.location.href = '/directory';
+});
 
 initialize();

@@ -5,11 +5,14 @@ import { runInNewContext } from 'node:vm';
 
 // Inline the shared module when running browser code in the dependency-free DOM harness.
 async function appSource() {
-  const [dates, app] = await Promise.all([
+  const [dates, filters, app] = await Promise.all([
     readFile(new URL('../public/dates.js', import.meta.url), 'utf8'),
+    readFile(new URL('../public/filters.js', import.meta.url), 'utf8'),
     readFile(new URL('../public/app.js', import.meta.url), 'utf8'),
   ]);
-  return dates.replace('export function', 'function') + app.replace(/^import .*;\n/, '');
+  return dates.replace('export function', 'function')
+    + filters.replace(/^import .*;\n/, '').replaceAll('export function', 'function')
+    + app.replace(/^import .*;\n/, '');
 }
 
 // Only the DOM operations used by the app are needed for these interaction checks.
@@ -1412,4 +1415,130 @@ test('project download stays available with archived or empty filtered views and
     assert.equal(element('#task-search').value, 'missing');
     assert.deepEqual(writes, []);
   }
+});
+
+async function directoryApp(tasks) {
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  const [dates, filters, directory] = await Promise.all([
+    readFile(new URL('../public/dates.js', import.meta.url), 'utf8'),
+    readFile(new URL('../public/filters.js', import.meta.url), 'utf8'),
+    readFile(new URL('../public/directory.js', import.meta.url), 'utf8'),
+  ]);
+  const location = { pathname: '/directory' };
+  const requests = [];
+  await runInNewContext(dates.replace('export function', 'function')
+    + filters.replace(/^import .*;\n/, '').replaceAll('export function', 'function')
+    + directory.replace(/^import .*;\n/, ''), {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location },
+    fetch: async (path, options) => {
+      requests.push({ path, options });
+      return { ok: true, json: async () => structuredClone(tasks) };
+    },
+  });
+  return { element, location, requests };
+}
+
+test('directory intersects read-only filters, preserves invalid ranges, literal fields, and navigation defaults', async () => {
+  const notes = '  <script>literal</script>\n\t日本語 & café  \n';
+  const base = { completed: false, deleted: false, priority: 'High', due_date: '2000-02-29',
+    notes, archived: false, project_id: 'a', project_name: 'Owner  name' };
+  const tasks = [
+    { ...base, id: '1', title: 'Alpha  \t TASK' },
+    { ...base, id: '2', title: 'alpha task', completed: true },
+    { ...base, id: '3', title: 'Other', notes: 'alpha task' },
+    { ...base, id: '4', title: 'Alpha undated', due_date: '' },
+    { ...base, id: '5', title: 'alpha task deleted', deleted: true },
+    { ...base, id: '6', title: 'Alpha task low', priority: 'Low' },
+    { ...base, id: '7', title: 'Alpha task archived', archived: true, project_id: 'b' },
+    { ...base, id: '8', title: 'Alpha task archived deleted', archived: true, deleted: true, project_id: 'b' },
+  ];
+  const before = structuredClone(tasks);
+  const { element, location, requests } = await directoryApp(tasks);
+  const rows = () => element('#directory-list').children;
+  const titles = () => rows().map(row => row.children[0].textContent);
+  const change = async (id, value) => {
+    element('#directory-' + id).value = value;
+    await element('#directory-' + id).dispatch('change');
+  };
+  const range = async (from, through) => {
+    element('#directory-from').value = from;
+    element('#directory-through').value = through;
+    await element('#directory-range-form').dispatch('submit');
+  };
+  const search = async value => {
+    element('#directory-search').value = value;
+    await element('#directory-search-form').dispatch('submit');
+  };
+  assert.equal(element('#directory-view').hidden, false);
+  assert.equal(element('#projects-view').hidden, true);
+  assert.deepEqual(titles(), tasks.filter(t => !t.archived && !t.deleted).map(t => t.title));
+  assert.deepEqual(rows()[0].children.slice(0, 6).map(field => [field.dataset.testid, field.textContent]), [
+    ['directory-task-title', tasks[0].title], ['directory-project-name', base.project_name],
+    ['directory-task-completion', 'Open'], ['directory-task-priority', 'High'],
+    ['directory-task-due-date', '2000-02-29'], ['directory-task-notes', notes],
+  ]);
+  assert.equal(rows()[0].children.length, 7); // Six plain text fields and navigation only.
+  await search(' \tALPHA\t  TASK\n');
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title, tasks[5].title]);
+  await change('priority', 'High');
+  await change('completion', 'open');
+  await range(' 2000-02-29 ', '2000-02-29');
+  assert.deepEqual(titles(), [tasks[0].title]);
+  for (const invalid of [['1900-02-29', ''], ['0000-01-01', ''], ['2000-03-01', '2000-02-29']]) {
+    await range(...invalid);
+    assert.equal(element('#directory-range-alert').hidden, false);
+    assert.deepEqual(titles(), [tasks[0].title]);
+  }
+  assert.equal(element('#directory-range-alert').textContent, 'Due from must not be after Due through');
+  await change('completion', 'completed');
+  assert.deepEqual(titles(), [tasks[1].title]);
+  await change('completion', 'deleted');
+  assert.deepEqual(titles(), [tasks[4].title]);
+  await change('scope', 'archived');
+  assert.deepEqual(titles(), [tasks[7].title]);
+  await rows()[0].children[6].dispatch('click');
+  assert.equal(location.href, '/projects/b');
+  await change('completion', 'all');
+  assert.deepEqual(titles(), [tasks[6].title]);
+  await range('', '');
+  await search('owner name');
+  assert.deepEqual(titles(), []);
+  await search('');
+  assert.deepEqual(titles(), [tasks[6].title]);
+  await element('#directory-back').dispatch('click');
+  assert.equal(location.href, '/');
+  assert.deepEqual(tasks, before);
+  assert.deepEqual(requests, [{ path: '/api/directory', options: undefined }]);
+  const fresh = await directoryApp(tasks);
+  assert.equal(fresh.element('#directory-scope').value, 'active');
+  assert.equal(fresh.element('#directory-completion').value, 'all');
+  assert.equal(fresh.element('#directory-priority').value, 'all');
+  for (const id of ['from', 'through', 'search']) assert.equal(fresh.element('#directory-' + id).value, '');
+  const home = await searchApp('/', []);
+  await home.element('#task-directory').dispatch('click');
+  assert.equal(home.location.href, '/directory');
+});
+
+test('directory markup labels its ordered filter options and plain-text fields preserve whitespace', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const [id, label, options] of [
+    ['scope', 'Project scope', ['Active', 'Archived']],
+    ['completion', 'Task filter', ['All', 'Open', 'Completed', 'Deleted']],
+    ['priority', 'Priority filter', ['All', 'Low', 'Normal', 'High']],
+  ]) {
+    assert.ok(html.includes(`<label for="directory-${id}">${label}</label>`));
+    const select = html.match(new RegExp(`<select id="directory-${id}">([\\s\\S]*?)</select>`))[1];
+    assert.deepEqual([...select.matchAll(/<option[^>]*>([^<]+)<\/option>/g)].map(match => match[1]), options);
+  }
+  for (const [id, label] of [['from', 'Due from'], ['through', 'Due through'], ['search', 'Directory search']]) {
+    assert.ok(html.includes(`<label for="directory-${id}">${label}</label>`));
+    assert.ok(html.includes(`<input id="directory-${id}" type="text"`));
+  }
+  const css = await readFile(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.directory-row div\s*\{[^}]*white-space: pre-wrap/);
 });

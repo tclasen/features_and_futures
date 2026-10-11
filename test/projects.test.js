@@ -1050,3 +1050,76 @@ test('portable exports include all current tasks in remembered order without cha
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory reads upgraded and imported tasks in owner and remembered order without mutations', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'directory-'));
+  const databasePath = resolve(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`CREATE TABLE projects (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, name TEXT NOT NULL
+    ); INSERT INTO projects (id, name) VALUES ('a', 'Original owner');
+    CREATE TABLE tasks (
+      position INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+      project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0
+    ); INSERT INTO tasks (id, project_id, title) VALUES ('first', 'a', 'First'), ('second', 'a', 'Second')`);
+    legacy.close();
+    server = await start(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(server.url + path, { method, ...(body === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }) });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const imported = await api('/api/projects/import', 'POST', {
+      name: 'Imported owner', document: JSON.stringify(portableProject()),
+    }, 201);
+    const destination = await api('/api/projects', 'POST', { name: 'Destination' }, 201);
+    const move = (task, source, target) => api(`/api/projects/${source}/tasks/${task}`, 'PATCH',
+      { destination_project_id: target });
+    await move('first', 'a', destination.id);
+    const later = await api('/api/projects/a/tasks', 'POST', { title: 'Later' }, 201);
+    await move('first', destination.id, 'a');
+    await api('/api/projects/a/tasks/first', 'PATCH', { deleted: true });
+    await api(`/api/projects/${imported.id}`, 'PATCH', { archived: true });
+    const snapshot = () => {
+      const db = new DatabaseSync(databasePath);
+      try {
+        return ['projects', 'tasks', 'task_project_positions'].map(table => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+      } finally { db.close(); }
+    };
+    const before = snapshot();
+    const results = await api('/api/directory');
+    assert.deepEqual(results.map(task => task.title), ['First', 'Second', 'Later',
+      portableProject().project.tasks[0].title, 'Deleted task']);
+    assert.deepEqual(results.slice(0, 3).map(task => task.id), ['first', 'second', later.id]);
+    assert.equal(results[0].deleted, true);
+    assert.equal(results[1].priority, 'Normal');
+    assert.equal(results[1].notes, '');
+    assert.equal(results[1].due_date, '');
+    assert.equal(results[3].archived, true);
+    assert.equal(results[3].completed, true);
+    assert.equal(results[3].priority, 'Low');
+    assert.equal(results[3].due_date, '2000-02-29');
+    assert.equal(results[3].notes, portableProject().project.tasks[0].notes.replace(/\r\n?/g, '\n'));
+    assert.equal(results[3].project_id, imported.id);
+    assert.equal(results[3].project_name, 'Imported owner');
+    assert.equal(results[4].deleted, true);
+    for (const path of ['/directory', '/directory.js', '/filters.js']) {
+      assert.equal((await fetch(server.url + path)).status, 200);
+    }
+    assert.deepEqual(await api('/health'), { status: 'ok' });
+    assert.deepEqual(snapshot(), before);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await api('/api/directory'), results);
+    assert.deepEqual(snapshot(), before);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

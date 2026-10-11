@@ -66,6 +66,11 @@ const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priorit
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
+const listDirectoryTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority,
+  t.due_date, t.notes, t.deleted, p.id AS project_id, p.name AS project_name, p.archived
+  FROM projects p JOIN tasks t ON t.project_id = p.id
+  JOIN task_project_positions positions ON positions.task_id = t.id AND positions.project_id = p.id
+  ORDER BY p.position, positions.position`);
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, priority) VALUES (?, ?, ?, ?)');
 const insertImportedTask = database.prepare(`INSERT INTO tasks
   (id, project_id, title, completed, priority, due_date, notes, deleted)
@@ -94,6 +99,9 @@ function transaction(action) {
 const assets = new Map([
   ['/', ['public/index.html', 'text/html; charset=utf-8']],
   ['/dates.js', ['public/dates.js', 'text/javascript; charset=utf-8']],
+  ['/filters.js', ['public/filters.js', 'text/javascript; charset=utf-8']],
+  ['/directory.js', ['public/directory.js', 'text/javascript; charset=utf-8']],
+  ['/directory', ['public/index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['public/app.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['public/style.css', 'text/css; charset=utf-8']],
 ]);
@@ -150,6 +158,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && path === '/api/projects') {
       return json(response, 200, listProjects.all().map(projectResult));
+    }
+    if (request.method === 'GET' && path === '/api/directory') {
+      return json(response, 200, listDirectoryTasks.all().map(task =>
+        ({ ...taskResult(task), archived: Boolean(task.archived) })));
     }
     if (request.method === 'POST' && path === '/api/projects/import') {
       let input;
