@@ -81,6 +81,22 @@ const server = createServer(async (request, response) => {
           projectPage(project, projects.listTasks(project.id, filter), filter));
       }
     }
+    const renameMatch = path.match(/^\/projects\/([1-9]\d*)\/rename$/);
+    if (request.method === 'POST' && renameMatch && Number.isSafeInteger(Number(renameMatch[1]))) {
+      const project = projects.find(Number(renameMatch[1]));
+      if (project) {
+        if (project.archived) {
+          return send(response, 409, 'text/plain; charset=utf-8', 'Archived project');
+        }
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        if (!projects.rename(project.id, form.get('name') || '')) {
+          return send(response, 400, 'text/html; charset=utf-8',
+            projectPage(project, projects.listTasks(project.id, filter), filter, 'Project name is required'));
+        }
+        return redirect(response, `/projects/${project.id}?filter=${filter}`);
+      }
+    }
     const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/completion)?$/);
     if (request.method === 'POST' && taskMatch &&
         Number.isSafeInteger(Number(taskMatch[1])) &&

@@ -26,3 +26,6 @@ and restore preserve all tasks. Archived project pages allow task filtering,
 but task creation and completion changes are disabled and rejected by the server.
 Project summaries count all tasks, regardless of task filters. Existing databases
 are migrated automatically with all previous projects remaining active.
+Active project pages also support renaming with trimmed, nonempty names. Renaming
+preserves the project URL, creation order, tasks, and completion summary. Archived
+projects disable rename controls and reject rename requests until restored.

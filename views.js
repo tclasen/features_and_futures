@@ -58,6 +58,14 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form action="${projectPath}/rename" method="post">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <label for="new-project-name">New project name</label>
+      <div class="form-controls">
+        <input id="new-project-name" name="name" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+    </form>
     <form action="${projectPath}/tasks" method="post">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
       <label for="task-title">Task title</label>

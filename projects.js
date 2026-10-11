@@ -31,6 +31,7 @@ export function openProjects(databasePath) {
   const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
     SELECT id, title, completed FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id
@@ -55,6 +56,11 @@ export function openProjects(databasePath) {
       if (!trimmedName) return false;
       insert.run(trimmedName);
       return true;
+    },
+    rename(id, name) {
+      const trimmedName = name.trim();
+      if (!trimmedName) return false;
+      return updateName.run(trimmedName, id).changes > 0;
     },
     listTasks(projectId, filter = 'All') {
       const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
