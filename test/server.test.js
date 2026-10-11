@@ -237,7 +237,7 @@ test('existing project databases migrate without losing IDs or tasks', async () 
       id: 7, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 1, completed: 1,
     }]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [{
-      id: 1, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '',
+      id: 1, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '',
     }]);
   } finally {
     if (child) await stop(child);

@@ -67,7 +67,7 @@ async function fixture(archived = false, destinations = [
     { id: 2, title: 'Second', completed: true, priority: 'Normal' },
     { id: 3, title: 'Third', completed: true, priority: 'High' },
     { id: 4, title: 'Fourth', completed: false, priority: 'Low' },
-  ].map(task => ({ ...task, due_date: '' }));
+  ].map(task => ({ ...task, due_date: '', notes: '' }));
   const requests = [];
   const project = { id: 1, archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -85,7 +85,7 @@ async function fixture(archived = false, destinations = [
         return { ok: true, json: async () => structuredClone(project) };
       }
       if (options.method === 'POST') {
-        const task = { id: tasks.length + 1, ...JSON.parse(options.body), completed: false, priority: project.default_priority };
+        const task = { id: tasks.length + 1, ...JSON.parse(options.body), completed: false, priority: project.default_priority, notes: '' };
         tasks.push(task);
         return { ok: true, json: async () => structuredClone(task) };
       }
@@ -112,6 +112,50 @@ async function choose(select, value) {
   select.value = value;
   await select.fire('change');
 }
+
+test('notes save exact plain text while preserving all applied filters and membership', async () => {
+  const f = await fixture();
+  f.tasks[0].due_date = '2025-01-15';
+  // Refresh rows from the fixture's saved data by editing the existing date control.
+  const dueForm = f.rows()[0].children[4];
+  dueForm.children[1].value = '2025-01-15';
+  await dueForm.fire('submit');
+  await choose(f.completion, 'Open');
+  await choose(f.priority, 'High');
+  f.app.querySelector('#due-from').value = '2025-01-01';
+  f.app.querySelector('#due-through').value = '2025-01-31';
+  await f.app.querySelector('#due-range-form').fire('submit');
+  f.app.querySelector('#task-search').value = 'First';
+  await f.app.querySelector('#task-search-form').fire('submit');
+  const before = structuredClone(f.tasks[0]);
+  const form = f.rows()[0].children[6];
+  assert.equal(form.children[0].textContent, 'Task notes');
+  assert.equal(form.children[1].tag, 'textarea');
+  assert.equal(form.children[1].id, form.children[0].htmlFor);
+  assert.equal(form.children[1].value, '');
+  assert.equal(form.children[2].textContent, 'Save notes');
+  const notes = '  <b>literal</b>\nUnicode 雪\n  ';
+  form.children[1].value = notes;
+  await form.fire('submit');
+  assert.deepEqual(f.tasks[0], { ...before, notes });
+  assert.deepEqual(f.titles(), ['First']);
+  assert.equal(f.rows()[0].children[6].children[1].value, notes);
+  assert.equal(f.completion.value, 'Open');
+  assert.equal(f.priority.value, 'High');
+  assert.equal(f.app.querySelector('#due-from').value, '2025-01-01');
+  assert.equal(f.app.querySelector('#due-through').value, '2025-01-31');
+  assert.equal(f.app.querySelector('#task-search').value, 'First');
+  f.app.querySelector('#task-search').value = 'literal';
+  await f.app.querySelector('#task-search-form').fire('submit');
+  assert.deepEqual(f.titles(), []);
+  const archived = await fixture(true);
+  for (const row of archived.rows()) {
+    assert.equal(row.children[6].children[1].disabled, true);
+    assert.equal(row.children[6].children[2].disabled, true);
+    await row.children[6].fire('submit');
+  }
+  assert.equal(archived.requests.length, 0);
+});
 
 test('priority and completion filters combine in creation order without data writes', async () => {
   const f = await fixture();

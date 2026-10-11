@@ -320,6 +320,38 @@ async function renderTasks(project) {
           dueButton.disabled = Boolean(project.archived);
         }
       });
+      const notesForm = document.createElement('form');
+      const notesLabel = document.createElement('label');
+      notesLabel.htmlFor = `task-notes-${task.id}`;
+      notesLabel.textContent = 'Task notes';
+      const notesInput = document.createElement('textarea');
+      notesInput.id = notesLabel.htmlFor;
+      notesInput.rows = 4;
+      notesInput.value = task.notes;
+      const notesButton = document.createElement('button');
+      notesButton.type = 'submit';
+      notesButton.textContent = 'Save notes';
+      notesInput.disabled = notesButton.disabled = Boolean(project.archived);
+      notesForm.append(notesLabel, notesInput, notesButton);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        app.querySelector('[role="alert"]')?.remove();
+        notesButton.disabled = true;
+        try {
+          const saved = await api(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          drawTasks();
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          notesButton.disabled = Boolean(project.archived);
+        }
+      });
       const moveForm = document.createElement('form');
       const destination = document.createElement('select');
       destination.setAttribute('aria-label', 'Destination project');
@@ -354,7 +386,7 @@ async function renderTasks(project) {
           moveButton.disabled = cannotMove;
         }
       });
-      row.append(title, checkbox, renameForm, priority, dueForm, moveForm);
+      row.append(title, checkbox, renameForm, priority, dueForm, moveForm, notesForm);
       return row;
     }));
   }
