@@ -13,6 +13,7 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
   ;
@@ -24,6 +25,11 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+// Upgrade databases created by earlier Workboard checkpoints.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -71,7 +77,12 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    const projects = database.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const projects = database.prepare(`
+      SELECT p.id, p.name, p.archived, COUNT(t.id) AS totalCount,
+        SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id
+    `).all().map((project) => ({ ...project, archived: Boolean(project.archived), totalCount: Number(project.totalCount), completedCount: Number(project.completedCount || 0) }));
     sendJson(response, 200, projects);
     return;
   }
@@ -94,12 +105,25 @@ const server = createServer(async (request, response) => {
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && request.method === 'GET') {
-    const project = database.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (!project) {
       sendJson(response, 404, { error: 'Project not found' });
       return;
     }
-    sendJson(response, 200, project);
+    sendJson(response, 200, { ...project, archived: Boolean(project.archived) });
+    return;
+  }
+
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (archiveMatch && request.method === 'POST') {
+    const projectId = Number(archiveMatch[1]);
+    const archived = archiveMatch[2] === 'archive';
+    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, projectId);
+    if (!result.changes) {
+      sendJson(response, 404, { error: 'Project not found' });
+      return;
+    }
+    sendJson(response, 200, { id: projectId, archived });
     return;
   }
 
@@ -119,9 +143,13 @@ const server = createServer(async (request, response) => {
   if (tasksMatch && request.method === 'POST') {
     try {
       const projectId = Number(tasksMatch[1]);
-      const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+      const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
       if (!project) {
         sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 400, { error: 'Archived projects cannot have tasks' });
         return;
       }
       const { title } = await readJson(request);
@@ -143,6 +171,15 @@ const server = createServer(async (request, response) => {
     try {
       const projectId = Number(taskMatch[1]);
       const taskId = Number(taskMatch[2]);
+      const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!project) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      if (project.archived) {
+        sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
+        return;
+      }
       const { completed } = await readJson(request);
       if (typeof completed !== 'boolean') {
         sendJson(response, 400, { error: 'Completion state is required' });
