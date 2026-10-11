@@ -18,6 +18,8 @@ assert len(baseline) == len(directed) == 1
 for proof, expected in [(baseline[0], 24), (directed[0], 18)]:
     assert load(proof)['verified'] and len(load(proof)['results']) == expected
     assert load(proof.parent/'input-closure.json')['verified']
+narrow=load(v/'preflight/task020-full01-check-1791720484838/failed-input-closure.json')
+assert narrow['verified'] and narrow['terminal_exit_code']==1 and narrow['completed_variants']==19 and len(narrow['failed_cases'])==11
 assert load(v/'preflight/all-restore-exact-delta.json')['verified']
 assert load(v/'preflight/all-restore-phase-listing/verified.json')['verified']
 archive = v/'preflight/retained-two-wait-drafts'
@@ -47,9 +49,10 @@ plan['lineage']['broader_draft_correction'] = (
 plan['adoption_evidence'].extend([str(baseline[0]), str(directed[0]),
     str(v/'preflight/all-restore-exact-delta.json')])
 write_json(v/'analysis-plan.json', plan)
+write_json(v/'decisions/draft-lineage-002.json', {'utc':timestamp(),'frozen':False,'native_model_calls':0,'successor_run_not_created':True,'source_revision':'research-v013','source_run_superseded':'eval-013','source_coordinator_terminal':True,'requirements_identical':True,'rows':rows,'supersedes_current_draft_scope':'decisions/draft-lineage.json','correction':'Readiness waits at every project Restore caller, no assertions removed; failed narrow baseline retained','original_outcomes_unchanged':True})
 write_json(v/'preflight/adoption/all-restore-draft-adoption.json', {
     'verified': True, 'utc': timestamp(), 'frozen': False, 'native_model_calls': 0,
-    'prior_drafts_retained': str(archive), 'rows': rows,
+    'prior_drafts_retained': str(archive), 'rows': rows, 'failed_narrow_input_closure':'preflight/task020-full01-check-1791720484838/failed-input-closure.json',
     'scope': 'Prospective unstarted draft only; original runs/outcomes unchanged.'
 })
 print('Adopted verified all-Restore readiness candidate into unfrozen draft14')
