@@ -103,6 +103,9 @@ async function render() {
       const project = await response.json();
       document.querySelector('#project-title').textContent = project.name;
       document.querySelector('#archived-label').hidden = !project.archived;
+      const defaultPriority = document.querySelector('#default-task-priority');
+      defaultPriority.value = project.default_priority || 'Normal';
+      defaultPriority.disabled = Boolean(project.archived);
       document.querySelector('#rename-form').querySelectorAll('input, button').forEach(control => { control.disabled = Boolean(project.archived); });
       document.querySelector('#task-form').querySelectorAll('input, button').forEach(control => { control.disabled = Boolean(project.archived); });
       list.hidden = true;
@@ -148,6 +151,12 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
     input.value = '';
     document.querySelector('#project-title').textContent = name;
   }
+});
+document.querySelector('#default-task-priority').addEventListener('change', async event => {
+  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+  if (!match) return;
+  const response = await fetch(`/api/projects/${match[1]}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_priority: event.target.value }) });
+  if (!response.ok) render();
 });
 document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);

@@ -10,7 +10,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 const root = new URL('.', import.meta.url).pathname;
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -34,7 +36,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+    return json(res, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.completed=1) AS completed_count,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id) AS total_count
       FROM projects p ORDER BY p.id`).all());
@@ -76,8 +78,9 @@ const server = createServer(async (req, res) => {
     try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
     const title = typeof data.title === 'string' ? data.title.trim() : '';
     if (!title) return json(res, 400, { error: 'Task title is required' });
-    const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return json(res, 201, { id: Number(result.lastInsertRowid), title, completed: 0 });
+    const priority = db.prepare('SELECT default_priority FROM projects WHERE id=?').get(projectId).default_priority;
+    const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
+    return json(res, 201, { id: Number(result.lastInsertRowid), title, completed: 0, priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && req.method === 'PATCH') {
@@ -109,17 +112,22 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let data;
     try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
-    const name = typeof data.name === 'string' ? data.name.trim() : '';
-    if (!name) return json(res, 400, { error: 'Project name is required' });
     const id = Number(projectMatch[1]);
     const project = db.prepare('SELECT archived FROM projects WHERE id=?').get(id);
     if (!project) return json(res, 404, { error: 'Project not found' });
     if (project.archived) return json(res, 403, { error: 'Project is archived' });
+    if (typeof data.default_priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(data.default_priority)) return json(res, 400, { error: 'Invalid priority' });
+      db.prepare('UPDATE projects SET default_priority=? WHERE id=?').run(data.default_priority, id);
+      return json(res, 200, { ok: true, default_priority: data.default_priority });
+    }
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (!name) return json(res, 400, { error: 'Project name is required' });
     db.prepare('UPDATE projects SET name=? WHERE id=?').run(name, id);
     return json(res, 200, { ok: true, name });
   }
   if (req.method === 'GET' && projectMatch) {
-    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     return project ? json(res, 200, project) : json(res, 404, { error: 'Project not found' });
   }
   if (req.method === 'GET') {
