@@ -3,15 +3,17 @@ const detailView = document.querySelector('#project-detail');
 const alert = document.querySelector('#alert');
 let activeProjectId = null;
 let appliedDueRange = { from: '', through: '' };
+const foldAsciiCase = value => value.replace(/[A-Z]/g, character => character.toLowerCase());
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
   const projects = await response.json();
   const filter = document.querySelector('#project-filter').value;
+  const query = foldAsciiCase(document.querySelector('#project-search').value.trim());
   const container = document.querySelector('#projects');
   container.replaceChildren();
-  for (const project of projects.filter(item => item.archived === (filter === 'Archived'))) {
+  for (const project of projects.filter(item => item.archived === (filter === 'Archived') && foldAsciiCase(item.name).includes(query))) {
     const row = document.createElement('div'); row.dataset.testid = 'project-row'; row.className = 'project-row';
     const name = document.createElement('span'); name.textContent = project.name;
     const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open project';
@@ -33,11 +35,12 @@ async function loadTasks() {
   const filter = document.querySelector('#task-filter').value;
   const priorityFilter = document.querySelector('#priority-filter').value;
   const { from, through } = appliedDueRange;
+  const query = foldAsciiCase(document.querySelector('#task-search').value.trim());
   const shown = tasks.filter(task => {
     const completionMatches = filter === 'All' || (filter === 'Completed') === task.completed;
     const priorityMatches = priorityFilter === 'All' || task.priority === priorityFilter;
     const dateMatches = !from && !through ? true : Boolean(task.due_date) && (!from || task.due_date >= from) && (!through || task.due_date <= through);
-    return completionMatches && priorityMatches && dateMatches;
+    return completionMatches && priorityMatches && dateMatches && foldAsciiCase(task.title).includes(query);
   });
   const container = document.querySelector('#tasks'); container.replaceChildren();
   for (const task of shown) {
@@ -163,6 +166,8 @@ document.querySelector('#apply-due-range').addEventListener('click', () => {
   message.hidden = true;
   loadTasks();
 });
+document.querySelector('#project-search-form').addEventListener('submit', event => { event.preventDefault(); loadProjects(); });
+document.querySelector('#task-search-form').addEventListener('submit', event => { event.preventDefault(); loadTasks(); });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
 showPage().catch(() => { alert.textContent = 'Unable to load Workboard'; alert.hidden = false; listView.hidden = false; });
