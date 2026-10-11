@@ -1,0 +1,3 @@
+# Task 040: Assign represented-owner defaults
+
+Add Visible projects default priority with Low, Normal and High, default Normal, and Set visible project default. In Active scope assign that default once to every currently represented matching owner, including Deleted matches; disable the action in Archived scope or with no matches. Preserve all existing task priorities and other fields, owner identities/order and reserved positions. Current owner-default filtering can remove changed owners from the result, but every owner from the initial match receives the assignment. New tasks subsequently inherit the new default. Matching workspace/project exports and restart retain it; duplicate owner names remain independent.
