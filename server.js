@@ -113,6 +113,36 @@ const server = createServer(async (request, response) => {
     `).all(archived).map((project) => ({ ...project, archived: Boolean(project.archived) }));
     return sendJson(response, 200, projects);
   }
+  const projectExportPath = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (projectExportPath && request.method === 'GET') {
+    const projectId = Number(projectExportPath[1]);
+    const project = database.prepare(`
+      SELECT name, archived, default_task_priority AS defaultPriority
+      FROM projects WHERE id = ?
+    `).get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    const tasks = database.prepare(`
+      SELECT title, completed, priority, due_date AS dueDate, notes, deleted
+      FROM tasks WHERE project_id = ? ORDER BY sort_order, id
+    `).all(projectId).map((task) => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: (task.notes || '').replace(/\r\n?/g, '\n'),
+      deleted: Boolean(task.deleted),
+    }));
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: { ...project, archived: Boolean(project.archived), tasks },
+    };
+    response.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="workboard-project.json"',
+    });
+    return response.end(JSON.stringify(document, null, 2));
+  }
   const projectPath = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectPath && request.method === 'PATCH') {
     let changes;

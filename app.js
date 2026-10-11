@@ -380,6 +380,18 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#download-project').addEventListener('click', async () => {
+  if (currentProjectId === null) return;
+  const response = await fetch(`/api/projects/${currentProjectId}/export`);
+  if (!response.ok) return;
+  const blob = await response.blob();
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = 'workboard-project.json';
+  link.click();
+  URL.revokeObjectURL(downloadUrl);
+});
 projectSearchForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   appliedProjectQuery = projectSearchInput.value.trim();
