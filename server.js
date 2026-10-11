@@ -300,7 +300,8 @@ const page = `<!doctype html>
       section.append(renameForm, renameAlert, defaultLabel, form, alert, filterLabel, priorityFilterLabel, taskSearchLabel, taskSearchButton, rangeLabelFrom, rangeLabelThrough, applyRange, rangeAlert, list); app.replaceChildren(section); await refreshTasks();
     }
     function asciiLower(value) { return value.replace(/[A-Z]/g, character => String.fromCharCode(character.charCodeAt(0) + 32)); }
-    function asciiIncludes(value, query) { return asciiLower(value).includes(asciiLower(query)); }
+    function normalizeSearch(value) { return asciiLower(value.replace(/[ \t]+/g, ' ')); }
+    function asciiIncludes(value, query) { return normalizeSearch(value).includes(normalizeSearch(query.trim())); }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
     else loadProjects().then(projects => renderList(projects)).catch(() => { app.textContent = 'Could not load projects'; });
@@ -332,12 +333,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
-    const query = (url.searchParams.get('q') || '').trim().replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+    const normalizeSearch = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+    const query = normalizeSearch((url.searchParams.get('q') || '').trim());
     const projects = db.prepare(`SELECT p.id, p.name, p.archived,
       COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(archived).filter(p => {
-        const name = p.name.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+        const name = normalizeSearch(p.name);
         return !query || name.includes(query);
       }).map(p => ({...p, id: String(p.id), archived: Boolean(p.archived)}));
     return sendJson(res, 200, projects);
