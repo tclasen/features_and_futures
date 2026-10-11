@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { normalizeDueDate } from './due-date.js';
 
 const stylesheet = readFileSync(new URL('./public/styles.css', import.meta.url));
 
@@ -132,6 +133,12 @@ function projectPage(project, tasks, filters, error = '') {
           <div class="input-group"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date" class="task-due-date">
+          ${taskFilterFields(filters)}
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <div class="input-group"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
+        </form>
       </div>`).join('')}
     </section>`);
 }
@@ -178,6 +185,9 @@ export function createWorkboardServer(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
     database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const listProjects = database.prepare(`SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -187,13 +197,14 @@ export function createWorkboardServer(databasePath) {
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const updateDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-  const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
+  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?) ORDER BY id`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+  const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
   function tasksFor(projectId, filters) {
     const completed = filters.completion === 'All' ? null : Number(filters.completion === 'Completed');
     const priority = filters.priority === 'All' ? null : filters.priority;
@@ -236,7 +247,7 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/default-priority|\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -277,6 +288,12 @@ export function createWorkboardServer(databasePath) {
                   return send(400, projectPage(project, tasksFor(id, filters), filters, 'Task priority is invalid'));
                 }
                 result = updatePriority.run(priority, taskId, id);
+              } else if (match[3] === 'due-date') {
+                const dueDate = normalizeDueDate(form.get('dueDate') ?? '');
+                if (dueDate === null) {
+                  return send(400, projectPage(project, tasksFor(id, filters), filters, 'Due date must be a valid YYYY-MM-DD date'));
+                }
+                result = updateDueDate.run(dueDate, taskId, id);
               } else {
                 result = updateCompletion.run(Number(form.get('completed') === '1'), taskId, id);
               }
