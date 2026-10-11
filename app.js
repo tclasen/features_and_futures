@@ -10,6 +10,7 @@ const taskAlert = document.querySelector('#task-alert');
 const taskContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const projectFilter = document.querySelector('#project-filter');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
@@ -70,6 +71,8 @@ async function showRoute() {
   document.querySelector('#archived-notice').hidden = !project.archived;
   renameInput.value = project.name;
   renameInput.disabled = project.archived;
+  defaultTaskPriority.value = project.defaultPriority || 'Normal';
+  defaultTaskPriority.disabled = project.archived;
   renameForm.querySelector('button[type="submit"]').disabled = project.archived;
   renameAlert.hidden = true;
   taskForm.querySelector('button[type="submit"]').disabled = project.archived;
@@ -78,6 +81,19 @@ async function showRoute() {
   listView.hidden = true;
   await loadTasks(Number(match[1]), project.archived);
 }
+
+defaultTaskPriority.addEventListener('change', async () => {
+  const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
+  if (!projectId) return;
+  const response = await fetch(`/api/projects/${projectId}`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ defaultPriority: defaultTaskPriority.value }),
+  });
+  if (!response.ok) {
+    const projectResponse = await fetch(`/api/projects/${projectId}`);
+    if (projectResponse.ok) defaultTaskPriority.value = (await projectResponse.json()).defaultPriority || 'Normal';
+  }
+});
 
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
