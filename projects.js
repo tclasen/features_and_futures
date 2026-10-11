@@ -26,24 +26,28 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
     database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
   }
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id
   `);
-  const find = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const find = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
+  const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
     SELECT id, title, completed, priority FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?) ORDER BY id
   `);
   const insertTask = database.prepare(`
-    INSERT INTO tasks (project_id, title)
-    SELECT id, ? FROM projects WHERE id = ? AND archived = 0
+    INSERT INTO tasks (project_id, title, priority)
+    SELECT id, ?, default_task_priority FROM projects WHERE id = ? AND archived = 0
   `);
   const updateTask = database.prepare(`
     UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
@@ -74,6 +78,10 @@ export function openProjects(databasePath) {
       const trimmedName = name.trim();
       if (!trimmedName) return false;
       return updateName.run(trimmedName, id).changes > 0;
+    },
+    setDefaultTaskPriority(id, priority) {
+      if (!TASK_PRIORITIES.includes(priority)) return false;
+      return updateDefaultPriority.run(priority, id).changes > 0;
     },
     listTasks(projectId, filter = 'All', priorityFilter = 'All') {
       const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;

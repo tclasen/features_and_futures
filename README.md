@@ -33,8 +33,8 @@ Each task row also supports renaming with a trimmed, nonempty title. Task rename
 preserve ownership, creation order, completion state, and summaries, and update
 the completion checkbox label. Archived projects disable task rename controls
 and reject task rename requests until restored. Renamed titles persist in SQLite.
-Each task has a saved Low, Normal, or High priority, defaulting to Normal for
-new and existing tasks. Priority changes preserve task order, ownership, title,
+Each task has a saved Low, Normal, or High priority. Existing tasks default to
+Normal when migrated. Priority changes preserve task order, ownership, title,
 completion, and summaries; renaming preserves priority. Archived projects disable
 priority controls and reject priority changes until restored.
 
@@ -45,3 +45,10 @@ edits, including validation errors. Priority and completion changes immediately
 re-evaluate matching rows. Opening a project from the list starts both filters
 at All. Filtering is available on archived projects and never changes saved task
 data or completion summaries.
+
+Each project has a saved Default task priority (Low, Normal, or High), initially
+Normal for both new and existing projects. New tasks inherit the project's saved
+default at creation; changing the default leaves existing tasks and both selected
+filters unchanged. Defaults are independent per project and persist through
+reloads, restarts, renaming, archive and restore. Archived projects display their
+saved default in a disabled control and reject changes until restored.
