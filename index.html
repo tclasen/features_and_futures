@@ -23,6 +23,9 @@
     .task-list { display: grid; gap: 10px; margin-top: 20px; }
     .task-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #dce2ec; border-radius: 8px; background: white; }
     .task-row input { flex: none; width: 18px; height: 18px; }
+    .task-row .task-name { min-width: 80px; flex: 1; overflow-wrap: anywhere; }
+    .task-row input[type="text"] { width: 130px; padding: 8px 10px; }
+    .task-row button { padding: 8px 10px; }
     #project-view form { margin-top: 22px; }
     #rename-project { margin-top: 12px; }
     .task-controls { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
@@ -122,7 +125,7 @@
         const renderTasks = () => {
           const mode = filter.value;
           const visible = tasks.filter((task) => mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span>${escapeText(task.title)}</span></div>`).join('');
+          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button></div>`).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -147,11 +150,29 @@
         });
         filter.addEventListener('change', renderTasks);
         list.addEventListener('change', async (event) => {
+          const renameInput = event.target.closest('input[data-rename-task-id]');
+          if (renameInput) return;
           const checkbox = event.target.closest('input[data-task-id]');
           if (!checkbox) return;
           await fetch(`/api/tasks/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
           const task = tasks.find((item) => item.id === Number(checkbox.dataset.taskId));
           if (task) task.completed = checkbox.checked;
+          renderTasks();
+        });
+        list.addEventListener('click', async (event) => {
+          const button = event.target.closest('button[data-rename-task-id]');
+          if (!button) return;
+          const task = tasks.find((item) => item.id === Number(button.dataset.renameTaskId));
+          const input = list.querySelector(`input[data-rename-task-id="${button.dataset.renameTaskId}"]`);
+          const title = input.value.trim();
+          const message = app.querySelector('#task-message');
+          if (!title) { message.textContent = 'Task title is required'; return; }
+          const result = await fetch(`/api/tasks/${encodeURIComponent(button.dataset.renameTaskId)}/rename`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title })
+          });
+          if (!result.ok) { message.textContent = (await result.json()).error || 'Could not rename task'; return; }
+          if (task) task.title = title;
+          message.textContent = '';
           renderTasks();
         });
         app.querySelector('#create-task').addEventListener('submit', async (event) => {

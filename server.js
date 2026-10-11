@@ -118,6 +118,23 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const renameTaskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
+  if (renameTaskMatch && request.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    let payload;
+    try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
+    const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+    if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+    const taskId = Number(renameTaskMatch[1]);
+    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
+      return sendJson(response, 409, { error: 'Archived project tasks cannot be renamed' });
+    }
+    database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
+    return sendJson(response, 200, { id: taskId, title });
+  }
   if (taskMatch && request.method === 'PATCH') {
     let body = '';
     for await (const chunk of request) body += chunk;
