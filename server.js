@@ -12,6 +12,28 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function priorityFilter(value) {
+  return TASK_PRIORITIES.includes(value) ? value : 'All';
+}
+
+function projectFilters(parameters) {
+  return {
+    completion: taskFilter(parameters.get('filter')),
+    priority: priorityFilter(parameters.get('priorityFilter')),
+  };
+}
+
+function renderProject(project, filters, error = '') {
+  return projectPage(project, projects.listTasks(project.id, filters.completion, filters.priority),
+    filters.completion, error, filters.priority);
+}
+
+function projectLocation(projectId, filters) {
+  const query = new URLSearchParams({ filter: filters.completion });
+  if (filters.priority !== 'All') query.set('priorityFilter', filters.priority);
+  return `/projects/${projectId}?${query}`;
+}
+
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
@@ -77,9 +99,9 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && match && Number.isSafeInteger(Number(match[1]))) {
       const project = projects.find(Number(match[1]));
       if (project) {
-        const filter = taskFilter(url.searchParams.get('filter'));
+        const filters = projectFilters(url.searchParams);
         return send(response, 200, 'text/html; charset=utf-8',
-          projectPage(project, projects.listTasks(project.id, filter), filter));
+          renderProject(project, filters));
       }
     }
     const renameMatch = path.match(/^\/projects\/([1-9]\d*)\/rename$/);
@@ -90,12 +112,12 @@ const server = createServer(async (request, response) => {
           return send(response, 409, 'text/plain; charset=utf-8', 'Archived project');
         }
         const form = await readForm(request);
-        const filter = taskFilter(form.get('filter'));
+        const filters = projectFilters(form);
         if (!projects.rename(project.id, form.get('name') || '')) {
           return send(response, 400, 'text/html; charset=utf-8',
-            projectPage(project, projects.listTasks(project.id, filter), filter, 'Project name is required'));
+            renderProject(project, filters, 'Project name is required'));
         }
-        return redirect(response, `/projects/${project.id}?filter=${filter}`);
+        return redirect(response, projectLocation(project.id, filters));
       }
     }
     const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?$/);
@@ -108,12 +130,12 @@ const server = createServer(async (request, response) => {
           return send(response, 409, 'text/plain; charset=utf-8', 'Archived project');
         }
         const form = await readForm(request);
-        const filter = taskFilter(form.get('filter'));
+        const filters = projectFilters(form);
         if (taskMatch[3] === 'rename') {
           const title = (form.get('title') || '').trim();
           if (!title) {
             return send(response, 400, 'text/html; charset=utf-8',
-              projectPage(project, projects.listTasks(project.id, filter), filter, 'Task title is required'));
+              renderProject(project, filters, 'Task title is required'));
           }
           if (!projects.renameTask(project.id, Number(taskMatch[2]), title)) {
             return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
@@ -122,7 +144,7 @@ const server = createServer(async (request, response) => {
           const priority = form.get('priority');
           if (!TASK_PRIORITIES.includes(priority)) {
             return send(response, 400, 'text/html; charset=utf-8',
-              projectPage(project, projects.listTasks(project.id, filter), filter, 'Invalid task priority'));
+              renderProject(project, filters, 'Invalid task priority'));
           }
           if (!projects.setTaskPriority(project.id, Number(taskMatch[2]), priority)) {
             return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
@@ -133,9 +155,9 @@ const server = createServer(async (request, response) => {
           }
         } else if (!projects.createTask(project.id, form.get('title') || '')) {
           return send(response, 400, 'text/html; charset=utf-8',
-            projectPage(project, projects.listTasks(project.id, filter), filter, 'Task title is required'));
+            renderProject(project, filters, 'Task title is required'));
         }
-        return redirect(response, `/projects/${project.id}?filter=${filter}`);
+        return redirect(response, projectLocation(project.id, filters));
       }
     }
     send(response, 404, 'text/html; charset=utf-8', notFoundPage());

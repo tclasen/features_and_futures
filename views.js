@@ -54,7 +54,7 @@ export function projectsPage(projects, error = '', filter = 'Active') {
     </section>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', error = '') {
+export function projectPage(project, tasks = [], filter = 'All', error = '', priorityFilter = 'All') {
   const projectPath = `/projects/${project.id}`;
   return page(project.name, `
     <form action="/" method="get"><button type="submit">Projects</button></form>
@@ -62,6 +62,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="${projectPath}/rename" method="post">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
         <input id="new-project-name" name="name" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
@@ -70,6 +71,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
     </form>
     <form action="${projectPath}/tasks" method="post">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
       <label for="task-title">Task title</label>
       <div class="form-controls">
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -83,6 +85,11 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
         ${['All', 'Open', 'Completed'].map((option) =>
           `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter">
+        ${['All', ...TASK_PRIORITIES].map((option) =>
+          `<option${option === priorityFilter ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
     </form>
     <section aria-label="Tasks" class="task-list">
       ${tasks.length ? tasks.map((task) => `
@@ -90,10 +97,12 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
           <span>${escapeHtml(task.title)}</span>
           <form action="${projectPath}/tasks/${task.id}/completion" method="post" data-auto-submit>
             <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
           </form>
           <form action="${projectPath}/tasks/${task.id}/priority" method="post" data-auto-submit>
             <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
             <label for="task-priority-${task.id}">Task priority</label>
             <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}>
               ${TASK_PRIORITIES.map((priority) =>
@@ -102,11 +111,12 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
           </form>
           <form action="${projectPath}/tasks/${task.id}/rename" method="post" class="task-rename">
             <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
             <label for="new-task-title-${task.id}">New task title</label>
             <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
-        </div>`).join('') : '<p class="empty">No tasks match this filter.</p>'}
+        </div>`).join('') : '<p class="empty">No tasks match these filters.</p>'}
     </section>`);
 }
 

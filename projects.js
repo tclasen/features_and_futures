@@ -38,7 +38,8 @@ export function openProjects(databasePath) {
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
     SELECT id, title, completed, priority FROM tasks
-    WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id
+    WHERE project_id = ? AND (? IS NULL OR completed = ?)
+      AND (? IS NULL OR priority = ?) ORDER BY id
   `);
   const insertTask = database.prepare(`
     INSERT INTO tasks (project_id, title)
@@ -74,9 +75,10 @@ export function openProjects(databasePath) {
       if (!trimmedName) return false;
       return updateName.run(trimmedName, id).changes > 0;
     },
-    listTasks(projectId, filter = 'All') {
+    listTasks(projectId, filter = 'All', priorityFilter = 'All') {
       const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
-      return listTasks.all(projectId, completed, completed);
+      const priority = TASK_PRIORITIES.includes(priorityFilter) ? priorityFilter : null;
+      return listTasks.all(projectId, completed, completed, priority, priority);
     },
     createTask(projectId, title) {
       const trimmedTitle = title.trim();
