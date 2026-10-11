@@ -26,7 +26,6 @@ async function renderList() {
   filter.setAttribute('aria-label', 'Project filter');
   for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
   const list = element('section', undefined, { 'aria-label': 'Projects' });
-  const filterForList = filter;
   filter.addEventListener('change', () => populateProjects(list, filter.value === 'Archived').catch(() => {}));
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -62,7 +61,8 @@ async function populateProjects(list, archived) {
       toggle.disabled = true;
       try {
         await request(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: !archived }) });
-        await populateProjects(list, filterForList.value === 'Archived');
+        const currentFilter = document.querySelector('#project-filter');
+        await populateProjects(list, currentFilter.value === 'Archived');
       } catch { toggle.disabled = false; }
     });
     row.append(name, summary, open, toggle);
