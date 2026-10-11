@@ -23,6 +23,7 @@ const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AN
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare(`UPDATE tasks SET project_id = ?, created_at = (SELECT COALESCE(MAX(created_at), 0) + 1 FROM tasks WHERE project_id = ?) WHERE id = ? AND project_id = ?`);
 
 const page = await readFile(new URL('./public/index.html', import.meta.url));
 const server = http.createServer(async (req, res) => {
@@ -88,6 +89,17 @@ const server = http.createServer(async (req, res) => {
       insertTask.run(id, projectId, title, Date.now(), priority);
       return json(201, { id, title, completed: 0, priority });
     }
+  }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (req.method === 'POST' && moveMatch) {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    const sourceId = decodeURIComponent(moveMatch[1]), taskId = decodeURIComponent(moveMatch[2]);
+    const source = getProject.get(sourceId), destination = getProject.get(String(body.destinationId || ''));
+    if (!source || !destination) return json(404, { error: 'Not found' });
+    if (source.archived || destination.archived || sourceId === destination.id) return json(403, { error: 'Invalid destination' });
+    const result = moveTask.run(destination.id, destination.id, taskId, sourceId);
+    return result.changes ? json(200, { status: 'ok' }) : json(404, { error: 'Not found' });
   }
   const renameTaskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/rename$/);
   if (req.method === 'POST' && renameTaskMatch) {
