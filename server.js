@@ -117,6 +117,14 @@ const server = createServer(async (request, response) => {
         return redirect(response, projectsLocation(filter, search));
       }
     }
+    const exportMatch = path.match(/^\/projects\/([1-9]\d*)\/download$/);
+    if (request.method === 'GET' && exportMatch && Number.isSafeInteger(Number(exportMatch[1]))) {
+      const document = projects.exportProject(Number(exportMatch[1]));
+      if (document) {
+        response.setHeader('Content-Disposition', 'attachment; filename="workboard-project.json"');
+        return send(response, 200, 'application/json; charset=utf-8', JSON.stringify(document));
+      }
+    }
     const match = path.match(/^\/projects\/([1-9]\d*)$/);
     if (request.method === 'GET' && match && Number.isSafeInteger(Number(match[1]))) {
       const project = projects.find(Number(match[1]));

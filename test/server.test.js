@@ -336,6 +336,78 @@ async function start(databasePath) {
   };
 }
 
+test('project download serves portable UTF-8 JSON regardless of filters and remains enabled when archived', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-download-http-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const page = async (path) => (await fetch(`${server.url}${path}`)).text();
+    await post('/projects', { name: 'Board  café <literal>' });
+    await post('/projects', { name: 'Empty' });
+    await post('/projects/1/tasks', { title: 'First\tTITLE' });
+    await post('/projects/1/tasks', { title: 'Second' });
+    await post('/projects/1/tasks/1/notes', { notes: '  😀 <script>literal</script>\r\nnext\rline  ' });
+    await post('/projects/1/tasks/1/completion', { completed: 'on' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    await post('/projects/1/tasks/1/delete');
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    const query = new URLSearchParams({ filter: 'Open', priorityFilter: 'Low',
+      dueFrom: '2025-01-01', dueThrough: '2026-01-01', search: 'no match' });
+    const filteredPath = `/projects/1?${query}`;
+    const initial = await page(filteredPath);
+    assert.match(initial, /<button type="submit">Download project<\/button>/);
+    const downloadForm = initial.match(/<form action="\/projects\/1\/download"[^>]*>([\s\S]*?)<\/form>/)[1];
+    assert.doesNotMatch(downloadForm, /disabled/);
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'Board  café <literal>', archived: false, defaultPriority: 'Low',
+        tasks: [
+          { title: 'First\tTITLE', completed: true, priority: 'High', dueDate: '2024-02-29',
+            notes: '  😀 <script>literal</script>\nnext\nline  ', deleted: true },
+          { title: 'Second', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    const download = async () => {
+      const response = await fetch(`${server.url}/projects/1/download?${query}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      assert.deepEqual(await response.json(), expected);
+    };
+    const summary = await page('/');
+    await download();
+    assert.equal(await page(filteredPath), initial);
+    assert.equal(await page('/'), summary);
+    const empty = await fetch(`${server.url}/projects/2/download`);
+    assert.deepEqual((await empty.json()).project.tasks, []);
+    assert.equal((await fetch(`${server.url}/projects/999/download`)).status, 404);
+    await post('/projects/1/tasks/2/delete');
+    expected.project.tasks[1].deleted = true;
+    await post('/projects/1/archive');
+    expected.project.archived = true;
+    const archived = await page(filteredPath);
+    assert.match(archived, /<button type="submit">Download project<\/button>/);
+    await download();
+    await server.stop();
+    server = await start(databasePath);
+    await download();
+    assert.equal(await page(filteredPath), archived);
+    const health = await fetch(`${server.url}/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('rename storage rejects invalid and archived changes while preserving project data', () => {
   const projects = openProjects(':memory:');
   try {

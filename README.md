@@ -114,3 +114,11 @@ Deleted rows show their data with all editing and move controls disabled, and th
 server rejects those changes. Archived projects also disable deletion/restoration
 while allowing all reading filters. Migration initializes existing tasks as live;
 deletion state persists across reloads, restarts and project archive/restoration.
+
+Download project is available on every project page, including archived projects.
+`GET /projects/<id>/download` downloads UTF-8 `workboard-project.json` with format
+`workboard-project`, version 1, and the project's name, archive state, default
+priority and all current live/deleted tasks in stored order. Each task includes
+title, completion, priority, due date, notes and deletion state. Notes line breaks
+use LF in the export only; saved data and remembered return positions are unchanged.
+Export ignores page filters and searches and never modifies the open page or data.

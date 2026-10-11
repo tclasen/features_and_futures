@@ -89,6 +89,10 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form action="${projectPath}/download" method="get">
+      ${filterFields}
+      <button type="submit">Download project</button>
+    </form>
     <form action="${projectPath}/rename" method="post">
       ${filterFields}
       <label for="new-project-name">New project name</label>

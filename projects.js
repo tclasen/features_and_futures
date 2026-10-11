@@ -80,6 +80,12 @@ export function openProjects(databasePath) {
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id
   `);
   const find = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
+  const exportTasks = database.prepare(`
+    SELECT title, completed, priority, due_date, notes, deleted FROM tasks
+    JOIN task_project_positions AS ordering
+      ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
+    WHERE tasks.project_id = ? ORDER BY ordering.position, tasks.id
+  `);
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
@@ -142,6 +148,28 @@ export function openProjects(databasePath) {
     list: (filter = 'Active', search = '') => list.all(filter === 'Archived' ? 1 : 0)
       .filter((project) => matchesSearch(project.name, search)),
     find: (id) => find.get(id),
+    exportProject(id) {
+      const project = find.get(id);
+      if (!project) return null;
+      return {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_task_priority,
+          tasks: exportTasks.all(id).map((task) => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            // Textareas expose LF line breaks; normalize only the portable copy.
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted),
+          })),
+        },
+      };
+    },
     setArchived(id, archived) {
       return updateArchive.run(archived ? 1 : 0, id).changes > 0;
     },
