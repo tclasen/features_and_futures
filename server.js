@@ -19,6 +19,9 @@ const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -43,7 +46,7 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    const projects = database.prepare(`SELECT p.id, p.name, p.archived,
+    const projects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority,
       COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id`).all();
@@ -66,7 +69,7 @@ const server = createServer(async (request, response) => {
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
-    const project = database.prepare(`SELECT p.id, p.name, p.archived,
+    const project = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority,
       COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       WHERE p.id = ? GROUP BY p.id`).get(Number(projectMatch[1]));
@@ -98,6 +101,21 @@ const server = createServer(async (request, response) => {
     database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
     return sendJson(response, 200, { id: projectId, name });
   }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-task-priority$/);
+  if (defaultPriorityMatch && request.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    let payload;
+    try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
+    const priorities = ['Low', 'Normal', 'High'];
+    if (!priorities.includes(payload.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+    const projectId = Number(defaultPriorityMatch[1]);
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be changed' });
+    database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?').run(payload.priority, projectId);
+    return sendJson(response, 200, { id: projectId, default_task_priority: payload.priority });
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && request.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
@@ -108,7 +126,7 @@ const server = createServer(async (request, response) => {
   }
   if (tasksMatch && request.method === 'POST') {
     const projectId = Number(tasksMatch[1]);
-    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId).archived) {
       return sendJson(response, 409, { error: 'Archived projects cannot receive tasks' });
@@ -119,8 +137,8 @@ const server = createServer(async (request, response) => {
     try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
     const title = typeof payload.title === 'string' ? payload.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-    const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
+    const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   const priorityMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/priority$/);
