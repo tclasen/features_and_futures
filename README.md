@@ -16,6 +16,8 @@ Open `/` to create and open projects, view completion summaries, and filter Acti
 
 Project search and Task search match trimmed queries by substring, ignoring ASCII letter case and treating each run of ASCII spaces and horizontal tabs as one space in both query and name/title. This normalization is for matching only; saved names and titles retain their original whitespace and case. Searches intersect their page's existing filters and preserve creation/remembered order. Filter changes and edits retain the applied query; task edits immediately re-evaluate membership. Searches remain usable in archived projects, do not change stored data or summary counts, and begin empty when navigating from the list or returning with Projects.
 
+Each task row has a Task notes textarea and Save notes button. Notes are optional plain text, saved without trimming, including whitespace, line breaks, Unicode and literal markup. They persist and travel with tasks through moves and remembered returns without changing other task data. Saving retains all filters and the title-only search query; notes never add search matches. Archived notes remain visible with editing disabled. Existing databases gain empty notes without changing prior data.
+
 Run the integration tests (using temporary databases outside the repository):
 
 ```sh
