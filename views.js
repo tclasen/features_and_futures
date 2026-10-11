@@ -111,6 +111,12 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
           </label>
           <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
         </form>
+        <form class="create task-rename" method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}/rename">
+          <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+          <label for="new-task-title-${escapeHtml(task.id)}">New task title</label>
+          <input id="new-task-title-${escapeHtml(task.id)}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
       </li>`).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
   `);
 }
