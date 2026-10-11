@@ -100,7 +100,7 @@ test('notes migration, exact text, filters, ownership, return order, archive and
     checkNotes(await get('/projects/1'), 1, notes);
     const persisted = new DatabaseSync(databasePath);
     const task = persisted.prepare('SELECT * FROM tasks WHERE id = 1').get();
-    assert.deepEqual({ ...task }, { id: 1, project_id: 1, title: 'Keep Renamed', completed: 1, priority: 'High', due_date: '2024-02-29', position: 7, notes });
+    assert.deepEqual({ ...task }, { id: 1, project_id: 1, title: 'Keep Renamed', completed: 1, priority: 'High', due_date: '2024-02-29', position: 7, notes, deleted: 0 });
     assert.equal(persisted.prepare('SELECT COUNT(*) AS count FROM task_positions WHERE task_id = 1').get().count, 2);
     persisted.close();
     await post('/projects/1/tasks/1/notes', { notes: ' \t  ' });
