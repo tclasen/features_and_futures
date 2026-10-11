@@ -2,15 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { matchesSearch, filterProjects, filterTasks } from '../public/task-filters.js';
 
-test('search trims query edges, preserves internal whitespace and ignores only ASCII case', () => {
+test('search trims query edges, collapses ASCII spaces and tabs, and ignores only ASCII case', () => {
   assert.equal(matchesSearch('Quarterly ROAD map', '\t road \n'), true);
-  assert.equal(matchesSearch('ROAD  map', 'road map'), false);
+  assert.equal(matchesSearch('ROAD  map', 'road map'), true);
   assert.equal(matchesSearch('ROAD  map', ' road  MAP '), true);
+  assert.equal(matchesSearch('ROAD \t\t map', '\n road\t \tMAP \t'), true);
+  assert.equal(matchesSearch('ROAD map', 'road\t\tmap'), true);
+  assert.equal(matchesSearch('ROAD\nmap', 'road map'), false);
+  assert.equal(matchesSearch('ROAD\rmap', 'road map'), false);
+  assert.equal(matchesSearch('ROAD\u00a0map', 'road map'), false);
+  assert.equal(matchesSearch('ROAD map', 'road\nmap'), false);
   assert.equal(matchesSearch('Résumé', 'résumé'), true);
   assert.equal(matchesSearch('Résumé', 'RÉSUMÉ'), false);
   assert.equal(matchesSearch('Item [One]', '[oNE]'), true);
   assert.equal(matchesSearch('Anything', ' \t\n '), true);
   assert.equal(matchesSearch('Anything', 'missing'), false);
+});
+
+test('normalized project and task searches intersect filters without rewriting original names or titles', () => {
+  const names = ['Ship  \tPLAN', 'Other', 'SHIP\t plan', 'Ship plan', 'Ship\nplan'];
+  const projects = names.map((name, id) => ({ id, name, archived: id === 2, total: 1, completed: 0 }));
+  const tasks = names.map((title, id) => ({
+    id, title, completed: id === 2, priority: id === 3 ? 'Low' : 'High', due_date: '2026-05-15',
+  }));
+  const originalProjects = structuredClone(projects);
+  const originalTasks = structuredClone(tasks);
+  const query = ' \tship\t  PLAN\n';
+  assert.deepEqual(filterProjects(projects, 'active', query), [projects[0], projects[3]]);
+  assert.deepEqual(filterProjects(projects, 'archived', query), [projects[2]]);
+  const range = { from: '2026-05-01', through: '2026-05-31' };
+  assert.deepEqual(filterTasks(tasks, 'open', 'High', range, query), [tasks[0]]);
+  assert.deepEqual(filterTasks(tasks, 'completed', 'High', range, query), [tasks[2]]);
+  assert.deepEqual(filterTasks(tasks, 'all', 'all', range, query), [tasks[0], tasks[2], tasks[3]]);
+  assert.deepEqual(filterTasks(tasks, 'all', 'all', range, ''), tasks);
+  assert.deepEqual(projects, originalProjects);
+  assert.deepEqual(tasks, originalTasks);
 });
 
 test('project search intersects archive status, retains order and all-task summaries', () => {

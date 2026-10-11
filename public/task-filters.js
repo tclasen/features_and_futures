@@ -1,7 +1,7 @@
 import { normalizeDueDate } from '../due-date.js';
 
 function foldASCII(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 export function matchesSearch(value, query) {
