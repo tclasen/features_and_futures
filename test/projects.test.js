@@ -39,7 +39,7 @@ async function start(databasePath) {
   } };
 }
 
-test('projects validate, retain creation order, and survive a restart', async () => {
+test('projects and tasks validate, stay isolated, and survive a restart', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data', 'test-'));
   const databasePath = resolve(directory, 'projects.sqlite');
@@ -74,6 +74,58 @@ test('projects validate, retain creation order, and survive a restart', async ()
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await get('/api/projects'), [first, second]);
     assert.deepEqual(await get(`/api/projects/${first.id}`), first);
+    const firstTasks = `/api/projects/${first.id}/tasks`;
+    const secondTasks = `/api/projects/${second.id}/tasks`;
+    const createTask = (path, title) => fetch(server.url + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    const completeTask = (path, completed) => fetch(server.url + path, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed }),
+    });
+    assert.deepEqual(await get(firstTasks), []);
+    for (const title of ['', ' \t\n ']) {
+      const response = await createTask(firstTasks, title);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    assert.deepEqual(await get(firstTasks), []);
+    const taskResponse = await createTask(firstTasks, '  First task  ');
+    assert.equal(taskResponse.status, 201);
+    const firstTask = await taskResponse.json();
+    assert.ok(firstTask.id);
+    assert.equal(firstTask.title, 'First task');
+    assert.equal(firstTask.completed, false);
+    const nextTaskResponse = await createTask(firstTasks, 'Second task');
+    const secondTask = await nextTaskResponse.json();
+    assert.notEqual(firstTask.id, secondTask.id);
+    assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+    assert.deepEqual(await get(secondTasks), []);
+    const otherTaskResponse = await createTask(secondTasks, 'Other project task');
+    const otherTask = await otherTaskResponse.json();
+    assert.deepEqual(await get(secondTasks), [otherTask]);
+    const wrongProject = await completeTask(`${secondTasks}/${firstTask.id}`, true);
+    assert.equal(wrongProject.status, 404);
+    const invalidCompletion = await completeTask(`${firstTasks}/${firstTask.id}`, 'true');
+    assert.equal(invalidCompletion.status, 400);
+    assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+    const completion = await completeTask(`${firstTasks}/${firstTask.id}`, true);
+    assert.equal(completion.status, 200);
+    firstTask.completed = true;
+    assert.deepEqual(await completion.json(), firstTask);
+    const reopened = await completeTask(`${firstTasks}/${firstTask.id}`, false);
+    assert.equal(reopened.status, 200);
+    firstTask.completed = false;
+    assert.deepEqual(await reopened.json(), firstTask);
+    await completeTask(`${firstTasks}/${firstTask.id}`, true);
+    firstTask.completed = true;
+    assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+    assert.deepEqual(await get(secondTasks), [otherTask]);
+    const unknownProject = await createTask('/api/projects/missing/tasks', 'Orphan');
+    assert.equal(unknownProject.status, 404);
     for (const path of ['/', `/projects/${first.id}`]) {
       const response = await fetch(server.url + path);
       assert.equal(response.status, 200);
@@ -88,6 +140,12 @@ test('projects validate, retain creation order, and survive a restart', async ()
     server = await start(databasePath);
     assert.deepEqual(await get('/api/projects'), [first, second]);
     assert.deepEqual(await get(`/api/projects/${first.id}`), first);
+    assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
+    assert.deepEqual(await get(secondTasks), [otherTask]);
+    const reopenedAfterRestart = await completeTask(`${firstTasks}/${firstTask.id}`, false);
+    assert.equal(reopenedAfterRestart.status, 200);
+    firstTask.completed = false;
+    assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
