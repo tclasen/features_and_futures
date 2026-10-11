@@ -14,8 +14,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0
+  completed INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 
 const page = `<!doctype html>
 <html lang="en">
@@ -157,6 +159,15 @@ const page = `<!doctype html>
             await refreshTasks();
           });
           const title = document.createElement('span'); title.textContent = task.title;
+          const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority');
+          for (const value of ['Low', 'Normal', 'High']) { const option = document.createElement('option'); option.value = value; option.textContent = value; priority.append(option); }
+          priority.value = task.priority;
+          priority.disabled = project.archived;
+          priority.addEventListener('change', async () => {
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+            if (!update.ok) { priority.value = task.priority; return; }
+            task.priority = priority.value;
+          });
           const renameLabel = document.createElement('label'); renameLabel.textContent = 'New task title';
           const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New task title'); renameInput.value = task.title;
           const renameButton = document.createElement('button'); renameButton.type = 'button'; renameButton.textContent = 'Rename task';
@@ -169,7 +180,7 @@ const page = `<!doctype html>
             if (!update.ok) { renameAlert.textContent = 'Could not rename task'; renameAlert.hidden = false; return; }
             await refreshTasks();
           });
-          renameLabel.append(renameInput); row.append(checkbox, title, renameLabel, renameButton, renameAlert); list.append(row);
+          renameLabel.append(renameInput); row.append(checkbox, title, priority, renameLabel, renameButton, renameAlert); list.append(row);
         }
       }
       filter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
@@ -259,7 +270,7 @@ const server = http.createServer(async (req, res) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && req.method === 'GET') {
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(tasksMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
-    const tasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1]);
+    const tasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1]);
     return sendJson(res, 200, tasks.map((task) => ({ ...task, id: String(task.id), completed: Boolean(task.completed) })));
   }
   if (tasksMatch && req.method === 'POST') {
@@ -281,6 +292,14 @@ const server = http.createServer(async (req, res) => {
       let result;
       if (typeof body.completed === 'boolean') {
         result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
+      } else if (typeof body.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(body.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+        result = db.prepare(`UPDATE tasks SET priority = ? WHERE id = ?
+          AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND projects.archived = 0)`).run(body.priority, taskMatch[1]);
+        if (!result.changes) {
+          const task = db.prepare('SELECT projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(taskMatch[1]);
+          return task ? sendJson(res, 409, { error: 'Archived projects cannot change task priority' }) : sendJson(res, 404, { error: 'Task not found' });
+        }
       } else if (typeof body.title === 'string') {
         const title = body.title.trim();
         if (!title) return sendJson(res, 400, { error: 'Task title is required' });
