@@ -529,3 +529,67 @@ test('priority options persist through filtering, renaming, reload, and archive/
   assert.deepEqual(rows(app).map(row => row.querySelector('select').value), ['High', 'Low']);
   for (const row of rows(app)) assert.equal(row.querySelector('select').disabled, false);
 });
+
+
+test('due date controls save independently while retaining filters and archive protection', async () => {
+  const projects = [project()];
+  const pending = { tasks: [
+    { id: 1, title: 'Dated task', completed: true, priority: 'High', due_date: '' },
+    { id: 2, title: 'Other task', completed: false, priority: 'Normal', due_date: '' },
+  ] };
+  const storage = new Map();
+  let app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'High');
+  function dateForm(row) { return row.children.find(child => child.tag === 'form' && child.querySelector('button').textContent === 'Save due date'); }
+  let form = dateForm(rows(app)[0]);
+  let input = form.querySelector('input');
+  assert.equal(input.attributes['aria-label'], 'Task due date');
+  assert.equal(input.type, 'text');
+  assert.equal(input.value, '');
+  input.value = '0001-01-01';
+  await form.emit('submit');
+  assert.equal(dateForm(rows(app)[0]).querySelector('input').value, '0001-01-01');
+  assert.equal(app.querySelector('#task-filter').value, 'Completed');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  assert.equal(rows(app).length, 1);
+  assert.equal(pending.tasks[1].due_date, '');
+  const rename = rows(app)[0].querySelector('form');
+  rename.querySelector('input').value = 'Renamed dated task';
+  await rename.emit('submit');
+  assert.equal(dateForm(rows(app)[0]).querySelector('input').value, '0001-01-01');
+  app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(dateForm(rows(app)[0]).querySelector('input').value, '0001-01-01');
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  for (const row of rows(app)) {
+    assert.equal(dateForm(row).querySelector('input').disabled, true);
+    assert.equal(dateForm(row).querySelector('button').disabled, true);
+  }
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'High');
+  assert.equal(rows(app).length, 1);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  form = dateForm(rows(app)[0]);
+  assert.equal(form.querySelector('input').disabled, false);
+  assert.equal(form.querySelector('button').disabled, false);
+  assert.equal(form.querySelector('input').value, '0001-01-01');
+  form.querySelector('input').value = '';
+  await form.emit('submit');
+  assert.equal(dateForm(rows(app)[0]).querySelector('input').value, '');
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app)[0].querySelector('select').value, 'High');
+});

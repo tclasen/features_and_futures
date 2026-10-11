@@ -266,14 +266,55 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     const migratedProject = { id: 7, name: 'Existing project', archived: false, default_priority: 'Normal', total_count: 1, completed_count: 1 };
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [migratedProject]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
-      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal' },
+      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
     ]);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects/7`)).json(), migratedProject);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
-      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal' },
+      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
     ]);
+    const migratedTaskPath = '/api/projects/7/tasks/9';
+    let savedTask = (await (await fetch(`${base}/api/projects/7/tasks`)).json())[0];
+    for (const due_date of ['0001-01-01', '0099-12-31', '2000-02-29', '2024-02-29', '9999-12-31']) {
+      const response = await taskRequest(migratedTaskPath, 'PATCH', { due_date: `  ${due_date}  ` });
+      assert.equal(response.status, 200);
+      savedTask = { ...savedTask, due_date };
+      assert.deepEqual(await response.json(), savedTask);
+    }
+    for (const due_date of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29',
+      '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00',
+      '2024-1-01', '2024-01-1', '2024-01-01T00:00:00Z', 'nonsense', null, 20240101]) {
+      const response = await taskRequest(migratedTaskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [savedTask]);
+    }
+    const independentTask = await (await taskRequest('/api/projects/7/tasks', 'POST', { title: 'Independent date' })).json();
+    assert.equal(independentTask.due_date, '');
+    const independentProject = await (await create('Independent project')).json();
+    assert.equal((await taskRequest(`/api/projects/${independentProject.id}/tasks/9`, 'PATCH', { due_date: '2025-01-01' })).status, 404);
+    const renamedDateTask = await taskRequest(migratedTaskPath, 'PATCH', { title: 'Date preserved by rename' });
+    savedTask = { ...savedTask, title: 'Date preserved by rename' };
+    assert.deepEqual(await renamedDateTask.json(), savedTask);
+    await taskRequest('/api/projects/7', 'PATCH', { archived: true });
+    assert.equal((await taskRequest(migratedTaskPath, 'PATCH', { due_date: '' })).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [savedTask, independentTask]);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/7`)).json(), {
+      ...migratedProject, archived: true, total_count: 2,
+    });
+    await taskRequest('/api/projects/7', 'PATCH', { archived: false });
+    for (const due_date of ['', '   \t\n']) {
+      const response = await taskRequest(migratedTaskPath, 'PATCH', { due_date });
+      assert.equal(response.status, 200);
+      savedTask = { ...savedTask, due_date: '' };
+      assert.deepEqual(await response.json(), savedTask);
+    }
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [savedTask, independentTask]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

@@ -29,6 +29,9 @@ CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id, id)`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total_count,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed_count
@@ -39,12 +42,13 @@ const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?'
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const projectValue = project => ({ ...project, archived: Boolean(project.archived) });
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = db.prepare('SELECT id, project_id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const taskValue = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(join(root, 'public', 'index.html'))]],
@@ -55,6 +59,16 @@ const assets = new Map([
 function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
+}
+
+// Calendar arithmetic avoids JavaScript Date's timezone and small-year conversions.
+function validDueDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
 }
 
 async function readInput(req) {
@@ -136,6 +150,14 @@ const server = http.createServer(async (req, res) => {
         if (!getTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
         const input = await readInput(req);
         if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
+        if (input && Object.hasOwn(input, 'due_date')) {
+          const date = typeof input.due_date === 'string' ? input.due_date.trim() : null;
+          if (date === null || (date !== '' && !validDueDate(date))) {
+            return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+          updateDueDate.run(date, projectId, taskId);
+          return json(res, 200, taskValue(getTask.get(projectId, taskId)));
+        }
         if (input && Object.hasOwn(input, 'priority')) {
           if (!['Low', 'Normal', 'High'].includes(input.priority)) {
             return json(res, 400, { error: 'Priority must be Low, Normal, or High' });

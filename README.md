@@ -1,5 +1,12 @@
 # Workboard
 
+Each task has a Task due date textbox and Save due date button. Dates are optional;
+saving blank text clears the date. Nonempty values must be real Gregorian dates
+in YYYY-MM-DD format (years 0001–9999). Surrounding whitespace is trimmed.
+Invalid dates show an alert and preserve the saved date. Dates persist across
+reloads and restarts, remain independent of other task data and filters, and
+cannot be edited while a project is archived.
+
 Each project has a Default task priority selector with Low, Normal, and High
 options. Existing and new projects start with Normal. Changes apply only to
 subsequently created tasks in that project, preserve both selected task filters,
