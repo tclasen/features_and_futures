@@ -13,11 +13,12 @@ if (dbPath !== ':memory:') {
 }
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High')));
-CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High')), due_date TEXT)  `);
+CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High')), due_date TEXT, notes TEXT NOT NULL DEFAULT '')`);
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))");
 if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (task_id TEXT NOT NULL, project_id TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY(task_id, project_id), FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE, FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE)`);
 db.exec('PRAGMA foreign_keys = ON');
 // Seed each task's current order as its remembered position in its existing project.
@@ -35,12 +36,13 @@ const getProject = db.prepare('SELECT id, archived, default_priority FROM projec
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.created_at), t.created_at, t.rowid');
+const listTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.created_at), t.created_at, t.rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -150,7 +152,11 @@ const server = http.createServer(async (req, res) => {
         let body = ''; for await (const chunk of req) body += chunk;
         const data = JSON.parse(body);
         const id = decodeURIComponent(taskRoute[2]);
-        if (Object.hasOwn(data, 'due_date')) {
+        if (Object.hasOwn(data, 'notes')) {
+          if (typeof data.notes !== 'string') { res.writeHead(400); res.end('Invalid notes'); return; }
+          const result = updateNotes.run(data.notes, id, projectId);
+          if (!result.changes) { res.writeHead(404); res.end('Not found'); return; }
+        } else if (Object.hasOwn(data, 'due_date')) {
           const date = String(data.due_date ?? '').trim();
           if (date && !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(date)) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' })); return; }
           if (date) { const [year, month, day] = date.split('-').map(Number); const parsed = new Date(Date.UTC(year, month - 1, day)); parsed.setUTCFullYear(year); if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' })); return; } }
