@@ -29,6 +29,13 @@ db.exec(`
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
     created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
   )
 `);
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all();
@@ -45,6 +52,18 @@ if (!projectColumns.some((column) => column.name === 'archived')) {
 if (!projectColumns.some((column) => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+// Seed durable membership positions in each task's current visible order. This
+// also makes upgrades from earlier Workboard versions preserve existing order.
+const projectsWithoutPositions = db.prepare(`SELECT DISTINCT t.project_id AS projectId
+  FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE p.task_id IS NULL`).all();
+const positionTaskIds = db.prepare('SELECT id FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const insertPosition = db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+for (const { projectId } of projectsWithoutPositions) {
+  const existingMax = db.prepare('SELECT COALESCE(MAX(position), -1) AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
+  let position = existingMax + 1;
+  for (const { id } of positionTaskIds.all(projectId)) insertPosition.run(id, projectId, position++);
+}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount,
   COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
@@ -55,13 +74,15 @@ const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate
+  FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position, t.created_at, t.rowid`);
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?');
 
 function isValidDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -162,8 +183,10 @@ async function handle(req, res) {
       const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
       const task = { id: randomUUID(), title, completed: 0, priority: getProject.get(projectId).defaultPriority };
+      const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
       db.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, ?, ?)')
         .run(task.id, projectId, title, task.priority, Date.now());
+      insertPosition.run(task.id, projectId, position);
       return sendJson(res, 201, task);
     }
   }
@@ -198,8 +221,17 @@ async function handle(req, res) {
     const destinationId = typeof payload?.destinationProjectId === 'string' ? payload.destinationProjectId : '';
     const destination = getProject.get(destinationId);
     if (!destination || destination.archived || destinationId === sourceId) return sendJson(res, 400, { error: 'Invalid destination project' });
-    const latest = db.prepare('SELECT COALESCE(MAX(created_at), 0) AS latest FROM tasks WHERE project_id = ?').get(destinationId).latest;
-    moveTask.run(destinationId, Math.max(Date.now(), latest + 1), taskId, sourceId);
+    const priorPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+    const destinationPosition = priorPosition?.position ?? db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value;
+    db.exec('BEGIN');
+    try {
+      insertPosition.run(taskId, destinationId, destinationPosition);
+      moveTask.run(destinationId, taskId, sourceId);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
     return sendJson(res, 200, { ...task, projectId: destinationId });
   }
   if (req.method === 'PATCH' && taskMatch) {
