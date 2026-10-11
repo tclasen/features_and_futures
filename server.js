@@ -74,6 +74,10 @@ const server = http.createServer(async (req, res) => {
     res.end(body);
   };
   if (req.method === 'GET' && url.pathname === '/health') return send(200, JSON.stringify({ status: 'ok' }));
+  if (req.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted, p.name AS projectName, p.archived AS projectArchived FROM projects p JOIN tasks t ON t.project_id = p.id ORDER BY p.id, t.sort_order, t.id`).all();
+    return send(200, JSON.stringify(rows));
+  }
   if (url.pathname === '/api/projects' && req.method === 'GET') return send(200, JSON.stringify(listProjects.all()));
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (archiveMatch && req.method === 'PATCH') {
@@ -240,7 +244,7 @@ const server = http.createServer(async (req, res) => {
       return send(400, JSON.stringify({ error: 'Invalid request' }));
     }
   }
-  if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/\d+$/.test(url.pathname))) {
     return send(200, html, 'text/html; charset=utf-8');
   }
   send(404, JSON.stringify({ error: 'Not found' }));

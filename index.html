@@ -20,6 +20,7 @@
     .task-row input[type="checkbox"] { display: inline-block; visibility: visible; opacity: 1; width: 18px; height: 18px; padding: 0; flex: 0 0 18px; appearance: auto; }
     .filter { display: flex; align-items: center; gap: 10px; margin: 18px 0; }
     select { padding: 8px; font: inherit; }
+    [data-testid="directory-task-notes"] { white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -30,6 +31,26 @@
     const normalizeSearch = value => String(value).replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
 
     async function render() {
+      if (location.pathname === '/directory') {
+        const rows = await (await fetch('/api/directory')).json();
+        app.innerHTML = `<button type="button" id="directory-back">Projects</button><h1>Task directory</h1>
+          <div class="filter"><label for="directory-scope">Project scope</label><select id="directory-scope"><option>Active</option><option>Archived</option></select></div>
+          <div class="filter"><label for="directory-task-filter">Task filter</label><select id="directory-task-filter"><option>All</option><option>Open</option><option>Completed</option><option>Deleted</option></select></div>
+          <div class="filter"><label for="directory-priority-filter">Priority filter</label><select id="directory-priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></div>
+          <form id="directory-search-form"><label for="directory-search">Directory search</label><input id="directory-search" type="text"><button type="submit">Search directory</button></form>
+          <form id="directory-range-form"><label for="directory-from">Due from</label><input id="directory-from" type="text"><label for="directory-through">Due through</label><input id="directory-through" type="text"><button type="submit">Apply due range</button></form>
+          <div id="directory-message" role="alert" aria-live="polite"></div><section id="directory-results"></section>`;
+        app.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
+        let query = '', from = '', through = '';
+        const scope = app.querySelector('#directory-scope'), tf = app.querySelector('#directory-task-filter'), pf = app.querySelector('#directory-priority-filter');
+        const validDate = value => { const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) return false; const y=+m[1], mo=+m[2], d=+m[3]; if(y<1||mo<1||mo>12||d<1)return false; const leap=y%4===0&&(y%100!==0||y%400===0); return d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1]; };
+        const paint = () => { const norm = value => normalizeSearch(value); const visible = rows.filter(t => Boolean(t.projectArchived) === (scope.value === 'Archived') && (tf.value === 'Deleted' ? Boolean(t.deleted) : !t.deleted && (tf.value === 'All' || (tf.value === 'Completed') === Boolean(t.completed))) && (pf.value === 'All' || t.priority === pf.value) && norm(t.title).includes(query) && ((!from && !through) || (Boolean(t.dueDate) && (!from || t.dueDate >= from) && (!through || t.dueDate <= through))));
+          app.querySelector('#directory-results').innerHTML = visible.map(t => `<div class="row" data-testid="directory-task-row"><span data-testid="directory-task-title">${escapeHtml(t.title)}</span><span data-testid="directory-project-name">${escapeHtml(t.projectName)}</span><span data-testid="directory-task-completion">${t.completed ? 'Completed' : 'Open'}</span><span data-testid="directory-task-priority">${escapeHtml(t.priority || 'Normal')}</span><span data-testid="directory-task-due-date">${escapeHtml(t.dueDate || '')}</span><span data-testid="directory-task-notes">${escapeHtml(t.notes || '')}</span><button type="button" data-directory-open="${t.projectId}">Open project</button></div>`).join('');
+          app.querySelectorAll('[data-directory-open]').forEach(button => button.addEventListener('click', () => navigate(`/projects/${button.dataset.directoryOpen}`))); };
+        app.querySelector('#directory-search-form').addEventListener('submit', e => { e.preventDefault(); query = normalizeSearch(app.querySelector('#directory-search').value.trim()); paint(); });
+        app.querySelector('#directory-range-form').addEventListener('submit', e => { e.preventDefault(); const a=app.querySelector('#directory-from').value.trim(), b=app.querySelector('#directory-through').value.trim(), msg=app.querySelector('#directory-message'); if ((a&&!validDate(a))||(b&&!validDate(b))) { msg.textContent='Due range must use valid YYYY-MM-DD dates'; return; } if(a&&b&&a>b){msg.textContent='Due from must not be after Due through';return;} from=a;through=b;msg.textContent='';paint(); });
+        [scope,tf,pf].forEach(control => control.addEventListener('change', paint)); paint(); return;
+      }
       const match = location.pathname.match(/^\/projects\/(\d+)$/);
       if (match) {
         const projectResponse = await fetch(`/api/projects/${match[1]}`);
@@ -174,13 +195,14 @@
       }
       const response = await fetch('/api/projects');
       const projects = await response.json();
-      app.innerHTML = `<h1>Workboard</h1>
+      app.innerHTML = `<h1>Workboard</h1><button type="button" id="open-directory">Task directory</button>
         <form id="create-form"><label for="project-name">Project name</label><input id="project-name" name="name" type="text"><button type="submit">Create project</button></form>
         <form id="import-form"><label for="project-json">Project JSON</label><textarea id="project-json"></textarea><label for="imported-project-name">Imported project name</label><input id="imported-project-name" type="text"><button type="submit">Import project</button></form>
         <div id="message" role="alert" aria-live="polite"></div>
         <form id="project-search-form"><label for="project-search">Project search</label><input id="project-search" type="text"><button type="submit">Search projects</button></form>
         <div class="filter"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
         <section aria-label="Projects" id="project-list"></section>`;
+      app.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
       const projectFilter = app.querySelector('#project-filter');
       let appliedProjectQuery = '';
       const paintProjects = () => {
