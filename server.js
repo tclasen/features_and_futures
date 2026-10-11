@@ -41,6 +41,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+// Soft deletion preserves fields and reserved positions; legacy tasks remain live.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 // Preserve the current order from databases created before movement support.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
@@ -59,14 +63,14 @@ database.exec(`
 `);
 const projectQuery = `SELECT p.id, p.name, p.archived, p.defaultTaskPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
-  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted = 0`;
 const listProjects = database.prepare(`${projectQuery} GROUP BY p.id ORDER BY p.id`);
 const getProject = database.prepare(`${projectQuery} WHERE p.id = ? GROUP BY p.id`);
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
-const getTask = database.prepare('SELECT id, title, completed, priority, dueDate, notes FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const getTask = database.prepare('SELECT id, title, completed, priority, dueDate, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const nextTaskPosition = database.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS position
   FROM task_project_positions WHERE project_id = ?`);
@@ -113,12 +117,14 @@ const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE pr
 const setTaskDueDate = database.prepare('UPDATE tasks SET dueDate = ? WHERE project_id = ? AND id = ?');
 const setTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 
+const setTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
+
 function projectJson(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
 
 function taskJson(task) {
-  return { ...task, completed: Boolean(task.completed) };
+  return { ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) };
 }
 
 const assets = new Map([
@@ -186,8 +192,17 @@ const server = createServer(async (request, response) => {
         return json(response, 201, taskJson(getTask.get(projectId, taskId)));
       }
       if (request.method === 'PATCH' && taskId !== null) {
-        if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+        const task = getTask.get(projectId, taskId);
+        if (!task) return json(response, 404, { error: 'Task not found' });
         const input = await readJson(request);
+        if (input && Object.hasOwn(input, 'deleted')) {
+          if (typeof input.deleted !== 'boolean' || Object.keys(input).length !== 1) {
+            return json(response, 400, { error: 'Deleted must be a boolean and changed independently' });
+          }
+          setTaskDeleted.run(Number(input.deleted), projectId, taskId);
+          return json(response, 200, taskJson(getTask.get(projectId, taskId)));
+        }
+        if (task.deleted) return json(response, 409, { error: 'Deleted task must be restored before editing' });
         if (input && Object.hasOwn(input, 'destinationProjectId')) {
           const destinationId = input.destinationProjectId;
           if (!Number.isSafeInteger(destinationId) || destinationId === projectId) {

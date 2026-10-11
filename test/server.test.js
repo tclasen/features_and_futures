@@ -51,7 +51,7 @@ test('legacy project databases migrate without losing IDs or tasks', async () =>
     const expected = [{ id: 17, name: 'Legacy', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 }];
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/tasks`)).json(), [
-      { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '', notes: '' },
+      { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
     ]);
     await server.stop();
     server = await start(databasePath);
@@ -552,6 +552,67 @@ test('moves preserve task data, first-arrival order, summaries and ownership acr
     server = await start(databasePath);
     assert.deepEqual(await request(`${sourcePath}/tasks`), [saved, newest]);
     assert.deepEqual(await request(`${destinationPath}/tasks`), [existing, remaining]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('soft deletion preserves fields, reserved positions and live summaries across restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method, body) => fetch(`${server.url}/api/projects${path}`, method ? {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    } : undefined);
+    const source = await (await request('', 'POST', { name: 'Source' })).json();
+    const destination = await (await request('', 'POST', { name: 'Destination' })).json();
+    const path = `/${source.id}/tasks`;
+    const task = await (await request(path, 'POST', { title: 'First' })).json();
+    const second = await (await request(path, 'POST', { title: 'Second' })).json();
+    assert.equal(task.deleted, false);
+    const patch = (changes, projectId = source.id) => request(`/${projectId}/tasks/${task.id}`, 'PATCH', changes);
+    for (const changes of [{ completed: true }, { priority: 'High' }, { dueDate: '0001-01-01' }, { notes: '  雪\n<literal>  ' }]) {
+      Object.assign(task, await (await patch(changes)).json());
+    }
+    await patch({ destinationProjectId: destination.id });
+    await patch({ destinationProjectId: source.id }, destination.id);
+    const deleted = { ...task, deleted: true };
+    assert.deepEqual(await (await patch({ deleted: true })).json(), deleted);
+    for (const changes of [{ title: 'Changed' }, { completed: false }, { priority: 'Low' }, { dueDate: '' }, { notes: '' }, { destinationProjectId: destination.id }]) {
+      assert.equal((await patch(changes)).status, 409);
+    }
+    assert.equal((await patch({ deleted: 'false' })).status, 400);
+    assert.equal((await patch({ deleted: false, title: 'Changed' })).status, 400);
+    assert.equal((await request(`${path}/${second.id}`, 'PATCH', { deleted: true })).status, 200);
+    const summary = await (await request(`/${source.id}`)).json();
+    assert.equal(summary.totalCount, 0);
+    assert.equal(summary.completedCount, 0);
+    await request(`/${source.id}`, 'PATCH', { archived: true });
+    assert.equal((await patch({ deleted: false })).status, 409);
+    assert.equal((await patch({ deleted: true })).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [deleted, { ...second, deleted: true }]);
+    await request(`/${source.id}`, 'PATCH', { archived: false });
+    await request(`/${source.id}`, 'PATCH', { defaultTaskPriority: 'Low' });
+    const later = await (await request(path, 'POST', { title: 'Later' })).json();
+    await request(`${path}/${second.id}`, 'PATCH', { deleted: false });
+    assert.deepEqual(await (await patch({ deleted: false })).json(), task);
+    assert.deepEqual(await (await request(path)).json(), [task, second, later]);
+    const restoredSummary = await (await request(`/${source.id}`)).json();
+    assert.equal(restoredSummary.totalCount, 3);
+    assert.equal(restoredSummary.completedCount, 1);
+    await patch({ destinationProjectId: destination.id });
+    await patch({ deleted: true }, destination.id);
+    assert.equal((await patch({ destinationProjectId: source.id }, destination.id)).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    await patch({ deleted: false }, destination.id);
+    await patch({ destinationProjectId: source.id }, destination.id);
+    assert.deepEqual(await (await request(path)).json(), [task, second, later]);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

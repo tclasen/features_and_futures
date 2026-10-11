@@ -583,7 +583,7 @@ test('project task UI: labels, validation, completion, and filters in creation o
   assert.equal(button.textContent, 'Create task');
   const filter = app.querySelector('select');
   assert.equal(filter.value, 'All');
-  assert.deepEqual(filter.children.map((option) => option.textContent), ['All', 'Open', 'Completed']);
+  assert.deepEqual(filter.children.map((option) => option.textContent), ['All', 'Open', 'Completed', 'Deleted']);
   const list = app.querySelector('ul');
   input.value = ' \t\n ';
   await form.fire('submit');
@@ -840,6 +840,81 @@ for (const archived of [false, true]) {
     await notesForm().fire('submit');
     assert.equal(notesForm().children[1].value, '');
     assert.deepEqual(task, { id: 1, title: 'Matching title', completed: true, priority: 'High', dueDate: '2028-02-29', notes: '' });
+  });
+}
+
+for (const archived of [false, true]) {
+  test(`deleted tasks intersect filters and are read-only (${archived ? 'archived' : 'active'})`, async () => {
+    const projects = [
+      { id: 1, name: 'Source', archived, defaultTaskPriority: 'Low' },
+      { id: 2, name: 'Destination', archived: false },
+    ];
+    const tasks = [
+      { id: 1, title: 'Matching first', completed: true, priority: 'High', dueDate: '2028-02-29', notes: '  saved\n雪 ', deleted: false },
+      { id: 2, title: 'Matching second', completed: false, priority: 'High', dueDate: '2028-02-29', notes: '', deleted: true },
+      { id: 3, title: 'Other', completed: true, priority: 'Low', dueDate: '', notes: '', deleted: true },
+    ];
+    const { app, writes } = searchPage('/projects/1', projects, tasks);
+    await new Promise((resolve) => setImmediate(resolve));
+    const list = app.querySelector('ul');
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    const completion = filters.children[1];
+    const priority = filters.children[3];
+    const titles = () => list.children.map((row) => row.children[1].textContent);
+    assert.deepEqual(titles(), ['Matching first']);
+    const deleteButton = list.children[0].children.at(-1);
+    assert.equal(deleteButton.textContent, 'Delete task');
+    assert.equal(deleteButton.disabled, archived);
+    if (!archived) {
+      await deleteButton.fire('click');
+      assert.deepEqual(titles(), []);
+    }
+    for (const value of ['Open', 'Completed']) {
+      completion.value = value;
+      await completion.fire('change');
+      assert.deepEqual(titles(), archived && value === 'Completed' ? ['Matching first'] : []);
+    }
+    completion.value = 'Deleted';
+    await completion.fire('change');
+    priority.value = 'High';
+    await priority.fire('change');
+    const range = formWithLabel(app, 'Due from');
+    range.children[1].value = range.children[3].value = '2028-02-29';
+    await range.fire('submit');
+    const search = formWithLabel(app, 'Task search');
+    await applySearch(search, 'MATCHING');
+    assert.deepEqual(titles(), archived ? ['Matching second'] : ['Matching first', 'Matching second']);
+    const row = list.children[0];
+    assert.equal(row.children[0].disabled, true);
+    assert.equal(row.children[4].disabled, true);
+    for (const index of [2, 5, 6, 7]) {
+      assert.equal(row.children[index].children[1].disabled, true);
+      assert.equal(row.children[index].children[2].disabled, true);
+    }
+    const restoreButton = row.children.at(-1);
+    assert.equal(restoreButton.textContent, 'Restore task');
+    assert.equal(restoreButton.disabled, archived);
+    await restoreButton.fire('click');
+    if (archived) {
+      assert.equal(writes.length, 0);
+      assert.deepEqual(titles(), ['Matching second']);
+    } else {
+      assert.deepEqual(titles(), ['Matching second']);
+      assert.deepEqual(writes, [
+        { path: '/api/projects/1/tasks/1', deleted: true },
+        { path: '/api/projects/1/tasks/1', deleted: false },
+      ]);
+      assert.equal(completion.value, 'Deleted');
+      assert.equal(priority.value, 'High');
+      assert.equal(range.children[1].value, '2028-02-29');
+      assert.equal(range.children[3].value, '2028-02-29');
+      assert.equal(search.children[1].value, 'MATCHING');
+      completion.value = 'Completed';
+      await completion.fire('change');
+      assert.deepEqual(titles(), ['Matching first']);
+      assert.equal(list.children[0].children[7].children[1].value, '  saved\n雪 ');
+      assert.equal(list.children[0].children[7].children[1].disabled, false);
+    }
   });
 }
 
