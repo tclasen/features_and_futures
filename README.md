@@ -35,3 +35,10 @@ must not be blank. Renaming preserves the project ID, URL, creation order, tasks
 and completion summary. Archived projects cannot be renamed until restored;
 this restriction also applies to direct POST requests. Renamed names persist
 across restarts.
+
+Each task in an active project can be renamed using its New task title field.
+Titles are trimmed and must not be blank. Renaming preserves ownership,
+creation order, completion state, filter membership, and completion summaries.
+The displayed title and completion checkbox label update together. Archived
+projects disable task renaming and reject direct rename requests until restored.
+Renamed titles persist across restarts.

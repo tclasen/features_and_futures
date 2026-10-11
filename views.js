@@ -34,7 +34,10 @@ function page(title, content) {
     select { padding: 10px 12px; font: inherit; border: 1px solid #8996a8; border-radius: 6px; background: white; }
     .task-row { background: white; border: 1px solid #d7dfe8; border-radius: 10px; padding: 18px 24px; }
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
-    .task-row input { flex: none; width: 20px; height: 20px; }
+    .task-row input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+    .task-rename { margin-top: 16px; }
+    .task-rename label { display: block; margin-bottom: 8px; }
+    .task-rename input { width: 100%; margin-bottom: 12px; }
     @media (max-width: 520px) { main { margin-top: 32px; } .form-controls { flex-direction: column; } .project-row { padding: 16px; } }
   </style>
 </head>
@@ -70,12 +73,12 @@ export function projectListPage(projects, error = '', filter = 'Active') {
     </div>`);
 }
 
-export function projectPage(project, tasks = [], filter = 'All', error = '', renameError = '') {
+export function projectPage(project, tasks = [], filter = 'All', errors = {}) {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <form class="create-form task-create" method="post" action="/projects/${project.id}/rename">
-      ${renameError ? `<p role="alert">${escapeHtml(renameError)}</p>` : ''}
+      ${errors.projectRename ? `<p role="alert">${escapeHtml(errors.projectRename)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <label for="new-project-name">New project name</label>
       <div class="form-controls">
@@ -84,7 +87,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', ren
       </div>
     </form>
     <form class="create-form task-create" method="post" action="/projects/${project.id}/tasks">
-      ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+      ${errors.taskCreation ? `<p role="alert">${escapeHtml(errors.taskCreation)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
       <div class="form-controls">
@@ -103,6 +106,13 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', ren
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+        </form>
+        <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+          ${errors.taskRename?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskRename.message)}</p>` : ''}
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
       </div>`).join('')}
     </div>`);
