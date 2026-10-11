@@ -1,3 +1,5 @@
+import { filterTasks } from './task-filters.js';
+
 const app = document.getElementById('app');
 
 async function request(path, options) {
@@ -77,6 +79,13 @@ async function renderProject(projectId) {
       <option value="open">Open</option>
       <option value="completed">Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option value="all">All</option>
+      <option value="Low">Low</option>
+      <option value="Normal">Normal</option>
+      <option value="High">High</option>
+    </select>
     <p id="empty">No tasks to show.</p>
     <ul id="tasks"></ul>`;
   app.querySelector('h1').textContent = project.name;
@@ -114,10 +123,10 @@ async function renderProject(projectId) {
   });
   document.getElementById('back').addEventListener('click', () => location.assign('/'));
   const filter = document.getElementById('task-filter');
+  const priorityFilter = document.getElementById('priority-filter');
   const list = document.getElementById('tasks');
   function drawTasks() {
-    const visible = tasks.filter(task => filter.value === 'all' ||
-      (filter.value === 'completed' ? task.completed : !task.completed));
+    const visible = filterTasks(tasks, filter.value, priorityFilter.value);
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('li');
       row.dataset.testid = 'task-row';
@@ -214,6 +223,7 @@ async function renderProject(projectId) {
     document.getElementById('empty').hidden = visible.length > 0;
   }
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   drawTasks();
   document.getElementById('task-form').addEventListener('submit', async event => {
     event.preventDefault();

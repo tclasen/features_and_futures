@@ -24,3 +24,10 @@ tasks, and completion summary and persists across restarts.
 Each task row provides New task title and Rename task. Renaming trims and
 requires a title while preserving ownership, order, completion, and summaries.
 Task renaming persists across restarts and is disabled in archived projects.
+
+Task priority is saved independently for each task, defaults to Normal, and can
+be changed to Low or High. Archived projects disable priority edits.
+The Priority filter (All, Low, Normal, High) combines with the Task filter;
+both initially show All and remain usable in archived projects. Matching tasks
+keep their creation order. Edits immediately update matching rows while keeping
+both filter selections, and project summaries always count every task.
