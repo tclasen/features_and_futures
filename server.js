@@ -494,6 +494,17 @@ function compareCodePoints(a, b) {
 function directoryPage(state, error = '', rangeInput = state.range) {
   const { scope, filter, priority, range, query, order } = state;
   const tasks = directoryTasks(state);
+  const ownersById = new Map();
+  for (const task of tasks) {
+    let owner = ownersById.get(task.project_id);
+    if (!owner) {
+      owner = { id: task.project_id, name: task.project_name, total: 0, completed: 0 };
+      ownersById.set(owner.id, owner);
+    }
+    owner.total++;
+    owner.completed += Number(Boolean(task.completed));
+  }
+  const owners = [...ownersById.values()].sort((a, b) => a.id - b.id);
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const selections = `<input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
@@ -547,6 +558,16 @@ function directoryPage(state, error = '', rangeInput = state.range) {
       <button type="submit" name="completed" value="1"${canEdit && tasks.some(task => !task.completed) ? '' : ' disabled'}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${canEdit && tasks.some(task => task.completed) ? '' : ' disabled'}>Reopen visible tasks</button>
     </form>
+    <section aria-label="Directory projects">
+      ${owners.map(owner => `
+        <div data-testid="directory-owner-row" class="directory-row">
+          <h2 data-testid="directory-owner-name">${escapeHtml(owner.name)}</h2>
+          <p data-testid="directory-owner-summary">${owner.completed}/${owner.total} completed</p>
+          <form method="get" action="/projects/${owner.id}">
+            <button type="submit" class="secondary">Open project</button>
+          </form>
+        </div>`).join('')}
+    </section>
     <section aria-label="Directory results">
       <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
       ${tasks.length ? tasks.map(task => `

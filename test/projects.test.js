@@ -2489,3 +2489,116 @@ test('directory ordering is stable across owners and view actions without changi
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory owner totals follow matching results by identity and creation order', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'directory-owner-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const path = values => `/directory?${new URLSearchParams(values)}`;
+    const task = (title, completed, priority = 'High', dueDate = '2026-01-01', deleted = false) =>
+      ({ title, completed, priority, dueDate, deleted, notes: 'literal notes' });
+    for (const [name, archived, tasks] of [
+      ['Same  雪 <owner>', false, [task('Zulu match', true), task('Zulu open match', false),
+        task('Other', true, 'Low', ''), task('Deleted match', true, 'High', '2026-01-01', true)]],
+      ['Same  雪 <owner>', false, [task('Alpha match', false), task('Alpha complete match', true),
+        task('Deleted match', false, 'High', '2026-01-01', true)]],
+      ['Renamed later', false, [task('Middle match', false, 'Normal', '')]],
+      ['Archive', true, [task('Archive match', true), task('Archive open', false),
+        task('Archive deleted', true, 'Low', '', true)]],
+      ['Empty', false, []],
+    ]) {
+      const response = await post('/projects/import', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Normal', tasks },
+      }) });
+      assert.equal(response.status, 303);
+    }
+    await post('/projects/3/rename', { name: ' Same  雪 <owner> ' });
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_positions'].map(table =>
+          database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row => ({ ...row })));
+      } finally { database.close(); }
+    };
+    const ownerRows = page => [...page.matchAll(/<div data-testid="directory-owner-row"[\s\S]*?<\/form>\s*<\/div>/g)]
+      .map(([row]) => ({
+        id: Number(/action="\/projects\/(\d+)"/.exec(row)[1]),
+        name: /data-testid="directory-owner-name">([^<]*)/.exec(row)[1],
+        summary: /data-testid="directory-owner-summary">([^<]*)/.exec(row)[1],
+      }));
+    const check = (page, expected) => {
+      const rows = ownerRows(page);
+      assert.deepEqual(rows.map(({ id, summary }) => [id, summary]), expected);
+      const totals = rows.reduce((sum, row) => {
+        const [, completed, total] = /^(\d+)\/(\d+) completed$/.exec(row.summary);
+        return [sum[0] + Number(completed), sum[1] + Number(total)];
+      }, [0, 0]);
+      assert.match(page, new RegExp(`data-testid="directory-summary">${totals[0]}/${totals[1]} completed`));
+      assert.equal((page.match(/data-testid="directory-task-row"/g) ?? []).length, totals[1]);
+      assert.equal(page.includes('role="status">No matching tasks'), totals[1] === 0);
+      return rows;
+    };
+    const before = snapshot();
+    const original = [[1, '2/3 completed'], [2, '1/2 completed'], [3, '0/1 completed']];
+    let page = await html('/directory');
+    const rows = check(page, original);
+    assert.deepEqual(rows.map(row => row.name), Array(3).fill('Same  雪 &lt;owner&gt;'));
+    for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+      check(await html(path({ order })), original);
+    }
+    page = await html(path({ order: 'Title' }));
+    assert.match(page, /directory-task-title">Alpha complete match/);
+    check(await html(path({ filter: 'Open' })), [[1, '0/1 completed'], [2, '0/1 completed'], [3, '0/1 completed']]);
+    check(await html(path({ filter: 'Completed' })), [[1, '2/2 completed'], [2, '1/1 completed']]);
+    check(await html(path({ filter: 'Deleted', order: 'Title' })), [[1, '1/1 completed'], [2, '0/1 completed']]);
+    check(await html(path({ priorityFilter: 'Low' })), [[1, '1/1 completed']]);
+    const view = { scope: 'Active', filter: 'Open', priorityFilter: 'High', order: 'Title',
+      dueFrom: '2026-01-01', dueThrough: '2026-01-01', directorySearch: '  MATCH  ' };
+    check(await html(path(view)), [[1, '0/1 completed'], [2, '0/1 completed']]);
+    const range = await post('/directory/due-range', view);
+    check(await html(range.headers.get('location')), [[1, '0/1 completed'], [2, '0/1 completed']]);
+    const invalid = await post('/directory/due-range', { ...view, appliedDueFrom: view.dueFrom,
+      appliedDueThrough: view.dueThrough, dueFrom: '2026-02-30' });
+    assert.equal(invalid.status, 400);
+    check(await invalid.text(), [[1, '0/1 completed'], [2, '0/1 completed']]);
+    check(await html(path({ directorySearch: 'no match' })), []);
+    check(await html(path({ scope: 'Archived', order: 'Priority' })), [[4, '1/2 completed']]);
+    check(await html(path({ scope: 'Archived', filter: 'Deleted' })), [[4, '1/1 completed']]);
+    const archived = await html('/projects/4');
+    assert.match(archived, /Archived project/);
+    assert.match(archived, /<option selected>All/);
+    for (const id of [1, 2, 3]) {
+      const project = await html(`/projects/${id}`);
+      assert.match(project, /id="task-search"[^>]*value=""/);
+      assert.match(project, /id="due-from"[^>]*value=""/);
+      assert.match(project, /<option selected>All/);
+    }
+    assert.deepEqual(snapshot(), before);
+    const completed = await post('/directory/completion', { ...view, completed: '1' });
+    page = await html(completed.headers.get('location'));
+    check(page, []);
+    assert.match(page, /<option selected>Title/);
+    check(await html(path({ ...view, filter: 'Completed' })), [[1, '2/2 completed'], [2, '2/2 completed']]);
+    const saved = snapshot();
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), saved);
+    check(await html('/directory'), [[1, '3/3 completed'], [2, '2/2 completed'], [3, '0/1 completed']]);
+    check(await html(path({ ...view, filter: 'Completed' })), [[1, '2/2 completed'], [2, '2/2 completed']]);
+    const reopened = await post('/directory/completion', { ...view, filter: 'Completed', completed: '0' });
+    check(await html(reopened.headers.get('location')), []);
+    check(await html(path(view)), [[1, '0/2 completed'], [2, '0/2 completed']]);
+    assert.deepEqual(await (await fetch(`${server.base}/health`)).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
