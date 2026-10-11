@@ -151,6 +151,45 @@ async function renderProject(id) {
   for (const value of ['All', 'Low', 'Normal', 'High']) {
     priorityFilter.append(element('option', value, { value }));
   }
+  const dueRangeForm = element('form');
+  const dueFromInput = element('input', undefined, { type: 'text', 'aria-label': 'Due from', placeholder: 'YYYY-MM-DD', autocomplete: 'off' });
+  const dueThroughInput = element('input', undefined, { type: 'text', 'aria-label': 'Due through', placeholder: 'YYYY-MM-DD', autocomplete: 'off' });
+  const applyDueRange = element('button', 'Apply due range', { type: 'submit' });
+  dueRangeForm.append(dueFromInput, dueThroughInput, applyDueRange);
+  const dueRangeAlert = element('p', '', { role: 'alert', hidden: '' });
+  let appliedDueFrom = '';
+  let appliedDueThrough = '';
+  const validDate = value => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (year < 1 || month < 1 || month > 12) return false;
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day >= 1 && day <= days[month - 1];
+  };
+  dueRangeForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const from = dueFromInput.value.trim();
+    const through = dueThroughInput.value.trim();
+    if ((from && !validDate(from)) || (through && !validDate(through))) {
+      dueRangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+      dueRangeAlert.hidden = false;
+      return;
+    }
+    if (from && through && from > through) {
+      dueRangeAlert.textContent = 'Due from must not be after Due through';
+      dueRangeAlert.hidden = false;
+      return;
+    }
+    appliedDueFrom = from;
+    appliedDueThrough = through;
+    dueRangeAlert.textContent = '';
+    dueRangeAlert.hidden = true;
+    drawTasks();
+  });
   const defaultPriority = element('select', undefined, { 'aria-label': 'Default task priority' });
   for (const value of ['Low', 'Normal', 'High']) {
     defaultPriority.append(element('option', value, { value }));
@@ -176,6 +215,9 @@ async function renderProject(id) {
     for (const task of taskData) {
       if (mode === 'open' && task.completed || mode === 'completed' && !task.completed) continue;
       if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
+      if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
+      if (task.dueDate && appliedDueFrom && task.dueDate < appliedDueFrom) continue;
+      if (task.dueDate && appliedDueThrough && task.dueDate > appliedDueThrough) continue;
       const row = element('div', undefined, { 'data-testid': 'task-row', class: 'task-row' });
       row.append(element('span', task.title));
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
@@ -296,7 +338,7 @@ async function renderProject(id) {
   const taskResponse = await fetch(`/api/projects/${id}/tasks`);
   if (taskResponse.ok) taskData = await taskResponse.json();
   drawTasks();
-  view.append(back, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, tasks);
+  view.append(back, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, dueRangeForm, dueRangeAlert, tasks);
   app.replaceChildren(view);
 }
 
