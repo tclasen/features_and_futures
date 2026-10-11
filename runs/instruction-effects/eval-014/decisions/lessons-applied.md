@@ -63,3 +63,5 @@ L062 reusable focused-stage audit adopted and verified: source-derived counts/se
 L062 concurrent retirement observation race resolved: freeze terminal receipt snapshot before actual inventory, bind absent earlier active entries to terminal receipts. Read-only retry passes,334removed/31active; no resource mutation or native defect inferred. Full archive/data audit remains separate. Evidence: `preflight/resource-audits/reconciliation-race001.json`.
 
 L062 focused034 source-bound verification passes: three four-case positive render variants and23exact selected genuine faults, complete file/input binding, zero skips/flakes. Remaining035–039 and broader/native gates pending. Evidence: `research-v014/preflight/future034-focused-check-1791744549252/independently-verified.json`.
+
+L062 focused035 source-bound verification passes: three five-case positive render runs and fourteen exact selected genuine faults, complete file/input binding, zero skips/flakes. Remaining036–039 and broader/native readiness pending. Evidence: `research-v014/preflight/future035-focused-check-1791745189176/independently-verified.json`.
