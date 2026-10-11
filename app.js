@@ -7,6 +7,7 @@ const alertMessage = document.querySelector('#form-alert');
 const taskForm = document.querySelector('#create-task-form');
 const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const tasksContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
@@ -91,6 +92,8 @@ async function showRoute() {
   document.querySelector('#project-heading').textContent = project.name;
   currentProjectId = project.id;
   currentProjectArchived = project.archived;
+  defaultTaskPriority.value = project.defaultTaskPriority;
+  defaultTaskPriority.disabled = currentProjectArchived;
   archiveNotice.hidden = !currentProjectArchived;
   renameInput.disabled = currentProjectArchived;
   renameButton.disabled = currentProjectArchived;
@@ -250,6 +253,15 @@ taskForm.addEventListener('submit', async (event) => {
 });
 taskFilter.addEventListener('change', loadTasks);
 priorityFilter.addEventListener('change', loadTasks);
+defaultTaskPriority.addEventListener('change', async () => {
+  if (currentProjectId === null || currentProjectArchived) return;
+  const response = await fetch(`/api/projects/${currentProjectId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ defaultTaskPriority: defaultTaskPriority.value }),
+  });
+  if (!response.ok) await showRoute();
+});
 projectFilter.addEventListener('change', loadProjects);
 window.addEventListener('popstate', showRoute);
 showRoute();
