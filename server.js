@@ -87,6 +87,38 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/api/projects/active' && req.method === 'GET') {
     return sendJson(res, 200, database.prepare('SELECT id, name FROM projects WHERE archived = 0 ORDER BY id').all().map((p) => ({ ...p, id: Number(p.id) })));
   }
+  const exportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (exportMatch && req.method === 'GET') {
+    const projectId = Number(exportMatch[1]);
+    const project = database.prepare('SELECT name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    const tasks = database.prepare(`SELECT t.title, t.completed, t.priority, t.due_date AS dueDate,
+        t.notes, t.deleted
+      FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+      WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.sort_order), t.id`).all(projectId);
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.defaultPriority || 'Normal',
+        tasks: tasks.map((task) => ({
+          title: task.title,
+          completed: Boolean(task.completed),
+          priority: task.priority || 'Normal',
+          dueDate: task.dueDate || '',
+          notes: (task.notes || '').replace(/\r\n?/g, '\n'),
+          deleted: Boolean(task.deleted),
+        })),
+      },
+    };
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="workboard-project.json"',
+    });
+    return res.end(JSON.stringify(document));
+  }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
     for await (const chunk of req) body += chunk;

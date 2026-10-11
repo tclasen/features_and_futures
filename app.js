@@ -86,6 +86,7 @@ async function showRoute() {
     return showRoute();
   }
   const project = await response.json();
+  document.querySelector('#download-project').href = `/api/projects/${project.id}/export`;
   appliedDueRange = { from: '', through: '' };
   dueFromInput.value = '';
   dueThroughInput.value = '';
