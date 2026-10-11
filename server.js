@@ -34,6 +34,7 @@ const listProjects = database.prepare(`
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -139,8 +140,18 @@ function projectPage(project, filter = 'All', error = '') {
     <form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <section class="card" aria-label="Rename a project">
+      <form method="post" action="/projects/${project.id}/rename">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-project-name">New project name</label>
+        <div class="controls">
+          <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+        </div>
+      </form>
+    </section>
     <section class="card" aria-label="Create a task">
-      ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <form method="post" action="/projects/${project.id}/tasks">
         <input type="hidden" name="filter" value="${filter}">
         <label for="task-title">Task title</label>
@@ -210,6 +221,30 @@ const server = http.createServer(async (request, response) => {
       createProject.run(name);
       redirect(response, '/');
       return;
+    }
+    const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(url.pathname);
+    if (request.method === 'POST' && renameMatch) {
+      const form = await readForm(request);
+      if (!form) {
+        sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
+      }
+      const project = findProject.get(renameMatch[1]);
+      if (project) {
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Restore this project before renaming it.'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(response, 422, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        redirect(response, `/projects/${project.id}${filter === 'All' ? '' : `?filter=${filter}`}`);
+        return;
+      }
     }
     const archiveMatch = /^\/projects\/(\d+)\/(archive|restore)$/.exec(url.pathname);
     if (request.method === 'POST' && archiveMatch) {

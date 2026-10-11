@@ -16,10 +16,12 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `/` to create and open projects, view completion summaries, and switch between Active and Archived projects. Archive or restore projects from their rows. Archived project pages retain task filtering while disabling task creation and completion changes. Each active project supports task creation, completion checkboxes, and All/Open/Completed filters. Projects, archive state, and tasks persist in the configured SQLite file. Existing databases are upgraded automatically. `GET /health` returns `{"status":"ok"}`.
 
+Active project pages also support renaming with `New project name` and `Rename project`. Names are trimmed and required. Renaming preserves the project URL, list position, tasks, and completion summary. Archived projects must be restored before renaming. Renamed names persist across server restarts.
+
 Run verification:
 
 ```sh
 npm test
 ```
 
-The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, filtering, archive/restore behavior, completion summaries, and persistence across server restarts.
+The test uses a temporary SQLite file and verifies schema migration, project and task validation, creation order, HTML escaping, navigation, project isolation, completion updates, filtering, archive/restore behavior, renaming and identity preservation, completion summaries, and persistence across server restarts.
