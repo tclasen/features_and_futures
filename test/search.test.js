@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import { matchesSearch, normalizeSearchQuery } from '../search.js';
 import { openProjects } from '../projects.js';
 
-test('search trims only query edges, folds ASCII case and treats substrings literally', () => {
+test('search trims query edges, collapses ASCII spaces and tabs, folds ASCII case and matches literal substrings', () => {
   assert.equal(normalizeSearchQuery(' \tTwo  words\n '), 'Two  words');
   for (const [value, query, expected] of [
-    ['Alpha BETA', ' beta ', true], ['Two  words', 'two words', false],
+    ['Alpha BETA', ' beta ', true], ['Two  words', 'two words', true],
     ['Two  words', ' TWO  WORDS ', true], ['Anything', ' \t ', true],
+    ['Two\t \twords', ' \tTWO \t  WORDS\n ', true],
+    ['Two words', 'two\t\twords', true], ['Two\twords', 'two words', true],
+    ['Two\nwords', 'two words', false], ['Two\rwords', 'two words', false],
+    ['Two\u00a0words', 'two words', false], ['Two\vwords', 'two words', false],
+    ['Two\nwords', 'two\nwords', true],
     ['100%_done', '%_', true], ['100 percent', '%', false],
     ['Éclair', 'éclair', false], ['ÉCLAIR', 'Éclair', true],
     ['a.b [x]', '[x]', true], ['a.b', 'a*b', false],
@@ -33,7 +38,7 @@ test('search intersects ownership, archive, completion, priority and dates witho
     assert.deepEqual(projects.listTasks(1, 'Open', 'High', options).map((t) => t.id), [1]);
     assert.deepEqual(projects.listTasks(1, 'Completed', 'High', options).map((t) => t.id), [2]);
     assert.deepEqual(projects.listTasks(1, 'All', 'All', { search: 'match ' }).map((t) => t.id), [1, 2, 4]);
-    assert.deepEqual(projects.listTasks(1, 'All', 'All', { search: 'match second' }), []);
+    assert.deepEqual(projects.listTasks(1, 'All', 'All', { search: 'match second' }).map((t) => t.id), [2]);
     assert.deepEqual(projects.list(), summary);
     projects.moveTask(1, 1, 2);
     projects.moveTask(2, 1, 1);

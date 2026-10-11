@@ -85,9 +85,12 @@ are rejected by the server. Move controls are disabled for archived sources or
 when no destination is eligible.
 
 Project search and Task search apply literal substring queries, ignoring ASCII
-letter case and trimming only surrounding query whitespace. Internal whitespace
-remains significant, and blank queries match all rows. Project search intersects
-Active/Archived; task search intersects completion, priority and applied due range.
+letter case and trimming surrounding query whitespace. For matching only, runs
+of ASCII spaces and horizontal tabs in queries and saved names/titles become one
+space. Other internal whitespace remains significant; saved names/titles and
+their display retain their original spacing and case. Blank queries match all rows.
+Project search intersects Active/Archived; task search intersects completion,
+priority and applied due range.
 Queries stay in the URL and forms across filter changes and edits, with matching
 rows re-evaluated in their existing order. Search does not change saved data or
 all-task summaries, and remains available on archived projects. Opening a project
