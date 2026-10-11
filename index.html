@@ -24,6 +24,7 @@
     .task-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #dce2ec; border-radius: 8px; background: white; }
     .task-row input { flex: none; width: 18px; height: 18px; }
     #project-view form { margin-top: 22px; }
+    #rename-project { margin-top: 12px; }
     .task-controls { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
     .task-controls select { padding: 9px 12px; border: 1px solid #bcc6d5; border-radius: 7px; font: inherit; background: white; }
     .project-controls { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
@@ -109,6 +110,8 @@
         const project = await response.json();
         app.innerHTML = `<section id="project-view"><button id="back" type="button">Projects</button><h1>${escapeText(project.name)}</h1>
           ${project.archived ? '<p>Archived project</p>' : ''}
+          <form id="rename-project"><label for="new-project-name" class="visually-hidden">New project name</label><input id="new-project-name" type="text" aria-label="New project name" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form>
+          <div id="rename-message" role="alert" aria-live="polite"></div>
           <form id="create-task"><label for="task-title" class="visually-hidden">Task title</label><input id="task-title" type="text" aria-label="Task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
           <div id="task-message" role="alert" aria-live="polite"></div>
           <div class="task-controls"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
@@ -127,6 +130,21 @@
           renderTasks();
         };
         await loadTasks();
+        app.querySelector('#rename-project').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const input = app.querySelector('#new-project-name');
+          const name = input.value.trim();
+          const message = app.querySelector('#rename-message');
+          if (!name) { message.textContent = 'Project name is required'; return; }
+          const result = await fetch(`/api/projects/${encodeURIComponent(id)}/rename`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+          });
+          if (!result.ok) { message.textContent = (await result.json()).error || 'Could not rename project'; return; }
+          project.name = name;
+          app.querySelector('#project-view h1').textContent = name;
+          input.value = '';
+          message.textContent = '';
+        });
         filter.addEventListener('change', renderTasks);
         list.addEventListener('change', async (event) => {
           const checkbox = event.target.closest('input[data-task-id]');

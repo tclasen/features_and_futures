@@ -78,6 +78,21 @@ const server = createServer(async (request, response) => {
       .run(archiveMatch[2] === 'archive' ? 1 : 0, Number(archiveMatch[1]));
     return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Project not found' });
   }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (renameMatch && request.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    let payload;
+    try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+    const projectId = Number(renameMatch[1]);
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived projects cannot be renamed' });
+    database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
+    return sendJson(response, 200, { id: projectId, name });
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && request.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
