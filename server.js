@@ -33,6 +33,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
@@ -61,8 +64,8 @@ function transaction(action) {
     throw error;
   }
 }
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
-const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
@@ -70,10 +73,11 @@ const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? A
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const setDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const setNotes = db.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
-const taskJSON = task => ({ ...task, completed: Boolean(task.completed) });
+const setDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
+const taskJSON = task => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) });
 const projectSelect = `SELECT p.id, p.name, p.archived, p.default_priority,
-  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
-  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND deleted = 0) AS total,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND deleted = 0 AND completed = 1) AS completed
   FROM projects p`;
 const listProjects = db.prepare(`${projectSelect} ORDER BY p.id`);
 const getProject = db.prepare(`${projectSelect} WHERE p.id = ?`);
@@ -168,8 +172,15 @@ const server = http.createServer(async (request, response) => {
         return json(response, 201, taskJSON(getTask.get(projectId, taskId)));
       }
       if (request.method === 'PATCH' && taskId) {
-        if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+        const task = getTask.get(projectId, taskId);
+        if (!task) return json(response, 404, { error: 'Task not found' });
         const input = await readInput(request);
+        if (input && Object.hasOwn(input, 'deleted')) {
+          if (typeof input.deleted !== 'boolean') return json(response, 400, { error: 'Deleted must be a boolean' });
+          setDeleted.run(Number(input.deleted), projectId, taskId);
+          return json(response, 200, taskJSON(getTask.get(projectId, taskId)));
+        }
+        if (task.deleted) return json(response, 409, { error: 'Deleted task must be restored before editing' });
         if (input && Object.hasOwn(input, 'destination_project_id')) {
           const destinationId = input.destination_project_id;
           if (!Number.isSafeInteger(destinationId) || destinationId === project.id) {

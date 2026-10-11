@@ -26,7 +26,11 @@ The Project filter defaults to Active; choose Archived to open or restore archiv
 
 Use New project name and Rename project on an active project page to change its name without changing its URL, order, or tasks. Archived projects cannot be renamed until restored.
 
-On an active project page, create tasks, toggle their completion checkboxes, and choose All, Open, or Completed in the Task filter. The filter defaults to All on page load. Priority filter offers All, Low, Normal, and High, initially All. Both filters apply together and retain their selections when changing the other filter or editing a task. Matching tasks stay in creation order; project summaries always count all tasks. Both filters remain usable in archived projects.
+On an active project page, create tasks, toggle their completion checkboxes, and choose All, Open, Completed, or Deleted in the Task filter. The filter defaults to All on page load. Priority filter offers All, Low, Normal, and High, initially All. Both filters apply together and retain their selections when changing the other filter or editing a task. Matching tasks stay in creation order; project summaries always count all live tasks. Both filters remain usable in archived projects.
+
+Live tasks provide Delete task. Deleted tasks appear only under the Deleted filter, intersecting priority, due range, and title search as usual. Deleted tasks do not count in project summaries. Restore task returns a task to its reserved position with every field intact, even after new tasks are created or project defaults change. Deleted rows display all saved fields with editing and movement disabled. Archived projects disable deletion and restoration but keep filters usable. Deletion and remembered positions persist across restarts; existing tasks migrate as live.
+
+Each task row provides Task notes and Save notes for optional multiline plain text. Saving preserves exact whitespace, Unicode, and literal markup; empty text clears notes. Notes persist and travel with tasks without adding search matches. Archived and deleted rows disable notes editing.
 
 Each task row provides New task title and Rename task. Renames trim whitespace and preserve ownership, creation order, completion, filter membership, and summary counts. Empty titles show an alert without changing the task. Restore an archived project to enable task renaming again.
 

@@ -37,6 +37,13 @@ class Element {
     }
     return null;
   }
+  querySelectorAll(selector) {
+    const tags = selector.split(',').map(tag => tag.trim());
+    return this.children.flatMap(child => [
+      ...(tags.includes(child.tag) ? [child] : []),
+      ...child.querySelectorAll(selector),
+    ]);
+  }
   set innerHTML(html) {
     this.children = [];
     const stack = [this];
@@ -60,14 +67,14 @@ async function fixture(archived = false, destinations = [
   { id: 2, name: 'Destination', archived: false },
   { id: 3, name: 'Archived', archived: true },
   { id: 4, name: 'Other destination', archived: false },
-], beforeRead = async () => {}) {
+], beforeRead = async () => {}, deletedIds = []) {
   const app = new Element('main');
   const tasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
     { id: 2, title: 'Second', completed: true, priority: 'Normal' },
     { id: 3, title: 'Third', completed: true, priority: 'High' },
     { id: 4, title: 'Fourth', completed: false, priority: 'Low' },
-  ].map(task => ({ ...task, due_date: '', notes: '' }));
+  ].map(task => ({ ...task, due_date: '', notes: '', deleted: deletedIds.includes(task.id) }));
   const requests = [];
   const project = { id: 1, archived, default_priority: 'Normal' };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -112,6 +119,82 @@ async function choose(select, value) {
   select.value = value;
   await select.fire('change');
 }
+
+test('deletion and restoration retain intersecting filters and disable deleted-row edits', async () => {
+  const f = await fixture();
+  assert.deepEqual(f.completion.children.map(option => option.textContent), ['All', 'Open', 'Completed', 'Deleted']);
+  const dueForm = f.rows()[0].children[4];
+  dueForm.children[1].value = '2025-01-15';
+  await dueForm.fire('submit');
+  const notesForm = f.rows()[0].children[6];
+  notesForm.children[1].value = '  saved\nnotes  ';
+  await notesForm.fire('submit');
+  await choose(f.completion, 'Open');
+  await choose(f.priority, 'High');
+  f.app.querySelector('#due-from').value = '2025-01-01';
+  f.app.querySelector('#due-through').value = '2025-01-31';
+  await f.app.querySelector('#due-range-form').fire('submit');
+  f.app.querySelector('#task-search').value = 'first';
+  await f.app.querySelector('#task-search-form').fire('submit');
+  const before = structuredClone(f.tasks[0]);
+  assert.equal(f.rows()[0].children[7].textContent, 'Delete task');
+  await f.rows()[0].children[7].fire('click');
+  assert.deepEqual(f.titles(), []);
+  assert.deepEqual(f.tasks[0], { ...before, deleted: true });
+  assert.equal(f.completion.value, 'Open');
+  for (const value of ['All', 'Open', 'Completed']) {
+    await choose(f.completion, value);
+    assert.deepEqual(f.titles(), []);
+  }
+  await choose(f.completion, 'Deleted');
+  assert.deepEqual(f.titles(), ['First']);
+  const deleted = f.rows()[0];
+  assert.equal(deleted.children[7].textContent, 'Restore task');
+  assert.equal(deleted.children[7].disabled, false);
+  for (const control of deleted.querySelectorAll('input, textarea, select, button')) {
+    if (control !== deleted.children[7]) assert.equal(control.disabled, true);
+  }
+  assert.equal(deleted.children[6].children[1].value, before.notes);
+  await choose(f.priority, 'Low');
+  assert.deepEqual(f.titles(), []);
+  await choose(f.priority, 'High');
+  f.app.querySelector('#task-search').value = 'missing';
+  await f.app.querySelector('#task-search-form').fire('submit');
+  assert.deepEqual(f.titles(), []);
+  f.app.querySelector('#task-search').value = 'first';
+  await f.app.querySelector('#task-search-form').fire('submit');
+  await f.rows()[0].children[7].fire('click');
+  assert.deepEqual(f.titles(), []);
+  assert.equal(f.completion.value, 'Deleted');
+  assert.equal(f.priority.value, 'High');
+  assert.equal(f.app.querySelector('#due-from').value, '2025-01-01');
+  assert.equal(f.app.querySelector('#due-through').value, '2025-01-31');
+  assert.equal(f.app.querySelector('#task-search').value, 'first');
+  assert.deepEqual(f.tasks[0], before);
+  await choose(f.completion, 'Open');
+  assert.deepEqual(f.titles(), ['First']);
+  assert.equal(f.rows()[0].children[1].disabled, false);
+});
+
+test('archived projects keep deleted tasks readable but cannot delete or restore', async () => {
+  const archived = await fixture(true, undefined, undefined, [2]);
+  for (const row of archived.rows()) {
+    assert.equal(row.children[7].disabled, true);
+    await row.children[7].fire('click');
+  }
+  await choose(archived.completion, 'Deleted');
+  assert.deepEqual(archived.titles(), ['Second']);
+  assert.equal(archived.rows()[0].children[7].textContent, 'Restore task');
+  for (const control of archived.rows()[0].querySelectorAll('input, textarea, select, button')) {
+    assert.equal(control.disabled, true);
+  }
+  await archived.rows()[0].children[7].fire('click');
+  await choose(archived.priority, 'High');
+  assert.deepEqual(archived.titles(), []);
+  await choose(archived.priority, 'Normal');
+  assert.deepEqual(archived.titles(), ['Second']);
+  assert.equal(archived.requests.length, 0);
+});
 
 test('notes save exact plain text while preserving all applied filters and membership', async () => {
   const f = await fixture();

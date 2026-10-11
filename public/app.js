@@ -114,6 +114,7 @@ async function renderTasks(project) {
       <option>All</option>
       <option>Open</option>
       <option>Completed</option>
+      <option>Deleted</option>
     </select>
     <label for="priority-filter">Priority filter</label>
     <select id="priority-filter">
@@ -193,8 +194,9 @@ async function renderTasks(project) {
   });
   function drawTasks() {
     const visible = tasks.filter(task =>
-      (filter.value === 'All' ||
-        (filter.value === 'Completed' ? task.completed : !task.completed)) &&
+      (filter.value === 'Deleted' ? task.deleted :
+        !task.deleted && (filter.value === 'All' ||
+          (filter.value === 'Completed' ? task.completed : !task.completed))) &&
       (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
       matchesDueRange(task.due_date, appliedFrom, appliedThrough) &&
       matchesSearch(task.title, appliedQuery));
@@ -387,6 +389,35 @@ async function renderTasks(project) {
         }
       });
       row.append(title, checkbox, renameForm, priority, dueForm, moveForm, notesForm);
+      // Deleted rows keep saved fields readable, but only restoration is allowed.
+      if (task.deleted) {
+        for (const control of row.querySelectorAll('input, textarea, select, button')) {
+          control.disabled = true;
+        }
+      }
+      const deletionButton = document.createElement('button');
+      deletionButton.type = 'button';
+      deletionButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+      deletionButton.disabled = Boolean(project.archived);
+      deletionButton.addEventListener('click', async () => {
+        if (project.archived) return;
+        deletionButton.disabled = true;
+        app.querySelector('[role="alert"]')?.remove();
+        try {
+          const saved = await api(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deleted: !task.deleted }),
+          });
+          tasks = tasks.map(item => item.id === saved.id ? saved : item);
+          drawTasks();
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          deletionButton.disabled = Boolean(project.archived);
+        }
+      });
+      row.append(deletionButton);
       return row;
     }));
   }

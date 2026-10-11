@@ -57,8 +57,8 @@ test('notes migrate, preserve exact text and task data, travel and survive resta
     await start();
     const initial = await request(tasksURL);
     assert.deepEqual(initial, [
-      { id: 1, project_id: 1, title: 'Original', completed: true, priority: 'High', due_date: '2024-02-29', notes: '' },
-      { id: 2, project_id: 1, title: 'Other', completed: false, priority: 'Low', due_date: '', notes: '' },
+      { id: 1, project_id: 1, title: 'Original', completed: true, priority: 'High', due_date: '2024-02-29', notes: '', deleted: false },
+      { id: 2, project_id: 1, title: 'Other', completed: false, priority: 'Low', due_date: '', notes: '', deleted: false },
     ]);
     const created = await request(tasksURL, 'POST', { title: 'New' });
     assert.equal(created.notes, '');
