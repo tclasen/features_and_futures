@@ -115,11 +115,12 @@ const server = http.createServer(async (req, res) => {
       const remembered = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
       const nextPosition = Number(db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value);
       const position = remembered ? remembered.position : nextPosition;
-      const transaction = db.transaction(() => {
+      db.exec('BEGIN');
+      try {
         db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, position);
         db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?').run(destinationId, taskId, sourceId);
-      });
-      transaction();
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
       res.writeHead(204); res.end();
     } catch { res.writeHead(400); res.end('Invalid request'); }
     return;
@@ -137,12 +138,9 @@ const server = http.createServer(async (req, res) => {
         if (!title) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Task title is required' })); return; }
         const priority = getProject.get(projectId).default_priority;
         const task = { id: randomUUID(), title, completed: 0, priority };
-        const transaction = db.transaction(() => {
-          db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, Date.now(), priority);
-          const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
-          db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(task.id, projectId, position);
-        });
-        transaction();
+        db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, Date.now(), priority);
+        const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
+        db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(task.id, projectId, position);
         res.writeHead(201, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(task)); return;
       } catch { res.writeHead(400); res.end('Invalid request'); return; }
     }
