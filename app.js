@@ -219,9 +219,13 @@ async function renderDirectory() {
     event.preventDefault();
     const from = fromInput.value.trim(), through = throughInput.value.trim();
     if ((from && !validDateValue(from)) || (through && !validDateValue(through))) {
+      fromInput.value = dueFrom;
+      throughInput.value = dueThrough;
       alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return;
     }
     if (from && through && from > through) {
+      fromInput.value = dueFrom;
+      throughInput.value = dueThrough;
       alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return;
     }
     dueFrom = from; dueThrough = through; alert.hidden = true; draw();
@@ -334,11 +338,15 @@ async function renderProject(id) {
     const from = dueFromInput.value.trim();
     const through = dueThroughInput.value.trim();
     if ((from && !validDate(from)) || (through && !validDate(through))) {
+      dueFromInput.value = appliedDueFrom;
+      dueThroughInput.value = appliedDueThrough;
       dueRangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
       dueRangeAlert.hidden = false;
       return;
     }
     if (from && through && from > through) {
+      dueFromInput.value = appliedDueFrom;
+      dueThroughInput.value = appliedDueThrough;
       dueRangeAlert.textContent = 'Due from must not be after Due through';
       dueRangeAlert.hidden = false;
       return;
