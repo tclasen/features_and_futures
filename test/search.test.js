@@ -63,7 +63,7 @@ test('task search intersects every completion, priority and due-range combinatio
   const tasks = [
     { id: 1, title: 'Plan first', completed: false, priority: 'High', due_date: '' },
     { id: 2, title: 'Second PLAN', completed: true, priority: 'Normal', due_date: '2026-05-01' },
-    { id: 3, title: 'Unrelated', completed: false, priority: 'High', due_date: '2026-05-15' },
+    { id: 3, title: 'Unrelated', completed: false, priority: 'High', due_date: '2026-05-15', notes: 'Plan appears only in notes' },
     { id: 4, title: 'Plan  fourth', completed: false, priority: 'High', due_date: '2026-05-31' },
     { id: 5, title: 'Plan fifth', completed: true, priority: 'Low', due_date: '2026-06-01' },
   ];

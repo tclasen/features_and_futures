@@ -296,6 +296,39 @@ async function renderProject(projectId) {
         } catch (error) { showError(error.message); }
         finally { saveDate.disabled = Boolean(project.archived); }
       });
+      const notesForm = document.createElement('form');
+      notesForm.className = 'task-notes';
+      const notesLabel = document.createElement('label');
+      notesLabel.htmlFor = `task-notes-${task.id}`;
+      notesLabel.textContent = 'Task notes';
+      const notesInput = document.createElement('textarea');
+      notesInput.id = notesLabel.htmlFor;
+      notesInput.rows = 4;
+      notesInput.value = task.notes;
+      notesInput.disabled = Boolean(project.archived);
+      const saveNotes = document.createElement('button');
+      saveNotes.type = 'submit';
+      saveNotes.textContent = 'Save notes';
+      saveNotes.disabled = Boolean(project.archived);
+      const notesControls = document.createElement('div');
+      notesControls.className = 'form-controls';
+      notesControls.append(notesInput, saveNotes);
+      notesForm.append(notesLabel, notesControls);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (project.archived) return;
+        saveNotes.disabled = true;
+        document.getElementById('error').hidden = true;
+        try {
+          const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          tasks = tasks.map(current => current.id === saved.id ? saved : current);
+          drawTasks();
+        } catch (error) { showError(error.message); }
+        finally { saveNotes.disabled = Boolean(project.archived); }
+      });
       const moveForm = document.createElement('form');
       moveForm.className = 'task-move';
       const destinationLabel = document.createElement('label');
@@ -338,7 +371,7 @@ async function renderProject(projectId) {
           destination.disabled = moveDisabled;
         }
       });
-      row.append(title, checkbox, priorityControl, rename, dueDateForm, moveForm);
+      row.append(title, checkbox, priorityControl, rename, dueDateForm, notesForm, moveForm);
       return row;
     }));
     document.getElementById('empty').hidden = visible.length > 0;

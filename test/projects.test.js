@@ -59,6 +59,9 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
   const saveDueDate = (projectId, taskId, due_date) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date }),
   });
+  const saveNotes = (projectId, taskId, notes) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes }),
+  });
   const moveTask = (projectId, taskId, destination_project_id) => fetch(`${origin}/api/projects/${projectId}/tasks/${taskId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_project_id }),
   });
@@ -114,7 +117,9 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.equal(firstTask.completed, false);
     assert.equal(firstTask.priority, 'Normal');
     assert.equal(firstTask.due_date, '');
+    assert.equal(firstTask.notes, '');
     const secondTask = await (await createTask(first.id, 'Second task')).json();
+    assert.equal(secondTask.notes, '');
     assert.equal(secondTask.priority, 'Normal');
     assert.ok(secondTask.id > firstTask.id);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
@@ -133,6 +138,20 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1 });
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    // Notes are exact plain text, independent of all other fields and summaries.
+    const notes = '  Leading spaces\n\tUnicode: café 日本語 🙂\n<script>alert("literal")</script> & <b>text</b>\n  ';
+    assert.equal((await saveNotes(second.id, firstTask.id, notes)).status, 404);
+    for (const invalid of [null, 42, {}, false]) {
+      assert.equal((await saveNotes(first.id, firstTask.id, invalid)).status, 400);
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    }
+    const withNotes = await saveNotes(first.id, firstTask.id, notes);
+    assert.equal(withNotes.status, 200);
+    firstTask.notes = notes;
+    assert.deepEqual(await withNotes.json(), firstTask);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
     // Date edits preserve ownership, order, completion, priority, and summaries.
     assert.equal((await saveDueDate(second.id, firstTask.id, '2024-02-29')).status, 404);
@@ -209,6 +228,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.equal((await renameTask(first.id, firstTask.id, 'Blocked task rename')).status, 409);
     assert.equal((await prioritizeTask(first.id, firstTask.id, 'Low')).status, 409);
     assert.equal((await saveDueDate(first.id, firstTask.id, '')).status, 409);
+    assert.equal((await saveNotes(first.id, firstTask.id, 'Blocked notes')).status, 409);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     await stop();
     await start();
@@ -222,6 +242,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.equal((await renameTask(first.id, firstTask.id, 'Still blocked task rename')).status, 409);
     assert.equal((await prioritizeTask(first.id, firstTask.id, 'Normal')).status, 409);
     assert.equal((await saveDueDate(first.id, firstTask.id, '9999-12-31')).status, 409);
+    assert.equal((await saveNotes(first.id, firstTask.id, '')).status, 409);
     const restoredResponse = await archiveProject(first.id, false);
     assert.equal(restoredResponse.status, 200);
     first.archived = 0;
@@ -243,6 +264,13 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     secondTask.title = 'Renamed open task';
     assert.deepEqual(await openTaskRename.json(), secondTask);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second]);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    // Restored notes can be cleared; whitespace alone remains saved text.
+    assert.equal((await saveNotes(first.id, secondTask.id, ' \t\n ')).status, 200);
+    secondTask.notes = ' \t\n ';
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.equal((await saveNotes(first.id, secondTask.id, '')).status, 200);
+    secondTask.notes = '';
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     const reopenedResponse = await completeTask(first.id, firstTask.id, false);
     assert.equal(reopenedResponse.status, 200);
@@ -425,8 +453,8 @@ test('migration preserves existing project IDs, tasks, and completion state', as
       { id: 42, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 2, completed: 1 },
     ]);
     assert.deepEqual(await (await fetch(`${origin}/api/projects/42/tasks`)).json(), [
-      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal', due_date: '' },
-      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal', due_date: '' },
+      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal', due_date: '', notes: '' },
+      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal', due_date: '', notes: '' },
     ]);
   } finally {
     if (child.exitCode === null) {

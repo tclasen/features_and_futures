@@ -67,6 +67,8 @@ test('remembered project positions migrate, survive restarts, and preserve curre
   try {
     await start();
     assert.deepEqual(await ids(1), [2, 3, 1]);
+    assert.ok((await tasks(1)).every(task => task.notes === ''));
+    assert.ok((await tasks(2)).every(task => task.notes === ''));
     await moved(1, 2, 2);
     await moved(1, 3, 2);
     await moved(1, 1, 2);
@@ -82,6 +84,7 @@ test('remembered project positions migrate, survive restarts, and preserve curre
     await edit(2, 2, { completed: true });
     await edit(2, 2, { priority: 'High' });
     await edit(2, 2, { due_date: '0001-01-01' });
+    await edit(2, 2, { notes: '  Current notes\n日本語 <b>literal markup</b>\n ' });
     const current = (await tasks(2)).find(task => task.id === 2);
     await request('/1', 'PATCH', { name: 'Renamed source' });
     await request('/1', 'PATCH', { archived: true });

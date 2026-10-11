@@ -69,3 +69,11 @@ saved and displayed names/titles retain their original whitespace and case.
 An empty query matches everything permitted by the other filters. Applied
 queries remain in effect during edits and filter changes; opening either page
 starts with an empty query. Archived projects still allow task searches.
+
+Task notes and Save notes store optional multiline plain text exactly as entered,
+including whitespace, Unicode, and literal markup. Empty text clears notes.
+Notes persist across restarts and travel with tasks through moves and remembered
+return positions. Saving notes preserves filters and all other task data; searches
+continue matching names and titles only. Archived notes remain visible with editing
+disabled, and restoring the project enables editing again. Existing databases gain
+empty notes without altering their saved task data.
