@@ -1,4 +1,5 @@
 const app = document.querySelector('#app');
+const projectViewState = new Map();
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -73,7 +74,17 @@ async function render() {
     const dueThrough = element('input', { id: 'due-through', type: 'text', 'aria-label': 'Due through' });
     const applyDueRange = element('button', { type: 'button' }, 'Apply due range');
     const rangeAlert = element('p', { role: 'alert', hidden: '' });
-    let appliedFrom = '', appliedThrough = '';
+    const viewState = projectViewState.get(match[1]) || { appliedFrom: '', appliedThrough: '', dueFrom: '', dueThrough: '', taskFilter: 'All', priorityFilter: 'All' };
+    let appliedFrom = viewState.appliedFrom, appliedThrough = viewState.appliedThrough;
+    dueFrom.value = viewState.dueFrom;
+    dueThrough.value = viewState.dueThrough;
+    filter.value = viewState.taskFilter;
+    priorityFilter.value = viewState.priorityFilter;
+    const saveViewState = () => {
+      projectViewState.set(match[1], { appliedFrom, appliedThrough, dueFrom: dueFrom.value, dueThrough: dueThrough.value, taskFilter: filter.value, priorityFilter: priorityFilter.value });
+    };
+    dueFrom.addEventListener('input', saveViewState);
+    dueThrough.addEventListener('input', saveViewState);
     const tasks = element('section', { 'aria-label': 'Tasks' });
     app.append(form, filterLabel, filter, priorityFilterLabel, priorityFilter,
       dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange, rangeAlert, tasks);
@@ -153,10 +164,11 @@ async function render() {
         rangeAlert.textContent = 'Due from must not be after Due through'; rangeAlert.hidden = false; return;
       }
       appliedFrom = from; appliedThrough = through; rangeAlert.hidden = true;
+      saveViewState();
       await refresh();
     });
-    filter.addEventListener('change', refresh);
-    priorityFilter.addEventListener('change', refresh);
+    filter.addEventListener('change', () => { saveViewState(); refresh(); });
+    priorityFilter.addEventListener('change', () => { saveViewState(); refresh(); });
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const title = input.value.trim();
