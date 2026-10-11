@@ -50,7 +50,7 @@
       if (!response.ok) { app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>'; }
       else {
         const project = await response.json();
-        app.innerHTML = `<button class="back" type="button">Projects</button>${project.archived ? '<p>Archived project</p>' : ''}<h1>${escapeHTML(project.name)}</h1><form id="rename-form"><label>New project name<input name="name" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form><div id="rename-alert" role="alert" hidden></div><form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form><div id="task-alert" role="alert" hidden></div><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><section id="tasks" aria-label="Tasks"></section>`;
+        app.innerHTML = `<button class="back" type="button">Projects</button>${project.archived ? '<p>Archived project</p>' : ''}<h1>${escapeHTML(project.name)}</h1><form id="rename-form"><label>New project name<input name="name" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename project</button></form><div id="rename-alert" role="alert" hidden></div><form id="task-form"><label>Task title<input name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form><div id="task-alert" role="alert" hidden></div><label>Task filter<select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></label><label>Priority filter<select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label><section id="tasks" aria-label="Tasks"></section>`;
         const alert = document.querySelector('#task-alert');
         if (!project.archived) {
           const renameForm = document.querySelector('#rename-form');
@@ -70,7 +70,8 @@
         async function loadTasks() {
           const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(r => r.json());
           const filter = document.querySelector('#task-filter').value;
-          const visible = tasks.filter(task => filter === 'All' || (filter === 'Completed') === Boolean(task.completed));
+          const priorityFilter = document.querySelector('#priority-filter').value;
+          const visible = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === Boolean(task.completed)) && (priorityFilter === 'All' || task.priority === priorityFilter));
           document.querySelector('#tasks').innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><label><input type="checkbox" aria-label="Complete ${escapeHTML(task.title)}" data-task-id="${escapeHTML(task.id)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}>${escapeHTML(task.title)}</label><form data-rename-task="${escapeHTML(task.id)}"><label>New task title<input name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}></label><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><label>Task priority<select aria-label="Task priority" data-priority-task="${escapeHTML(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label></div>`).join('');
           document.querySelectorAll('#tasks input[type="checkbox"]').forEach(box => box.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(box.dataset.taskId)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ completed: box.checked }) });
@@ -78,6 +79,7 @@
           }));
           document.querySelectorAll('[data-priority-task]').forEach(select => select.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(select.dataset.priorityTask)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ priority: select.value }) });
+            await loadTasks();
           }));
           document.querySelectorAll('[data-rename-task]').forEach(form => form.addEventListener('submit', async event => {
             event.preventDefault();
@@ -100,6 +102,7 @@
           input.value = ''; alert.hidden = true; await loadTasks();
         });
         document.querySelector('#task-filter').addEventListener('change', loadTasks);
+        document.querySelector('#priority-filter').addEventListener('change', loadTasks);
         await loadTasks();
       }
       document.querySelector('.back').addEventListener('click', () => { location.href = '/'; });
