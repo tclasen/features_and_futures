@@ -13,7 +13,7 @@ export function createTaskStore(database) {
   }
   const list = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
   const get = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-  const insert = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insert = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const update = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -21,10 +21,10 @@ export function createTaskStore(database) {
 
   return {
     list: (projectId) => list.all(projectId).map(taskValue),
-    create(projectId, title) {
+    create(projectId, title, priority = 'Normal') {
       const trimmedTitle = typeof title === 'string' ? title.trim() : '';
       if (!trimmedTitle) throw new Error('Task title is required');
-      return taskValue(get.get(projectId, insert.run(projectId, trimmedTitle).lastInsertRowid));
+      return taskValue(get.get(projectId, insert.run(projectId, trimmedTitle, priority).lastInsertRowid));
     },
     setCompleted(projectId, taskId, completed) {
       if (typeof completed !== 'boolean') throw new Error('Completion must be a boolean');

@@ -107,6 +107,14 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     return (await fetch(`${base}/api/projects/${projectId}`)).json();
   }
 
+  async function setDefaultPriority(projectId, priority) {
+    return fetch(`${base}/api/projects/${projectId}/default-task-priority`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    });
+  }
+
   async function rename(projectId, name) {
     return fetch(`${base}/api/projects/${projectId}/name`, {
       method: 'PATCH',
@@ -129,6 +137,7 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
     assert.equal(first.archived, false);
+    assert.equal(first.default_task_priority, 'Normal');
     assert.equal(first.total_count, 0);
     assert.equal(first.completed_count, 0);
     const second = await (await create('<script> & second')).json();
@@ -292,6 +301,60 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     assert.deepEqual(await listTasks(first.id), [firstTask, secondTask, thirdTask]);
     const third = await (await create('Third')).json();
     assert.ok(third.id > second.id);
+    assert.equal(third.default_task_priority, 'Normal');
+
+    const originalTasks = await listTasks(first.id);
+    const originalProject = await getProject(first.id);
+    for (const priority of ['', 'high', 'Urgent', null, 123, {}, ['High']]) {
+      const response = await setDefaultPriority(first.id, priority);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Default task priority must be Low, Normal, or High' });
+      assert.deepEqual(await getProject(first.id), originalProject);
+    }
+    assert.equal((await setDefaultPriority(999999, 'High')).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await setDefaultPriority(first.id, priority);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...originalProject, default_task_priority: priority });
+      assert.deepEqual(await listTasks(first.id), originalTasks);
+      assert.equal((await getProject(second.id)).default_task_priority, 'Normal');
+    }
+    const inherited = await (await createTask(first.id, '  Inherits High  ')).json();
+    assert.equal(inherited.title, 'Inherits High');
+    assert.equal(inherited.priority, 'High');
+    assert.equal(inherited.completed, false);
+    assert.deepEqual(await (await setCompleted(first.id, inherited.id, true)).json(), { ...inherited, completed: true });
+    const inheritedRenamed = await (await renameTask(first.id, inherited.id, ' Renamed inherited ')).json();
+    assert.deepEqual(inheritedRenamed, { ...inherited, title: 'Renamed inherited', completed: true });
+    await setDefaultPriority(first.id, 'Low');
+    assert.deepEqual(await listTasks(first.id), [...originalTasks, inheritedRenamed]);
+    const lowTask = await (await createTask(first.id, 'Inherits Low')).json();
+    assert.equal(lowTask.priority, 'Low');
+    const independentTask = await (await createTask(second.id, 'Independent default')).json();
+    assert.equal(independentTask.priority, 'Normal');
+    await rename(first.id, 'Default preserved through rename');
+    await setArchived(first.id, true);
+    const archivedProject = await getProject(first.id);
+    const savedTasks = [...originalTasks, inheritedRenamed, lowTask];
+    const blockedDefault = await setDefaultPriority(first.id, 'High');
+    assert.equal(blockedDefault.status, 409);
+    assert.deepEqual(await blockedDefault.json(), { error: 'Archived project cannot be changed' });
+    assert.deepEqual(await getProject(first.id), archivedProject);
+    await stop();
+    await start();
+    assert.deepEqual(await getProject(first.id), archivedProject);
+    assert.deepEqual(await listTasks(first.id), savedTasks);
+    await setArchived(first.id, false);
+    assert.equal((await getProject(first.id)).default_task_priority, 'Low');
+    assert.equal((await setDefaultPriority(first.id, 'High')).status, 200);
+    assert.deepEqual(await listTasks(first.id), savedTasks);
+    await stop();
+    await start();
+    const restoredTask = await (await createTask(first.id, 'Restored default')).json();
+    assert.equal(restoredTask.priority, 'High');
+    assert.deepEqual(await listTasks(first.id), [...savedTasks, restoredTask]);
+    assert.equal((await getProject(first.id)).completed_count, 1);
+    assert.equal((await getProject(first.id)).total_count, savedTasks.length + 1);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

@@ -16,8 +16,11 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
   }
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
+  }
   const tasks = createTaskStore(database);
-  const projectFields = `SELECT id, name, archived,
+  const projectFields = `SELECT id, name, archived, default_task_priority,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total_count,
     (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed_count
     FROM projects`;
@@ -26,6 +29,7 @@ export function openProjects(databasePath) {
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+  const updateDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
   const projectValue = (row) => row ? { ...row, archived: Boolean(row.archived) } : undefined;
 
   return {
@@ -40,6 +44,22 @@ export function openProjects(databasePath) {
     setArchived(id, archived) {
       if (typeof archived !== 'boolean') throw new Error('Archive state must be a boolean');
       updateArchive.run(Number(archived), id);
+      return projectValue(get.get(id));
+    },
+    setDefaultPriority(id, priority) {
+      if (!['Low', 'Normal', 'High'].includes(priority)) {
+        const error = new Error('Default task priority must be Low, Normal, or High');
+        error.status = 400;
+        throw error;
+      }
+      const project = get.get(id);
+      if (!project) return undefined;
+      if (project.archived) {
+        const error = new Error('Archived project cannot be changed');
+        error.status = 409;
+        throw error;
+      }
+      updateDefaultPriority.run(priority, id);
       return projectValue(get.get(id));
     },
     rename(id, name) {

@@ -65,6 +65,14 @@ async function renderTasks(project) {
   const section = document.createElement('section');
   section.setAttribute('aria-label', 'Tasks');
   section.innerHTML = `
+    <div class="task-filter">
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority">
+        <option value="Low">Low</option>
+        <option value="Normal">Normal</option>
+        <option value="High">High</option>
+      </select>
+    </div>
     <form>
       <label for="task-title">Task title</label>
       <div class="create-controls">
@@ -99,6 +107,27 @@ async function renderTasks(project) {
   const alert = section.querySelector('[role="alert"]');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
+  const defaultPriority = section.querySelector('#default-task-priority');
+  defaultPriority.value = project.default_task_priority;
+  defaultPriority.disabled = project.archived;
+  defaultPriority.addEventListener('change', async () => {
+    defaultPriority.disabled = true;
+    button.disabled = true;
+    alert.hidden = true;
+    try {
+      Object.assign(project, await request(`/api/projects/${project.id}/default-task-priority`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: defaultPriority.value }),
+      }));
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      defaultPriority.value = project.default_task_priority;
+      defaultPriority.disabled = project.archived;
+      button.disabled = project.archived;
+    }
+  });
   const list = section.querySelector('#tasks');
   const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = [];

@@ -66,7 +66,7 @@ const server = createServer(async (request, response) => {
         if (typeof body?.title !== 'string' || !body.title.trim()) {
           return json(response, 400, { error: 'Task title is required' });
         }
-        return json(response, 201, projects.tasks.create(projectId, body.title));
+        return json(response, 201, projects.tasks.create(projectId, body.title, project.default_task_priority));
       }
       if (taskId && request.method === 'PATCH') {
         const body = await readJson(request);
@@ -84,6 +84,12 @@ const server = createServer(async (request, response) => {
         const task = projects.tasks.setCompleted(projectId, taskId, body.completed);
         return task ? json(response, 200, task) : json(response, 404, { error: 'Task not found' });
       }
+    }
+    const defaultPriorityMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/default-task-priority$/);
+    if (request.method === 'PATCH' && defaultPriorityMatch) {
+      const body = await readJson(request);
+      const project = projects.setDefaultPriority(defaultPriorityMatch[1], body?.priority);
+      return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
     }
     const renameMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/name$/);
     if (request.method === 'PATCH' && renameMatch) {
