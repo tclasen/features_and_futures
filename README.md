@@ -23,4 +23,8 @@ projects from their rows; summaries count all completed and total tasks.
 Archived project pages allow viewing and filtering tasks, with creation and
 completion controls disabled. Existing databases are upgraded automatically.
 
+On an active project page, use New project name and Rename project to change
+its name while preserving its URL, creation order, tasks, and summary. Archived
+projects must be restored before renaming.
+
 Run the integration checks with `npm test`.

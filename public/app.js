@@ -110,6 +110,36 @@ async function renderTasks(project) {
   submit.disabled = Boolean(project.archived);
 }
 
+function renderRename(project, heading) {
+  const form = element('form', '', { class: 'rename-form' });
+  const input = element('input', '', { id: 'new-project-name', type: 'text', autocomplete: 'off' });
+  const submit = element('button', 'Rename project', { type: 'submit' });
+  input.disabled = Boolean(project.archived);
+  submit.disabled = Boolean(project.archived);
+  const controls = element('div', '', { class: 'controls' });
+  controls.append(input, submit);
+  form.append(element('label', 'New project name', { for: 'new-project-name' }), controls);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    const name = input.value.trim();
+    if (!name) return showAlert('Project name is required');
+    submit.disabled = true;
+    try {
+      Object.assign(project, await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      }));
+      heading.textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = '';
+      showAlert('');
+      input.focus();
+    } catch (error) { showAlert(error.message); }
+    finally { submit.disabled = Boolean(project.archived); }
+  });
+  app.append(form);
+}
+
 async function render() {
   app.replaceChildren();
   const match = window.location.pathname.match(/^\/projects\/(\d+)$/);
@@ -119,8 +149,10 @@ async function render() {
     app.append(back);
     const project = await request(`/api/projects/${match[1]}`);
     document.title = `${project.name} · Workboard`;
-    app.append(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.append(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
+    renderRename(project, heading);
     await renderTasks(project);
     return;
   }

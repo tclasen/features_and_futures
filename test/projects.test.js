@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks validate, archive, restore, and survive migration and restarts', async () => {
+test('projects and tasks validate, rename, archive, restore, and survive migration and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   // Seed the previous schema to verify upgrades preserve existing records.
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
@@ -77,6 +77,9 @@ test('projects and tasks validate, archive, restore, and survive migration and r
     const archive = (project, archived) => fetch(`${base}/api/projects/${project.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
     });
+    const rename = (project, name) => fetch(`${base}/api/projects/${project.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
     const tasksUrl = project => `${base}/api/projects/${project.id}/tasks`;
     const listTasks = async project => (await fetch(tasksUrl(project))).json();
     const createTask = (project, title) => fetch(tasksUrl(project), {
@@ -115,11 +118,29 @@ test('projects and tasks validate, archive, restore, and survive migration and r
     Object.assign(second, { total: 1, completed: 0 });
     assert.deepEqual(await projectData(first), first);
     assert.deepEqual(await projectData(second), second);
+    for (const name of ['', ' \n\t ', null, 42]) {
+      const invalid = await rename(first, name);
+      assert.equal(invalid.status, 400);
+      assert.equal((await invalid.json()).error, 'Project name is required');
+      assert.deepEqual(await projectData(first), first);
+    }
+    assert.equal((await rename({ id: 999999 }, 'Missing project')).status, 404);
+    const renamedResponse = await rename(first, '  Renamed project \n ');
+    assert.equal(renamedResponse.status, 200);
+    Object.assign(first, { name: 'Renamed project' });
+    assert.deepEqual(await renamedResponse.json(), first);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [existing, first, second]);
+    assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
     assert.equal((await archive(first, 'true')).status, 400);
     const archivedResponse = await archive(first, true);
     assert.equal(archivedResponse.status, 200);
     Object.assign(first, { archived: 1 });
     assert.deepEqual(await archivedResponse.json(), first);
+    const archivedRename = await rename(first, 'Cannot rename');
+    assert.equal(archivedRename.status, 409);
+    assert.equal((await archivedRename.json()).error, 'Archived project');
+    assert.deepEqual(await projectData(first), first);
     assert.equal((await createTask(first, 'Cannot create')).status, 409);
     assert.equal((await complete(first, firstTask, false)).status, 409);
     assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
@@ -131,8 +152,13 @@ test('projects and tasks validate, archive, restore, and survive migration and r
     assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
     assert.deepEqual(await listTasks(second), [foreignTask]);
     assert.equal((await createTask(first, 'Still archived')).status, 409);
+    assert.equal((await rename(first, 'Still archived')).status, 409);
     Object.assign(first, { archived: 0 });
     assert.deepEqual(await (await archive(first, false)).json(), first);
+    const restoredRename = await rename(first, '  Restored project  ');
+    assert.equal(restoredRename.status, 200);
+    Object.assign(first, { name: 'Restored project' });
+    assert.deepEqual(await restoredRename.json(), first);
     assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
     assert.deepEqual(await (await complete(first, firstTask, false)).json(), firstTask);
     Object.assign(first, { completed: 0 });

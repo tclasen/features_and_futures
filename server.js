@@ -34,6 +34,7 @@ const listProjects = db.prepare(`${projectQuery} ORDER BY projects.id`);
 const findProject = db.prepare(`${projectQuery} WHERE projects.id = ?`);
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const assets = new Map([
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
   ['/style.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/style.css', import.meta.url))]],
@@ -90,10 +91,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, project ? 200 : 404, project || { error: 'Project not found' });
     }
     if (req.method === 'PATCH' && match) {
-      if (!findProject.get(match[1])) return sendJson(res, 404, { error: 'Project not found' });
+      const project = findProject.get(match[1]);
+      if (!project) return sendJson(res, 404, { error: 'Project not found' });
       const input = await readJson(req);
-      if (typeof input?.archived !== 'boolean') return sendJson(res, 400, { error: 'Archive state must be a boolean' });
-      updateProject.run(Number(input.archived), match[1]);
+      if (input && Object.hasOwn(input, 'name')) {
+        if (project.archived) return sendJson(res, 409, { error: 'Archived project' });
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+        renameProject.run(name, match[1]);
+      } else {
+        if (typeof input?.archived !== 'boolean') return sendJson(res, 400, { error: 'Archive state must be a boolean' });
+        updateProject.run(Number(input.archived), match[1]);
+      }
       return sendJson(res, 200, findProject.get(match[1]));
     }
     if (req.method === 'POST' && path === '/api/projects') {
