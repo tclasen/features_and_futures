@@ -39,9 +39,30 @@ async function showProject(projectId) {
   back.addEventListener('click', () => { location.href = '/'; });
   const heading = element('h1', { text: project.name });
   app.append(back, heading);
-  const download = element('a', { text: 'Download project', className: 'secondary-button' });
-  download.href = `/api/projects/${projectId}/export`;
-  download.setAttribute('download', 'workboard-project.json');
+  const download = element('button', { text: 'Download project', className: 'secondary-button' });
+  download.type = 'button';
+  download.addEventListener('click', async () => {
+    download.disabled = true;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/export`);
+      if (!response.ok) throw new Error('Could not download project');
+      const file = new Blob([await response.text()], { type: 'application/json;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(file);
+      const link = element('a');
+      link.href = objectUrl;
+      link.download = 'workboard-project.json';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      alert.hidden = true;
+    } catch {
+      alert.textContent = 'Could not download project';
+      alert.hidden = false;
+    } finally {
+      download.disabled = false;
+    }
+  });
   app.append(download);
   if (project.archived) app.append(element('p', { text: 'Archived project', className: 'archive-notice' }));
 
