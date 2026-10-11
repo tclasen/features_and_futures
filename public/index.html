@@ -19,8 +19,30 @@ async function render() {
     let project;
     try { const response = await fetch('/api/projects/' + encodeURIComponent(decodeURIComponent(match[1]))); if (!response.ok) throw new Error(); project = await response.json(); }
     catch { app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>'; app.querySelector('button').onclick = () => { location.href = '/'; }; return; }
-    app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
-    app.querySelector('button').onclick = () => { location.href = '/'; };
+    const projectId = decodeURIComponent(match[1]);
+    const tasks = await (await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks`)).json();
+    app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1><form class="form"><input aria-label="Task title" name="title" type="text"><button type="submit">Create task</button></form><div class="alert-slot" aria-live="polite"></div><label>Task filter <select aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label><section aria-label="Tasks"></section>`;
+    app.querySelector('.back').onclick = () => { location.href = '/'; };
+    const section = app.querySelector('section');
+    const filter = app.querySelector('select');
+    const drawTasks = () => {
+      const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
+      section.innerHTML = shown.map(task => `<div class="row" data-testid="task-row"><span class="row-name">${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} data-task-id="${escapeHtml(task.id)}"></div>`).join('');
+      section.querySelectorAll('[data-task-id]').forEach(box => box.addEventListener('change', async () => {
+        const task = tasks.find(item => item.id === box.dataset.taskId);
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: {'content-type':'application/json'}, body: JSON.stringify({completed: box.checked}) });
+        if (response.ok) { task.completed = box.checked ? 1 : 0; drawTasks(); }
+      }));
+    };
+    filter.addEventListener('change', drawTasks);
+    drawTasks();
+    app.querySelector('form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const title = new FormData(event.currentTarget).get('title').trim();
+      if (!title) { app.querySelector('.alert-slot').innerHTML = '<p role="alert">Task title is required</p>'; return; }
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({title})});
+      if (response.ok) { tasks.push(await response.json()); event.currentTarget.reset(); app.querySelector('.alert-slot').innerHTML = ''; drawTasks(); }
+    });
     return;
   }
   const projects = await (await fetch('/api/projects')).json();
