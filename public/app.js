@@ -187,6 +187,18 @@ async function renderProject(id) {
   filterLabel.append(filter);
   app.append(filterLabel);
 
+  const priorityFilterLabel = element('label', 'filter-label', 'Priority filter');
+  priorityFilterLabel.htmlFor = 'priority-filter';
+  const priorityFilter = element('select', 'priority-filter');
+  priorityFilter.id = 'priority-filter';
+  for (const value of ['All', 'Low', 'Normal', 'High']) {
+    const option = element('option', '', value);
+    option.value = value.toLowerCase();
+    priorityFilter.append(option);
+  }
+  priorityFilterLabel.append(priorityFilter);
+  app.append(priorityFilterLabel);
+
   const list = element('div', 'task-list');
   list.setAttribute('aria-label', 'Tasks');
   app.append(list);
@@ -194,7 +206,9 @@ async function renderProject(id) {
   async function renderTasks() {
     const tasks = await request(`/api/projects/${encodeURIComponent(id)}/tasks`);
     list.replaceChildren();
-    const visible = tasks.filter((task) => filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed));
+    const visible = tasks.filter((task) =>
+      (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed)) &&
+      (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value));
     for (const task of visible) {
       const row = element('article', 'task-row');
       row.dataset.testid = 'task-row';
@@ -272,6 +286,7 @@ async function renderProject(id) {
             method: 'PATCH', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ priority: priority.value }),
           });
+          await renderTasks();
         } catch (error) {
           alert.textContent = error.message;
           alert.hidden = false;
@@ -286,6 +301,7 @@ async function renderProject(id) {
   }
 
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     alert.hidden = true;
@@ -302,7 +318,6 @@ async function renderProject(id) {
         body: JSON.stringify({ title }),
       });
       input.value = '';
-      if (filter.value !== 'all' && filter.value !== 'open') filter.value = 'all';
       await renderTasks();
     } catch (error) {
       alert.textContent = error.message;
