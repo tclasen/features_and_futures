@@ -24,12 +24,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))
 )`);
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
@@ -120,6 +125,10 @@ const server = http.createServer(async (req, res) => {
       if (typeof payload?.completed === 'boolean') {
         setTaskCompletion.run(payload.completed ? 1 : 0, task.id);
         return send(200, JSON.stringify({ ...task, completed: payload.completed ? 1 : 0 }));
+      }
+      if (['Low', 'Normal', 'High'].includes(payload?.priority)) {
+        setTaskPriority.run(payload.priority, task.id);
+        return send(200, JSON.stringify({ ...task, priority: payload.priority }));
       }
       const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));

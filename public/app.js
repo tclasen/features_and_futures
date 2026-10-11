@@ -76,6 +76,16 @@ async function render() {
           } catch (error) { renameAlert.textContent = error.message; renameAlert.hidden = false; }
         });
         row.append(renameInput, renameButton, renameAlert);
+        const priority = element('select', { 'aria-label': 'Task priority' });
+        for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', { value }, value));
+        priority.value = task.priority || 'Normal';
+        priority.disabled = Boolean(project.archived);
+        priority.addEventListener('change', async () => {
+          try {
+            await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
+          } catch (error) { priority.value = task.priority || 'Normal'; }
+        });
+        row.append(priority);
         const checkbox = element('input', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = Boolean(task.completed);
         checkbox.disabled = Boolean(project.archived);
