@@ -33,13 +33,35 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
+// Remember a position even while a task belongs to a different project.
+// Seed current positions for databases created before return-order support.
+db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, position)
+);
+INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks`);
+const rememberedPosition = db.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?');
+const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
+const rememberPosition = db.prepare('INSERT INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+function transaction(action) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = action();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
-const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-  WHERE project_id = ? AND id = ?`);
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -132,8 +154,13 @@ const server = http.createServer(async (request, response) => {
         const input = await readInput(request);
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return json(response, 400, { error: 'Task title is required' });
-        const result = createTask.run(projectId, title, project.default_priority, projectId);
-        return json(response, 201, taskJSON(getTask.get(projectId, result.lastInsertRowid)));
+        const taskId = transaction(() => {
+          const { position } = nextPosition.get(projectId);
+          const result = createTask.run(projectId, title, project.default_priority, position);
+          rememberPosition.run(result.lastInsertRowid, projectId, position);
+          return result.lastInsertRowid;
+        });
+        return json(response, 201, taskJSON(getTask.get(projectId, taskId)));
       }
       if (request.method === 'PATCH' && taskId) {
         if (!getTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
@@ -146,7 +173,14 @@ const server = http.createServer(async (request, response) => {
           const destination = getProject.get(destinationId);
           if (!destination) return json(response, 404, { error: 'Destination project not found' });
           if (destination.archived) return json(response, 409, { error: 'Archived destination project' });
-          moveTask.run(destinationId, destinationId, projectId, taskId);
+          transaction(() => {
+            let saved = rememberedPosition.get(taskId, destinationId);
+            if (!saved) {
+              saved = nextPosition.get(destinationId);
+              rememberPosition.run(taskId, destinationId, saved.position);
+            }
+            moveTask.run(destinationId, saved.position, projectId, taskId);
+          });
           return json(response, 200, taskJSON(getTask.get(destinationId, taskId)));
         } else if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';

@@ -74,14 +74,45 @@ test('moves append, preserve task data and summaries, reject archived projects, 
     assert.deepEqual((await request(`${bp}/tasks`)).data, [existing, result.data, newTask]);
     const returned = await request(`${bp}/tasks/${moved.id}`, 'PATCH', { destination_project_id: a.id });
     assert.deepEqual(returned.data, saved);
-    assert.deepEqual((await request(`${ap}/tasks`)).data, [remaining, saved]);
+    assert.deepEqual((await request(`${ap}/tasks`)).data, [saved, remaining]);
     assert.deepEqual((await request(`${bp}/tasks`)).data, [existing, newTask]);
     // Blank dates and priorities are preserved on a separate move.
     const blankMove = await request(`${bp}/tasks/${existing.id}`, 'PATCH', { destination_project_id: a.id });
     assert.deepEqual(blankMove.data, { ...existing, project_id: a.id });
     await stop();
     await start();
-    assert.deepEqual((await request(`${ap}/tasks`)).data, [remaining, saved, blankMove.data]);
+    assert.deepEqual((await request(`${ap}/tasks`)).data, [saved, remaining, blankMove.data]);
+
+    // Remember both projects independently; return in reverse departure order.
+    const transfer = async (from, task, to) => {
+      const response = await request(`${from}/tasks/${task.id}`, 'PATCH', { destination_project_id: to.id });
+      assert.equal(response.status, 200);
+      return response.data;
+    };
+    await transfer(ap, moved, b);
+    await transfer(ap, remaining, b);
+    const later = (await request(`${ap}/tasks`, 'POST', { title: 'Created while away' })).data;
+    await request(ap, 'PATCH', { name: 'Renamed A' });
+    await request(ap, 'PATCH', { archived: true });
+    assert.equal((await request(`${bp}/tasks/${remaining.id}`, 'PATCH', { destination_project_id: a.id })).status, 409);
+    await stop();
+    await start();
+    await request(ap, 'PATCH', { archived: false });
+    await request(`${bp}/tasks/${moved.id}`, 'PATCH', { title: 'Current title' });
+    await request(`${bp}/tasks/${moved.id}`, 'PATCH', { priority: 'Low' });
+    await request(`${bp}/tasks/${moved.id}`, 'PATCH', { completed: false });
+    await request(`${bp}/tasks/${moved.id}`, 'PATCH', { due_date: '2028-02-29' });
+    await transfer(bp, remaining, a);
+    const current = await transfer(bp, moved, a);
+    assert.deepEqual(current, { ...saved, title: 'Current title', priority: 'Low', completed: false, due_date: '2028-02-29' });
+    assert.deepEqual((await request(`${ap}/tasks`)).data, [current, remaining, blankMove.data, later]);
+    // B's remembered order is also retained, including positions of absent tasks.
+    await transfer(ap, remaining, b);
+    await transfer(ap, moved, b);
+    await transfer(ap, existing, b);
+    await stop();
+    await start();
+    assert.deepEqual((await request(`${bp}/tasks`)).data.map(task => task.id), [existing.id, moved.id, newTask.id, remaining.id]);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
