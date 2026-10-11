@@ -1,3 +1,16 @@
+export function dueRangeError(from, through) {
+  if ((from && !isValidDueDate(from)) || (through && !isValidDueDate(through))) {
+    return 'Due range must use valid YYYY-MM-DD dates';
+  }
+  if (from && through && from > through) return 'Due from must not be after Due through';
+  return '';
+}
+
+export function matchesDueRange(date, { from, through }) {
+  if (!from && !through) return true;
+  return Boolean(date && (!from || date >= from) && (!through || date <= through));
+}
+
 // Calendar-day validation deliberately avoids Date and timezone conversion.
 export function isValidDueDate(value) {
   if (value.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

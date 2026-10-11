@@ -524,6 +524,64 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     await start();
     assert.equal(await tasksPage(dueQuery), savedDue.replace(savedDateInput, emptyDateInput));
     assert.equal(await (await fetch(base)).text(), summaryBeforeDue);
+
+    // Applied ranges intersect both filters and travel with every editing form.
+    await post(duePath, { dueDate: '2000-02-29' });
+    const rangeState = { ...dueSelection, dueFrom: '2000-02-29', dueThrough: '2000-02-29' };
+    const apply = await post(`${detailPath}/due-range`, {
+      ...dueSelection, from: ' 2000-02-29 ', through: '2000-02-29 ',
+    });
+    assert.equal(apply.status, 303);
+    const rangeLocation = apply.headers.get('location');
+    const rangeQuery = rangeLocation.slice(detailPath.length);
+    assert.deepEqual(visibleTitles(await tasksPage(rangeQuery)), ['Dated task']);
+    assert.match(await tasksPage(rangeQuery), /id="due-from" name="from" type="text" value="2000-02-29"/);
+    for (const [from, through, message] of [
+      ['1900-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['', '2000-04-31', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2000-03-01', '2000-02-29', 'Due from must not be after Due through'],
+    ]) {
+      const invalid = await post(`${detailPath}/due-range`, { ...rangeState, from, through });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.ok(html.includes(`role="alert">${message}`));
+      assert.deepEqual(visibleTitles(html), ['Dated task']);
+      assertSelections(html, 'Completed', 'High');
+    }
+    for (const [suffix, fields] of [
+      ['rename', { title: 'Range renamed' }],
+      ['priority', { priority: 'High' }],
+      ['completion', { completed: '1' }],
+    ]) {
+      const edited = await post(`${detailPath}/tasks/3/${suffix}`, { ...rangeState, ...fields });
+      assert.equal(edited.headers.get('location'), rangeLocation);
+    }
+    for (const [suffix, fields] of [
+      ['rename', { name: 'Range project' }],
+      ['default-priority', { priority: 'Low' }],
+      ['tasks', { title: 'Undated range task' }],
+    ]) {
+      const edited = await post(`${detailPath}/${suffix}`, { ...rangeState, ...fields });
+      assert.equal(edited.headers.get('location'), rangeLocation);
+    }
+    assert.deepEqual(visibleTitles(await tasksPage(rangeQuery)), ['Range renamed']);
+    await post(duePath, { ...rangeState, dueDate: '2000-03-01' });
+    assert.deepEqual(visibleTitles(await tasksPage(rangeQuery)), []);
+    assert.deepEqual(visibleTitles(await tasksPage('?filter=Completed&priorityFilter=High&dueFrom=2000-03-01')), ['Range renamed']);
+    assert.deepEqual(visibleTitles(await tasksPage('?filter=Completed&priorityFilter=High&dueThrough=2000-03-01')), ['Range renamed']);
+    await post(duePath, { ...rangeState, dueDate: '2000-02-29' });
+    await post(`${detailPath}/archive`, {});
+    const archivedRange = await tasksPage(rangeQuery);
+    assert.deepEqual(visibleTitles(archivedRange), ['Range renamed']);
+    assert.match(archivedRange, /id="due-from" name="from" type="text" value="2000-02-29">/);
+    assert.equal((await post(`${detailPath}/due-range`, { ...rangeState, from: '', through: '' })).status, 303);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(rangeQuery), archivedRange);
+    await post(`${detailPath}/restore`, {});
+    assert.deepEqual(visibleTitles(await tasksPage(rangeQuery)), ['Range renamed']);
+    assert.match(await tasksPage(), /id="due-from" name="from" type="text" value=""/);
+    assert.ok(visibleTitles(await tasksPage()).includes('Undated range task'));
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
