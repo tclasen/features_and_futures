@@ -69,12 +69,12 @@ const page = `<!doctype html>
   <script>
     const app = document.querySelector('#app');
     const escapePath = (id) => '/projects/' + encodeURIComponent(id);
-    async function loadProjects(filter = 'Active') {
-      const response = await fetch('/api/projects?filter=' + encodeURIComponent(filter));
+    async function loadProjects(filter = 'Active', query = '') {
+      const response = await fetch('/api/projects?filter=' + encodeURIComponent(filter) + '&q=' + encodeURIComponent(query));
       if (!response.ok) throw new Error('Could not load projects');
       return response.json();
     }
-    function renderList(projects, selectedFilter = 'Active') {
+    function renderList(projects, selectedFilter = 'Active', appliedQuery = '') {
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
@@ -83,6 +83,9 @@ const page = `<!doctype html>
       const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Project filter');
       for (const value of ['Active', 'Archived']) { const option = document.createElement('option'); option.value = value; option.textContent = value; filter.append(option); }
       filter.value = selectedFilter; filterLabel.append(filter); app.append(filterLabel);
+      const searchLabel = document.createElement('label'); searchLabel.textContent = 'Project search';
+      const searchInput = document.createElement('input'); searchInput.type = 'text'; searchInput.setAttribute('aria-label', 'Project search'); searchInput.value = appliedQuery; searchLabel.append(searchInput);
+      const searchButton = document.createElement('button'); searchButton.type = 'button'; searchButton.textContent = 'Search projects';
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.textContent = 'Project name';
@@ -108,12 +111,14 @@ const page = `<!doctype html>
         const archive = document.createElement('button'); archive.type = 'button'; archive.textContent = filter.value === 'Active' ? 'Archive project' : 'Restore project';
         archive.addEventListener('click', async () => {
           const result = await fetch('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: filter.value === 'Active' }) });
-          if (result.ok) updateRows(await loadProjects(filter.value));
+          if (result.ok) updateRows(await loadProjects(filter.value, searchQuery));
         });
           row.append(name, summary, open, archive); list.append(row);
         }
       }
-      filter.addEventListener('change', async () => updateRows(await loadProjects(filter.value)));
+      let searchQuery = appliedQuery;
+      filter.addEventListener('change', async () => updateRows(await loadProjects(filter.value, searchQuery)));
+      searchButton.addEventListener('click', async () => { searchQuery = searchInput.value.trim(); updateRows(await loadProjects(filter.value, searchQuery)); });
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = input.value.trim();
@@ -122,7 +127,7 @@ const page = `<!doctype html>
         if (!response.ok) { alert.textContent = 'Could not create project'; alert.hidden = false; return; }
         location.href = '/';
       });
-      app.append(form, alert, list);
+      app.append(searchLabel, searchButton, form, alert, list);
       updateRows(projects);
     }
     async function renderDetail(id) {
@@ -175,6 +180,11 @@ const page = `<!doctype html>
       const priorityFilter = document.createElement('select'); priorityFilter.setAttribute('aria-label', 'Priority filter');
       for (const value of ['All', 'Low', 'Normal', 'High']) { const option = document.createElement('option'); option.textContent = value; option.value = value; priorityFilter.append(option); }
       priorityFilterLabel.append(priorityFilter);
+      const taskSearchLabel = document.createElement('label'); taskSearchLabel.textContent = 'Task search';
+      const taskSearchInput = document.createElement('input'); taskSearchInput.type = 'text'; taskSearchInput.setAttribute('aria-label', 'Task search'); taskSearchLabel.append(taskSearchInput);
+      const taskSearchButton = document.createElement('button'); taskSearchButton.type = 'button'; taskSearchButton.textContent = 'Search tasks';
+      let taskSearchQuery = '';
+      taskSearchButton.addEventListener('click', () => { taskSearchQuery = taskSearchInput.value.trim(); refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }); });
       const dueRange = { from: '', through: '' };
       const rangeLabelFrom = document.createElement('label'); rangeLabelFrom.textContent = 'Due from';
       const rangeFrom = document.createElement('input'); rangeFrom.type = 'text'; rangeFrom.setAttribute('aria-label', 'Due from'); rangeLabelFrom.append(rangeFrom);
@@ -215,6 +225,7 @@ const page = `<!doctype html>
         const eligible = projectsResult;
         list.replaceChildren();
         for (const task of tasks) {
+          if (!asciiIncludes(task.title, taskSearchQuery)) continue;
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
           if ((dueRange.from || dueRange.through) && !task.due_date) continue;
@@ -286,11 +297,13 @@ const page = `<!doctype html>
         if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
         alert.hidden = true; input.value = ''; await refreshTasks();
       });
-      section.append(renameForm, renameAlert, defaultLabel, form, alert, filterLabel, priorityFilterLabel, rangeLabelFrom, rangeLabelThrough, applyRange, rangeAlert, list); app.replaceChildren(section); await refreshTasks();
+      section.append(renameForm, renameAlert, defaultLabel, form, alert, filterLabel, priorityFilterLabel, taskSearchLabel, taskSearchButton, rangeLabelFrom, rangeLabelThrough, applyRange, rangeAlert, list); app.replaceChildren(section); await refreshTasks();
     }
+    function asciiLower(value) { return value.replace(/[A-Z]/g, character => String.fromCharCode(character.charCodeAt(0) + 32)); }
+    function asciiIncludes(value, query) { return asciiLower(value).includes(asciiLower(query)); }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
-    else loadProjects().then(renderList).catch(() => { app.textContent = 'Could not load projects'; });
+    else loadProjects().then(projects => renderList(projects)).catch(() => { app.textContent = 'Could not load projects'; });
   </script>
 </body>
 </html>`;
@@ -319,10 +332,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { status: 'ok' });
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
-    return sendJson(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+    const query = (url.searchParams.get('q') || '').trim().replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
       COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
-      WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(archived).map(p => ({...p, id: String(p.id), archived: Boolean(p.archived)})));
+      WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(archived).filter(p => {
+        const name = p.name.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32));
+        return !query || name.includes(query);
+      }).map(p => ({...p, id: String(p.id), archived: Boolean(p.archived)}));
+    return sendJson(res, 200, projects);
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
