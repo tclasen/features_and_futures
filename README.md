@@ -38,6 +38,12 @@ Existing and new tasks default to Normal. Priorities persist independently acros
 reloads and restarts, including after renaming, archiving, and restoration.
 Archived projects disable priority edits until restoration.
 
+Use `Priority filter` (All, Low, Normal, High) together with `Task filter` to
+show tasks matching both selections in creation order. Both filters stay selected
+through task edits, including when an edited task no longer matches. Filters work
+on archived projects and never change saved data or completion totals. Opening
+a project from the project list starts both filters at All.
+
 Run the integration checks with:
 
 ```sh
