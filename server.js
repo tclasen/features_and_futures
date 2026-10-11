@@ -20,6 +20,7 @@ const listProjects = db.prepare('SELECT p.id, p.name, p.archived, COUNT(t.id) AS
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -80,6 +81,19 @@ const server = http.createServer(async (req, res) => {
   if (projectMatch && req.method === 'GET') {
     const project = getProject.get(Number(projectMatch[1]));
     return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Not found' }));
+  }
+  if (projectMatch && req.method === 'PATCH') {
+    const id = Number(projectMatch[1]);
+    const project = getProject.get(id);
+    if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+    if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const name = String(JSON.parse(body).name ?? '').trim();
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      renameProject.run(name, id);
+      return send(200, JSON.stringify(getProject.get(id)));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
