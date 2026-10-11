@@ -13,6 +13,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Keep databases created by earlier tasks compatible with the archive feature.
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -38,8 +43,26 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 200, { status: 'ok' });
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p ORDER BY p.id`).all().map(project => ({
+        ...project, archived: Boolean(project.archived),
+        completedCount: Number(project.completedCount), totalCount: Number(project.totalCount)
+      }));
     return sendJson(res, 200, projects);
+  }
+  const projectArchiveRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (projectArchiveRoute && req.method === 'PATCH') {
+    try {
+      const payload = await readJson(req);
+      if (typeof payload.archived !== 'boolean') return sendJson(res, 400, { error: 'Invalid archive state' });
+      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(payload.archived ? 1 : 0, Number(projectArchiveRoute[1]));
+      if (!result.changes) return sendJson(res, 404, { error: 'Project not found' });
+      return sendJson(res, 200, { id: Number(projectArchiveRoute[1]), archived: payload.archived });
+    } catch {
+      return sendJson(res, 400, { error: 'Invalid request' });
+    }
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     try {
