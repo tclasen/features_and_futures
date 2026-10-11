@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 test('projects and tasks: validation, ownership, completion, rename, priority, archive, summaries, and restart persistence', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
-  // Start with the previous schema to exercise the archive-column migration.
+  // Start with the original schema to exercise all additive migrations.
   const legacy = new DatabaseSync(`${directory}/projects.sqlite`);
   legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
     CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -63,6 +63,9 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
   const renameProject = (projectId, name) => fetch(`${origin}/api/projects/${projectId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
   });
+  const setDefault = (projectId, default_priority) => fetch(`${origin}/api/projects/${projectId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_priority }),
+  });
   try {
     await start();
     const health = await get('/health');
@@ -80,6 +83,7 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
     assert.equal(first.archived, 0);
+    assert.equal(first.default_priority, 'Normal');
     assert.equal(first.completed, 0);
     assert.equal(first.total, 0);
     const second = await (await create('Second project')).json();
@@ -232,6 +236,65 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask, thirdTask]);
     const third = await (await create('Third project')).json();
     assert.ok(third.id > second.id);
+    assert.equal(third.default_priority, 'Normal');
+
+    // Defaults affect only later creations in their own project.
+    first.total = 3;
+    const savedTasks = [firstTask, secondTask, thirdTask];
+    for (const invalid of ['', 'high', 'Urgent', null, 1]) {
+      assert.equal((await setDefault(first.id, invalid)).status, 400);
+      assert.deepEqual(await (await get(`/api/projects/${first.id}`)).json(), first);
+      assert.deepEqual(await tasks(first.id), savedTasks);
+    }
+    assert.equal((await setDefault(999999, 'High')).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await setDefault(first.id, priority);
+      assert.equal(response.status, 200);
+      first.default_priority = priority;
+      assert.deepEqual(await response.json(), first);
+      assert.deepEqual(await tasks(first.id), savedTasks);
+      assert.deepEqual(await tasks(second.id), [otherTask]);
+      assert.deepEqual(await (await get(`/api/projects/${second.id}`)).json(), second);
+      const inherited = await (await createTask(first.id, `Inherited ${priority}`)).json();
+      assert.equal(inherited.priority, priority);
+      assert.equal(inherited.completed, false);
+      assert.ok(inherited.id > savedTasks.at(-1).id);
+      savedTasks.push(inherited);
+      first.total++;
+    }
+    assert.deepEqual(await tasks(first.id), savedTasks);
+    assert.equal((await setDefault(second.id, 'Low')).status, 200);
+    second.default_priority = 'Low';
+    const otherInherited = await (await createTask(second.id, 'Independent default')).json();
+    assert.equal(otherInherited.priority, 'Low');
+    second.total++;
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited]);
+    assert.deepEqual(await tasks(first.id), savedTasks);
+    assert.equal((await renameProject(first.id, 'Default retained')).status, 200);
+    first.name = 'Default retained';
+    assert.equal((await archiveProject(first.id, true)).status, 200);
+    first.archived = 1;
+    assert.equal((await setDefault(first.id, 'Normal')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
+    assert.deepEqual(await tasks(first.id), savedTasks);
+    assert.deepEqual(await tasks(second.id), [otherTask, otherInherited]);
+    assert.equal((await setDefault(first.id, 'Low')).status, 409);
+    assert.equal((await archiveProject(first.id, false)).status, 200);
+    first.archived = 0;
+    const afterRestore = await (await createTask(first.id, 'After restore')).json();
+    assert.equal(afterRestore.priority, 'High');
+    savedTasks.push(afterRestore);
+    first.total++;
+    assert.equal((await setDefault(first.id, 'Low')).status, 200);
+    first.default_priority = 'Low';
+    await stop();
+    await start();
+    assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
+    assert.deepEqual(await tasks(first.id), savedTasks);
+    const afterRestart = await (await createTask(first.id, 'After restart')).json();
+    assert.equal(afterRestart.priority, 'Low');
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
@@ -266,7 +329,7 @@ test('migration preserves existing project IDs, tasks, and completion state', as
       });
     });
     assert.deepEqual(await (await fetch(`${origin}/api/projects`)).json(), [
-      { id: 42, name: 'Existing project', archived: 0, total: 2, completed: 1 },
+      { id: 42, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 2, completed: 1 },
     ]);
     assert.deepEqual(await (await fetch(`${origin}/api/projects/42/tasks`)).json(), [
       { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal' },

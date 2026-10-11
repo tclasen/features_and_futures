@@ -64,6 +64,14 @@ async function renderProject(projectId) {
         <button type="submit">Rename project</button>
       </div>
     </form>
+    <div class="project-default">
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority">
+        <option value="Low">Low</option>
+        <option value="Normal">Normal</option>
+        <option value="High">High</option>
+      </select>
+    </div>
     <form id="task-form">
       <label for="task-title">Task title</label>
       <div class="form-controls">
@@ -92,6 +100,23 @@ async function renderProject(projectId) {
   const renameForm = document.getElementById('rename-form');
   const renameInput = document.getElementById('new-project-name');
   renameInput.value = project.name;
+  const defaultPriority = document.getElementById('default-task-priority');
+  defaultPriority.value = project.default_priority;
+  defaultPriority.disabled = Boolean(project.archived);
+  defaultPriority.addEventListener('change', async () => {
+    defaultPriority.disabled = true;
+    document.getElementById('error').hidden = true;
+    try {
+      const saved = await request(`/api/projects/${projectId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: defaultPriority.value }),
+      });
+      project.default_priority = saved.default_priority;
+    } catch (error) {
+      defaultPriority.value = project.default_priority;
+      showError(error.message);
+    } finally { defaultPriority.disabled = Boolean(project.archived); }
+  });
   if (project.archived) {
     const notice = document.createElement('p');
     notice.textContent = 'Archived project';
