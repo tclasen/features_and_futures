@@ -1,3 +1,5 @@
+import { TASK_PRIORITIES } from './task-priorities.js';
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -106,6 +108,13 @@ export function projectPage(project, tasks = [], filter = 'All', errors = {}) {
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+        </form>
+        <form class="task-filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+            ${TASK_PRIORITIES.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+          </select>
         </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           ${errors.taskRename?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskRename.message)}</p>` : ''}

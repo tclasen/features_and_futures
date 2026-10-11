@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { projectListPage, projectPage } from './views.js';
+import { TASK_PRIORITIES } from './task-priorities.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -24,6 +25,9 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -35,11 +39,12 @@ const findProject = database.prepare('SELECT id, name, archived FROM projects WH
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 function taskFilter(value) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
@@ -88,7 +93,7 @@ async function readForm(request) {
 const server = createServer(async (request, response) => {
   try {
     const { pathname, searchParams } = new URL(request.url, 'http://localhost');
-    const projectRoute = pathname.match(/^\/projects\/(?<projectId>[1-9]\d*)(?:\/tasks(?:\/(?<taskId>[1-9]\d*)(?:\/(?<taskAction>rename))?)?|\/(?<projectAction>archive|restore|rename))?$/);
+    const projectRoute = pathname.match(/^\/projects\/(?<projectId>[1-9]\d*)(?:\/tasks(?:\/(?<taskId>[1-9]\d*)(?:\/(?<taskAction>rename|priority))?)?|\/(?<projectAction>archive|restore|rename))?$/);
     if (request.method === 'GET' && pathname === '/health') {
       send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     } else if (request.method === 'GET' && pathname === '/') {
@@ -153,6 +158,13 @@ const server = createServer(async (request, response) => {
               return;
             }
             renameTask.run(title, taskId, id);
+          } else if (taskAction === 'priority') {
+            const priority = form.get('priority');
+            if (!TASK_PRIORITIES.includes(priority)) {
+              send(response, 400, 'Invalid task priority', 'text/plain; charset=utf-8');
+              return;
+            }
+            setTaskPriority.run(priority, taskId, id);
           } else {
             updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, id);
           }

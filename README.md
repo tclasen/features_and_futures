@@ -42,3 +42,9 @@ creation order, completion state, filter membership, and completion summaries.
 The displayed title and completion checkbox label update together. Archived
 projects disable task renaming and reject direct rename requests until restored.
 Renamed titles persist across restarts.
+
+Each task has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Changes save immediately and persist
+across restarts without changing task order, ownership, completion, or summaries.
+Renaming preserves priority. Archived projects disable priority selectors and
+reject direct priority changes; restoration preserves and enables them again.
