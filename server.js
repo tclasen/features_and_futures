@@ -1,0 +1,110 @@
+import http from 'node:http';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+
+const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
+if (databasePath !== ':memory:') mkdirSync(path.dirname(databasePath), { recursive: true });
+const db = new DatabaseSync(databasePath);
+db.exec(`CREATE TABLE IF NOT EXISTS projects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL
+)`);
+const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
+const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+
+const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[character]);
+
+function page(title, content) {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escape(title)} · Workboard</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 17px/1.5 system-ui, sans-serif; color: #17283b; background: #f5f7fa; }
+  main { max-width: 760px; margin: 60px auto; padding: 28px; background: white; border-radius: 12px; }
+  h1 { margin-top: 0; overflow-wrap: anywhere; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  input { width: 100%; padding: 10px; font: inherit; border: 1px solid #687a90; border-radius: 5px; }
+  button { padding: 10px 16px; font: inherit; color: white; background: #2459a6; border: 0; border-radius: 5px; cursor: pointer; }
+  button:hover { background: #194580; }
+  :focus-visible { outline: 3px solid #cc8300; outline-offset: 3px; }
+  .create button { margin-top: 12px; }
+  .projects { margin-top: 28px; }
+  .project-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; border-top: 1px solid #d8e0e9; }
+  .project-row span { overflow-wrap: anywhere; min-width: 0; }
+  .project-row form { flex-shrink: 0; }
+  [role="alert"] { color: #a11d24; margin: 12px 0; }
+  @media (max-width: 600px) { main { margin: 16px; padding: 20px; } .project-row { flex-wrap: wrap; } }
+</style></head><body><main>${content}</main></body></html>`;
+}
+
+function projectsPage(error = '', enteredName = '') {
+  const projects = listProjects.all();
+  return page('Projects', `<h1>Workboard</h1>
+    <form class="create" action="/projects" method="post">
+      <label for="project-name">Project name</label>
+      <input id="project-name" name="name" type="text" value="${escape(enteredName)}"${error ? ' aria-invalid="true" aria-describedby="project-error"' : ''}>
+      ${error ? `<div id="project-error" role="alert">${escape(error)}</div>` : ''}
+      <button type="submit">Create project</button>
+    </form>
+    <section class="projects" aria-label="Projects">
+      ${projects.map((project) => `<div class="project-row" data-testid="project-row">
+        <span>${escape(project.name)}</span>
+        <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
+      </div>`).join('')}
+    </section>`);
+}
+
+function sendHtml(response, status, body) {
+  response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+  response.end(body);
+}
+
+const server = http.createServer(async (request, response) => {
+  try {
+    const url = new URL(request.url, 'http://localhost');
+    if (request.method === 'GET' && url.pathname === '/health') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      return response.end(JSON.stringify({ status: 'ok' }));
+    }
+    if (request.method === 'GET' && url.pathname === '/') {
+      return sendHtml(response, 200, projectsPage());
+    }
+    if (request.method === 'POST' && url.pathname === '/projects') {
+      let body = '';
+      for await (const chunk of request) {
+        body += chunk;
+        if (Buffer.byteLength(body) > 1024 * 1024) {
+          return sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+        }
+      }
+      const enteredName = new URLSearchParams(body).get('name') || '';
+      const name = enteredName.trim();
+      if (!name) return sendHtml(response, 200, projectsPage('Project name is required', enteredName));
+      createProject.run(name);
+      response.writeHead(303, { Location: '/' });
+      return response.end();
+    }
+    const match = url.pathname.match(/^\/projects\/([1-9]\d*)$/);
+    if (request.method === 'GET' && match) {
+      const project = getProject.get(match[1]);
+      if (project) return sendHtml(response, 200, page(project.name, `<h1>${escape(project.name)}</h1>
+        <form action="/" method="get"><button type="submit">Projects</button></form>`));
+    }
+    sendHtml(response, 404, page('Not found', '<h1>Not found</h1><a href="/">Projects</a>'));
+  } catch (error) {
+    console.error(error);
+    if (!response.headersSent) sendHtml(response, 500, page('Error', '<h1>Something went wrong</h1>'));
+    else response.end();
+  }
+});
+server.listen(Number(process.env.PORT || 8080), '0.0.0.0', () => {
+  console.log(`Workboard listening on port ${server.address().port}`);
+});
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => server.close(() => { db.close(); process.exit(0); }));
+}
