@@ -7,8 +7,12 @@ function element(tag, text, attributes = {}) {
   return node;
 }
 
-function normalizeSearch(value) {
-  return value.trim().replace(/[A-Z]/g, letter => letter.toLowerCase());
+function normalizeSearchQuery(value) {
+  return normalizeSearchText(value.trim());
+}
+
+function normalizeSearchText(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 async function loadProjects() {
@@ -69,7 +73,7 @@ async function renderList() {
     const rows = document.createDocumentFragment();
     for (const project of allProjects) {
       if (project.archived !== (filter.value === 'archived')) continue;
-      if (!normalizeSearch(project.name).includes(appliedQuery)) continue;
+      if (!normalizeSearchText(project.name).includes(appliedQuery)) continue;
       rows.append(projectRow(project, drawProjects));
     }
     projects.replaceChildren(rows);
@@ -77,7 +81,7 @@ async function renderList() {
   filter.addEventListener('change', drawProjects);
   searchForm.addEventListener('submit', event => {
     event.preventDefault();
-    appliedQuery = normalizeSearch(searchInput.value);
+    appliedQuery = normalizeSearchQuery(searchInput.value);
     drawProjects();
   });
   app.insertBefore(searchForm, projects);
@@ -239,7 +243,7 @@ async function renderProject(id) {
     for (const task of taskData) {
       if (mode === 'open' && task.completed || mode === 'completed' && !task.completed) continue;
       if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
-      if (!normalizeSearch(task.title).includes(appliedQuery)) continue;
+      if (!normalizeSearchText(task.title).includes(appliedQuery)) continue;
       if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
       if (task.dueDate && appliedDueFrom && task.dueDate < appliedDueFrom) continue;
       if (task.dueDate && appliedDueThrough && task.dueDate > appliedDueThrough) continue;
@@ -361,7 +365,7 @@ async function renderProject(id) {
   priorityFilter.addEventListener('change', drawTasks);
   searchForm.addEventListener('submit', event => {
     event.preventDefault();
-    appliedQuery = normalizeSearch(searchInput.value);
+    appliedQuery = normalizeSearchQuery(searchInput.value);
     drawTasks();
   });
   form.addEventListener('submit', async event => {
