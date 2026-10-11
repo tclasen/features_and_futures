@@ -138,7 +138,7 @@ const page = `<!doctype html>
     }
 
     function searchKey(value) {
-      return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+      return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
     }
 
     async function loadProjects() {
