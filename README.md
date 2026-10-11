@@ -58,6 +58,14 @@ show an alert and preserve the saved date. Dates persist as calendar days,
 independently of timezones, and preserve all other task data and both filters.
 Archived projects disable date edits until restoration.
 
+Use `Due from`, `Due through`, and `Apply due range` to filter by inclusive
+calendar-date boundaries alongside completion and priority. Blank boundaries
+are unbounded; undated tasks match only when both boundaries are blank.
+Invalid dates or reversed ranges show an alert and retain the applied range.
+Edits and filter changes retain the range, and archived projects allow range
+filtering. Opening a project from the list starts with empty range boundaries.
+Filtering never changes saved task data or the all-task completion summary.
+
 Run the integration checks with:
 
 ```sh
