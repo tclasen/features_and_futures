@@ -45,3 +45,5 @@ L062 prospective031039 focused control preparation: nine original PM fixture app
 L064 corrected prospective40 asynchronous full variant: 140 pass, zero failures/skips/flakes, exact controller/suite/result input closure verified. Form140 also passed; fetch/fault/broader readiness remains pending. Evidence: `research-v014/preflight/task040-full-prototype002-check-1791739214033/positive-async/input-closure.json`.
 
 L060 prospective40 broader fixture prepared: five full140 reload-reset/actual restore-navigation modes require nonzero branch observations and zero failures/skips/flakes. Exact source/controller/suite inputs recorded; syntax passes. Behavioral execution and remaining readiness gates are pending. Evidence: `research-v014/preflight/task040-broader-inputs.json`.
+
+L064 corrected prospective40 fetch full variant: 140 pass, zero failures/skips/flakes, exact controller/suite/result input closure verified. All three full render modes pass; directed fault and broader readiness remain pending. Evidence: `research-v014/preflight/task040-full-prototype002-check-1791739214033/positive-fetch/input-closure.json`.
