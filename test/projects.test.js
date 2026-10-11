@@ -453,8 +453,8 @@ test('migration preserves existing project IDs, tasks, and completion state', as
       { id: 42, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 2, completed: 1 },
     ]);
     assert.deepEqual(await (await fetch(`${origin}/api/projects/42/tasks`)).json(), [
-      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal', due_date: '', notes: '' },
-      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal', due_date: '', notes: '' },
+      { id: 71, title: 'Existing completed task', completed: true, priority: 'Normal', due_date: '', notes: '', deleted: false },
+      { id: 72, title: 'Existing open task', completed: false, priority: 'Normal', due_date: '', notes: '', deleted: false },
     ]);
   } finally {
     if (child.exitCode === null) {

@@ -28,7 +28,8 @@ export function normalizeDueRange(from, through) {
 
 export function filterTasks(tasks, completion, priority, range = { from: '', through: '' }, query = '') {
   return tasks.filter(task =>
-    (completion === 'all' || (completion === 'completed' ? task.completed : !task.completed)) &&
+    (completion === 'deleted' ? Boolean(task.deleted) : !task.deleted) &&
+    (completion === 'deleted' || completion === 'all' || (completion === 'completed' ? task.completed : !task.completed)) &&
     (priority === 'all' || task.priority === priority) &&
     ((!range.from && !range.through) || (Boolean(task.due_date) &&
       (!range.from || task.due_date >= range.from) &&

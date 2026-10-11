@@ -10,7 +10,7 @@ Example: `PORT=8080 DB_PATH=data/workboard.sqlite npm start`
 Run verification with `npm test`.
 
 Create projects on the home page and open a project to create tasks. Task titles
-are trimmed, tasks start open, and the Task filter shows All, Open, or Completed
+are trimmed, tasks start open, and the Task filter shows All, Open, Completed, or Deleted
 tasks in creation order. Completion changes and project ownership are stored in
 the configured SQLite file and survive restarts.
 
@@ -30,7 +30,7 @@ be changed to Low or High. Archived projects disable priority edits.
 The Priority filter (All, Low, Normal, High) combines with the Task filter;
 both initially show All and remain usable in archived projects. Matching tasks
 keep their creation order. Edits immediately update matching rows while keeping
-both filter selections, and project summaries always count every task.
+both filter selections, and project summaries always count every live task.
 
 Default task priority on each project page selects Low, Normal, or High for
 subsequent new tasks. Projects initially default to Normal. Changing the default
@@ -77,3 +77,11 @@ return positions. Saving notes preserves filters and all other task data; search
 continue matching names and titles only. Archived notes remain visible with editing
 disabled, and restoring the project enables editing again. Existing databases gain
 empty notes without altering their saved task data.
+
+Delete task removes a live task from ordinary filters and completion summaries
+without losing any saved fields or remembered positions. The Deleted filter
+shows deleted tasks with the same priority, date range, and title search rules.
+Restore task returns a task to its reserved position; tasks created later remain
+after it. Deleted task fields and move controls are read-only until restoration.
+Archived projects also disable deletion and restoration. Deletion state persists
+across restarts; existing databases initialize all earlier tasks as live.

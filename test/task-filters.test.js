@@ -121,3 +121,40 @@ test('edits re-evaluate both filters without changing order, and rename preserve
   assert.equal(tasks.filter(task => task.completed).length, 1);
   assert.equal(tasks.length, 3);
 });
+
+
+test('Deleted intersects priority, inclusive due range and title search while live filters exclude deleted tasks', () => {
+  const tasks = [
+    { id: 1, title: 'Review  REPORT', completed: true, priority: 'High', due_date: '2026-10-11', deleted: true },
+    { id: 2, title: 'Review report', completed: false, priority: 'High', due_date: '', deleted: true },
+    { id: 3, title: 'Review report', completed: false, priority: 'Low', due_date: '2026-10-12', deleted: true },
+    { id: 4, title: 'Review report', completed: true, priority: 'High', due_date: '2026-10-11', deleted: false },
+    { id: 5, title: 'Unrelated', notes: 'Review report', completed: false, priority: 'High', due_date: '2026-10-11', deleted: true },
+  ];
+  const original = structuredClone(tasks);
+  const range = normalizeDueRange('2026-10-11', '2026-10-12');
+  for (const completion of ['all', 'open', 'completed', 'deleted']) {
+    for (const priority of ['all', 'Low', 'Normal', 'High']) {
+      for (const dueRange of [{ from: '', through: '' }, range]) {
+        for (const query of ['', ' review\treport ']) {
+          const expected = tasks.filter(task =>
+            (completion === 'deleted' ? task.deleted : !task.deleted) &&
+            (completion !== 'open' || !task.completed) &&
+            (completion !== 'completed' || task.completed) &&
+            (priority === 'all' || priority === task.priority) &&
+            (!dueRange.from || (task.due_date >= dueRange.from && task.due_date <= dueRange.through)) &&
+            (!query || task.id !== 5));
+          assert.deepEqual(filterTasks(tasks, completion, priority, dueRange, query), expected);
+        }
+      }
+    }
+  }
+  assert.deepEqual(tasks, original);
+  const visibleDeleted = () => filterTasks(tasks, 'deleted', 'High', range, 'Review report').map(task => task.id);
+  assert.deepEqual(visibleDeleted(), [1]);
+  tasks[0].deleted = false;
+  assert.deepEqual(visibleDeleted(), []);
+  assert.deepEqual(filterTasks(tasks, 'completed', 'High', range, 'Review report').map(task => task.id), [1, 4]);
+  tasks[3].deleted = true;
+  assert.deepEqual(visibleDeleted(), [4]);
+});
