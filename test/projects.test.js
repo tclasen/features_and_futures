@@ -192,8 +192,8 @@ test('task renaming preserves ownership, order, completion and filters across re
     assert.match(tasks[1], /<span>Renamed open task<\/span>/);
     assert.doesNotMatch(tasks[1], / checked/);
     assert.doesNotMatch(savedPage, /Original completed task|Original open task/);
-    assert.deepEqual(rows(await html('/projects/1?filter=Completed')), [tasks[0].replaceAll('value="All"', 'value="Completed"')]);
-    assert.deepEqual(rows(await html('/projects/1?filter=Open')), [tasks[1].replaceAll('value="All"', 'value="Open"')]);
+    assert.deepEqual(rows(await html('/projects/1?filter=Completed')), [tasks[0].replaceAll('name="filter" value="All"', 'name="filter" value="Completed"')]);
+    assert.deepEqual(rows(await html('/projects/1?filter=Open')), [tasks[1].replaceAll('name="filter" value="All"', 'name="filter" value="Open"')]);
     const otherPage = await html('/projects/2');
     assert.match(otherPage, /Other project task/);
     assert.doesNotMatch(otherPage, /Renamed/);
@@ -541,6 +541,128 @@ test('renaming preserves identity, order, tasks and summaries, and requires an a
     server = await startServer(dbPath);
     assert.equal(await html('/projects/1'), restoredPage);
     assert.equal(await html('/'), restoredList);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('combined filters retain selections, re-evaluate edits, and work through archive and restart', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'combined-filter-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const rows = page => [...page.matchAll(/<div data-testid="task-row"[\s\S]*?<\/div>/g)].map(match => match[0]);
+    const titles = page => rows(page).map(row => /<span>(.*?)<\/span>/.exec(row)[1]);
+    const assertFilters = (page, completion, priority) => {
+      for (const [id, options, selected] of [
+        ['task-filter', ['All', 'Open', 'Completed'], completion],
+        ['priority-filter', ['All', 'Low', 'Normal', 'High'], priority],
+      ]) {
+        const select = new RegExp(`<select id="${id}"[\\s\\S]*?<\\/select>`).exec(page)[0];
+        assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)].map(match => match[1]), options);
+        assert.match(select, new RegExp(`<option selected>${selected}<\\/option>`));
+        assert.doesNotMatch(select, /disabled/);
+        assert.match(select, /onchange="this.form.requestSubmit\(\)"/);
+      }
+      // Both selects belong to the same GET form so either submits both values.
+      assert.match(page, /<form method="get" action="\/projects\/1">\s*<label for="task-filter">[\s\S]*?<label for="priority-filter">[\s\S]*?<\/form>/);
+    };
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const tasks = [];
+    for (const priority of ['Low', 'Normal', 'High']) {
+      for (const completed of [false, true]) {
+        const id = tasks.length + 1;
+        const title = `${priority} ${completed ? 'completed' : 'open'}`;
+        await post('/projects/1/tasks', { title });
+        await post(`/projects/1/tasks/${id}/priority`, { priority });
+        if (completed) await post(`/projects/1/tasks/${id}`, { completed: '1' });
+        tasks.push({ id, title, priority, completed });
+      }
+    }
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    const otherProject = await html('/projects/2');
+    const summary = await html('/');
+    assert.match(summary, /3\/6 completed/);
+    assert.match(await html('/projects/1'), /<label for="priority-filter">Priority filter<\/label>/);
+    assertFilters(await html('/projects/1'), 'All', 'All');
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
+        const path = `/projects/1?${new URLSearchParams({ filter, priorityFilter })}`;
+        const page = await html(path);
+        assertFilters(page, filter, priorityFilter);
+        assert.deepEqual(titles(page), tasks.filter(task =>
+          (filter === 'All' || task.completed === (filter === 'Completed')) &&
+          (priorityFilter === 'All' || task.priority === priorityFilter)).map(task => task.title));
+      }
+    }
+    assert.equal(await html('/'), summary);
+    const selection = { filter: 'Open', priorityFilter: 'High' };
+    const selectedPath = '/projects/1?filter=Open&priorityFilter=High';
+    const edited = await post('/projects/1/tasks/5/rename', { ...selection, title: '  Renamed high  ' });
+    assert.equal(edited.headers.get('location'), selectedPath);
+    let page = await html(selectedPath);
+    assertFilters(page, 'Open', 'High');
+    assert.deepEqual(titles(page), ['Renamed high']);
+    assert.match(page, /aria-label="Complete Renamed high"/);
+    const invalid = await post('/projects/1/tasks/5/rename', { ...selection, title: '   ' });
+    const invalidPage = await invalid.text();
+    assert.equal(invalid.status, 400);
+    assertFilters(invalidPage, 'Open', 'High');
+    assert.match(invalidPage, /Task title is required/);
+    assert.deepEqual(titles(invalidPage), ['Renamed high']);
+    assert.equal(await html('/'), summary);
+    const priorityEdit = await post('/projects/1/tasks/5/priority', { ...selection, priority: 'Low' });
+    assert.equal(priorityEdit.headers.get('location'), selectedPath);
+    page = await html(selectedPath);
+    assertFilters(page, 'Open', 'High');
+    assert.deepEqual(titles(page), []);
+    assert.deepEqual(titles(await html('/projects/1?filter=Open&priorityFilter=Low')), ['Low open', 'Renamed high']);
+    assert.equal(await html('/'), summary);
+    const completionSelection = { filter: 'Completed', priorityFilter: 'High' };
+    const completionEdit = await post('/projects/1/tasks/6', completionSelection);
+    assert.equal(completionEdit.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=High');
+    page = await html(completionEdit.headers.get('location'));
+    assertFilters(page, 'Completed', 'High');
+    assert.deepEqual(titles(page), []);
+    assert.deepEqual(titles(await html(selectedPath)), ['High completed']);
+    assert.match(await html('/'), /2\/6 completed/);
+    assert.equal(await html('/projects/2'), otherProject);
+    const savedPage = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html('/projects/1'), savedPage);
+    assertFilters(await html('/projects/1'), 'All', 'All');
+    assert.deepEqual(titles(await html(selectedPath)), ['High completed']);
+    await post('/projects/1/archive');
+    const archived = await html(selectedPath);
+    assertFilters(archived, 'Open', 'High');
+    assert.deepEqual(titles(archived), ['High completed']);
+    for (const row of rows(archived)) {
+      assert.match(row, /type="checkbox"[\s\S]*?disabled/);
+      assert.match(row, /<select id="task-priority-\d+"[^>]*disabled/);
+      assert.match(row, /<input id="new-task-title-\d+"[^>]*disabled/);
+      assert.match(row, /<button type="submit" disabled>Rename task/);
+    }
+    const blocked = await post('/projects/1/tasks/6/priority', { ...selection, priority: 'Low' });
+    assert.equal(blocked.status, 403);
+    assertFilters(await blocked.text(), 'Open', 'High');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assert.equal(await html(selectedPath), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), savedPage);
+    assertFilters(await html(selectedPath), 'Open', 'High');
+    assert.doesNotMatch(await html(selectedPath), /disabled/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
