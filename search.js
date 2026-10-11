@@ -1,5 +1,9 @@
-// Fold ASCII letters only: non-ASCII names retain their exact spelling.
+// Normalize only for matching; saved and displayed text remains unchanged.
+function normalizeSearch(text) {
+  return text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 export function matchesSearch(value, query) {
-  const fold = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-  return fold(value).includes(fold(query.trim()));
+  return normalizeSearch(value).includes(normalizeSearch(query.trim()));
 }

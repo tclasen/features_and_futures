@@ -8,9 +8,14 @@ import { once } from 'node:events';
 import net from 'node:net';
 import { matchesSearch } from '../search.js';
 
-test('search trims query edges, preserves internal spacing, and folds ASCII only', () => {
+test('search trims query edges, collapses ASCII spaces and tabs, and folds ASCII only', () => {
   assert.equal(matchesSearch('Alpha  Beta', '  ALPHA  b  '), true);
-  assert.equal(matchesSearch('Alpha  Beta', 'alpha beta'), false);
+  assert.equal(matchesSearch('Alpha  Beta', 'alpha beta'), true);
+  assert.equal(matchesSearch('Alpha \t\t Beta', '\t ALPHA\t  beta \n'), true);
+  assert.equal(matchesSearch('Alpha Beta', 'alpha\t\t beta'), true);
+  assert.equal(matchesSearch('Alpha\nBeta', 'alpha beta'), false);
+  assert.equal(matchesSearch('Alpha\u00a0Beta', 'alpha beta'), false);
+  assert.equal(matchesSearch('Alpha Beta', 'alpha\nbeta'), false);
   assert.equal(matchesSearch('Écho', 'é'), false);
   assert.equal(matchesSearch('Anything', ' \t '), true);
   assert.equal(matchesSearch('<&"', '<&"'), true);
@@ -51,18 +56,21 @@ test('search intersects filters and survives edits, validation, archival and res
     await start();
     for (const name of ['Alpha  One', 'ALPHA Two', 'Other']) await post('/projects', { name });
     assert.deepEqual(names(await get('/?search=%20aLpHa%20'), 'project'), ['Alpha  One', 'ALPHA Two']);
-    assert.deepEqual(names(await get('/?search=alpha%20one'), 'project'), []);
+    assert.deepEqual(names(await get('/?search=alpha%20one'), 'project'), ['Alpha  One']);
     await post('/projects/2/archive', { search: 'alpha' });
     assert.deepEqual(names(await get('/?search=alpha'), 'project'), ['Alpha  One']);
     assert.deepEqual(names(await get('/?filter=Archived&search=alpha'), 'project'), ['ALPHA Two']);
-    for (const title of ['Match first', 'Other', 'MATCH last']) await post('/projects/1/tasks', { title });
-    const state = { filter: 'Open', priorityFilter: 'High', dueFrom: '2025-01-01', dueThrough: '2025-12-31', search: 'match' };
+    for (const title of ['Match \t first', 'Other', 'MATCH last']) await post('/projects/1/tasks', { title });
+    const state = { filter: 'Open', priorityFilter: 'High', dueFrom: '2025-01-01', dueThrough: '2025-12-31', search: 'match\t  first' };
+    assert.deepEqual(names(await get('/projects/1?search=match%20first'), 'task'), ['Match \t first']);
     for (const id of [1, 3]) {
       await post(`/projects/1/tasks/${id}/priority`, { priority: 'High' });
       await post(`/projects/1/tasks/${id}/due-date`, { dueDate: '2025-06-01' });
     }
     const path = '/projects/1?' + new URLSearchParams(state);
-    assert.deepEqual(names(await get(path), 'task'), ['Match first', 'MATCH last']);
+    assert.deepEqual(names(await get(path), 'task'), ['Match \t first']);
+    // Use a broader query for the remaining intersection and edit checks.
+    state.search = 'match';
     let response = await post('/projects/1/tasks/1/rename', { ...state, title: 'Gone' });
     assert.equal(new URL(response.headers.get('location'), base).searchParams.get('search'), 'match');
     assert.deepEqual(names(await get(response.headers.get('location')), 'task'), ['MATCH last']);
@@ -80,6 +88,16 @@ test('search intersects filters and survives edits, validation, archival and res
     await start();
     assert.deepEqual(names(await get('/projects/1?search=match'), 'task'), ['MATCH last']);
     assert.deepEqual(names(await get('/projects/1'), 'task'), ['Gone', 'Other', 'MATCH last']);
+    assert.deepEqual(names(await get('/?filter=Archived&search=alpha%09%20one'), 'project'), ['Alpha  One']);
+    assert.deepEqual(names(await get('/?filter=Archived'), 'project'), ['Alpha  One', 'ALPHA Two']);
+    await post('/projects/1/restore');
+    await post('/projects/1/tasks/1/rename', { title: 'MiXeD \t  title' });
+    assert.deepEqual(names(await get('/projects/1?search=mixed%20title'), 'task'), ['MiXeD \t  title']);
+    await stop();
+    await start();
+    assert.deepEqual(names(await get('/projects/1?search=MIXED%09title'), 'task'), ['MiXeD \t  title']);
+    assert.deepEqual(names(await get('/projects/1'), 'task'), ['MiXeD \t  title', 'Other', 'MATCH last']);
+    await post('/projects/1/archive');
     assert.match(await get('/?filter=Archived&search=alpha'), /1\/3 completed/);
   } finally {
     await stop();
