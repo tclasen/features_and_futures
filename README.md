@@ -21,7 +21,11 @@ npm test
 ```
 
 Each project page supports task creation, completion checkboxes, and an All/Open/Completed
-filter. New tasks are open, and both project names and task titles are trimmed.
+filter. A Priority filter offers All, Low, Normal, and High, initially All. Tasks must
+match both filters and remain in creation order. Changing either filter or editing
+a task keeps both selections; completion and priority edits immediately refresh the
+matching rows. Both filters work in archived projects and leave summary counts unchanged.
+New tasks are open, and both project names and task titles are trimmed.
 The project list starts with Active projects and can show Archived projects. Archive
 and restore preserve tasks; archived project pages allow viewing and filtering but
 disable task creation and completion changes. Each project row summarizes completion
@@ -52,3 +56,5 @@ renamed names surviving server restarts. Priority checks cover migration of exis
 tasks, defaults, independent edits, invalid values, save-error recovery, unchanged
 completion summaries, and priority persistence through renaming, archive/restore,
 filter changes, and server restarts.
+Combined-filter checks cover every completion/priority combination, selection retention,
+task edits leaving the matching list, rename membership, and archived filtering.

@@ -12,6 +12,7 @@ const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const taskList = document.querySelector('#task-list');
 let projectId;
 let archived = false;
@@ -118,6 +119,7 @@ function renderTasks() {
   for (const task of tasks) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
+    if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
     row.className = 'task-row';
@@ -207,6 +209,7 @@ function renderTasks() {
           body: JSON.stringify({ priority: priority.value }),
         });
         task.priority = saved.priority;
+        renderTasks();
       } catch (error) {
         showTaskAlert(error.message);
       } finally {
@@ -220,6 +223,7 @@ function renderTasks() {
 }
 
 taskFilter.addEventListener('change', renderTasks);
+priorityFilter.addEventListener('change', renderTasks);
 
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
