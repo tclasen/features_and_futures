@@ -14,11 +14,27 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueRangeForm = document.querySelector('#due-range-form');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
 const defaultTaskPriority = document.querySelector('#default-task-priority');
 const taskContainer = document.querySelector('#tasks');
 const archivedNotice = document.querySelector('#archived-notice');
 let activeProjectId = null;
 let activeProjectArchived = false;
+let appliedDueRange = { from: '', through: '' };
+
+function isValidDueDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -74,6 +90,9 @@ async function renderRoute() {
   if (activeProjectId !== match[1]) {
     taskFilter.value = 'All';
     priorityFilter.value = 'All';
+    appliedDueRange = { from: '', through: '' };
+    dueFromInput.value = '';
+    dueThroughInput.value = '';
   }
   activeProjectId = match[1];
   activeProjectArchived = Boolean(project.archived);
@@ -97,7 +116,13 @@ async function renderTasks() {
   const visibleTasks = tasks.filter((task) => taskFilter.value === 'All'
     || (taskFilter.value === 'Open' && !task.completed)
     || (taskFilter.value === 'Completed' && task.completed))
-    .filter((task) => priorityFilter.value === 'All' || task.priority === priorityFilter.value);
+    .filter((task) => priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+    .filter((task) => {
+      if (!appliedDueRange.from && !appliedDueRange.through) return true;
+      if (!task.dueDate) return false;
+      return (!appliedDueRange.from || task.dueDate >= appliedDueRange.from)
+        && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
+    });
   taskContainer.replaceChildren(...visibleTasks.map((task) => {
     const row = document.createElement('div');
     row.dataset.testid = 'task-row';
@@ -274,6 +299,22 @@ taskForm.addEventListener('submit', async (event) => {
 });
 taskFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
 priorityFilter.addEventListener('change', () => renderTasks().catch(showTaskError));
+dueRangeForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const from = dueFromInput.value.trim();
+  const through = dueThroughInput.value.trim();
+  if ((from && !isValidDueDate(from)) || (through && !isValidDueDate(through))) {
+    showTaskError(new Error('Due range must use valid YYYY-MM-DD dates'));
+    return;
+  }
+  if (from && through && from > through) {
+    showTaskError(new Error('Due from must not be after Due through'));
+    return;
+  }
+  taskAlert.hidden = true;
+  appliedDueRange = { from, through };
+  renderTasks().catch(showTaskError);
+});
 defaultTaskPriority.addEventListener('change', async () => {
   try {
     await request(`/api/projects/${activeProjectId}/default-task-priority`, {
