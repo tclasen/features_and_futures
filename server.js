@@ -113,6 +113,44 @@ function validDueDate(value) {
 }
 
 const priorities = ['Low', 'Normal', 'High'];
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const nonblankString = (value) => typeof value === 'string' && value.trim().length > 0;
+
+function validateProjectJSON(text) {
+  let document;
+  try { document = JSON.parse(text); } catch { return null; }
+  if (!isObject(document) || document.format !== 'workboard-project' || document.version !== 1) return null;
+  const project = document.project;
+  if (!isObject(project) || !nonblankString(project.name) || typeof project.archived !== 'boolean' ||
+      !priorities.includes(project.defaultPriority) || !Array.isArray(project.tasks)) return null;
+  for (const task of project.tasks) {
+    if (!isObject(task) || !nonblankString(task.title) || typeof task.completed !== 'boolean' ||
+        !priorities.includes(task.priority) || typeof task.dueDate !== 'string' ||
+        (task.dueDate !== '' && !validDueDate(task.dueDate)) || typeof task.notes !== 'string' ||
+        typeof task.deleted !== 'boolean') return null;
+  }
+  return project;
+}
+
+const insertImportedProject = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const insertImportedTask = db.prepare(`INSERT INTO tasks
+  (project_id, title, completed, priority, due_date, notes, deleted, position)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+
+function importProject(name, project) {
+  let projectId;
+  transaction(() => {
+    projectId = insertImportedProject.run(name, Number(project.archived), project.defaultPriority).lastInsertRowid;
+    project.tasks.forEach((task, index) => {
+      const position = index + 1;
+      const taskId = insertImportedTask.run(projectId, task.title, Number(task.completed), task.priority,
+        task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted), position).lastInsertRowid;
+      rememberPosition.run(taskId, projectId, position);
+    });
+  });
+  return projectId;
+}
+
 const taskFilter = (value) => ['Open', 'Completed', 'Deleted'].includes(value) ? value : 'All';
 const priorityFilter = (value) => priorities.includes(value) ? value : 'All';
 function dueRange(values) {
@@ -180,7 +218,7 @@ function page(title, content) {
 </html>`;
 }
 
-function projectsPage(error = '', filter = 'Active', search = '') {
+function projectsPage(error = '', filter = 'Active', search = '', importDraft = { json: '', name: '', error: '' }) {
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0).filter((project) => matchesSearch(project.name, search));
   const searchField = `<input type="hidden" name="searchQuery" value="${escapeHtml(search)}">`;
   return page('Projects', `<h1>Workboard</h1>
@@ -191,6 +229,15 @@ function projectsPage(error = '', filter = 'Active', search = '') {
       <label for="project-name">Project name</label>
       <div class="fields"><input id="project-name" name="name" type="text" autocomplete="off"><button type="submit">Create project</button></div>
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    </form>
+    <form class="panel filter" method="post" action="/projects/import">
+      ${searchField}
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json">\n${escapeHtml(importDraft.json)}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <div class="fields"><input id="imported-project-name" name="name" type="text" value="${escapeHtml(importDraft.name)}"><button type="submit">Import project</button></div>
+      ${importDraft.error ? `<p role="alert">${escapeHtml(importDraft.error)}</p>` : ''}
     </form>
     <form class="filter" method="get" action="/">
       ${searchField}
@@ -360,12 +407,12 @@ ${escapeHtml(task.notes)}</textarea>
     </section>`);
 }
 
-async function readForm(req) {
+async function readForm(req, maxBytes = 65536) {
   let body = '';
   req.setEncoding('utf8');
   for await (const chunk of req) {
     body += chunk;
-    if (Buffer.byteLength(body) > 65536) {
+    if (Buffer.byteLength(body) > maxBytes) {
       const error = new Error('Request too large');
       error.status = 413;
       throw error;
@@ -441,6 +488,18 @@ const server = http.createServer(async (req, res) => {
         'Cache-Control': 'no-store',
       });
       res.end(JSON.stringify(document, null, 2));
+    } else if (req.method === 'POST' && path === '/projects/import') {
+      const form = await readForm(req, Infinity);
+      const draft = { json: form.get('json') || '', name: form.get('name') || '', error: '' };
+      const name = draft.name.trim();
+      const project = name ? validateProjectJSON(draft.json) : null;
+      if (!name || !project) {
+        draft.error = name ? 'Invalid project JSON' : 'Project name is required';
+        html(res, 422, projectsPage('', projectFilter(form.get('filter')), searchQuery(form), draft));
+        return;
+      }
+      const id = importProject(name, project);
+      redirect(res, `/projects/${id}`);
     } else if (req.method === 'POST' && path === '/projects') {
       const form = await readForm(req);
       const name = (form.get('name') || '').trim();

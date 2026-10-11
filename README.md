@@ -118,3 +118,14 @@ due date, notes and deletion state. Downloads ignore the selected filters and
 search, and leave all saved data and page selections unchanged. Exported notes
 use LF line endings without rewriting the stored notes. Archived and empty
 projects can also be downloaded.
+
+On the home page, paste a version 1 portable document into `Project JSON`, enter
+an `Imported project name`, and select `Import project`. The override name is
+trimmed and required. The complete document is validated before a single
+transaction creates a new independent project and opens it. Invalid documents
+show `Invalid project JSON`, retain both inputs, and leave existing data unchanged.
+Imports retain archive state, default priority, task order, exact titles,
+completion, explicit priorities, dates, notes (with LF line endings), and deletion
+state. Internal identities are always newly allocated. Deleted tasks retain their
+reserved positions for restoration and later moves/returns. Archived imports
+remain read-only until restored.
