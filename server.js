@@ -32,6 +32,9 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('BEGIN');
   try {
@@ -67,7 +70,7 @@ const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const addTask = db.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))
@@ -90,6 +93,7 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND p
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function transaction(action) {
   db.exec('BEGIN');
@@ -338,6 +342,15 @@ function projectPage(project, filter, priority = 'All', error = '', range = { fr
             <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
           </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/notes" class="task-notes-form">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priority}">
+            ${rangeFields(range, query)}
+            <label for="task-notes-${task.id}">Task notes</label>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+          </form>
           <form method="post" action="/projects/${project.id}/tasks/${task.id}/move">
             <input type="hidden" name="filter" value="${filter}">
             <input type="hidden" name="priorityFilter" value="${priority}">
@@ -505,7 +518,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(?:\/(rename|priority|due-date|move))?)?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(?:\/(rename|priority|due-date|notes|move))?)?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const project = findProject.get(taskRoute[1]);
       if (project) {
@@ -550,6 +563,8 @@ const server = createServer(async (request, response) => {
               return;
             }
             result = setTaskPriority.run(newPriority, taskId, project.id);
+          } else if (taskRoute[3] === 'notes') {
+            result = setTaskNotes.run(form.get('notes') ?? '', taskId, project.id);
           } else if (taskRoute[3] === 'due-date') {
             const dueDate = (form.get('dueDate') ?? '').trim();
             if (!validDueDate(dueDate)) {
@@ -600,7 +615,9 @@ const styles = `
   .create-form { display: flex; align-items: end; gap: 16px; }
   .field { flex: 1; }
   label { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 8px; }
-  input[type="text"], select { width: 100%; border: 1px solid #8a9ca3; border-radius: 6px; padding: 12px; font: inherit; }
+  input[type="text"], select, textarea { width: 100%; border: 1px solid #8a9ca3; border-radius: 6px; padding: 12px; font: inherit; }
+  .task-row .task-notes-form { flex: 1 1 100%; min-width: 0; }
+  textarea { display: block; resize: vertical; margin-bottom: 12px; }
   select { margin-bottom: 16px; }
   input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; accent-color: #176659; }
   button { border: 1px solid #176659; border-radius: 6px; padding: 12px 18px; background: #176659; color: white; font: inherit; font-weight: 600; cursor: pointer; }
@@ -616,7 +633,7 @@ const styles = `
   .task-rename-form label, .task-due-date-form label { margin: 0; }
   .task-rename-form input[type="text"], .task-due-date-form input[type="text"] { flex: 1 1 180px; width: auto; min-width: 0; }
   .project-row form, .task-row form { flex-shrink: 0; }
-  button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: .6; }
+  button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opacity: .6; }
   .alert { color: #a12626; }
   .muted { color: #526970; }
   @media (max-width: 560px) { main { margin-top: 32px; padding: 0 16px; } section { padding: 20px; } .create-form { align-items: stretch; flex-direction: column; } }

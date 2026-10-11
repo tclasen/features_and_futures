@@ -1487,3 +1487,130 @@ test('search intersects filters, retains view state through edits, and preserves
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('notes migrate without data loss and preserve exact text, filters, ownership and return order', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'notes-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal'
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE task_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id), project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id)
+    );
+    INSERT INTO projects (name, default_priority) VALUES ('Source', 'High'), ('Destination', 'Low');
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, position)
+      VALUES (1, 'Keep  Title', 1, 'High', '2026-10-11', 1), (1, 'Second', 0, 'Normal', '', 2);
+    INSERT INTO task_positions (task_id, project_id, position) VALUES (1, 1, 1), (2, 1, 2), (1, 2, 1);
+  `);
+  const before = legacy.prepare('SELECT * FROM tasks ORDER BY id').all().map(row => ({ ...row }));
+  const positionsBefore = legacy.prepare('SELECT * FROM task_positions ORDER BY project_id, position').all().map(row => ({ ...row }));
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const snapshot = (table = 'tasks') => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return database.prepare(`SELECT * FROM ${table} ORDER BY ${table === 'tasks' ? 'id' : 'project_id, position'}`).all().map(row => ({ ...row }));
+      } finally {
+        database.close();
+      }
+    };
+    const escaped = value => value.replace(/[&<>"']/g, character => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[character]);
+    const textarea = (page, id) => new RegExp(`<textarea id="task-notes-${id}"[^>]*>([\\s\\S]*?)</textarea>`).exec(page);
+    // HTML discards the first newline after a textarea opening tag. The extra
+    // newline in the response preserves notes that themselves start with one.
+    const assertNotes = (page, id, notes, disabled = false) => {
+      const match = textarea(page, id);
+      assert.ok(match, `Missing notes textarea for task ${id}`);
+      assert.equal(match[1], `\n${escaped(notes)}`);
+      assert.equal(match[0].includes(' disabled'), disabled);
+      assert.ok(page.includes(`<label for="task-notes-${id}">Task notes</label>`));
+      const form = [...page.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)]
+        .find(match => match[0].includes(`action="/projects/1/tasks/${id}/notes"`));
+      if (form) assert.ok(form[0].includes(`<button type="submit"${disabled ? ' disabled' : ''}>Save notes</button>`));
+    };
+    assert.deepEqual(snapshot(), before.map(task => ({ ...task, notes: '' })));
+    assert.deepEqual(snapshot('task_positions'), positionsBefore);
+    const initial = await html('/projects/1');
+    assertNotes(initial, 1, '');
+    assertNotes(initial, 2, '');
+    await post('/projects/1/tasks', { title: 'New' });
+    assertNotes(await html('/projects/1'), 3, '');
+    const notes = '\n  Leading spaces\nUnicode: 雪 📝 café\n</textarea><script>alert("x")</script> & literal markup\nTrailing spaces  \n';
+    const view = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-11', dueThrough: '2026-10-11', taskSearch: 'keep\t title' };
+    const viewPath = `/projects/1?${new URLSearchParams(view)}`;
+    const current = snapshot();
+    const summary = await html('/');
+    const response = await post('/projects/1/tasks/1/notes', { notes, ...view });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), viewPath);
+    let page = await html(response.headers.get('location'));
+    assertNotes(page, 1, notes);
+    assert.equal((page.match(/data-testid="task-row"/g) ?? []).length, 1);
+    assert.deepEqual(snapshot(), current.map(task => task.id === 1 ? { ...task, notes } : task));
+    assert.deepEqual(snapshot('task_positions'), positionsBefore.concat([{ task_id: 3, project_id: 1, position: 3 }])
+      .sort((a, b) => a.project_id - b.project_id || a.position - b.position));
+    assert.equal(await html('/'), summary);
+    assertNotes(await html('/projects/1'), 2, '');
+    assertNotes(await html('/projects/1'), 3, '');
+    assert.doesNotMatch(await html('/projects/1?taskSearch=Unicode'), /data-testid="task-row"/);
+    // Wrong ownership and missing tasks cannot alter notes.
+    assert.equal((await post('/projects/2/tasks/1/notes', { notes: 'Wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/notes', { notes: 'Missing' })).status, 404);
+    assert.equal(snapshot()[0].notes, notes);
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed' });
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    assertNotes(await html('/projects/1'), 1, notes);
+    await post('/projects/1/tasks/1/move', { destinationProject: '2', ...view });
+    assert.doesNotMatch(await html('/projects/1'), /id="task-notes-1"/);
+    assertNotes(await html('/projects/2'), 1, notes);
+    assert.equal(snapshot()[0].priority, 'High');
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assertNotes(await html('/projects/2'), 1, notes);
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    page = await html('/projects/1');
+    assert.deepEqual([...page.matchAll(/data-testid="task-row"[^>]*>\s*<span>([^<]*)/g)].map(match => match[1]), ['Renamed', 'Second', 'New']);
+    assertNotes(page, 1, notes);
+    assert.deepEqual(snapshot()[0], { ...current[0], title: 'Renamed', notes });
+    await post('/projects/1/archive');
+    page = await html('/projects/1');
+    for (const id of [1, 2, 3]) assertNotes(page, id, id === 1 ? notes : '', true);
+    assert.equal((await post('/projects/1/tasks/1/notes', { notes: 'Forbidden', ...view })).status, 403);
+    assert.equal(snapshot()[0].notes, notes);
+    await post('/projects/1/restore');
+    assertNotes(await html('/projects/1'), 1, notes);
+    for (const value of ['   \t\n  ', '']) {
+      assert.equal((await post('/projects/1/tasks/1/notes', { notes: value })).status, 303);
+      assert.equal(snapshot()[0].notes, value);
+      assertNotes(await html('/projects/1'), 1, value);
+    }
+    await server.stop();
+    server = undefined;
+    server = await startServer(dbPath);
+    assertNotes(await html('/projects/1'), 1, '');
+    assert.deepEqual(snapshot()[0], { ...current[0], title: 'Renamed', notes: '' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
