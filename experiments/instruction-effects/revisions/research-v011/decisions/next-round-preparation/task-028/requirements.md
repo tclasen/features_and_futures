@@ -1,0 +1,5 @@
+## Requirement028: order directory tasks globally by project name
+
+Dependencies: all requirements through027 remain cumulative. Append `Project name` to the Directory order options. Sort matching rows globally by their original owner's literal current project name, using ASCII A–Z case folding only and Unicode code-point lexicographic comparison. Keep literal spacing and other Unicode unchanged. Break equal folded-name ties by project creation order, then the existing stored task order within that owner. Equal displayed project names never combine distinct identities.
+
+Project renames and active/archived scope changes use the current stored names and matching scope. Keep the represented-owner list in project creation order, independent of global task order. All current completion, priority, date and title-search controls, every directory bulk action and disabled/empty behavior still apply. Ordering remains read-only and cannot change stored project/task orders, fields, export order or remembered move positions. Existing Original, Priority, Due date and Title ordering remains cumulative.

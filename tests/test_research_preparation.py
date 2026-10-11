@@ -59,7 +59,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v003')
-                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v011')
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v012')
 
     def test_positive_anchor_revision_preserves_bounds_and_refuses_cross_revision_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -76,7 +76,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v004')
-                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v011')
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v012')
 
     def test_action_revision_requires_own_freeze_and_exact_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
