@@ -28,6 +28,7 @@ const listProjects = db.prepare(`SELECT projects.id, projects.name,
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -124,8 +125,15 @@ function projectPage(project, filter = 'All', error = '') {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
-    <h2>Tasks</h2>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <h2>Rename project</h2>
+    <form method="post" action="/projects/${project.id}/rename">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="create"><input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+    </form>
+    <h2>Tasks</h2>
     <form method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -184,7 +192,7 @@ const server = http.createServer(async (request, response) => {
       }
       createProject.run(name);
       redirect(response, '/');
-    } else if (/^\/projects\/\d+(?:\/tasks(?:\/\d+)?|\/archive|\/restore)?$/.test(url.pathname)) {
+    } else if (/^\/projects\/\d+(?:\/tasks(?:\/\d+)?|\/archive|\/restore|\/rename)?$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (!project) {
@@ -198,6 +206,20 @@ const server = http.createServer(async (request, response) => {
         const archived = parts[3] === 'archive';
         setProjectArchived.run(archived ? 1 : 0, project.id);
         redirect(response, archived ? '/' : '/?filter=Archived');
+      } else if (request.method === 'POST' && parts.length === 4 && parts[3] === 'rename') {
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project is read-only'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(response, 400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        redirect(response, `/projects/${project.id}${filter === 'All' ? '' : `?filter=${filter}`}`);
       } else if (request.method === 'POST' && parts[3] === 'tasks') {
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));

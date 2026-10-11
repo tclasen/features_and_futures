@@ -23,6 +23,11 @@ filtering, while task creation and completion controls are disabled. Each projec
 row summarizes completed tasks out of all its tasks. Archive state persists, and
 existing databases are upgraded automatically without losing projects or tasks.
 
+Use New project name and Rename project on an active project page to rename it.
+Names are trimmed and must not be blank. Renaming preserves the project URL,
+creation order, tasks, and completion summary. Archived projects cannot be renamed
+until restored. Project names persist across restarts.
+
 Run the integration checks:
 
 ```sh
@@ -32,4 +37,5 @@ npm test
 The checks use a temporary SQLite file and verify validation, creation order,
 project pages, safe rendering, task completion and filters, project isolation,
 health, database migration, archive/restore, completion summaries, archived write
-protection, and persistence after server restarts.
+protection, renaming with identity and data preservation, and persistence after
+server restarts.

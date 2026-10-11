@@ -7,6 +7,87 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('rename preserves project identity, order, tasks, summaries, and archive protection across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const rows = page => [...page.matchAll(/<li data-testid="project-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    const tasks = page => [...page.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    await post('/projects', { name: 'Original' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Open task' });
+    await post('/projects/1/tasks', { title: 'Done task' });
+    await post('/projects/1/tasks/2', { completed: '1' });
+    const originalPage = await html('/projects/1');
+    assert.match(originalPage, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(originalPage, /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', ' \t\n ']) {
+      const response = await post('/projects/1/rename', { name, filter: 'Completed' });
+      assert.equal(response.status, 400);
+      const page = await response.text();
+      assert.match(page, /role="alert">Project name is required/);
+      assert.match(page, /<h1>Original<\/h1>/);
+      assert.match(page, /<option selected>Completed<\/option>/);
+      assert.equal(tasks(page).length, 1);
+      assert.equal(await html('/projects/1'), originalPage);
+    }
+    const response = await post('/projects/1/rename', { name: '  Renamed <project> & "notes"  ', filter: 'Open' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Open');
+    const renamedPage = await html('/projects/1');
+    assert.match(renamedPage, /<h1>Renamed &lt;project&gt; &amp; &quot;notes&quot;<\/h1>/);
+    assert.match(renamedPage, /value="Renamed &lt;project&gt; &amp; &quot;notes&quot;"/);
+    assert.deepEqual(tasks(renamedPage), tasks(originalPage));
+    const renamedList = await html('/');
+    const renamedRows = rows(renamedList);
+    assert.equal(renamedRows.length, 2);
+    assert.match(renamedRows[0], /<span>Renamed &lt;project&gt; &amp; &quot;notes&quot;<\/span>/);
+    assert.match(renamedRows[0], /action="\/projects\/1"/);
+    assert.match(renamedRows[0], /data-testid="project-summary">1\/2 completed/);
+    assert.match(renamedRows[1], /<span>Second<\/span>/);
+    assert.match(await html('/projects/2'), /<h1>Second<\/h1>/);
+    assert.equal((await post('/projects/999999/rename', { name: 'Missing' })).status, 404);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), renamedPage);
+    assert.equal(await html('/'), renamedList);
+
+    await post('/projects/1/archive');
+    const archivedPage = await html('/projects/1');
+    assert.match(archivedPage, /id="new-project-name"[^>]* disabled/);
+    assert.match(archivedPage, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await post('/projects/1/rename', { name: 'Blocked' })).status, 403);
+    assert.equal(await html('/projects/1'), archivedPage);
+    assert.match(rows(await html('/?filter=Archived'))[0], /Renamed &lt;project&gt;/);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), archivedPage);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), renamedPage);
+    assert.equal((await post('/projects/1/rename', { name: '  Restored name  ' })).headers.get('location'), '/projects/1');
+    const restoredPage = await html('/projects/1');
+    assert.match(restoredPage, /<h1>Restored name<\/h1>/);
+    assert.deepEqual(tasks(restoredPage), tasks(originalPage));
+    assert.match(rows(await html('/'))[0], /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), restoredPage);
+    assert.match(rows(await html('/'))[0], /<span>Restored name<\/span>/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function start(dbPath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: dbPath },
