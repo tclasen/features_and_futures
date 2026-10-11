@@ -17,6 +17,10 @@ The default database is `./data/workboard.sqlite`. Projects retain their names,
 creation order, and IDs across server restarts. `GET /health` returns
 `{"status":"ok"}`.
 
+Open a project to create tasks, check or uncheck their completion, and filter by
+All, Open, or Completed. Tasks belong to their project and retain their titles,
+creation order, and completion state across page reloads and server restarts.
+
 Run the integration checks (using an isolated temporary database):
 
 ```sh
