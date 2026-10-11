@@ -34,6 +34,7 @@ const listProjects = database.prepare(`
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -50,11 +51,11 @@ function renderProjects(filter, error = '') {
   return projectListPage(listProjects.all(filter === 'Archived' ? 1 : 0), error, filter);
 }
 
-function renderProject(project, filter, error = '') {
+function renderProject(project, filter, error = '', renameError = '') {
   const tasks = listTasks.all(project.id).filter((task) => (
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed')
   ));
-  return projectPage(project, tasks, filter, error);
+  return projectPage(project, tasks, filter, error, renameError);
 }
 
 function redirect(response, location) {
@@ -85,7 +86,7 @@ async function readForm(request) {
 const server = createServer(async (request, response) => {
   try {
     const { pathname, searchParams } = new URL(request.url, 'http://localhost');
-    const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*))?|\/(archive|restore))?$/);
+    const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*))?|\/(archive|restore|rename))?$/);
     if (request.method === 'GET' && pathname === '/health') {
       send(response, 200, JSON.stringify({ status: 'ok' }), 'application/json');
     } else if (request.method === 'GET' && pathname === '/') {
@@ -109,6 +110,20 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'GET' && pathname === `/projects/${id}`) {
         send(response, 200, renderProject(project, taskFilter(searchParams.get('filter'))));
+      } else if (request.method === 'POST' && projectRoute[3] === 'rename') {
+        if (project.archived) {
+          send(response, 403, 'Archived project', 'text/plain; charset=utf-8');
+          return;
+        }
+        const form = await readForm(request);
+        const name = (form.get('name') || '').trim();
+        const filter = taskFilter(form.get('filter'));
+        if (!name) {
+          send(response, 400, renderProject(project, filter, '', 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, id);
+        redirect(response, `/projects/${id}?filter=${filter}`);
       } else if (request.method === 'POST' && projectRoute[3]) {
         const archive = projectRoute[3] === 'archive';
         setProjectArchived.run(archive ? 1 : 0, id);

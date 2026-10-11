@@ -29,3 +29,9 @@ disables task creation and completion changes, including direct POST requests.
 Each project summary counts all its tasks regardless of task filters. Existing
 SQLite databases are migrated automatically, with existing projects initially
 active. Archive state and task data persist across restarts.
+
+Active projects can be renamed from their project page. Names are trimmed and
+must not be blank. Renaming preserves the project ID, URL, creation order, tasks,
+and completion summary. Archived projects cannot be renamed until restored;
+this restriction also applies to direct POST requests. Renamed names persist
+across restarts.
