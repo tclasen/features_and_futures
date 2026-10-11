@@ -4,10 +4,24 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 test('projects and tasks validate, remain isolated, and survive server restarts', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data/test-'));
+  // Exercise migration from the schema used before archive support.
+  const legacy = new DatabaseSync(resolve(directory, 'projects.sqlite'));
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    );
+    INSERT INTO projects (name) VALUES ('Legacy project');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy task', 1)`);
+  legacy.close();
+  const legacyProject = { id: 1, name: 'Legacy project', archived: false, total: 1, completed: 1 };
   let child;
   let base;
   async function start() {
@@ -57,25 +71,34 @@ test('projects and tasks validate, remain isolated, and survive server restarts'
     assert.equal(response.status, 200);
     return response.json();
   }
+  async function archiveProject(projectId, archived) {
+    return fetch(`${base}/api/projects/${projectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
+    });
+  }
   try {
     await start();
     const health = await fetch(`${base}/health`);
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [legacyProject]);
+    assert.deepEqual(await tasks(legacyProject.id), [{ id: 1, title: 'Legacy task', completed: true }]);
     for (const blank of ['', '   ', '\t\n']) {
       const response = await create(blank);
       assert.equal(response.status, 400);
       assert.deepEqual(await response.json(), { error: 'Project name is required' });
     }
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [legacyProject]);
     const firstResponse = await create('  First project  ');
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.total, 0);
+    assert.equal(first.completed, 0);
     const second = await (await create('<Project & two>')).json();
     assert.notEqual(first.id, second.id);
-    const expected = [first, second];
+    const expected = [legacyProject, first, second];
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     for (const path of ['/', `/projects/${first.id}`, '/app.js', '/style.css']) {
@@ -107,6 +130,9 @@ test('projects and tasks validate, remain isolated, and survive server restarts'
     const completedTask = { ...firstTask, completed: true };
     assert.deepEqual(await completedResponse.json(), completedTask);
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    first.total = 2;
+    first.completed = 1;
+    second.total = 1;
     await stop();
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
@@ -122,6 +148,39 @@ test('projects and tasks validate, remain isolated, and survive server restarts'
     assert.notEqual(thirdTask.id, firstTask.id);
     assert.notEqual(thirdTask.id, secondTask.id);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask, thirdTask]);
+    first.total = 3;
+    first.completed = 0;
+    assert.equal((await archiveProject(first.id, 'true')).status, 400);
+    assert.equal((await archiveProject(999999, true)).status, 404);
+    const archiveResponse = await archiveProject(first.id, true);
+    assert.equal(archiveResponse.status, 200);
+    first.archived = true;
+    assert.deepEqual(await archiveResponse.json(), first);
+    assert.equal((await createTask(first.id, 'Blocked task')).status, 409);
+    assert.equal((await completeTask(first.id, firstTask.id, true)).status, 409);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask, thirdTask]);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask, thirdTask]);
+    first.archived = false;
+    assert.deepEqual(await (await archiveProject(first.id, false)).json(), first);
+    assert.equal((await completeTask(first.id, secondTask.id, true)).status, 200);
+    first.completed = 1;
+    // Archive and restore retain an existing completed task and its summary.
+    first.archived = true;
+    assert.deepEqual(await (await archiveProject(first.id, true)).json(), first);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    first.archived = false;
+    assert.deepEqual(await (await archiveProject(first.id, false)).json(), first);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    assert.deepEqual(await tasks(first.id), [firstTask, { ...secondTask, completed: true }, thirdTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
