@@ -89,6 +89,14 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
         <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
       </div>
     </form>
+    <form class="task-filter" method="post" action="/projects/${project.id}/default-priority">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+        ${TASK_PRIORITIES.map((priority) => `<option${project.default_task_priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
+      </select>
+    </form>
     <form class="create-form task-create" method="post" action="/projects/${project.id}/tasks">
       ${errors.taskCreation ? `<p role="alert">${escapeHtml(errors.taskCreation)}</p>` : ''}
       <input type="hidden" name="filter" value="${filter}">

@@ -44,7 +44,7 @@ projects disable task renaming and reject direct rename requests until restored.
 Renamed titles persist across restarts.
 
 Each task has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Changes save immediately and persist
+Existing tasks default to Normal during migration. Changes save immediately and persist
 across restarts without changing task order, ownership, completion, or summaries.
 Renaming preserves priority. Archived projects disable priority selectors and
 reject direct priority changes; restoration preserves and enables them again.
@@ -55,3 +55,10 @@ order. Both selections are carried in the page URL and through edits and
 validation errors. Changes to completion or priority immediately re-evaluate
 matching rows. Opening a project from the list starts both filters at All.
 Filters remain usable while archived and never change saved tasks or summaries.
+
+Each project has a Default task priority selector with Low, Normal, and High
+options, initially Normal. Changes save immediately and apply only to tasks
+created afterward in that project. Existing tasks and both selected filters stay
+unchanged. Defaults persist through restarts, renaming, archival, and restoration.
+Archived projects display their saved default in a disabled selector and reject
+direct changes until restored.
