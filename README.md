@@ -24,4 +24,6 @@ Each task row also has a Task priority selector with Low, Normal, and High optio
 
 Each project has a Default task priority selector with Low, Normal, and High options, initially Normal. New tasks inherit the project's saved default. Changing it preserves existing tasks and both task filter selections. Defaults are independent per project and persist through renaming, restarts, archival, and restoration. Archived projects display the saved default with editing disabled.
 
+Each task has a Task due date textbox and Save due date button. Dates are optional; blank input clears them. Nonempty input is trimmed and must be a real Gregorian date in YYYY-MM-DD format, with a year from 0001 through 9999. Invalid dates show an alert and leave the saved date unchanged. Dates persist without timezone conversion, independently of other task data and both filter selections. Archived projects disable due-date editing until restored.
+
 Tests start isolated server processes and remove their temporary database directories after checking validation, creation order, navigation, task filters, project isolation, and restart persistence for both completed and open tasks, database migration, archive/restore, editing protection, completion summaries, and project and task renaming with preserved identity.

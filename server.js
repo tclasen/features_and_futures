@@ -29,6 +29,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
   db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const taskPriorities = ['Low', 'Normal', 'High'];
 const listProjects = db.prepare(`
   SELECT projects.id, projects.name, projects.archived,
@@ -41,11 +44,22 @@ const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? 
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function validDueDate(value) {
+  if (value === '') return true;
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
 
 function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
@@ -193,6 +207,13 @@ function projectPage(project, filter, priority = 'All', error = '') {
             <input id="new-task-title-${task.id}" name="title" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
           </form>
+          <form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date" class="task-due-date-form">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priority}">
+            <label for="task-due-date-${task.id}">Task due date</label>
+            <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          </form>
         </div>`).join('') : '<p class="muted">No tasks to show.</p>'}
     </section>`);
 }
@@ -315,7 +336,7 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(?:\/(rename|priority))?)?$/.exec(url.pathname);
+    const taskRoute = /^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)(?:\/(rename|priority|due-date))?)?$/.exec(url.pathname);
     if (request.method === 'POST' && taskRoute) {
       const project = findProject.get(taskRoute[1]);
       if (project) {
@@ -347,6 +368,13 @@ const server = createServer(async (request, response) => {
               return;
             }
             result = setTaskPriority.run(newPriority, taskId, project.id);
+          } else if (taskRoute[3] === 'due-date') {
+            const dueDate = (form.get('dueDate') ?? '').trim();
+            if (!validDueDate(dueDate)) {
+              sendHtml(response, 400, projectPage(project, filter, priority, 'Due date must be a valid YYYY-MM-DD date'));
+              return;
+            }
+            result = setTaskDueDate.run(dueDate, taskId, project.id);
           } else {
             result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
           }
@@ -398,9 +426,9 @@ const styles = `
   .project-row span, .task-row span { overflow-wrap: anywhere; min-width: 0; font-weight: 600; }
   .project-row { flex-wrap: wrap; }
   .task-row { flex-wrap: wrap; }
-  .task-row .task-rename-form { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-  .task-rename-form label { margin: 0; }
-  .task-rename-form input[type="text"] { flex: 1 1 180px; width: auto; min-width: 0; }
+  .task-row .task-rename-form, .task-row .task-due-date-form { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .task-rename-form label, .task-due-date-form label { margin: 0; }
+  .task-rename-form input[type="text"], .task-due-date-form input[type="text"] { flex: 1 1 180px; width: auto; min-width: 0; }
   .project-row form, .task-row form { flex-shrink: 0; }
   button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: .6; }
   .alert { color: #a12626; }
