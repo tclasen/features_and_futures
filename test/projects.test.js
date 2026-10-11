@@ -7,7 +7,7 @@ import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 
-test('project validation, ordering, routes, and persistence across restarts', async () => {
+test('projects and tasks validate, stay ordered and isolated, and persist across restarts', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), 'data', 'test-'));
   const reservation = createServer();
@@ -67,6 +67,37 @@ test('project validation, ordering, routes, and persistence across restarts', as
     assert.notEqual(first.id, second.id);
     const expected = [first, second];
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    const taskPath = `/api/projects/${first.id}/tasks`;
+    async function taskRequest(path, method, input) {
+      return fetch(base + path, {
+        method, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    }
+    for (const title of ['', ' \t\n ']) {
+      const response = await taskRequest(taskPath, 'POST', { title });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Task title is required' });
+    }
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), []);
+    const taskResponse = await taskRequest(taskPath, 'POST', { title: '  First task  ' });
+    assert.equal(taskResponse.status, 201);
+    const firstTask = await taskResponse.json();
+    assert.equal(firstTask.title, 'First task');
+    assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.project_id, first.id);
+    const secondTask = await (await taskRequest(taskPath, 'POST', { title: 'Second task' })).json();
+    assert.ok(secondTask.id > firstTask.id);
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [firstTask, secondTask]);
+    const otherTaskPath = `/api/projects/${second.id}/tasks`;
+    assert.deepEqual(await (await fetch(base + otherTaskPath)).json(), []);
+    assert.equal((await taskRequest(`${otherTaskPath}/${firstTask.id}`, 'PATCH', { completed: true })).status, 404);
+    assert.equal((await taskRequest(`${taskPath}/${firstTask.id}`, 'PATCH', { completed: 'yes' })).status, 400);
+    const completedResponse = await taskRequest(`${taskPath}/${firstTask.id}`, 'PATCH', { completed: true });
+    assert.equal(completedResponse.status, 200);
+    const completedTask = await completedResponse.json();
+    assert.deepEqual(completedTask, { ...firstTask, completed: true });
+    assert.equal((await taskRequest('/api/projects/999999/tasks', 'POST', { title: 'Orphan' })).status, 404);
     for (const path of ['/', `/projects/${first.id}`]) {
       const response = await fetch(base + path);
       assert.equal(response.status, 200);
@@ -77,6 +108,14 @@ test('project validation, ordering, routes, and persistence across restarts', as
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [completedTask, secondTask]);
+    assert.deepEqual(await (await fetch(base + otherTaskPath)).json(), []);
+    const reopened = await taskRequest(`${taskPath}/${firstTask.id}`, 'PATCH', { completed: false });
+    assert.equal(reopened.status, 200);
+    assert.deepEqual(await reopened.json(), firstTask);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [firstTask, secondTask]);
     const third = await (await create('Third')).json();
     assert.ok(third.id > second.id);
     assert.equal((await fetch(`${base}/api/projects/999999`)).status, 404);

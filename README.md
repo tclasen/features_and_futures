@@ -13,7 +13,10 @@ to select another port or persistent SQLite file:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080/` to create and open projects. `GET /health`
+Open `http://localhost:8080/` to create and open projects. Within a project,
+create tasks, toggle their completion, and filter by All, Open, or Completed.
+Project URLs can be reloaded directly. Projects and tasks persist in SQLite.
+`GET /health`
 returns `{"status":"ok"}`. The default database is `data/workboard.sqlite`.
 
 ```sh
@@ -21,4 +24,5 @@ npm test
 ```
 
 The integration test checks blank-name validation, trimming, creation order,
-project routes, health, and project names and IDs after a server restart.
+project routes, health, task validation and project isolation, completion updates,
+and saved projects and tasks after a server restart.

@@ -35,13 +35,102 @@ async function render() {
   app.setAttribute('aria-busy', 'true');
   const match = path.match(/^\/projects\/(\d+)$/);
   if (match) {
-    app.innerHTML = '<button id="projects">Projects</button><h1></h1><p role="alert" hidden></p>';
+    app.innerHTML = `<button id="projects">Projects</button><h1></h1>
+      <form>
+        <label for="task-title">Task title</label>
+        <div class="create-controls">
+          <input id="task-title" type="text" autocomplete="off">
+          <button type="submit" disabled>Create task</button>
+        </div>
+      </form>
+      <p role="alert" hidden></p>
+      <div class="task-filter">
+        <label for="task-filter">Task filter</label>
+        <select id="task-filter">
+          <option>All</option><option>Open</option><option>Completed</option>
+        </select>
+      </div>
+      <ul id="task-list" aria-label="Tasks"></ul>`;
     app.querySelector('#projects').addEventListener('click', () => navigate('/'));
+    const form = app.querySelector('form');
+    const input = app.querySelector('input');
+    const submit = form.querySelector('button');
+    const filter = app.querySelector('select');
+    const list = app.querySelector('ul');
+    const endpoint = `/api/projects/${match[1]}/tasks`;
+    let tasks = [];
+    function displayTasks() {
+      const visible = tasks.filter(task => filter.value === 'All' ||
+        (filter.value === 'Completed' ? task.completed : !task.completed));
+      list.replaceChildren(...visible.map(task => {
+        const row = document.createElement('li');
+        row.dataset.testid = 'task-row';
+        const title = document.createElement('span');
+        title.textContent = task.title;
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = task.completed;
+        checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+        checkbox.addEventListener('change', async () => {
+          checkbox.disabled = true;
+          alertMessage('');
+          try {
+            const saved = await request(`${endpoint}/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: checkbox.checked }),
+            });
+            tasks = tasks.map(item => item.id === saved.id ? saved : item);
+            if (list.isConnected) displayTasks();
+          } catch (error) {
+            checkbox.checked = task.completed;
+            if (list.isConnected) alertMessage(error.message);
+          } finally {
+            checkbox.disabled = false;
+          }
+        });
+        row.append(title, checkbox);
+        return row;
+      }));
+    }
+    filter.addEventListener('change', displayTasks);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      const title = input.value.trim();
+      if (!title) {
+        alertMessage('Task title is required');
+        input.focus();
+        return;
+      }
+      submit.disabled = true;
+      alertMessage('');
+      try {
+        const task = await request(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        tasks.push(task);
+        if (!form.isConnected) return;
+        displayTasks();
+        input.value = '';
+        input.focus();
+      } catch (error) {
+        if (form.isConnected) alertMessage(error.message);
+      } finally {
+        submit.disabled = false;
+      }
+    });
     try {
       const project = await request(`/api/projects/${match[1]}`);
       if (location.pathname !== path) return;
       app.querySelector('h1').textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      tasks = await request(endpoint);
+      if (!list.isConnected) return;
+      displayTasks();
+      submit.disabled = false;
     } catch (error) {
       if (location.pathname === path) alertMessage(error.message);
     }
