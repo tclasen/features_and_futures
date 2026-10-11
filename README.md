@@ -32,6 +32,8 @@ Each task row provides `Destination project` and `Move task`. Destinations are o
 
 Project search and task search match substrings using ASCII case-insensitive comparison, trimming query edges and treating each run of ASCII spaces and horizontal tabs as one space in both the query and name/title. This normalization applies only to matching; original saved names and titles remain unchanged. Project search intersects Active/Archived; task search intersects completion, priority, and due-range filters. Applied queries stay in place through filter changes and task edits, and searches remain usable while archived. Opening either page through its navigation button starts with an empty query. Searches leave saved data and all-task summaries unchanged.
 
+Each task row provides a multiline `Task notes` textarea and `Save notes`. Notes preserve whitespace, line breaks, Unicode, and literal markup as plain text. Empty text clears them. Notes persist through reloads, restarts, moves, and return-order restoration without changing other task data or search matching. Saving retains all applied task filters and search. Archived projects display notes with editing disabled; restoration enables editing. Existing databases receive empty notes without changing pre-existing data.
+
 Run verification:
 
 ```sh

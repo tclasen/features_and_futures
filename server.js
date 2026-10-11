@@ -21,7 +21,8 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT NOT NULL DEFAULT '',
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT ''
   );
 `);
 // Upgrade databases created before project archiving was introduced.
@@ -37,6 +38,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 const taskPriorities = ['Low', 'Normal', 'High'];
+// Initialize only notes when upgrading existing tasks.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Tasks from earlier checkpoints have no due date.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
@@ -72,7 +77,7 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare(`
-  SELECT tasks.id, title, completed, priority, due_date
+  SELECT tasks.id, title, completed, priority, due_date, notes
   FROM tasks JOIN task_project_positions AS positions
     ON positions.task_id = tasks.id AND positions.project_id = tasks.project_id
   WHERE tasks.project_id = ? ORDER BY positions.position
@@ -116,6 +121,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function validDueDate(value) {
   if (value === '') return true;
@@ -149,7 +155,8 @@ function page(title, content) {
     .card { background: white; padding: 24px; border: 1px solid #d8e1e7; border-radius: 12px; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
     .controls { display: flex; gap: 12px; flex-wrap: wrap; }
-    input[type="text"], select { flex: 1; min-width: 180px; padding: 12px; border: 1px solid #899ca9; border-radius: 6px; font: inherit; }
+    input[type="text"], select, textarea { flex: 1; min-width: 180px; padding: 12px; border: 1px solid #899ca9; border-radius: 6px; font: inherit; }
+    textarea { width: 100%; resize: vertical; }
     .filter { margin-top: 24px; }
     .task label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
     .task input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
@@ -412,6 +419,16 @@ function projectPage(project, filter = 'All', priority = 'All', error = '', rang
               <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
             </div>
           </form>
+          <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+            <input type="hidden" name="filter" value="${filter}">
+            <input type="hidden" name="priorityFilter" value="${priority}">
+            ${rangeFields(range)}
+            ${searchField(search)}
+            <label for="task-notes-${task.id}">Task notes</label>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+          </form>
           <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
             <input type="hidden" name="filter" value="${filter}">
             <input type="hidden" name="priorityFilter" value="${priority}">
@@ -574,7 +591,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)\/(completion|rename|priority|due-date|move))?$/.exec(url.pathname);
+    const taskMatch = /^\/projects\/(\d+)\/tasks(?:\/(\d+)\/(completion|rename|priority|due-date|notes|move))?$/.exec(url.pathname);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (project) {
@@ -622,6 +639,8 @@ const server = http.createServer(async (request, response) => {
               return;
             }
             result = updateTaskDueDate.run(dueDate, taskMatch[2], project.id);
+          } else if (taskMatch[3] === 'notes') {
+            result = updateTaskNotes.run(form.get('notes') || '', taskMatch[2], project.id);
           } else {
             result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
           }

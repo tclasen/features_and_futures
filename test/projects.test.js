@@ -1095,6 +1095,93 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
       assert.equal(await projectHtml(filteredUrl), before);
     }
 
+    {
+      const source = await newProject('Notes source');
+      const destination = await newProject('Notes destination');
+      await post(`${source}/tasks`, { title: 'Notes task' });
+      await post(`${source}/tasks`, { title: 'Other task' });
+      const id = taskId(rows(await projectHtml(source))[0]);
+      const path = `${source}/tasks/${id}`;
+      const notesContent = row => /<textarea[^>]* name="notes"[^>]*>\n([\s\S]*?)<\/textarea>/.exec(row)[1];
+      const escaped = value => value.replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      })[character]);
+      for (const row of rows(await projectHtml(source))) {
+        assert.equal(notesContent(row), '');
+        assert.match(row, /<label for="task-notes-\d+">Task notes<\/label>/);
+        assert.match(row, />Save notes<\/button>/);
+      }
+      await post(`${path}/priority`, { priority: 'High' });
+      await post(`${path}/completion`, { completed: '1' });
+      await post(`${path}/due-date`, { dueDate: '2036-02-29' });
+      const state = {
+        filter: 'Completed', priorityFilter: 'High', dueFrom: '2036-02-01',
+        dueThrough: '2036-03-01', search: 'NOTES TASK',
+      };
+      const filtered = `${source}?${new URLSearchParams(state)}`;
+      const before = await projectHtml(filtered);
+      const notes = '\n  Leading spaces\nUnicode: café 日本語 📝\n</textarea><script>literal & "markup"</script>\nTrailing spaces  \n';
+      const saved = await post(`${path}/notes`, { ...state, notes });
+      assert.equal(saved.status, 303);
+      assert.equal(saved.headers.get('location'), filtered);
+      const after = await projectHtml(filtered);
+      assert.equal(after.replace(escaped(notes), ''), before);
+      assert.equal(notesContent(rows(after)[0]), escaped(notes));
+      assert.equal(notesContent(rows(await projectHtml(source))[1]), '');
+      assert.equal(await summaryFor(source), '1/2 completed');
+      assert.deepEqual(taskTitles(await projectHtml(`${source}?search=Unicode`)), []);
+      assert.doesNotMatch(after, /<script>literal/);
+      assert.equal((await post(`${destination}/tasks/${id}/notes`, { notes: 'Wrong owner' })).status, 404);
+      assert.equal((await post(`${source}/tasks/999999/notes`, { notes: 'Missing' })).status, 404);
+      await stop();
+      await start();
+      assert.equal(await projectHtml(filtered), after);
+      await post(`${path}/rename`, { ...state, title: 'Notes task renamed' });
+      await post(`${source}/rename`, { ...state, name: 'Notes source renamed' });
+      assert.equal(notesContent(rows(await projectHtml(filtered))[0]), escaped(notes));
+      await post(`${path}/move`, { ...state, destinationProject: destination.split('/').at(-1) });
+      assert.deepEqual(taskTitles(await projectHtml(filtered)), []);
+      assert.equal(notesContent(rows(await projectHtml(destination))[0]), escaped(notes));
+      await stop();
+      await start();
+      await post(`${destination}/tasks/${id}/move`, { destinationProject: source.split('/').at(-1) });
+      assert.deepEqual(taskTitles(await projectHtml(source)), ['Notes task renamed', 'Other task']);
+      assert.equal(notesContent(rows(await projectHtml(filtered))[0]), escaped(notes));
+      await post(`${source}/archive`, {});
+      const archived = rows(await projectHtml(filtered))[0];
+      assert.equal(notesContent(archived), escaped(notes));
+      assert.match(archived, /<textarea[^>]* name="notes"[^>]* disabled>/);
+      assert.match(archived, /<button type="submit" disabled>Save notes<\/button>/);
+      assert.equal((await post(`${path}/notes`, { ...state, notes: 'Forbidden' })).status, 403);
+      await post(`${source}/restore`, {});
+      const restored = rows(await projectHtml(filtered))[0];
+      assert.doesNotMatch(restored, /<textarea[^>]* disabled/);
+      assert.equal(notesContent(restored), escaped(notes));
+      for (const value of ['  \n\t  ', '']) {
+        assert.equal((await post(`${path}/notes`, { ...state, notes: value })).headers.get('location'), filtered);
+        assert.equal(notesContent(rows(await projectHtml(filtered))[0]), value);
+        await stop();
+        await start();
+        assert.equal(notesContent(rows(await projectHtml(filtered))[0]), value);
+      }
+
+      // A Task 014 upgrade adds only empty notes and preserves remembered order.
+      await stop();
+      const oldDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+      oldDatabase.exec('ALTER TABLE tasks DROP COLUMN notes');
+      const previousTasks = oldDatabase.prepare('SELECT * FROM tasks ORDER BY id').all();
+      const previousPositions = oldDatabase.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all();
+      oldDatabase.close();
+      await start();
+      const upgraded = new DatabaseSync(join(directory, 'projects.sqlite'));
+      const upgradedTasks = upgraded.prepare('SELECT * FROM tasks ORDER BY id').all();
+      assert.ok(upgradedTasks.every(task => task.notes === ''));
+      assert.deepEqual(upgradedTasks.map(({ notes, ...task }) => task), previousTasks.map(task => ({ ...task })));
+      assert.deepEqual(upgraded.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(), previousPositions);
+      upgraded.close();
+      assert.equal(notesContent(rows(await projectHtml(filtered))[0]), '');
+    }
+
     // Replace the fixture with a populated Task 005 database to check backfilled priorities.
     await stop();
     await rm(join(directory, 'projects.sqlite'));
@@ -1125,6 +1212,7 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     for (const row of rows(migratedDetail)) {
       assert.equal(priorityOptions(row), '<option>Low</option><option selected>Normal</option><option>High</option>');
       assert.equal(dueValue(row), '');
+      assert.match(row, /<textarea[^>]* name="notes"[^>]*>\n<\/textarea>/);
     }
     assert.match(await (await fetch(baseUrl)).text(), /data-testid="project-summary">1\/2 completed/);
     assert.equal((await post('/projects/17/tasks/23/priority', { priority: 'High' })).status, 303);
