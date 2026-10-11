@@ -32,7 +32,7 @@ if (!projectColumns.some((column) => column.name === 'archived')) {
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
-  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+  GROUP BY p.id ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -180,7 +180,7 @@ function renderPage(pathname, search = '') {
   let content;
   if (pathname === '/') {
     const archivedView = new URLSearchParams(search).get('filter')?.toLowerCase() === 'archived';
-    const rows = listProjects.all(archivedView ? 1 : 0).map((project) => `
+    const rows = listProjects.all().filter((project) => Boolean(project.archived) === archivedView).map((project) => `
       <section data-testid="project-row" data-project-id="${project.id}"><span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
         <button type="button" onclick="window.location.href='/projects/${project.id}'">Open project</button>
@@ -229,7 +229,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    sendJson(response, 200, listProjects.all(0));
+    sendJson(response, 200, listProjects.all().filter((project) => !project.archived));
     return;
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
