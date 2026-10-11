@@ -12,6 +12,7 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0,
+    default_priority TEXT NOT NULL DEFAULT 'Normal',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS tasks (
@@ -26,6 +27,9 @@ database.exec(`
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+if (!projectColumns.some((column) => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
@@ -84,12 +88,18 @@ const server = createServer(async (request, response) => {
     const projectId = Number(projectMatch[1]);
     const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
-    if (project.archived) return json(response, 409, { error: 'Archived projects cannot be renamed' });
+    if (project.archived) return json(response, 409, { error: 'Archived projects cannot be changed' });
 
     let body = '';
     for await (const chunk of request) body += chunk;
     try {
       const input = JSON.parse(body);
+      if (Object.hasOwn(input, 'defaultPriority')) {
+        const priorities = ['Low', 'Normal', 'High'];
+        if (!priorities.includes(input.defaultPriority)) return json(response, 400, { error: 'Invalid default task priority' });
+        database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?').run(input.defaultPriority, projectId);
+        return json(response, 200, { id: projectId, defaultPriority: input.defaultPriority });
+      }
       const name = typeof input.name === 'string' ? input.name.trim() : '';
       if (!name) return json(response, 400, { error: 'Project name is required' });
       database.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, projectId);
@@ -101,7 +111,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && projectMatch) {
-    const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(Number(projectMatch[1]));
     if (project) project.archived = Boolean(project.archived);
     return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
   }
@@ -118,7 +128,7 @@ const server = createServer(async (request, response) => {
   const projectTasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (projectTasksMatch && request.method === 'GET') {
     const projectId = Number(projectTasksMatch[1]);
-    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     return json(response, 200, database.prepare(
       'SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id'
@@ -127,7 +137,7 @@ const server = createServer(async (request, response) => {
 
   if (projectTasksMatch && request.method === 'POST') {
     const projectId = Number(projectTasksMatch[1]);
-    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     if (project.archived) return json(response, 409, { error: 'Archived projects cannot have new tasks' });
     let body = '';
@@ -136,8 +146,9 @@ const server = createServer(async (request, response) => {
       const input = JSON.parse(body);
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title) return json(response, 400, { error: 'Task title is required' });
-      const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return json(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)')
+        .run(projectId, title, project.defaultPriority);
+      return json(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority });
     } catch (error) {
       if (error instanceof SyntaxError) return json(response, 400, { error: 'Invalid JSON' });
       throw error;

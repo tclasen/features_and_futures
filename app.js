@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskList = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const defaultTaskPriority = document.querySelector('#default-task-priority');
 const priorityFilter = document.querySelector('#priority-filter');
 const taskRenameAlert = document.querySelector('#task-rename-alert');
 const projectFilter = document.querySelector('#project-filter');
@@ -18,6 +19,7 @@ const renameInput = document.querySelector('#new-project-name');
 const renameAlert = document.querySelector('#rename-alert');
 let activeProjectId = null;
 let activeProjectArchived = false;
+let activeProjectDefaultPriority = 'Normal';
 
 async function fetchProjects() {
   const response = await fetch('/api/projects');
@@ -72,6 +74,9 @@ async function showProject(id) {
   document.querySelector('#detail-heading').textContent = project.name;
   activeProjectId = id;
   activeProjectArchived = project.archived;
+  activeProjectDefaultPriority = project.defaultPriority;
+  defaultTaskPriority.value = project.defaultPriority;
+  defaultTaskPriority.disabled = activeProjectArchived;
   archivedNotice.hidden = !activeProjectArchived;
   renameInput.disabled = activeProjectArchived;
   renameForm.querySelector('button').disabled = activeProjectArchived;
@@ -248,6 +253,20 @@ renameForm.addEventListener('submit', async (event) => {
 });
 taskFilter.addEventListener('change', refreshTasks);
 priorityFilter.addEventListener('change', refreshTasks);
+defaultTaskPriority.addEventListener('change', async () => {
+  const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ defaultPriority: defaultTaskPriority.value }),
+  });
+  if (!response.ok) {
+    defaultTaskPriority.value = activeProjectDefaultPriority;
+    taskAlert.textContent = 'Unable to update default task priority';
+    taskAlert.hidden = false;
+    return;
+  }
+  activeProjectDefaultPriority = defaultTaskPriority.value;
+});
 projectFilter.addEventListener('change', async () => renderProjects(await fetchProjects()));
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
