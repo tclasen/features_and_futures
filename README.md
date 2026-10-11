@@ -67,8 +67,9 @@ create tasks, toggle their completion, and filter by All, Open, or Completed.
 Project URLs can be reloaded directly. Projects and tasks persist in SQLite.
 The project list defaults to Active and can show Archived projects. Archive or
 restore a project from its row; its completion summary includes all its tasks.
-The selected project filter is kept within the browser session across reloads
-and returning from a project page. New browser sessions start with Active.
+The selected project filter is kept when returning from a project page using
+Projects. Each fresh page load, including a reload after a server restart,
+starts with Active.
 Successfully creating a project switches the list to Active so the new row is
 visible even when creation started from the Archived view.
 Archived project pages allow viewing and filtering tasks, with task creation and

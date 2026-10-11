@@ -1,4 +1,6 @@
 const app = document.querySelector('#app');
+// Keep the list view during navigation, but start each page load on Active.
+let projectFilter = 'Active';
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -456,15 +458,9 @@ async function render() {
     const submit = form.querySelector('button');
     const filter = app.querySelector('select');
     let projects = [];
-    // A fresh browser session starts with Active; reloads and Projects navigation
-    // keep the user's current view, including while opening archived projects.
-    try {
-      if (sessionStorage.getItem('project-filter') === 'Archived') filter.value = 'Archived';
-    } catch { /* The list still works when browser storage is unavailable. */ }
+    filter.value = projectFilter;
     function saveProjectFilter() {
-      try {
-        sessionStorage.setItem('project-filter', filter.value);
-      } catch { /* Filtering does not depend on storage availability. */ }
+      projectFilter = filter.value;
     }
     function displayProjects() {
       list.replaceChildren(...projects
@@ -500,7 +496,7 @@ async function render() {
         projects.push(project);
         if (!form.isConnected) return;
         // New projects are active: reveal the saved row even when creation
-        // started from the archived view retained by this browser session.
+        // started from the archived view retained during navigation.
         filter.value = 'Active';
         saveProjectFilter();
         displayProjects();

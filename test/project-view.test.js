@@ -376,6 +376,8 @@ test('creating from a retained Archived view reveals the active project and supp
   const storage = new Map([['project-filter', 'Archived']]);
   const projects = [{ ...project(), archived: true }];
   let app = await browser(storage, projects);
+  assert.equal(app.querySelector('select').value, 'Active');
+  await filter(app, 'Archived');
   assert.equal(app.querySelector('select').value, 'Archived');
   const form = app.querySelector('form');
   form.querySelector('input').value = '   ';
@@ -386,7 +388,6 @@ test('creating from a retained Archived view reveals the active project and supp
   form.querySelector('input').value = '  task-009 Calendar archival  ';
   await form.emit('submit');
   assert.equal(app.querySelector('select').value, 'Active');
-  assert.equal(storage.get('project-filter'), 'Active');
   assert.equal(rows(app).length, 1);
   assert.equal(rows(app)[0].children[0].textContent, 'task-009 Calendar archival');
   assert.equal(control(rows(app)[0], '0/0 completed').dataset.testid, 'project-summary');
@@ -403,7 +404,36 @@ test('creating from a retained Archived view reveals the active project and supp
   assert.equal(rows(app)[0].children[0].textContent, 'task-009 Calendar archival');
 });
 
-test('Archived filter survives reload and opening a read-only project then returning to Projects', async () => {
+test('fresh loads ignore a stale Archived selection and show active transfer projects', async () => {
+  const storage = new Map([['project-filter', 'Archived']]);
+  const projects = [
+    { ...project(), name: 'Transfer restart origin', total_count: 0, completed_count: 0 },
+    { ...project(), id: 2, name: 'Transfer restart destination' },
+    { ...project(), id: 3, name: 'Archived sentinel', archived: true },
+  ];
+  const pending = { tasks: [{ id: 1, project_id: 2, title: 'Moved task',
+    completed: true, priority: 'High', due_date: '2024-02-29' }] };
+  let app = await browser(storage, projects, pending);
+  assert.equal(app.querySelector('select').value, 'Active');
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent),
+    ['Transfer restart origin', 'Transfer restart destination']);
+  await filter(app, 'Archived');
+  app = await browser(storage, projects, pending);
+  assert.equal(app.querySelector('select').value, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(rows(app).length, 0);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[1], 'Open project').emit('click');
+  await settled();
+  assert.equal(rows(app)[0].children[0].textContent, 'Moved task');
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app)[0].querySelector('select').value, 'High');
+  assert.equal(dueDateForm(rows(app)[0]).querySelector('input').value, '2024-02-29');
+});
+
+test('reload starts Active while opening an archived project and returning retains Archived', async () => {
   const storage = new Map();
   const projects = [{ ...project(), archived: true }];
   let app = await browser(storage, projects);
@@ -412,6 +442,9 @@ test('Archived filter survives reload and opening a read-only project then retur
   await filter(app, 'Archived');
   assert.equal(rows(app).length, 1);
   app = await browser(storage, projects);
+  assert.equal(app.querySelector('select').value, 'Active');
+  assert.equal(rows(app).length, 0);
+  await filter(app, 'Archived');
   assert.equal(app.querySelector('select').value, 'Archived');
   assert.equal(rows(app).length, 1);
   await control(rows(app)[0], 'Open project').emit('click');
