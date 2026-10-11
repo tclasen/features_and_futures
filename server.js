@@ -156,7 +156,20 @@ const page = `<!doctype html>
             if (!update.ok) { checkbox.checked = !checkbox.checked; return; }
             await refreshTasks();
           });
-          const title = document.createElement('span'); title.textContent = task.title; row.append(checkbox, title); list.append(row);
+          const title = document.createElement('span'); title.textContent = task.title;
+          const renameLabel = document.createElement('label'); renameLabel.textContent = 'New task title';
+          const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New task title'); renameInput.value = task.title;
+          const renameButton = document.createElement('button'); renameButton.type = 'button'; renameButton.textContent = 'Rename task';
+          renameInput.disabled = project.archived; renameButton.disabled = project.archived;
+          const renameAlert = document.createElement('span'); renameAlert.setAttribute('role', 'alert'); renameAlert.hidden = true;
+          renameButton.addEventListener('click', async () => {
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) { renameAlert.textContent = 'Task title is required'; renameAlert.hidden = false; renameInput.focus(); return; }
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+            if (!update.ok) { renameAlert.textContent = 'Could not rename task'; renameAlert.hidden = false; return; }
+            await refreshTasks();
+          });
+          renameLabel.append(renameInput); row.append(checkbox, title, renameLabel, renameButton, renameAlert); list.append(row);
         }
       }
       filter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
@@ -265,8 +278,19 @@ const server = http.createServer(async (req, res) => {
   if (taskMatch && req.method === 'PATCH') {
     try {
       const body = await readJson(req);
-      if (typeof body.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
+      let result;
+      if (typeof body.completed === 'boolean') {
+        result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
+      } else if (typeof body.title === 'string') {
+        const title = body.title.trim();
+        if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+        result = db.prepare(`UPDATE tasks SET title = ? WHERE id = ?
+          AND EXISTS (SELECT 1 FROM projects WHERE projects.id = tasks.project_id AND projects.archived = 0)`).run(title, taskMatch[1]);
+        if (!result.changes) {
+          const task = db.prepare('SELECT projects.archived FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?').get(taskMatch[1]);
+          return task ? sendJson(res, 409, { error: 'Archived projects cannot rename tasks' }) : sendJson(res, 404, { error: 'Task not found' });
+        }
+      } else return sendJson(res, 400, { error: 'Invalid task update' });
       return result.changes ? sendJson(res, 200, { status: 'ok' }) : sendJson(res, 404, { error: 'Task not found' });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
