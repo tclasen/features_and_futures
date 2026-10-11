@@ -50,6 +50,16 @@ function taskFilter(value) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
 }
 
+function priorityFilter(value) {
+  return TASK_PRIORITIES.includes(value) ? value : 'All';
+}
+
+function projectLocation(id, filter, priority) {
+  const query = new URLSearchParams({ filter });
+  if (priority !== 'All') query.set('priorityFilter', priority);
+  return `/projects/${id}?${query}`;
+}
+
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
@@ -58,11 +68,12 @@ function renderProjects(filter, error = '') {
   return projectListPage(listProjects.all(filter === 'Archived' ? 1 : 0), error, filter);
 }
 
-function renderProject(project, filter, errors = {}) {
+function renderProject(project, filter, priority, errors = {}) {
   const tasks = listTasks.all(project.id).filter((task) => (
-    filter === 'All' || Boolean(task.completed) === (filter === 'Completed')
+    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
+    && (priority === 'All' || task.priority === priority)
   ));
-  return projectPage(project, tasks, filter, errors);
+  return projectPage(project, tasks, filter, priority, errors);
 }
 
 function redirect(response, location) {
@@ -117,7 +128,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       if (request.method === 'GET' && pathname === `/projects/${id}`) {
-        send(response, 200, renderProject(project, taskFilter(searchParams.get('filter'))));
+        send(response, 200, renderProject(project, taskFilter(searchParams.get('filter')), priorityFilter(searchParams.get('priorityFilter'))));
       } else if (request.method === 'POST' && projectAction === 'rename') {
         if (project.archived) {
           send(response, 403, 'Archived project', 'text/plain; charset=utf-8');
@@ -126,12 +137,13 @@ const server = createServer(async (request, response) => {
         const form = await readForm(request);
         const name = (form.get('name') || '').trim();
         const filter = taskFilter(form.get('filter'));
+        const priority = priorityFilter(form.get('priorityFilter'));
         if (!name) {
-          send(response, 400, renderProject(project, filter, { projectRename: 'Project name is required' }));
+          send(response, 400, renderProject(project, filter, priority, { projectRename: 'Project name is required' }));
           return;
         }
         renameProject.run(name, id);
-        redirect(response, `/projects/${id}?filter=${filter}`);
+        redirect(response, projectLocation(id, filter, priority));
       } else if (request.method === 'POST' && projectAction) {
         const archive = projectAction === 'archive';
         setProjectArchived.run(archive ? 1 : 0, id);
@@ -143,6 +155,7 @@ const server = createServer(async (request, response) => {
         }
         const form = await readForm(request);
         const filter = taskFilter(form.get('filter'));
+        const priority = priorityFilter(form.get('priorityFilter'));
         if (taskIdValue) {
           const taskId = Number(taskIdValue);
           if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, id)) {
@@ -152,31 +165,31 @@ const server = createServer(async (request, response) => {
           if (taskAction === 'rename') {
             const title = (form.get('title') || '').trim();
             if (!title) {
-              send(response, 400, renderProject(project, filter, {
+              send(response, 400, renderProject(project, filter, priority, {
                 taskRename: { id: taskId, message: 'Task title is required' },
               }));
               return;
             }
             renameTask.run(title, taskId, id);
           } else if (taskAction === 'priority') {
-            const priority = form.get('priority');
-            if (!TASK_PRIORITIES.includes(priority)) {
+            const newPriority = form.get('priority');
+            if (!TASK_PRIORITIES.includes(newPriority)) {
               send(response, 400, 'Invalid task priority', 'text/plain; charset=utf-8');
               return;
             }
-            setTaskPriority.run(priority, taskId, id);
+            setTaskPriority.run(newPriority, taskId, id);
           } else {
             updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, id);
           }
         } else {
           const title = (form.get('title') || '').trim();
           if (!title) {
-            send(response, 400, renderProject(project, filter, { taskCreation: 'Task title is required' }));
+            send(response, 400, renderProject(project, filter, priority, { taskCreation: 'Task title is required' }));
             return;
           }
           insertTask.run(id, title);
         }
-        redirect(response, `/projects/${id}?filter=${filter}`);
+        redirect(response, projectLocation(id, filter, priority));
       } else {
         send(response, 404, 'Not found', 'text/plain; charset=utf-8');
       }
