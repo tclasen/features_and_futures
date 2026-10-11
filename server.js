@@ -6,6 +6,7 @@ import path from 'node:path';
 const port = Number(process.env.PORT || 8080);
 const dbPath = process.env.DB_PATH || './workboard.sqlite';
 const db = new DatabaseSync(dbPath);
+db.exec('PRAGMA foreign_keys = ON');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
