@@ -95,6 +95,16 @@ const server = http.createServer(async (req, res) => {
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectMatch && req.method === 'PATCH') {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    try {
+      const name = String(JSON.parse(raw).name ?? '').trim();
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, projectMatch[1]);
+      return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
   if (projectMatch && req.method === 'GET') {
     const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(projectMatch[1]);
     return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Not found' }));
