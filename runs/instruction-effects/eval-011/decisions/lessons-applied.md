@@ -31,3 +31,9 @@ L055 task016 further observations: complete reports confirm cumulative051 fails 
 L055 task016 first ten submissions all fail051 ([evidence](../preflight/repair-observations/task016-b011-first-ten.json)). The additional054/055 failures in006 mean ten total rejections are not ten identical full feedback fingerprints. Frozen consecutive-fingerprint recovery continues; attempt011 is pending.
 
 L055 task016 recovery after011 independently verified: rejected original restores and target matches own accepted015 ([proof](../preflight/repair-observations/recovery-verified-c2817a636d96912e.json)). All measured failures remain retained; attempt012 pending.
+
+L055 task016 after016: frozen notice reports ten consecutive identical full failure fingerprints, followed by independently verified own015 restoration ([proof](../preflight/repair-observations/recovery-verified-17f5e3a10c58b582.json), [notice](../preflight/repair-observations/task016-b011-ten-consecutive-notice.json)). First16 submissions rejected, all measured exposure retained; attempt017 pending.
+
+L056 checkpoint014 publication verified:196 independently restorable original archives, zero-finding exact-commit scan, clone cleanup, and392 remote history refs verified ([receipt](../reports/publication-prefix-014.json)). Live later-round snapshots remain explicitly scoped.
+
+L055 repair017 delivery verified: first native request contains full051 failure identity, sentinel evidence and own accepted015 checkpoint identity ([proof](../preflight/repair-observations/task016-b011-attempt017-feedback-delivery.json)). This establishes delivery, not comprehension or implementation cause.
