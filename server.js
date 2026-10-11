@@ -66,7 +66,7 @@ const page = `<!doctype html>
   </style>
 </head>
 <body>
-  <main id="app" aria-live="polite"></main>
+  <main id="app"></main>
   <script type="module">
     const app = document.querySelector('#app');
     const escPath = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
@@ -159,7 +159,7 @@ const page = `<!doctype html>
         error.hidden = true;
         try {
           const created = await request('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-          projects.push(created);
+          projects.push({ ...created, archived: false, completedCount: 0, totalCount: 0 });
           input.value = '';
           renderList(projects);
         } catch {
