@@ -120,7 +120,32 @@ function page(title, content) {
   .project span { overflow-wrap: anywhere; min-width: 0; }
   .project form { flex-shrink: 0; }
   @media (max-width: 600px) { main { margin: 16px; padding: 20px; } .project { align-items: flex-start; flex-direction: column; } }
-</style></head><body><main>${content}</main></body></html>`;
+</style></head><body><main>${content}</main>
+<script>
+  // Keep checkbox actions in the current document until the click has finished.
+  // In particular, a completion edit can remove its own row from a filtered list.
+  document.addEventListener('change', async event => {
+    const checkbox = event.target;
+    if (!checkbox.matches('input[data-save-completion]')) return;
+    const form = checkbox.form;
+    const body = new URLSearchParams(new FormData(form));
+    const settled = new Promise(resolve => setTimeout(resolve, 150));
+    try {
+      const response = await fetch(form.action, { method: 'POST', body });
+      const html = await response.text();
+      await settled;
+      const updated = new DOMParser().parseFromString(html, 'text/html');
+      document.querySelector('main').replaceWith(updated.querySelector('main'));
+      history.replaceState(null, '', response.url);
+    } catch (error) {
+      checkbox.checked = !checkbox.checked;
+      const alert = document.createElement('p');
+      alert.setAttribute('role', 'alert');
+      alert.textContent = 'Unable to save completion. Please try again.';
+      document.querySelector('main').prepend(alert);
+    }
+  });
+</script></body></html>`;
 }
 
 function projectFilter(value) {
@@ -281,7 +306,7 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
-          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived || task.deleted ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
+          <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived || task.deleted ? ' disabled' : ''} data-save-completion><span>${escapeHtml(task.title)}</span></label>
         </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           <input type="hidden" name="filter" value="${filter}">

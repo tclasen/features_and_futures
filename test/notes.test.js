@@ -63,7 +63,7 @@ test('notes migrate, remain plain text, preserve filters and data, and travel wi
     assert.deepEqual({ ...task() }, { ...before, notes });
     assert.match(html, /&#10;  Leading and trailing  &#10;雪 😀/);
     assert.match(html, /&lt;textarea&gt;&lt;script&gt;alert\(&quot;x&quot;\)/);
-    assert.doesNotMatch(html, /<script>/);
+    assert.doesNotMatch(html.match(/<main>[\s\S]*?<\/main>/)[0], /<script>/);
     assert.match(html, /<option selected>Completed/);
     assert.match(html, /<option selected>High/);
     assert.match(html, /id="due-from"[^>]*value="2024-02-01"/);
