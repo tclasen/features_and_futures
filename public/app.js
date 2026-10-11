@@ -5,7 +5,7 @@ let appliedProjectQuery = '';
 let appliedTaskQuery = '';
 
 function normalizeSearch(value) {
-  return value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
 }
 
 async function loadProjects() {
