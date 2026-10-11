@@ -1,4 +1,4 @@
-import { filterTasks } from './task-filters.js';
+import { filterTasks, normalizeDueRange } from './task-filters.js';
 
 const app = document.querySelector('#app');
 
@@ -98,6 +98,15 @@ async function renderTasks(project) {
         <option value="High">High</option>
       </select>
     </div>
+    <form id="due-range">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <div class="create-controls">
+        <input id="due-through" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+        <button type="submit">Apply due range</button>
+      </div>
+    </form>
     <div id="tasks"></div>
   `;
   app.append(section);
@@ -107,6 +116,11 @@ async function renderTasks(project) {
   const alert = section.querySelector('[role="alert"]');
   const filter = section.querySelector('#task-filter');
   const priorityFilter = section.querySelector('#priority-filter');
+  const dueRangeForm = section.querySelector('#due-range');
+  const dueFrom = section.querySelector('#due-from');
+  const dueThrough = section.querySelector('#due-through');
+  // Draft inputs only replace the applied range after successful validation.
+  let dueRange = { from: '', through: '' };
   const defaultPriority = section.querySelector('#default-task-priority');
   defaultPriority.value = project.default_task_priority;
   defaultPriority.disabled = project.archived;
@@ -134,7 +148,7 @@ async function renderTasks(project) {
 
   function displayTasks() {
     list.replaceChildren();
-    for (const task of filterTasks(tasks, filter.value, priorityFilter.value)) {
+    for (const task of filterTasks(tasks, filter.value, priorityFilter.value, dueRange)) {
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
       row.className = 'task-row';
@@ -271,7 +285,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ due_date: dueDateInput.value }),
           });
           task.due_date = updated.due_date;
-          dueDateInput.value = task.due_date;
+          displayTasks();
         } catch (error) {
           showError(alert, error.message);
         } finally {
@@ -285,6 +299,18 @@ async function renderTasks(project) {
 
   filter.addEventListener('change', displayTasks);
   priorityFilter.addEventListener('change', displayTasks);
+  dueRangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    alert.hidden = true;
+    try {
+      dueRange = normalizeDueRange(dueFrom.value, dueThrough.value);
+      dueFrom.value = dueRange.from;
+      dueThrough.value = dueRange.through;
+      displayTasks();
+    } catch (error) {
+      showError(alert, error.message);
+    }
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (project.archived) return;

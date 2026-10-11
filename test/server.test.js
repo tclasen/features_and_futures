@@ -133,6 +133,12 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
 
   try {
     await start();
+    for (const module of ['app.js', 'task-filters.js', 'dates.js']) {
+      const response = await fetch(`${base}/${module}`);
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('content-type'), /text\/javascript/);
+      assert.ok((await response.text()).length > 0);
+    }
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), []);
     for (const name of ['', ' \t\n ', null, 123]) {
       const response = await create(name);
