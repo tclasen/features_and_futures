@@ -77,21 +77,24 @@ const page = `<!doctype html>
       alert.setAttribute('role', 'alert'); alert.hidden = true;
       const list = document.createElement('section');
       list.id = 'projects';
-      for (const project of projects) {
+      function updateRows(items) {
+        list.replaceChildren();
+        for (const project of items) {
         const row = document.createElement('div');
         row.dataset.testid = 'project-row';
         const name = document.createElement('span'); name.textContent = project.name;
         const summary = document.createElement('span'); summary.dataset.testid = 'project-summary'; summary.textContent = project.completed_count + '/' + project.total_count + ' completed';
         const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Open project';
         open.addEventListener('click', () => { location.href = escapePath(project.id); });
-        const archive = document.createElement('button'); archive.type = 'button'; archive.textContent = selectedFilter === 'Active' ? 'Archive project' : 'Restore project';
+        const archive = document.createElement('button'); archive.type = 'button'; archive.textContent = filter.value === 'Active' ? 'Archive project' : 'Restore project';
         archive.addEventListener('click', async () => {
-          const result = await fetch('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: selectedFilter === 'Active' }) });
-          if (result.ok) renderList(await loadProjects(selectedFilter), selectedFilter);
+          const result = await fetch('/api/projects/' + encodeURIComponent(project.id) + '/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: filter.value === 'Active' }) });
+          if (result.ok) updateRows(await loadProjects(filter.value));
         });
-        row.append(name, summary, open, archive); list.append(row);
+          row.append(name, summary, open, archive); list.append(row);
+        }
       }
-      filter.addEventListener('change', async () => renderList(await loadProjects(filter.value), filter.value));
+      filter.addEventListener('change', async () => updateRows(await loadProjects(filter.value)));
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = input.value.trim();
@@ -101,6 +104,7 @@ const page = `<!doctype html>
         location.href = '/';
       });
       app.append(form, alert, list);
+      updateRows(projects);
     }
     async function renderDetail(id) {
       const response = await fetch('/api/projects/' + encodeURIComponent(id));
