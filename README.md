@@ -20,11 +20,16 @@ completion until restored. Project rows summarize completed tasks out of all tas
 Active project pages also let you rename a project. Names are trimmed and must not
 be blank; renaming preserves the URL, creation order, tasks, and summary. Archived
 projects cannot be renamed until restored. Renamed names persist across restarts.
+Each task row also lets you rename its title. Titles are trimmed and must not be
+blank; renaming preserves task ownership, creation order, completion, filter
+membership, and project summaries. The completion checkbox label follows the new
+title. Archived projects disable task renaming until restored. Task titles persist
+across restarts.
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated HTTP and persistence tests with `npm test`. Tests use a temporary
 SQLite database and verify validation, creation order, project lookup, page/asset
 routes, task ownership, completion updates, archive/restore restrictions, summaries,
-rename validation and identity preservation, legacy database migration, and
+project and task rename validation and identity preservation, legacy database migration, and
 persistence through process restarts.

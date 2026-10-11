@@ -104,6 +104,46 @@ function renderRename(project, heading) {
   });
 }
 
+function taskRenameForm(project, task, endpoint, onRename) {
+  const form = element('form');
+  const label = element('label', 'New task title');
+  const input = element('input');
+  input.id = `new-task-title-${task.id}`;
+  label.htmlFor = input.id;
+  input.name = 'title';
+  input.type = 'text';
+  input.disabled = project.archived;
+  const submit = element('button', 'Rename task');
+  submit.type = 'submit';
+  submit.disabled = project.archived;
+  form.append(label, input, submit);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    if (!input.value.trim()) {
+      showError('Task title is required');
+      return;
+    }
+    submit.disabled = true;
+    try {
+      const updated = await request(`${endpoint}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      });
+      task.title = updated.title;
+      app.querySelector('[role="alert"]')?.remove();
+      onRename();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = project.archived;
+    }
+  });
+  return form;
+}
+
 async function renderTasks(project) {
   const endpoint = `/api/projects/${project.id}/tasks`;
   const form = element('form');
@@ -165,7 +205,8 @@ async function renderTasks(project) {
           checkbox.disabled = project.archived;
         }
       });
-      row.append(element('span', task.title), checkbox);
+      row.append(element('span', task.title), checkbox,
+        taskRenameForm(project, task, endpoint, displayTasks));
       list.append(row);
     }
   }
