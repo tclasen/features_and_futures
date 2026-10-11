@@ -797,7 +797,19 @@ async function showDirectory() {
   deleteVisible.type = 'button';
   const restoreVisible = element('button', { text: 'Restore visible tasks', className: 'secondary-button' });
   restoreVisible.type = 'button';
-  bulkActions.append(completeVisible, reopenVisible, deleteVisible, restoreVisible);
+  const visiblePriorityLabel = element('label', { text: 'Visible tasks priority', className: 'filter-label' });
+  const visiblePriority = element('select');
+  visiblePriority.setAttribute('aria-label', 'Visible tasks priority');
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', { text: value });
+    option.value = value;
+    option.selected = value === 'Normal';
+    visiblePriority.append(option);
+  }
+  visiblePriorityLabel.append(visiblePriority);
+  const setVisiblePriority = element('button', { text: 'Set visible priority', className: 'secondary-button' });
+  setVisiblePriority.type = 'button';
+  bulkActions.append(completeVisible, reopenVisible, deleteVisible, restoreVisible, visiblePriorityLabel, setVisiblePriority);
   app.append(bulkActions);
   const directorySummary = element('p', { testId: 'directory-summary' });
   directorySummary.hidden = true;
@@ -826,6 +838,7 @@ async function showDirectory() {
     reopenVisible.disabled = true;
     deleteVisible.disabled = true;
     restoreVisible.disabled = true;
+    setVisiblePriority.disabled = true;
     const response = await fetch('/api/directory');
     if (!response.ok) throw new Error('Could not load task directory');
     const tasks = await response.json();
@@ -913,6 +926,7 @@ async function showDirectory() {
       : [];
     deleteVisible.disabled = loading || deletable.length === 0;
     restoreVisible.disabled = loading || restorable.length === 0;
+    setVisiblePriority.disabled = loading || deletable.length === 0;
     for (const task of rows) {
       const row = element('div', { className: 'task-row directory-task-row', testId: 'directory-task-row' });
       row.append(element('span', { text: task.title, testId: 'directory-task-title' }));
@@ -967,10 +981,29 @@ async function showDirectory() {
       showLoadError();
     }
   }
+  async function updateVisiblePriority() {
+    const taskIds = visibleRows.filter((task) => !task.archived && !task.deleted)
+      .map((task) => task.taskId);
+    if (!taskIds.length) return;
+    setVisiblePriority.disabled = true;
+    try {
+      const response = await fetch('/api/directory/bulk-priority', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ priority: visiblePriority.value, taskIds }),
+      });
+      if (!response.ok) throw new Error('Could not update visible task priorities');
+      alert.hidden = true;
+      await renderRows();
+    } catch {
+      showLoadError();
+    }
+  }
   completeVisible.addEventListener('click', () => updateVisibleTasks(true));
   reopenVisible.addEventListener('click', () => updateVisibleTasks(false));
   deleteVisible.addEventListener('click', () => updateVisibleDeletion(true));
   restoreVisible.addEventListener('click', () => updateVisibleDeletion(false));
+  setVisiblePriority.addEventListener('click', updateVisiblePriority);
   for (const control of [scope, completion, priority, directoryOrder]) {
     control.addEventListener('change', () => renderRows().catch(showLoadError));
   }
