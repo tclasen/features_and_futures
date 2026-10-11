@@ -34,12 +34,13 @@ class Node {
   }
 }
 
-async function projectPage(archived = false, defaultPriority = 'Normal') {
+async function projectPage(archived = false, defaultPriority = 'Normal', dates) {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, priority, completed: false, due_date: '' },
     { id: index * 2 + 2, title: `${priority} completed`, priority, completed: true, due_date: '2026-10-11' },
   ]);
+  if (dates) tasks.forEach((task, index) => { task.due_date = dates[index]; });
   const mutations = [];
   const project = { id: 1, name: 'Example', archived: Number(archived), default_priority: defaultPriority, total: 6, completed: 3 };
   const document = {
@@ -128,6 +129,138 @@ test('both task filters intersect in creation order and remain independent on ac
     assert.deepEqual(page.tasks, original);
     assert.deepEqual(page.mutations, []);
   }
+});
+
+test('inclusive due ranges intersect both filters, preserve order, and remain usable when archived', async () => {
+  const dates = ['', '0001-01-01', '2024-02-29', '2026-10-11', '2026-10-11', '9999-12-31'];
+  for (const archived of [false, true]) {
+    const page = await projectPage(archived, 'Normal', dates);
+    const original = structuredClone(page.tasks);
+    const form = page.app.find(node => node.attributes.class === 'due-range-form');
+    for (const [id, label] of [['due-from', 'Due from'], ['due-through', 'Due through']]) {
+      assert.equal(page.byId(id).value, '');
+      assert.equal(page.byId(id).attributes.type, 'text');
+      assert.equal(page.byId(id).disabled, false);
+      assert.equal(page.app.find(node => node.attributes.for === id).textContent, label);
+    }
+    assert.equal(form.find(node => node.tag === 'button').textContent, 'Apply due range');
+    assert.equal(form.find(node => node.tag === 'button').disabled, false);
+    for (const [from, through] of [['', ''], ['0001-01-01', ''], ['', '9999-12-31'],
+      ['', '2024-02-29'], ['2026-10-11', ''], ['2026-10-11', '2026-10-11']]) {
+      page.byId('due-from').value = ` ${from} `;
+      page.byId('due-through').value = ` ${through} `;
+      const previousCompletion = page.byId('task-filter').value;
+      const previousPriority = page.byId('priority-filter').value;
+      await form.fire('submit');
+      assert.equal(page.byId('task-filter').value, previousCompletion);
+      assert.equal(page.byId('priority-filter').value, previousPriority);
+      assert.equal(page.byId('due-from').value, from);
+      assert.equal(page.byId('due-through').value, through);
+      for (const completion of ['All', 'Open', 'Completed']) {
+        await page.change('task-filter', completion);
+        for (const priority of ['All', 'Low', 'Normal', 'High']) {
+          await page.change('priority-filter', priority);
+          assert.deepEqual(page.titles(), page.tasks.filter(task =>
+            (completion === 'All' || task.completed === (completion === 'Completed')) &&
+            (priority === 'All' || priority === task.priority) &&
+            ((!from && !through) || (task.due_date && (!from || task.due_date >= from) && (!through || task.due_date <= through)))
+          ).map(task => task.title));
+          assert.equal(page.byId('due-from').value, from);
+          assert.equal(page.byId('due-through').value, through);
+        }
+      }
+    }
+    assert.deepEqual(page.tasks, original);
+    assert.deepEqual(page.mutations, []);
+    assert.equal(page.project.total, 6);
+    assert.equal(page.project.completed, 3);
+  }
+});
+
+test('invalid ranges preserve applied membership, including after combobox changes', async () => {
+  const page = await projectPage();
+  const form = page.app.find(node => node.attributes.class === 'due-range-form');
+  page.byId('due-from').value = '2026-10-11';
+  page.byId('due-through').value = '2026-10-11';
+  await form.fire('submit');
+  const expected = ['Low completed', 'Normal completed', 'High completed'];
+  assert.deepEqual(page.titles(), expected);
+  for (const value of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2023-02-29',
+    '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01',
+    '24-01-01', '2024-01-01T00:00:00Z', 'hello']) {
+    for (const id of ['due-from', 'due-through']) {
+      page.byId('due-from').value = '';
+      page.byId('due-through').value = '';
+      page.byId(id).value = value;
+      await form.fire('submit');
+      assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Due range must use valid YYYY-MM-DD dates');
+      assert.deepEqual(page.titles(), expected);
+    }
+  }
+  page.byId('due-from').value = '2026-10-12';
+  page.byId('due-through').value = '2026-10-11';
+  await form.fire('submit');
+  assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Due from must not be after Due through');
+  assert.deepEqual(page.titles(), expected);
+  await page.change('priority-filter', 'High');
+  assert.deepEqual(page.titles(), ['High completed']);
+  await page.change('task-filter', 'Open');
+  assert.deepEqual(page.titles(), []);
+  for (const date of ['0001-01-01', '0096-02-29', '2000-02-29', '2024-02-29', '9999-12-31']) {
+    page.byId('due-from').value = date;
+    page.byId('due-through').value = date;
+    await form.fire('submit');
+    assert.equal(page.app.querySelector('[role="alert"]').hidden, true);
+  }
+  const reopened = await projectPage();
+  assert.equal(reopened.byId('due-from').value, '');
+  assert.equal(reopened.byId('due-through').value, '');
+  assert.equal(reopened.rows().length, 6);
+});
+
+test('task edits refresh range membership while renames, defaults, and creation retain all filters', async () => {
+  const page = await projectPage(false, 'Normal', ['', '', '', '', '2026-10-11', '2026-10-11']);
+  const range = page.app.find(node => node.attributes.class === 'due-range-form');
+  page.byId('due-from').value = '2026-10-11';
+  page.byId('due-through').value = '2026-10-11';
+  await range.fire('submit');
+  await page.change('task-filter', 'Open');
+  await page.change('priority-filter', 'High');
+  assert.deepEqual(page.titles(), ['High open']);
+  page.byId('new-task-title-5').value = 'Renamed';
+  await page.rows()[0].find(node => node.attributes.class === 'task-rename-form').fire('submit');
+  page.byId('new-project-name').value = 'Renamed project';
+  await page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'new-project-name')).fire('submit');
+  await page.change('default-task-priority', 'High');
+  page.byId('task-title').value = 'New undated';
+  await page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-title')).fire('submit');
+  assert.deepEqual(page.titles(), ['Renamed']);
+  page.byId('task-due-date-5').value = '2026-10-12';
+  await page.rows()[0].find(node => node.attributes.class === 'task-due-form').fire('submit');
+  assert.deepEqual(page.titles(), []);
+  page.byId('due-through').value = '';
+  await range.fire('submit');
+  assert.deepEqual(page.titles(), ['Renamed']);
+  await page.change('task-priority-5', 'Low');
+  assert.deepEqual(page.titles(), []);
+  await page.change('priority-filter', 'Low');
+  assert.deepEqual(page.titles(), ['Renamed']);
+  const checkbox = page.rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.deepEqual(page.titles(), []);
+  await page.change('task-filter', 'Completed');
+  assert.deepEqual(page.titles(), ['Renamed']);
+  page.byId('task-due-date-5').value = ' \n\t ';
+  await page.rows()[0].find(node => node.attributes.class === 'task-due-form').fire('submit');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.byId('task-filter').value, 'Completed');
+  assert.equal(page.byId('priority-filter').value, 'Low');
+  assert.equal(page.byId('due-from').value, '2026-10-11');
+  assert.equal(page.byId('due-through').value, '');
+  assert.equal(page.tasks[4].completed, true);
+  assert.equal(page.tasks[4].priority, 'Low');
+  assert.equal(page.tasks[4].due_date, '');
 });
 
 test('priority, completion, and rename edits refresh matching rows without resetting filters', async () => {

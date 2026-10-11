@@ -56,3 +56,11 @@ persist across restarts and renaming without changing task filters or other
 task data. Archived projects disable both due-date controls until restored.
 
 Run the integration and UI checks with `npm test`.
+
+Use Due from and Due through, then Apply due range, to intersect an inclusive
+calendar-date range with Task filter and Priority filter. Blank boundaries are
+unbounded; any nonblank boundary excludes undated tasks. Both blank includes
+all dates and undated tasks. Invalid dates or reversed boundaries show an alert
+and preserve the previously applied range. Task edits immediately refresh the
+matching rows while retaining all filters. Range controls also work in archived
+projects. Reopening a project starts with empty range boundaries.
