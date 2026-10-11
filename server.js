@@ -193,6 +193,7 @@ function projectPage(res, project, filter = 'All', error = '', priority = 'All',
     .filter(task => searchMatches(task.title, range.search || ''));
   sendHtml(res, 200, page(project.name, `<h1>${escape(project.name)}</h1>
 <form method="get" action="/"><button type="submit">Projects</button></form>
+<form method="get" action="/projects/${project.id}/export"><button type="submit">Download project</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
 ${error ? `<p role="alert">${escape(error)}</p>` : ''}
 <form class="task-create" method="post" action="/projects/${project.id}/rename">
@@ -342,6 +343,39 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(303, { Location: '/?' + new URLSearchParams({ filter: body.get('filter') === 'Archived' ? 'Archived' : 'Active', search: (body.get('search') || '').trim() }) });
       res.end();
       return;
+    }
+    const exportMatch = /^\/projects\/(\d+)\/export$/.exec(url.pathname);
+    if (req.method === 'GET' && exportMatch) {
+      const project = db.prepare('SELECT name, archived, default_priority FROM projects WHERE id = ?').get(exportMatch[1]);
+      if (project) {
+        const tasks = db.prepare(`SELECT title, completed, priority, due_date, notes, deleted
+          FROM tasks WHERE project_id = ? ORDER BY position, id`).all(exportMatch[1]);
+        const document = {
+          format: 'workboard-project',
+          version: 1,
+          project: {
+            name: project.name,
+            archived: Boolean(project.archived),
+            defaultPriority: project.default_priority ?? 'Normal',
+            tasks: tasks.map(task => ({
+              title: task.title,
+              completed: Boolean(task.completed),
+              priority: task.priority ?? 'Normal',
+              dueDate: task.due_date ?? '',
+              // Portable textarea line endings; leave the saved notes untouched.
+              notes: (task.notes ?? '').replace(/\r\n?/g, '\n'),
+              deleted: Boolean(task.deleted)
+            }))
+          }
+        };
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="workboard-project.json"',
+          'Cache-Control': 'no-store'
+        });
+        res.end(JSON.stringify(document, null, 2));
+        return;
+      }
     }
     const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(url.pathname);
     if (req.method === 'POST' && renameMatch) {
