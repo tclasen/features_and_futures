@@ -4,16 +4,20 @@ const alertBox = document.querySelector('#alert');
 let appliedProjectQuery = '';
 let appliedTaskQuery = '';
 
+function normalizeSearch(value) {
+  return value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
+}
+
 async function loadProjects() {
   const response = await fetch('/api/projects');
   const projects = await response.json();
   const filter = document.querySelector('#project-filter').value;
-  const query = appliedProjectQuery.toLowerCase();
+  const query = normalizeSearch(appliedProjectQuery);
   const container = document.querySelector('#projects');
   container.replaceChildren();
   for (const project of projects) {
     if (Boolean(project.archived) !== (filter === 'Archived')) continue;
-    if (!project.name.toLowerCase().includes(query)) continue;
+    if (!normalizeSearch(project.name).includes(query)) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -63,7 +67,7 @@ async function loadTasks(projectId) {
   for (const task of tasks) {
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
-    if (!task.title.toLowerCase().includes(appliedTaskQuery.toLowerCase())) continue;
+    if (!normalizeSearch(task.title).includes(normalizeSearch(appliedTaskQuery))) continue;
     if (appliedDueRange.from || appliedDueRange.through) {
       if (!task.due_date) continue;
       if (appliedDueRange.from && task.due_date < appliedDueRange.from) continue;
