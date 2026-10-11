@@ -648,6 +648,11 @@ async function showProjects() {
   });
   app.append(importForm);
 
+  const directoryButton = element('button', { text: 'Task directory' });
+  directoryButton.type = 'button';
+  directoryButton.addEventListener('click', () => { location.href = '/directory'; });
+  app.append(directoryButton);
+
   async function renderProjects() {
     const projects = await loadProjects(filter.value);
     projectList.replaceChildren();
@@ -692,9 +697,132 @@ async function showProjects() {
 }
 
 async function render() {
+  if (location.pathname === '/directory') {
+    await showDirectory();
+    return;
+  }
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   if (match) await showProject(match[1]);
   else await showProjects();
+}
+
+async function showDirectory() {
+  app.replaceChildren();
+  const back = element('button', { text: 'Projects', className: 'back-button' });
+  back.type = 'button';
+  back.addEventListener('click', () => { location.href = '/'; });
+  app.append(back, element('h1', { text: 'Task directory' }));
+  const alert = element('p', { className: 'alert' });
+  alert.setAttribute('role', 'alert');
+  alert.hidden = true;
+  app.append(alert);
+
+  function selectControl(labelText, values, className = 'filter-label') {
+    const label = element('label', { text: labelText, className });
+    const select = element('select');
+    select.setAttribute('aria-label', labelText);
+    values.forEach((value) => {
+      const option = element('option', { text: value });
+      option.value = value;
+      select.append(option);
+    });
+    label.append(select);
+    app.append(label);
+    return select;
+  }
+  const scope = selectControl('Project scope', ['Active', 'Archived']);
+  const completion = selectControl('Task filter', ['All', 'Open', 'Completed', 'Deleted']);
+  const priority = selectControl('Priority filter', ['All', 'Low', 'Normal', 'High']);
+  let appliedRange = { from: '', through: '' };
+  const rangeForm = element('form', { className: 'due-range-form' });
+  const fromLabel = element('label', { text: 'Due from' });
+  const fromInput = element('input');
+  fromInput.type = 'text';
+  fromLabel.append(fromInput);
+  const throughLabel = element('label', { text: 'Due through' });
+  const throughInput = element('input');
+  throughInput.type = 'text';
+  throughLabel.append(throughInput);
+  const rangeButton = element('button', { text: 'Apply due range' });
+  rangeButton.type = 'submit';
+  rangeForm.append(fromLabel, throughLabel, rangeButton);
+  rangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const from = fromInput.value.trim();
+    const through = throughInput.value.trim();
+    if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+      alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+      alert.hidden = false;
+      return;
+    }
+    if (from && through && from > through) {
+      alert.textContent = 'Due from must not be after Due through';
+      alert.hidden = false;
+      return;
+    }
+    appliedRange = { from, through };
+    alert.hidden = true;
+    renderRows().catch(showLoadError);
+  });
+  app.append(rangeForm);
+  let appliedSearch = '';
+  const searchForm = element('form', { className: 'search-form' });
+  const searchLabel = element('label', { text: 'Directory search' });
+  const searchInput = element('input');
+  searchInput.type = 'text';
+  searchLabel.append(searchInput);
+  const searchButton = element('button', { text: 'Search directory' });
+  searchButton.type = 'submit';
+  searchForm.append(searchLabel, searchButton);
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    appliedSearch = searchInput.value.trim();
+    alert.hidden = true;
+    renderRows().catch(showLoadError);
+  });
+  app.append(searchForm);
+  const results = element('section', { className: 'task-list' });
+  app.append(results);
+  function showLoadError() {
+    alert.textContent = 'Could not load task directory';
+    alert.hidden = false;
+  }
+  async function renderRows() {
+    const response = await fetch('/api/directory');
+    if (!response.ok) throw new Error('Could not load task directory');
+    const tasks = await response.json();
+    results.replaceChildren();
+    const rows = tasks.filter((task) => task.archived === (scope.value === 'Archived'))
+      .filter((task) => completion.value === 'Deleted' ? task.deleted : !task.deleted && (
+        completion.value === 'All' || (completion.value === 'Open' && !task.completed)
+          || (completion.value === 'Completed' && task.completed)))
+      .filter((task) => priority.value === 'All' || task.priority === priority.value)
+      .filter((task) => {
+        if (!appliedRange.from && !appliedRange.through) return true;
+        if (!task.dueDate) return false;
+        return (!appliedRange.from || task.dueDate >= appliedRange.from)
+          && (!appliedRange.through || task.dueDate <= appliedRange.through);
+      })
+      .filter((task) => matchesSearch(task.title, appliedSearch));
+    for (const task of rows) {
+      const row = element('div', { className: 'task-row directory-task-row', testId: 'directory-task-row' });
+      row.append(element('span', { text: task.title, testId: 'directory-task-title' }));
+      row.append(element('span', { text: task.projectName, testId: 'directory-project-name' }));
+      row.append(element('span', { text: task.completed ? 'Completed' : 'Open', testId: 'directory-task-completion' }));
+      row.append(element('span', { text: task.priority, testId: 'directory-task-priority' }));
+      row.append(element('span', { text: task.dueDate, testId: 'directory-task-due-date' }));
+      row.append(element('span', { text: task.notes, testId: 'directory-task-notes' }));
+      const open = element('button', { text: 'Open project' });
+      open.type = 'button';
+      open.addEventListener('click', () => { location.href = `/projects/${task.projectId}`; });
+      row.append(open);
+      results.append(row);
+    }
+  }
+  for (const control of [scope, completion, priority]) {
+    control.addEventListener('change', () => renderRows().catch(showLoadError));
+  }
+  await renderRows();
 }
 
 render().catch(() => {

@@ -90,6 +90,27 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    const tasks = database.prepare(`
+      SELECT p.id AS projectId, p.name AS projectName, p.archived,
+        t.id AS taskId, t.title, t.completed, t.priority, t.due_date AS dueDate,
+        t.notes, t.deleted
+      FROM projects p
+      JOIN task_project_positions position ON position.project_id = p.id
+      JOIN tasks t ON t.id = position.task_id AND t.project_id = p.id
+      ORDER BY p.id, position.position
+    `).all().map((task) => ({
+      ...task,
+      archived: Boolean(task.archived),
+      completed: Boolean(task.completed),
+      deleted: Boolean(task.deleted),
+      dueDate: task.dueDate ?? '',
+      notes: task.notes ?? '',
+    }));
+    send(response, 200, 'application/json; charset=utf-8', JSON.stringify(tasks));
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
     const projects = database.prepare(`
@@ -473,7 +494,7 @@ const server = createServer(async (request, response) => {
     send(response, 200, 'text/javascript; charset=utf-8', client);
     return;
   }
-  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
+  if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/\d+$/.test(url.pathname))) {
     send(response, 200, 'text/html; charset=utf-8', page);
     return;
   }
