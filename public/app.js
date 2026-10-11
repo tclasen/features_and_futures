@@ -158,10 +158,21 @@ async function renderTasks(project) {
   const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = [];
   let destinations = [];
+  const taskRows = new Map();
 
   function displayTasks() {
-    list.replaceChildren();
+    const taskIds = new Set(tasks.map((task) => task.id));
+    for (const id of taskRows.keys()) {
+      if (!taskIds.has(id)) taskRows.delete(id);
+    }
+    const visibleRows = [];
     for (const task of filterTasks(tasks, filter.value, priorityFilter.value, dueRange, searchQuery)) {
+      const existing = taskRows.get(task.id);
+      if (existing && existing.deleted === task.deleted) {
+        existing.refresh();
+        visibleRows.push(existing.row);
+        continue;
+      }
       const cannotEdit = project.archived || task.deleted;
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
@@ -182,7 +193,7 @@ async function renderTasks(project) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: checkbox.checked }),
           });
-          Object.assign(task, updated);
+          task.completed = updated.completed;
           displayTasks();
         } catch (error) {
           checkbox.checked = task.completed;
@@ -226,6 +237,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ title: renameInput.value }),
           });
           task.title = updated.title;
+          renameInput.value = task.title;
           displayTasks();
         } catch (error) {
           showError(alert, error.message);
@@ -297,6 +309,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ due_date: dueDateInput.value }),
           });
           task.due_date = updated.due_date;
+          dueDateInput.value = task.due_date;
           displayTasks();
         } catch (error) {
           showError(alert, error.message);
@@ -391,11 +404,12 @@ async function renderTasks(project) {
         alert.hidden = true;
         deletionButton.disabled = true;
         try {
-          Object.assign(task, await request(`${endpoint}/${task.id}/deleted`, {
+          const updated = await request(`${endpoint}/${task.id}/deleted`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ deleted: !task.deleted }),
-          }));
+          });
+          task.deleted = updated.deleted;
           displayTasks();
         } catch (error) {
           showError(alert, error.message);
@@ -404,7 +418,31 @@ async function renderTasks(project) {
         }
       });
       row.append(title, checkbox, priorityControls, renameForm, dueDateForm, notesForm, moveForm, deletionButton);
-      list.append(row);
+      // Keep controls and unsaved drafts intact when an unrelated save finishes.
+      // Only a changed saved field updates its control. Deletion rebuilds the row
+      // because all editing permissions and the delete/restore action change.
+      let previous = { ...task };
+      taskRows.set(task.id, {
+        row,
+        deleted: task.deleted,
+        refresh() {
+          if (task.title !== previous.title) {
+            title.textContent = task.title;
+            checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+            renameInput.value = task.title;
+          }
+          if (task.completed !== previous.completed) checkbox.checked = task.completed;
+          if (task.priority !== previous.priority) prioritySelect.value = task.priority;
+          if (task.due_date !== previous.due_date) dueDateInput.value = task.due_date;
+          if (task.notes !== previous.notes) notesInput.value = task.notes;
+          previous = { ...task };
+        },
+      });
+      visibleRows.push(row);
+    }
+    const currentRows = Array.from(list.children);
+    if (currentRows.length !== visibleRows.length || currentRows.some((row, index) => row !== visibleRows[index])) {
+      list.replaceChildren(...visibleRows);
     }
   }
 
