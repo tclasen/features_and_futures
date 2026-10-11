@@ -120,6 +120,7 @@ const directoryPriority = document.querySelector('#directory-priority');
 const directoryOrder = document.querySelector('#directory-order');
 const directorySearch = document.querySelector('#directory-search');
 const directoryResults = document.querySelector('#directory-results');
+const directoryOwners = document.querySelector('#directory-owners');
 const directoryEmpty = document.querySelector('#directory-empty');
 const directorySummary = document.querySelector('[data-testid="directory-summary"]');
 const completeVisibleButton = document.querySelector('#complete-visible-tasks');
@@ -149,6 +150,41 @@ async function loadDirectory() {
   });
   const completedCount = visibleDirectoryTasks.reduce((count, task) => count + (task.completed ? 1 : 0), 0);
   directorySummary.textContent = `${completedCount}/${visibleDirectoryTasks.length} completed`;
+  const ownersById = new Map();
+  for (const task of visibleDirectoryTasks) {
+    let owner = ownersById.get(task.projectId);
+    if (!owner) {
+      owner = { id: task.projectId, name: task.projectName, tasks: [] };
+      ownersById.set(task.projectId, owner);
+    }
+    owner.tasks.push(task);
+  }
+  directoryOwners.replaceChildren();
+  for (const owner of [...ownersById.values()].sort((a, b) => a.id - b.id)) {
+    const row = document.createElement('div');
+    row.className = 'project-row';
+    row.dataset.testid = 'directory-owner-row';
+    const name = document.createElement('span');
+    name.dataset.testid = 'directory-owner-name';
+    name.textContent = owner.name;
+    const completed = owner.tasks.reduce((count, task) => count + (task.completed ? 1 : 0), 0);
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'directory-owner-summary';
+    summary.textContent = `${completed}/${owner.tasks.length} completed`;
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = 'Open project';
+    open.addEventListener('click', () => {
+      taskFilter.value = 'all';
+      priorityFilter.value = 'all';
+      appliedTaskQuery = '';
+      taskSearchInput.value = '';
+      history.pushState({}, '', `/projects/${owner.id}`);
+      showRoute();
+    });
+    row.append(name, summary, open);
+    directoryOwners.append(row);
+  }
   const originalPosition = new Map(visibleDirectoryTasks.map((task, index) => [task.id, index]));
   const priorityRank = { High: 0, Normal: 1, Low: 2 };
   const compareCodePoints = (left, right) => {
