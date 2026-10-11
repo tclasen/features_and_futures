@@ -77,6 +77,20 @@ function validDueDate(value) {
   return day >= 1 && day <= days[month - 1];
 }
 
+function validProjectDocument(document) {
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const nonblank = value => typeof value === 'string' && value.trim().length > 0;
+  const priority = value => ['Low', 'Normal', 'High'].includes(value);
+  if (!object(document) || document.format !== 'workboard-project' || document.version !== 1) return false;
+  const project = document.project;
+  return object(project) && nonblank(project.name) && typeof project.archived === 'boolean'
+    && priority(project.defaultPriority) && Array.isArray(project.tasks)
+    && project.tasks.every(task => object(task) && nonblank(task.title)
+      && typeof task.completed === 'boolean' && priority(task.priority)
+      && typeof task.dueDate === 'string' && (task.dueDate === '' || validDueDate(task.dueDate))
+      && typeof task.notes === 'string' && typeof task.deleted === 'boolean');
+}
+
 const escape = (value) => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[char]);
@@ -118,7 +132,7 @@ function sendHtml(res, status, html) {
 const searchKey = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, char => char.toLowerCase());
 const searchMatches = (value, query) => searchKey(value).includes(searchKey(query));
 
-function projectList(res, error = '', filter = 'Active', query = '') {
+function projectList(res, error = '', filter = 'Active', query = '', importJson = '', importName = '') {
   const projects = db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed FROM projects p
     LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted = 0 WHERE p.archived = ?
@@ -143,6 +157,16 @@ ${['Active', 'Archived'].map(option => `<option${filter === option ? ' selected'
 <label for="project-search">Project search</label>
 <input id="project-search" name="search" type="text" value="${escape(query)}">
 <button type="submit">Search projects</button>
+</form>
+<form method="post" action="/projects/import">
+<input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="search" value="${escape(query)}">
+<label for="project-json">Project JSON</label>
+<textarea id="project-json" name="json" rows="6">
+${escape(importJson)}</textarea>
+<label for="imported-project-name">Imported project name</label>
+<input id="imported-project-name" name="importName" type="text" value="${escape(importName)}">
+<button type="submit">Import project</button>
 </form>
 <section class="projects" aria-label="Projects">${projects.map(project => `
 <div class="project" data-testid="project-row"><span>${escape(project.name)}</span>
@@ -341,6 +365,37 @@ const server = http.createServer(async (req, res) => {
       }
       db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
       res.writeHead(303, { Location: '/?' + new URLSearchParams({ filter: body.get('filter') === 'Archived' ? 'Archived' : 'Active', search: (body.get('search') || '').trim() }) });
+      res.end();
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/projects/import') {
+      const body = await formBody(req);
+      const json = body.get('json') || '';
+      const override = body.get('importName') || '';
+      const name = override.trim();
+      let document;
+      try { document = JSON.parse(json); } catch { /* Report invalid JSON below. */ }
+      const error = !name ? 'Project name is required' : !validProjectDocument(document) ? 'Invalid project JSON' : '';
+      if (error) {
+        projectList(res, error, body.get('filter') === 'Archived' ? 'Archived' : 'Active', (body.get('search') || '').trim(), json, override);
+        return;
+      }
+      let projectId;
+      transaction(() => {
+        const project = document.project;
+        projectId = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)')
+          .run(name, Number(project.archived), project.defaultPriority).lastInsertRowid;
+        const insertTask = db.prepare(`INSERT INTO tasks
+          (project_id, title, completed, priority, due_date, notes, deleted, position)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+        const insertPosition = db.prepare('INSERT INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+        project.tasks.forEach((task, index) => {
+          const result = insertTask.run(projectId, task.title, Number(task.completed), task.priority,
+            task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted), index + 1);
+          insertPosition.run(result.lastInsertRowid, projectId, index + 1);
+        });
+      });
+      res.writeHead(303, { Location: `/projects/${projectId}` });
       res.end();
       return;
     }
