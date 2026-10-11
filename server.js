@@ -90,21 +90,33 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(res, project, filter = 'All', error = '') {
+function priorityFilter(value) {
+  return ['All', 'Low', 'Normal', 'High'].includes(value) ? value : 'All';
+}
+
+function projectLocation(id, filter, priority) {
+  return `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}`;
+}
+
+function projectPage(res, project, filter = 'All', error = '', priority = 'All') {
   const tasks = db.prepare(`SELECT id, title, completed, priority FROM tasks WHERE project_id = ?
-    ${filter === 'All' ? '' : 'AND completed = ?'} ORDER BY id`)
-    .all(...(filter === 'All' ? [project.id] : [project.id, filter === 'Completed' ? 1 : 0]));
+    ${filter === 'All' ? '' : 'AND completed = ?'}
+    ${priority === 'All' ? '' : 'AND priority = ?'} ORDER BY id`)
+    .all(project.id, ...(filter === 'All' ? [] : [filter === 'Completed' ? 1 : 0]),
+      ...(priority === 'All' ? [] : [priority]));
   sendHtml(res, 200, page(project.name, `<h1>${escape(project.name)}</h1>
 <form method="get" action="/"><button type="submit">Projects</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
 ${error ? `<p role="alert">${escape(error)}</p>` : ''}
 <form class="task-create" method="post" action="/projects/${project.id}/rename">
 <input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
 <label for="new-project-name">New project name</label>
 <div class="create"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
 </form>
 <form class="task-create" method="post" action="/projects/${project.id}/tasks">
 <input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
 <label for="task-title">Task title</label>
 <div class="create"><input id="task-title" name="title" type="text"><button type="submit"${project.archived ? ' disabled' : ''}>Create task</button></div>
 </form>
@@ -112,20 +124,27 @@ ${error ? `<p role="alert">${escape(error)}</p>` : ''}
 <label for="task-filter">Task filter</label>
 <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
 ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+</select>
+<label for="priority-filter">Priority filter</label>
+<select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
+${['All', 'Low', 'Normal', 'High'].map(option => `<option${priority === option ? ' selected' : ''}>${option}</option>`).join('')}
 </select></form>
 <section class="projects" aria-label="Tasks">${tasks.map(task => `
 <div class="task" data-testid="task-row">
 <form method="post" action="/projects/${project.id}/tasks/${task.id}">
 <input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
 <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
 </form>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
 <input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
 <label for="new-task-title-${task.id}">New task title</label>
 <div class="create"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
 </form>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
 <input type="hidden" name="filter" value="${filter}">
+<input type="hidden" name="priorityFilter" value="${priority}">
 <label for="task-priority-${task.id}">Task priority</label>
 <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
 ${['Low', 'Normal', 'High'].map(option => `<option${task.priority === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -180,13 +199,14 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await formBody(req);
         const filter = taskFilter(body.get('filter'));
+        const priority = priorityFilter(body.get('priorityFilter'));
         const name = (body.get('name') || '').trim();
         if (!name) {
-          projectPage(res, project, filter, 'Project name is required');
+          projectPage(res, project, filter, 'Project name is required', priority);
           return;
         }
         db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, project.id);
-        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.writeHead(303, { Location: projectLocation(project.id, filter, priority) });
         res.end();
         return;
       }
@@ -211,6 +231,7 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await formBody(req);
         const filter = taskFilter(body.get('filter'));
+        const selectedPriority = priorityFilter(body.get('priorityFilter'));
         if (taskMatch[3] === '/priority') {
           const priority = body.get('priority');
           if (!['Low', 'Normal', 'High'].includes(priority)) {
@@ -231,7 +252,7 @@ const server = http.createServer(async (req, res) => {
           }
           const title = (body.get('title') || '').trim();
           if (!title) {
-            projectPage(res, project, filter, 'Task title is required');
+            projectPage(res, project, filter, 'Task title is required', selectedPriority);
             return;
           }
           db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, task.id, project.id);
@@ -245,12 +266,12 @@ const server = http.createServer(async (req, res) => {
         } else {
           const title = (body.get('title') || '').trim();
           if (!title) {
-            projectPage(res, project, filter, 'Task title is required');
+            projectPage(res, project, filter, 'Task title is required', selectedPriority);
             return;
           }
           db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(project.id, title);
         }
-        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.writeHead(303, { Location: projectLocation(project.id, filter, selectedPriority) });
         res.end();
         return;
       }
@@ -259,7 +280,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && match) {
       const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(match[1]);
       if (project) {
-        projectPage(res, project, taskFilter(url.searchParams.get('filter')));
+        projectPage(res, project, taskFilter(url.searchParams.get('filter')), '', priorityFilter(url.searchParams.get('priorityFilter')));
         return;
       }
     }
