@@ -456,11 +456,20 @@ async function render() {
   let projects = await request('/api/projects');
   app.innerHTML = `
     <h1>Workboard</h1>
-    <form>
+    <form id="project-form">
       <label for="project-name">Project name</label>
       <div class="form-controls">
         <input id="project-name" name="name" type="text" autocomplete="off">
         <button type="submit">Create project</button>
+      </div>
+    </form>
+    <form id="import-form">
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" rows="8"></textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <div class="form-controls">
+        <input id="imported-project-name" type="text" autocomplete="off">
+        <button type="submit">Import project</button>
       </div>
     </form>
     <p id="error" role="alert" hidden></p>
@@ -500,7 +509,23 @@ async function render() {
     drawProjects();
   });
   drawProjects();
-  app.querySelector('form').addEventListener('submit', async (event) => {
+  document.getElementById('import-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const name = document.getElementById('imported-project-name').value.trim();
+    if (!name) { showError('Project name is required'); return; }
+    const button = event.currentTarget.querySelector('button');
+    button.disabled = true;
+    document.getElementById('error').hidden = true;
+    try {
+      const project = await request('/api/projects/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, document: document.getElementById('project-json').value }),
+      });
+      location.assign(`/projects/${project.id}`);
+    } catch (error) { showError(error.message); }
+    finally { button.disabled = false; }
+  });
+  document.getElementById('project-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const input = document.getElementById('project-name');
     const name = input.value.trim();

@@ -92,3 +92,10 @@ archive state and default priority, plus every live and deleted task in stored
 order with its title, completion, priority, due date, notes and deletion state.
 Export ignores page filters and normalizes only notes line endings to LF in the
 download; saved data and remembered return positions remain unchanged.
+
+Import project on the home page accepts a version 1 portable document in Project
+JSON and a required Imported project name. It validates every field before
+creating a new independent project and opens that project on success. Invalid
+documents leave all data and submitted inputs unchanged. Imports preserve task
+order and saved fields, including deleted tasks, archived state and the default
+priority; notes line endings become LF. Extra fields cannot set internal IDs.
