@@ -24,6 +24,14 @@ database.exec(`
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
+  ;
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, sort_order)
+  )
 `);
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
@@ -48,6 +56,10 @@ if (!taskColumns.some(column => column.name === 'sort_order')) {
     tasksForProject.all(projectId).forEach((task, index) => assignOrder.run(index, task.id));
   }
 }
+// Existing tasks keep their current order when remembered project positions
+// are introduced. The insert is idempotent, so it also repairs partial setups.
+database.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, sort_order)
+  SELECT id, project_id, sort_order FROM tasks ORDER BY project_id, sort_order, id`);
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount
@@ -57,7 +69,9 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
-const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) SELECT p.id, ?, p.default_priority, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = p.id), 0) FROM projects p WHERE p.id = ? AND p.archived = 0");
+const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) SELECT p.id, ?, p.default_priority, COALESCE((SELECT MAX(sort_order) + 1 FROM task_project_positions WHERE project_id = p.id), 0) FROM projects p WHERE p.id = ? AND p.archived = 0");
+const getTaskPosition = database.prepare('SELECT sort_order AS sortOrder FROM tasks WHERE id = ?');
+const rememberTaskPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
 const updateProjectDefaultPriority = database.prepare("UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0");
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
@@ -68,10 +82,9 @@ const updateTaskPriority = database.prepare(`UPDATE tasks SET priority = ? WHERE
   AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
 const updateTaskDueDate = database.prepare(`UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
   AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
-const moveTask = database.prepare(`UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0)
-  WHERE id = ? AND project_id = ?
-  AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)
-  AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)`);
+const findTaskPosition = database.prepare('SELECT sort_order AS sortOrder FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextProjectPosition = database.prepare('SELECT COALESCE(MAX(sort_order) + 1, 0) AS sortOrder FROM task_project_positions WHERE project_id = ?');
+const moveTaskToPosition = database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
 
 const page = `<!doctype html>
 <html lang="en">
@@ -499,7 +512,9 @@ const server = createServer(async (request, response) => {
     if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
     const result = createTask.run(title, projectId);
     if (!result.changes) { sendJson(response, 409, { error: 'Archived projects cannot create tasks' }); return; }
-    sendJson(response, 201, getTask.get(Number(result.lastInsertRowid), projectId));
+    const taskId = Number(result.lastInsertRowid);
+    rememberTaskPosition.run(taskId, projectId, getTaskPosition.get(taskId).sortOrder);
+    sendJson(response, 201, getTask.get(taskId, projectId));
     return;
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
@@ -518,8 +533,19 @@ const server = createServer(async (request, response) => {
       const destination = getProject.get(destinationProjectId);
       if (!source || !destination) { sendJson(response, 404, { error: 'Project not found' }); return; }
       if (source.archived || destination.archived) { sendJson(response, 409, { error: 'Tasks can only move between active projects' }); return; }
-      const result = moveTask.run(destinationProjectId, destinationProjectId, taskId, projectId, projectId, destinationProjectId);
-      if (!result.changes) { sendJson(response, 409, { error: 'Could not move task' }); return; }
+      const rememberedPosition = findTaskPosition.get(taskId, destinationProjectId);
+      const destinationPosition = rememberedPosition?.sortOrder ?? nextProjectPosition.get(destinationProjectId).sortOrder;
+      database.exec('BEGIN');
+      try {
+        if (!rememberedPosition) rememberTaskPosition.run(taskId, destinationProjectId, destinationPosition);
+        const result = moveTaskToPosition.run(destinationProjectId, destinationPosition, taskId, projectId);
+        if (!result.changes) throw new Error('Task changed during move');
+        database.exec('COMMIT');
+      } catch {
+        database.exec('ROLLBACK');
+        sendJson(response, 409, { error: 'Could not move task' });
+        return;
+      }
       sendJson(response, 200, getTask.get(taskId, destinationProjectId));
       return;
     }
