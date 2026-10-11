@@ -39,6 +39,10 @@ async function showProject(projectId) {
   back.addEventListener('click', () => { location.href = '/'; });
   const heading = element('h1', { text: project.name });
   app.append(back, heading);
+  const download = element('a', { text: 'Download project', className: 'secondary-button' });
+  download.href = `/api/projects/${projectId}/export`;
+  download.setAttribute('download', 'workboard-project.json');
+  app.append(download);
   if (project.archived) app.append(element('p', { text: 'Archived project', className: 'archive-notice' }));
 
   const alert = element('p', { className: 'alert' });
