@@ -18,13 +18,13 @@ Health: `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, task priority validation and isolation, detail routes, health, database migration, and persistence across server-process restarts.
+The integration tests use temporary databases and verify validation, ordering, project isolation, completion updates and counts, archive/restore and rename protections, rename identity preservation, task priority validation and isolation, detail routes, health, database migration, and persistence across server-process restarts. Dependency-free DOM tests exercise combined filters and task editing event handlers.
 
 The Project filter defaults to Active; choose Archived to open or restore archived projects. Each project row shows completed/total task counts. Archived project pages show tasks and allow filtering, but cannot create tasks, rename tasks, change priorities, or change completion.
 
 Use New project name and Rename project on an active project page to change its name without changing its URL, order, or tasks. Archived projects cannot be renamed until restored.
 
-On an active project page, create tasks, toggle their completion checkboxes, and choose All, Open, or Completed in the Task filter. The filter defaults to All on page load.
+On an active project page, create tasks, toggle their completion checkboxes, and choose All, Open, or Completed in the Task filter. The filter defaults to All on page load. Priority filter offers All, Low, Normal, and High, initially All. Both filters apply together and retain their selections when changing the other filter or editing a task. Matching tasks stay in creation order; project summaries always count all tasks. Both filters remain usable in archived projects.
 
 Each task row provides New task title and Rename task. Renames trim whitespace and preserve ownership, creation order, completion, filter membership, and summary counts. Empty titles show an alert without changing the task. Restore an archived project to enable task renaming again.
 

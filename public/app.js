@@ -106,16 +106,26 @@ async function renderTasks(project) {
       <option>Open</option>
       <option>Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option>All</option>
+      <option>Low</option>
+      <option>Normal</option>
+      <option>High</option>
+    </select>
     <div id="task-list"></div>
   `;
   app.append(section);
   const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = await api(endpoint);
   const list = section.querySelector('#task-list');
-  const filter = section.querySelector('select');
+  const filter = section.querySelector('#task-filter');
+  const priorityFilter = section.querySelector('#priority-filter');
   function drawTasks() {
-    const visible = tasks.filter(task => filter.value === 'All' ||
-      (filter.value === 'Completed' ? task.completed : !task.completed));
+    const visible = tasks.filter(task =>
+      (filter.value === 'All' ||
+        (filter.value === 'Completed' ? task.completed : !task.completed)) &&
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     list.replaceChildren(...visible.map(task => {
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
@@ -211,6 +221,7 @@ async function renderTasks(project) {
     }));
   }
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   drawTasks();
   const form = section.querySelector('form');
   const input = section.querySelector('#task-title');
