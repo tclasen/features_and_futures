@@ -66,6 +66,12 @@ function projectPage(project, tasks, filter, error = '') {
   return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/"><button type="submit">Projects</button></form>
+    <form method="post" action="/projects/${project.id}/rename" class="create-form project-rename">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="input-group"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+    </form>
     <form method="post" action="/projects/${project.id}/tasks" class="create-form task-create">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -131,6 +137,7 @@ export function createWorkboardServer(databasePath) {
   const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const listTasks = database.prepare(`SELECT id, title, completed FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -176,7 +183,7 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -191,7 +198,11 @@ export function createWorkboardServer(databasePath) {
             if (project.archived) {
               return send(409, projectPage(project, tasksFor(id, filter), filter, 'Archived project is read-only'));
             }
-            if (match[2]) {
+            if (url.pathname === `/projects/${id}/rename`) {
+              const name = (form.get('name') ?? '').trim();
+              if (!name) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Project name is required'));
+              renameProject.run(name, id);
+            } else if (match[2]) {
               const taskId = Number(match[2]);
               if (!Number.isSafeInteger(taskId)) {
                 return send(404, page('Not found', '<h1>Task not found</h1>'));

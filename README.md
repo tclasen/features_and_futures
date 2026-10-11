@@ -25,3 +25,7 @@ submits completion and filter changes automatically. Project URLs work on reload
 The project list starts with Active projects and can show Archived projects.
 Archiving makes a project's tasks read-only; restoring permits edits again.
 Each project row shows the completed count out of all its tasks.
+Active projects can be renamed with surrounding whitespace trimmed. Blank names
+are rejected. Renaming preserves the project's URL, list position, tasks, and
+completion state, and the new name persists across restarts. Archived projects
+cannot be renamed until restored.
