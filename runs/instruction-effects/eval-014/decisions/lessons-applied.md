@@ -19,3 +19,5 @@ L060 prospective30 fixture closed: eight full99 variants and sixteen synthetic l
 L026 task015 recheck: b010 attempt001 retains upstream HTTP503 with unknown counters; all three closed infrastructure originals independently restore. The unchanged task continues under frozen fresh-context recovery, with original exposure and unknown cost retained. Evidence: `preflight/incident-audits/verified-e76e9224d334ad37.json`.
 
 L063 observed: task017/b003/attempt001 case035 timeout is unresolved. Unchanged source passes all three directed frozen-test and three checked-click diagnostics; full native data/scheduling were not reproduced. Preserve rejection and measured retries, with no frozen acceptance change. Diagnostic resource archived/restored/removed; evidence: `research-v014/preflight/uncheck035-native-replay-001/classification.json`.
+
+L026 task018 recheck: b005 attempt001 has HTTP200 and missing terminal usage. All four closed infrastructure originals restore independently, with original cost gaps retained; unchanged task continues through the frozen fresh-context recovery. Evidence: `preflight/incident-audits/verified-79a32ff4c7f70042.json`.
