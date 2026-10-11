@@ -158,7 +158,7 @@ async function showProject(projectId) {
   const filterLabel = element('label', { text: 'Task filter', className: 'filter-label' });
   const filter = element('select');
   filter.setAttribute('aria-label', 'Task filter');
-  for (const value of ['All', 'Open', 'Completed']) {
+  for (const value of ['All', 'Open', 'Completed', 'Deleted']) {
     const option = element('option', { text: value });
     option.value = value;
     filter.append(option);
@@ -231,9 +231,11 @@ async function showProject(projectId) {
     if (!response.ok) throw new Error('Could not load tasks');
     const tasks = await response.json();
     taskList.replaceChildren();
-    const visibleTasks = tasks.filter((task) => filter.value === 'All'
-      || (filter.value === 'Open' && !task.completed)
-      || (filter.value === 'Completed' && task.completed)).filter((task) =>
+    const visibleTasks = tasks.filter((task) => filter.value === 'Deleted'
+      ? task.deleted
+      : !task.deleted && (filter.value === 'All'
+        || (filter.value === 'Open' && !task.completed)
+        || (filter.value === 'Completed' && task.completed))).filter((task) =>
       priorityFilter.value === 'All' || task.priority === priorityFilter.value).filter((task) => {
       if (!appliedDueRange.from && !appliedDueRange.through) return true;
       if (!task.dueDate) return false;
@@ -241,12 +243,13 @@ async function showProject(projectId) {
         && (!appliedDueRange.through || task.dueDate <= appliedDueRange.through);
     }).filter((task) => matchesSearch(task.title, appliedTaskSearch));
     for (const task of visibleTasks) {
+      const isDeleted = task.deleted;
       const row = element('div', { className: 'task-row', testId: 'task-row' });
       const checkboxLabel = element('label', { className: 'task-checkbox' });
       const checkbox = element('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
-      checkbox.disabled = project.archived;
+      checkbox.disabled = project.archived || isDeleted;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -272,11 +275,11 @@ async function showProject(projectId) {
       const renameInput = element('input');
       renameInput.type = 'text';
       renameInput.name = `newTaskTitle-${task.id}`;
-      renameInput.disabled = project.archived;
+      renameInput.disabled = project.archived || isDeleted;
       renameLabel.append(renameInput);
       const renameButton = element('button', { text: 'Rename task', className: 'secondary-button' });
       renameButton.type = 'submit';
-      renameButton.disabled = project.archived;
+      renameButton.disabled = project.archived || isDeleted;
       renameForm.append(renameLabel, renameButton);
       renameForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -300,14 +303,14 @@ async function showProject(projectId) {
         } catch {
           alert.textContent = 'Could not rename task';
           alert.hidden = false;
-          renameButton.disabled = project.archived;
+          renameButton.disabled = project.archived || isDeleted;
         }
       });
       row.append(renameForm);
       const priorityLabel = element('label', { text: 'Task priority', className: 'priority-label' });
       const priority = element('select');
       priority.setAttribute('aria-label', 'Task priority');
-      priority.disabled = project.archived;
+      priority.disabled = project.archived || isDeleted;
       for (const value of ['Low', 'Normal', 'High']) {
         const option = element('option', { text: value });
         option.value = value;
@@ -332,7 +335,7 @@ async function showProject(projectId) {
           alert.textContent = 'Could not update task priority';
           alert.hidden = false;
         } finally {
-          priority.disabled = project.archived;
+          priority.disabled = project.archived || isDeleted;
         }
       });
       priorityLabel.append(priority);
@@ -343,11 +346,11 @@ async function showProject(projectId) {
       dueDateInput.type = 'text';
       dueDateInput.name = `dueDate-${task.id}`;
       dueDateInput.value = task.dueDate ?? '';
-      dueDateInput.disabled = project.archived;
+      dueDateInput.disabled = project.archived || isDeleted;
       dueDateLabel.append(dueDateInput);
       const saveDueDate = element('button', { text: 'Save due date', className: 'secondary-button' });
       saveDueDate.type = 'submit';
-      saveDueDate.disabled = project.archived;
+      saveDueDate.disabled = project.archived || isDeleted;
       dueDateForm.append(dueDateLabel, saveDueDate);
       dueDateForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -379,7 +382,7 @@ async function showProject(projectId) {
           alert.textContent = 'Could not save due date';
           alert.hidden = false;
         } finally {
-          saveDueDate.disabled = project.archived;
+          saveDueDate.disabled = project.archived || isDeleted;
         }
       });
       row.append(dueDateForm);
@@ -388,11 +391,11 @@ async function showProject(projectId) {
       const notesInput = element('textarea');
       notesInput.name = `taskNotes-${task.id}`;
       notesInput.value = task.notes;
-      notesInput.disabled = project.archived;
+      notesInput.disabled = project.archived || isDeleted;
       notesLabel.append(notesInput);
       const saveNotes = element('button', { text: 'Save notes', className: 'secondary-button' });
       saveNotes.type = 'submit';
-      saveNotes.disabled = project.archived;
+      saveNotes.disabled = project.archived || isDeleted;
       notesForm.append(notesLabel, saveNotes);
       notesForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -411,7 +414,7 @@ async function showProject(projectId) {
         } catch {
           alert.textContent = 'Could not save notes';
           alert.hidden = false;
-          saveNotes.disabled = project.archived;
+          saveNotes.disabled = project.archived || isDeleted;
         }
       });
       row.append(notesForm);
@@ -425,11 +428,11 @@ async function showProject(projectId) {
         option.value = String(destination.id);
         destinationSelect.append(option);
       }
-      destinationSelect.disabled = project.archived || destinations.length === 0;
+      destinationSelect.disabled = project.archived || isDeleted || destinations.length === 0;
       destinationLabel.append(destinationSelect);
       const moveButton = element('button', { text: 'Move task', className: 'secondary-button' });
       moveButton.type = 'submit';
-      moveButton.disabled = project.archived || destinations.length === 0;
+      moveButton.disabled = project.archived || isDeleted || destinations.length === 0;
       moveForm.append(destinationLabel, moveButton);
       moveForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -447,10 +450,34 @@ async function showProject(projectId) {
         } catch {
           alert.textContent = 'Could not move task';
           alert.hidden = false;
-          moveButton.disabled = project.archived || destinations.length === 0;
+          moveButton.disabled = project.archived || isDeleted || destinations.length === 0;
         }
       });
       row.append(moveForm);
+      const stateButton = element('button', {
+        text: isDeleted ? 'Restore task' : 'Delete task',
+        className: 'secondary-button',
+      });
+      stateButton.type = 'button';
+      stateButton.disabled = project.archived;
+      stateButton.addEventListener('click', async () => {
+        stateButton.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ deleted: !isDeleted }),
+          });
+          if (!response.ok) throw new Error('Could not update task');
+          alert.hidden = true;
+          await loadTasks();
+        } catch {
+          alert.textContent = 'Could not update task';
+          alert.hidden = false;
+          stateButton.disabled = project.archived;
+        }
+      });
+      row.append(stateButton);
       taskList.append(row);
     }
   }

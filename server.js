@@ -30,7 +30,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    notes TEXT NOT NULL DEFAULT ''
+    notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))
   )
 `);
 // Add priorities to databases created before Task 006.
@@ -43,6 +44,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 }
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
 }
 database.exec('PRAGMA foreign_keys = ON');
 // Remember each task's position in every project it has visited. The current
@@ -90,8 +94,8 @@ const server = createServer(async (request, response) => {
     const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
     const projects = database.prepare(`
       SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
-        COUNT(t.id) AS totalCount,
-        SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+        COUNT(CASE WHEN t.deleted = 0 THEN 1 END) AS totalCount,
+        SUM(CASE WHEN t.deleted = 0 AND t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
     `).all(filter).map((project) => ({
@@ -188,10 +192,10 @@ const server = createServer(async (request, response) => {
   if (tasksRoute && request.method === 'GET') {
     const tasks = database.prepare(
       `SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
-        t.due_date AS dueDate, t.notes
+        t.due_date AS dueDate, t.notes, t.deleted
        FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
        WHERE t.project_id = ? ORDER BY p.position`
-    ).all(Number(tasksRoute[1])).map((task) => ({ ...task, completed: Boolean(task.completed) }));
+    ).all(Number(tasksRoute[1])).map((task) => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) }));
     send(response, 200, 'application/json; charset=utf-8', JSON.stringify(tasks));
     return;
   }
@@ -301,7 +305,11 @@ const server = createServer(async (request, response) => {
       }
       const payload = await readJson(request);
       let result;
-      if (typeof payload.completed === 'boolean') {
+      if (typeof payload.deleted === 'boolean') {
+        result = database.prepare(
+          'UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?'
+        ).run(payload.deleted ? 1 : 0, taskId, projectId);
+      } else if (typeof payload.completed === 'boolean') {
         result = database.prepare(
           'UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?'
         ).run(payload.completed ? 1 : 0, taskId, projectId);
