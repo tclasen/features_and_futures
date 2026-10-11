@@ -122,3 +122,14 @@ Search works on archived projects while editing remains disabled. Opening a proj
 or returning to Projects starts with an empty search. Search interaction checks cover
 these intersections, query rules, retained selections, edit-triggered membership,
 archived controls, and empty queries on new page loads.
+
+Each task row has a multiline Task notes textarea and Save notes button. Notes are
+plain text, saved exactly as entered, including whitespace, line breaks, Unicode,
+and literal markup. Empty text clears them. Notes persist across reloads and
+restarts and travel with tasks through moves and restored ordering. Saving notes
+retains all filters and search; searches still match only project names and task
+titles. Archived notes remain visible with both controls disabled. Database upgrades
+add empty notes without changing existing task fields or remembered positions.
+Notes checks cover migration, verbatim text, clearing, independent task data,
+filter retention, search exclusion, movement, return order, archive/restore, and
+process restarts.

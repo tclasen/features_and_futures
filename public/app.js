@@ -351,7 +351,38 @@ function renderTasks() {
       }
     });
     moveForm.append(destination, moveButton);
-    row.append(checkbox, title, taskRenameForm, priority, dueDateForm, moveForm);
+    const notesForm = document.createElement('form');
+    notesForm.className = 'create-fields';
+    const notesInput = document.createElement('textarea');
+    notesInput.setAttribute('aria-label', 'Task notes');
+    notesInput.rows = 4;
+    notesInput.value = task.notes || '';
+    notesInput.disabled = archived;
+    const notesButton = document.createElement('button');
+    notesButton.type = 'submit';
+    notesButton.textContent = 'Save notes';
+    notesButton.disabled = archived;
+    notesForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (archived) return;
+      notesInput.disabled = notesButton.disabled = true;
+      showTaskAlert('');
+      try {
+        const saved = await request(`/api/projects/${projectId}/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: notesInput.value }),
+        });
+        task.notes = saved.notes;
+        renderTasks();
+      } catch (error) {
+        showTaskAlert(error.message);
+      } finally {
+        notesInput.disabled = notesButton.disabled = archived;
+      }
+    });
+    notesForm.append(notesInput, notesButton);
+    row.append(checkbox, title, taskRenameForm, priority, dueDateForm, moveForm, notesForm);
     taskList.append(row);
   }
 }

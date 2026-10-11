@@ -1214,3 +1214,54 @@ test('move controls list eligible destinations and preserve source filters, with
     assert.equal(rows().length, 2);
   }
 });
+
+test('notes save verbatim, retain intersecting filters, exclude notes from search, and respect archival', async () => {
+  const projects = [{ id: 'a', name: 'Source', archived: false, default_task_priority: 'Normal' }];
+  const tasks = [
+    { id: 'one', title: 'Matching title', completed: true, priority: 'High', due_date: '2024-02-29', notes: '' },
+    { id: 'two', title: 'Other', completed: true, priority: 'High', due_date: '2024-02-29', notes: 'Matching title' },
+  ];
+  const app = await searchApp('/projects/a', projects, tasks);
+  const { element, search, writes } = app;
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').dispatch('change');
+  element('#priority-filter').value = 'High';
+  await element('#priority-filter').dispatch('change');
+  element('#due-from').value = '2024-02-01';
+  element('#due-through').value = '2024-02-29';
+  await element('#due-range-form').dispatch('submit');
+  await search('task', 'matching');
+  const rows = () => element('#task-list').children;
+  assert.equal(rows().length, 1);
+  const notesForm = () => rows()[0].children[6];
+  assert.equal(notesForm().children[0].attributes['aria-label'], 'Task notes');
+  assert.equal(notesForm().children[1].textContent, 'Save notes');
+  assert.equal(notesForm().children[0].value, '');
+  const original = structuredClone(tasks[0]);
+  for (const notes of ['  café 日本語\n<script>literal</script>\n\t ', ' \n ', '']) {
+    notesForm().children[0].value = notes;
+    await notesForm().dispatch('submit');
+    assert.equal(notesForm().children[0].value, notes);
+    assert.deepEqual(tasks[0], { ...original, notes });
+    assert.deepEqual(writes.at(-1).change, { notes });
+    assert.equal(rows().length, 1);
+    assert.equal(element('#task-filter').value, 'completed');
+    assert.equal(element('#priority-filter').value, 'High');
+    assert.equal(element('#due-from').value, '2024-02-01');
+    assert.equal(element('#due-through').value, '2024-02-29');
+    assert.equal(element('#task-search').value, 'matching');
+  }
+  tasks[0].notes = '  Saved\nnotes <b>literal</b> ';
+  projects[0].archived = true;
+  const archivedApp = await searchApp('/projects/a', projects, tasks);
+  const archivedNotes = archivedApp.element('#task-list').children[0].children[6];
+  assert.equal(archivedNotes.children[0].value, tasks[0].notes);
+  assert.ok(archivedNotes.children.every(control => control.disabled));
+  await archivedNotes.dispatch('submit');
+  assert.equal(archivedApp.writes.length, 0);
+  projects[0].archived = false;
+  const restoredApp = await searchApp('/projects/a', projects, tasks);
+  const restoredNotes = restoredApp.element('#task-list').children[0].children[6];
+  assert.equal(restoredNotes.children[0].value, tasks[0].notes);
+  assert.ok(restoredNotes.children.every(control => !control.disabled));
+});

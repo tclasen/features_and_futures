@@ -72,7 +72,7 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     assert.deepEqual(await get('/health'), { status: 'ok' });
     const existing = { id: 'legacy', name: 'Existing project', archived: false, default_task_priority: 'Normal', total: 1, completed: 1 };
     assert.deepEqual(await get('/api/projects'), [existing]);
-    const legacyTasks = [{ id: 'legacy-task', title: 'Existing task', completed: true, priority: 'Normal', due_date: '' }];
+    const legacyTasks = [{ id: 'legacy-task', title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '' }];
     assert.deepEqual(await get('/api/projects/legacy/tasks'), legacyTasks);
     for (const name of ['', ' \t\n ']) {
       const response = await create(name);
@@ -582,6 +582,86 @@ test('remembered positions migrate existing order and survive reverse returns, e
     await move('middle', 'c', 'a');
     assert.deepEqual(await ids('a'), ['middle', newSource.id]);
     assert.deepEqual((await api('a/tasks'))[0], currentMiddle);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('notes migrate without changing existing data and persist through edits, moves, and restarts', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'notes-'));
+  const databasePath = resolve(directory, 'notes.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(server.url + '/api/projects' + path, {
+        method, ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const source = await api('', 'POST', { name: 'Source' }, 201);
+    const destination = await api('', 'POST', { name: 'Destination' }, 201);
+    const sourcePath = `/${source.id}`;
+    const destinationPath = `/${destination.id}`;
+    const task = await api(sourcePath + '/tasks', 'POST', { title: 'First' }, 201);
+    const second = await api(sourcePath + '/tasks', 'POST', { title: 'Second' }, 201);
+    const taskPath = sourcePath + '/tasks/' + task.id;
+    Object.assign(task, await api(taskPath, 'PATCH', { completed: true }));
+    Object.assign(task, await api(taskPath, 'PATCH', { priority: 'High' }));
+    Object.assign(task, await api(taskPath, 'PATCH', { due_date: '2024-02-29' }));
+    await api(sourcePath, 'PATCH', { default_task_priority: 'Low' });
+    const summary = await api(sourcePath);
+    await server.stop();
+    server = undefined;
+    // Reproduce the preceding schema with all existing fields and remembered positions.
+    const previous = new DatabaseSync(databasePath);
+    previous.exec('ALTER TABLE tasks DROP COLUMN notes');
+    const positions = previous.prepare('SELECT * FROM task_project_positions ORDER BY project_id, position').all();
+    previous.close();
+    server = await start(databasePath);
+    assert.deepEqual(await api(sourcePath + '/tasks'), [task, second]);
+    assert.deepEqual(await api(sourcePath), summary);
+    const upgraded = new DatabaseSync(databasePath);
+    assert.deepEqual(upgraded.prepare('SELECT * FROM task_project_positions ORDER BY project_id, position').all(), positions);
+    upgraded.close();
+    const notes = '  First line\n\tUnicode: café 日本語 📝\n<script>alert("literal")</script> & <b>text</b>\n  ';
+    task.notes = notes;
+    assert.deepEqual(await api(taskPath, 'PATCH', { notes }), task);
+    assert.deepEqual(await api(sourcePath + '/tasks'), [task, second]);
+    assert.deepEqual(await api(sourcePath), summary);
+    for (const invalid of [null, 42, {}, []]) {
+      await api(taskPath, 'PATCH', { notes: invalid }, 400);
+      assert.deepEqual(await api(sourcePath + '/tasks'), [task, second]);
+    }
+    await api(destinationPath + '/tasks/' + task.id, 'PATCH', { notes: 'Wrong owner' }, 404);
+    Object.assign(task, await api(taskPath, 'PATCH', { title: 'Renamed' }));
+    assert.equal(task.notes, notes);
+    await api(taskPath, 'PATCH', { destination_project_id: destination.id });
+    await api(sourcePath + '/tasks/' + second.id, 'PATCH', { destination_project_id: destination.id });
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await api(destinationPath + '/tasks'), [task, second]);
+    await api(destinationPath, 'PATCH', { archived: true });
+    await api(destinationPath + '/tasks/' + task.id, 'PATCH', { notes: 'Blocked' }, 409);
+    assert.deepEqual(await api(destinationPath + '/tasks'), [task, second]);
+    await api(destinationPath, 'PATCH', { archived: false });
+    await api(destinationPath + '/tasks/' + second.id, 'PATCH', { destination_project_id: source.id });
+    await api(destinationPath + '/tasks/' + task.id, 'PATCH', { destination_project_id: source.id });
+    assert.deepEqual(await api(sourcePath + '/tasks'), [task, second]);
+    for (const value of [' \t\n ', '']) {
+      task.notes = value;
+      assert.deepEqual(await api(taskPath, 'PATCH', { notes: value }), task);
+      await server.stop();
+      server = await start(databasePath);
+      assert.deepEqual(await api(sourcePath + '/tasks'), [task, second]);
+    }
+    const created = await api(sourcePath + '/tasks', 'POST', { title: 'New task' }, 201);
+    assert.equal(created.notes, '');
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
