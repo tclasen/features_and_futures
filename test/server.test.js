@@ -549,3 +549,135 @@ test('project tasks validate, filter, toggle, stay isolated, and persist after r
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('combined filters retain selections, re-evaluate edits, and work through archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const rows = page => [...page.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    const titles = page => rows(page).map(row => row.match(/<span>([^<]+)<\/span>/)[1]);
+    const select = (page, id) => page.match(new RegExp(`<select id="${id}"[^>]*>[\\s\\S]*?<\\/select>`))[0];
+    const assertFilters = (page, completion, priority) => {
+      assert.match(select(page, 'task-filter'), new RegExp(`<option selected>${completion}</option>`));
+      assert.match(select(page, 'priority-filter'), new RegExp(`<option selected>${priority}</option>`));
+      assert.doesNotMatch(select(page, 'task-filter'), /disabled/);
+      assert.doesNotMatch(select(page, 'priority-filter'), /disabled/);
+    };
+    await post('/projects', { name: 'Filters' });
+    const tasks = [];
+    for (const priority of ['Low', 'Normal', 'High']) {
+      for (const completed of [false, true]) {
+        const id = tasks.length + 1;
+        const title = `${priority} ${completed ? 'done' : 'open'}`;
+        await post('/projects/1/tasks', { title });
+        await post(`/projects/1/tasks/${id}/priority`, { priority });
+        if (completed) await post(`/projects/1/tasks/${id}`, { completed: '1' });
+        tasks.push({ title, priority, completed });
+      }
+    }
+    const initial = await html('/projects/1');
+    assertFilters(initial, 'All', 'All');
+    assert.match(initial, /<label for="priority-filter">Priority filter<\/label>/);
+    assert.deepEqual([...select(initial, 'priority-filter').matchAll(/<option(?: selected)?>([^<]+)<\/option>/g)]
+      .map(match => match[1]), ['All', 'Low', 'Normal', 'High']);
+    // Both selectors share a GET form, so changing either submits the other value too.
+    const filterForm = initial.match(/<form class="filter"[\s\S]*?<\/form>/)[0];
+    assert.match(filterForm, /method="get"/);
+    assert.match(filterForm, /name="filter" onchange="this.form.requestSubmit\(\)"/);
+    assert.match(filterForm, /name="priorityFilter" onchange="this.form.requestSubmit\(\)"/);
+    const originalList = await html('/');
+    for (const completion of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const page = await html(`/projects/1?filter=${completion}&priorityFilter=${priority}`);
+        assertFilters(page, completion, priority);
+        assert.deepEqual(titles(page), tasks.filter(task =>
+          (completion === 'All' || task.completed === (completion === 'Completed')) &&
+          (priority === 'All' || task.priority === priority)).map(task => task.title));
+      }
+    }
+    assert.equal(await html('/'), originalList);
+    assert.equal(await html('/projects/1'), initial);
+
+    const selected = { filter: 'Open', priorityFilter: 'High' };
+    const path = '/projects/1?filter=Open&priorityFilter=High';
+    const page = await html(path);
+    for (const form of page.matchAll(/<form[^>]*method="post"[\s\S]*?<\/form>/g)) {
+      assert.match(form[0], /name="filter" value="Open"/);
+      assert.match(form[0], /name="priorityFilter" value="High"/);
+    }
+    for (const [endpoint, values] of [
+      ['/projects/1/tasks/5/rename', { title: ' ' }],
+      ['/projects/1/tasks', { title: ' ' }],
+      ['/projects/1/rename', { name: ' ' }],
+      ['/projects/1/tasks/5/priority', { priority: 'Invalid' }],
+    ]) {
+      const response = await post(endpoint, { ...selected, ...values });
+      assert.equal(response.status, 400);
+      const errorPage = await response.text();
+      assertFilters(errorPage, 'Open', 'High');
+      assert.deepEqual(titles(errorPage), ['High open']);
+    }
+    const renamed = await post('/projects/1/tasks/5/rename', { ...selected, title: '  Renamed high  ' });
+    assert.equal(renamed.headers.get('location'), path);
+    const renamedPage = await html(path);
+    assertFilters(renamedPage, 'Open', 'High');
+    assert.deepEqual(titles(renamedPage), ['Renamed high']);
+    assert.match(renamedPage, /aria-label="Complete Renamed high"/);
+    assert.equal(await html('/'), originalList);
+
+    const priorityChanged = await post('/projects/1/tasks/5/priority', { ...selected, priority: 'Low' });
+    assert.equal(priorityChanged.headers.get('location'), path);
+    assertFilters(await html(path), 'Open', 'High');
+    assert.deepEqual(titles(await html(path)), []);
+    assert.deepEqual(titles(await html('/projects/1?filter=Open&priorityFilter=Low')), ['Low open', 'Renamed high']);
+    assert.equal(await html('/'), originalList);
+    const completedChanged = await post('/projects/1/tasks/1', { filter: 'Open', priorityFilter: 'Low', completed: '1' });
+    assert.equal(completedChanged.headers.get('location'), '/projects/1?filter=Open&priorityFilter=Low');
+    assert.deepEqual(titles(await html(completedChanged.headers.get('location'))), ['Renamed high']);
+    const reopened = await post('/projects/1/tasks/2', { filter: 'Completed', priorityFilter: 'Low' });
+    assert.equal(reopened.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=Low');
+    assert.deepEqual(titles(await html(reopened.headers.get('location'))), ['Low open']);
+    assert.equal(await html('/'), originalList);
+
+    const beforeRestart = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), beforeRestart);
+    assert.equal(await html('/'), originalList);
+    await post('/projects/1/archive');
+    const archivedPath = '/projects/1?filter=Open&priorityFilter=Low';
+    const archivedPage = await html(archivedPath);
+    assertFilters(archivedPage, 'Open', 'Low');
+    assert.deepEqual(titles(archivedPage), ['Low done', 'Renamed high']);
+    for (const row of rows(archivedPage)) {
+      assert.match(row, /type="checkbox"[^>]*disabled/);
+      assert.match(row, /name="title"[^>]*disabled/);
+      assert.match(row, /disabled>Rename task/);
+      assert.match(row, /name="priority"[^>]*disabled/);
+    }
+    assert.deepEqual(titles(await html('/projects/1?filter=Completed&priorityFilter=High')), ['High done']);
+    const blocked = await post('/projects/1/tasks/5/priority', { filter: 'Open', priorityFilter: 'Low', priority: 'High' });
+    assert.equal(blocked.status, 403);
+    assertFilters(await blocked.text(), 'Open', 'Low');
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html(archivedPath), archivedPage);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), beforeRestart);
+    assert.equal(await html('/'), originalList);
+    const projectList = await html('/');
+    const openPath = projectList.match(/action="(\/projects\/1)"/)[1];
+    assertFilters(await html(openPath), 'All', 'All');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
