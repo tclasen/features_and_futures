@@ -8,12 +8,14 @@ const db = new DatabaseSync(process.env.DB_PATH || './workboard.sqlite');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const getProjects = db.prepare(`SELECT p.id, p.name, p.archived, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completed, COUNT(t.id) AS total FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const getTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const getTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -82,6 +84,18 @@ const server = http.createServer(async (req, res) => {
     if (!title) return json(400, { error: 'Task title is required' });
     const result = renameTask.run(title, decodeURIComponent(renameTaskMatch[2]), projectId);
     return result.changes ? json(200, { status: 'ok', title }) : json(404, { error: 'Not found' });
+  }
+  const priorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/priority$/);
+  if (req.method === 'PATCH' && priorityMatch) {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    const projectId = decodeURIComponent(priorityMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return json(404, { error: 'Not found' });
+    if (project.archived) return json(403, { error: 'Archived project' });
+    if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(400, { error: 'Invalid priority' });
+    const result = updatePriority.run(body.priority, decodeURIComponent(priorityMatch[2]), projectId);
+    return result.changes ? json(200, { status: 'ok' }) : json(404, { error: 'Not found' });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (req.method === 'PATCH' && taskMatch) {
