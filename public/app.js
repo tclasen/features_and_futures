@@ -36,8 +36,9 @@ let appliedProjectQuery = '';
 let appliedTaskQuery = '';
 
 function matchesSearch(text, query) {
-  const fold = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
-  return fold(text).includes(fold(query));
+  const normalize = value => value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return normalize(text).includes(normalize(query));
 }
 
 projectSearchForm.addEventListener('submit', event => {

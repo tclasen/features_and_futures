@@ -184,9 +184,9 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
       assert.deepEqual(await response.json(), { error: 'Task title is required' });
       assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
     }
-    const renamedTask = await renameTask(`${firstTasks}/${firstTask.id}`, '  Renamed completed task  ');
+    const renamedTask = await renameTask(`${firstTasks}/${firstTask.id}`, '  Renamed \t completed  TASK  ');
     assert.equal(renamedTask.status, 200);
-    firstTask.title = 'Renamed completed task';
+    firstTask.title = 'Renamed \t completed  TASK';
     assert.deepEqual(await renamedTask.json(), firstTask);
     const renamedOpenTask = await renameTask(`${firstTasks}/${secondTask.id}`, '  Renamed open task  ');
     assert.equal(renamedOpenTask.status, 200);
@@ -206,9 +206,9 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
       assert.deepEqual(await response.json(), { error: 'Project name is required' });
       assert.deepEqual(await get(`/api/projects/${first.id}`), first);
     }
-    const renamed = await rename('  Renamed project  ');
+    const renamed = await rename('  Renamed \t PROJECT  ');
     assert.equal(renamed.status, 200);
-    first.name = 'Renamed project';
+    first.name = 'Renamed \t PROJECT';
     assert.deepEqual(await renamed.json(), first);
     assert.deepEqual(await get('/api/projects'), [existing, first, second]);
     assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);

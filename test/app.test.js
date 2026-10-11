@@ -78,6 +78,40 @@ async function searchApp(pathname, projects, tasks = []) {
   return { element, location, writes, search };
 }
 
+test('search collapses only ASCII spaces and tabs while preserving displayed and saved text', async () => {
+  const names = ['Alpha  \t TEAM', 'alpha team', 'Alpha\nTEAM', 'Alpha\u00a0TEAM'];
+  for (const archived of [false, true]) {
+    const projects = names.map((name, index) => ({
+      id: String(index), name, archived, completed: 0, total: 0, default_task_priority: 'Normal',
+    }));
+    const tasks = names.map((title, index) => ({
+      id: String(index), title, completed: false, priority: 'Normal', due_date: '',
+    }));
+    const saved = structuredClone({ projects, tasks });
+    for (const kind of ['project', 'task']) {
+      const path = kind === 'project' ? '/' : '/projects/0';
+      const app = await searchApp(path, projects, tasks);
+      if (kind === 'project' && archived) {
+        app.element('#project-filter').value = 'archived';
+        await app.element('#project-filter').dispatch('change');
+      }
+      const visible = () => app.element(`#${kind}-list`).children
+        .map(row => row.children[kind === 'project' ? 0 : 1].textContent);
+      for (const query of ['alpha team', ' \tALPHA\t \tTEAM\n ', 'pha\t\t te']) {
+        await app.search(kind, query);
+        assert.deepEqual(visible(), names.slice(0, 2));
+      }
+      await app.search(kind, ' \t\n ');
+      assert.deepEqual(visible(), names);
+      assert.equal(app.writes.length, 0);
+      const fresh = await searchApp(path, projects, tasks);
+      if (kind === 'task') assert.deepEqual(fresh.element('#task-list').children
+        .map(row => row.children[1].textContent), names);
+    }
+    assert.deepEqual({ projects, tasks }, saved);
+  }
+});
+
 test('project search applies ASCII substring rules and intersects archive state without changing summaries', async () => {
   const projects = [
     { id: 'a', name: 'Alpha  TEAM', archived: false, completed: 2, total: 3 },
@@ -105,7 +139,7 @@ test('project search applies ASCII substring rules and intersects archive state 
   await filter('active');
   assert.deepEqual(names(), ['Alpha  TEAM', 'alpha team']);
   await search('project', 'alpha  team');
-  assert.deepEqual(names(), ['Alpha  TEAM']);
+  assert.deepEqual(names(), ['Alpha  TEAM', 'alpha team']);
   await search('project', 'älpha');
   assert.deepEqual(names(), []);
   await search('project', 'ÄLPHA');
@@ -151,8 +185,8 @@ test('task search retains intersecting filters through edits, creation, default 
   await search('task', ' \tAlPHA\n ');
   assert.deepEqual(titles(), ['Alpha  TASK', 'alpha task', 'Alpha undated']);
   await search('task', 'alpha  task');
-  assert.deepEqual(titles(), ['Alpha  TASK']);
-  await search('task', 'alpha');
+  assert.deepEqual(titles(), ['Alpha  TASK', 'alpha task']);
+  await search('task', 'alpha\t \ttask');
   await changeFilter('#task-filter', 'open');
   await changeFilter('#priority-filter', 'High');
   element('#due-from').value = '2024-03-01';
@@ -164,12 +198,12 @@ test('task search retains intersecting filters through edits, creation, default 
     assert.equal(element('#priority-filter').value, 'High');
     assert.equal(element('#due-from').value, '2024-03-01');
     assert.equal(element('#due-through').value, '2024-03-31');
-    assert.equal(element('#task-search').value, 'alpha');
+    assert.equal(element('#task-search').value, 'alpha\t \ttask');
   };
   const rename = rows()[0].children[2];
-  rename.children[0].value = 'ALPHA renamed';
+  rename.children[0].value = 'ALPHA \t TASK renamed';
   await rename.dispatch('submit');
-  assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete ALPHA renamed');
+  assert.equal(rows()[0].children[0].attributes['aria-label'], 'Complete ALPHA \t TASK renamed');
   assertSelections();
   rename.children[0].value = 'No longer matches';
   await rename.dispatch('submit');

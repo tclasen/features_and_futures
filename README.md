@@ -113,7 +113,9 @@ archive/restore, completion summaries, and repeated process restarts.
 Project search and Search projects apply a trimmed substring query to project names,
 intersecting the Active/Archived filter. Task search and Search tasks use the same
 rules for task titles and intersect completion, priority, and the applied due range.
-Only ASCII letter case is ignored; internal query whitespace remains significant.
+Matching ignores ASCII letter case and treats each run of ASCII spaces and tabs in
+the query and saved name/title as one space. Saved names and titles retain their
+original internal whitespace and case; other internal whitespace remains significant.
 Search retains the other filters and all-task summaries. Task edits, renames,
 creation, and moves immediately refresh membership without resetting search.
 Search works on archived projects while editing remains disabled. Opening a project
