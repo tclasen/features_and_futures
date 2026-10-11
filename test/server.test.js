@@ -32,6 +32,64 @@ async function start(databasePath) {
   };
 }
 
+test('directory reads original/imported ownership and reserved order without mutation across restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
+  const databasePath = join(directory, 'data.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    async function request(path, method = 'GET', body) {
+      const response = await fetch(`${server.url}${path}`, {
+        method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+      });
+      assert.ok(response.ok, `${method} ${path}: ${response.status}`);
+      return response.json();
+    }
+    const first = await request('/api/projects', 'POST', { name: 'First owner' });
+    const second = await request('/api/projects', 'POST', { name: 'Second owner' });
+    const source = `/api/projects/${first.id}/tasks`;
+    const destination = `/api/projects/${second.id}/tasks`;
+    const a = await request(source, 'POST', { title: 'First task' });
+    const b = await request(source, 'POST', { title: 'Deleted task' });
+    const c = await request(destination, 'POST', { title: 'Destination task' });
+    const fields = { priority: 'High', dueDate: '0001-01-01', notes: '  α <b>plain</b>\r\nlast  ', completed: true };
+    for (const [field, value] of Object.entries(fields)) await request(`${source}/${a.id}`, 'PATCH', { [field]: value });
+    await request(`${source}/${b.id}`, 'PATCH', { deleted: true });
+    await request(`${source}/${a.id}`, 'PATCH', { destinationProjectId: second.id });
+    let rows = await request('/api/directory');
+    assert.deepEqual(rows.map((row) => row.id), [b.id, c.id, a.id]);
+    assert.equal(rows[2].projectId, second.id);
+    await request(`${destination}/${a.id}`, 'PATCH', { destinationProjectId: first.id });
+    await request(`/api/projects/${first.id}`, 'PATCH', { name: 'Renamed owner' });
+    await request(`/api/projects/${second.id}`, 'PATCH', { archived: true });
+    const exported = await request(`/api/projects/${first.id}/export`);
+    const copy = await request('/api/projects/import', 'POST', { name: 'Independent copy', projectJson: JSON.stringify(exported) });
+    const copyTasks = await request(`/api/projects/${copy.id}/tasks`);
+    const before = await request('/api/projects');
+    rows = await request('/api/directory');
+    assert.deepEqual(rows.map((row) => row.id), [a.id, b.id, c.id, ...copyTasks.map((task) => task.id)]);
+    assert.deepEqual(rows[0], { ...a, ...fields, projectId: first.id, projectName: 'Renamed owner', projectArchived: false });
+    assert.equal(rows[1].deleted, true);
+    assert.equal(rows[2].projectArchived, true);
+    assert.equal(rows[3].projectId, copy.id);
+    assert.equal(rows[3].notes, fields.notes.replace(/\r\n/g, '\n'));
+    assert.equal(rows[4].deleted, true);
+    for (let i = 0; i < 3; i++) assert.deepEqual(await request('/api/directory'), rows);
+    assert.deepEqual(await request('/api/projects'), before);
+    assert.deepEqual(await request(`/api/projects/${first.id}/export`), exported);
+    assert.equal((await fetch(`${server.url}/directory`)).status, 200);
+    const rejected = await fetch(`${server.url}/api/directory`, { method: 'POST', body: '{}' });
+    assert.equal(rejected.status, 404);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await request('/api/directory'), rows);
+    assert.deepEqual(await request('/api/projects'), before);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('legacy project databases migrate without losing IDs or tasks', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
@@ -61,6 +119,10 @@ test('legacy project databases migrate without losing IDs or tasks', async () =>
       },
     };
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/export`)).json(), portable);
+    assert.deepEqual(await (await fetch(`${server.url}/api/directory`)).json(), [
+      { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false,
+        projectId: 17, projectName: 'Legacy', projectArchived: false },
+    ]);
     await server.stop();
     server = await start(databasePath);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);

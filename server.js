@@ -71,6 +71,11 @@ const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WH
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+// A single read includes deleted tasks and follows current ownership and reserved order.
+const listDirectoryTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority,
+  t.dueDate, t.notes, t.deleted, p.id AS projectId, p.name AS projectName,
+  p.archived AS projectArchived FROM projects p JOIN tasks t ON t.project_id = p.id
+  ORDER BY p.id, t.position, t.id`);
 const getTask = database.prepare('SELECT id, title, completed, priority, dueDate, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const nextTaskPosition = database.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS position
@@ -206,6 +211,11 @@ const server = createServer(async (request, response) => {
   try {
     const path = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && path === '/health') return json(response, 200, { status: 'ok' });
+    if (request.method === 'GET' && path === '/api/directory') {
+      return json(response, 200, listDirectoryTasks.all().map((task) => ({
+        ...taskJson(task), projectArchived: Boolean(task.projectArchived),
+      })));
+    }
     if (path === '/api/projects') {
       if (request.method === 'GET') return json(response, 200, listProjects.all().map(projectJson));
       if (request.method === 'POST') {
@@ -337,7 +347,7 @@ const server = createServer(async (request, response) => {
         return json(response, 200, projectJson(getProject.get(projectId)));
       }
     }
-    const asset = assets.get(/^\/projects\/\d+$/.test(path) ? '/' : path);
+    const asset = assets.get(path === '/directory' || /^\/projects\/\d+$/.test(path) ? '/' : path);
     if (request.method === 'GET' && asset) {
       response.writeHead(200, { 'Content-Type': asset[0] });
       return response.end(asset[1]);

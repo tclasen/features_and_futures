@@ -39,6 +39,95 @@ class Node {
 const browserSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const source = `${normalizeDueDate.toString()}\n${browserSource.replace("import { normalizeDueDate } from '/due-date.js';", '')}`;
 
+test('directory is read-only, intersects all filters, preserves drafts, and resets on reopening', async () => {
+  const tasks = [
+    { id: 1, projectId: 1, projectName: 'Owner only', projectArchived: false, title: 'Alpha  \tTASK', completed: false, priority: 'High', dueDate: '2000-02-29', notes: '  α <b>literal</b>\nlast  ', deleted: false },
+    { id: 2, projectId: 1, projectName: 'Owner only', projectArchived: false, title: 'Alpha task done', completed: true, priority: 'Normal', dueDate: '', notes: 'hidden keyword', deleted: false },
+    { id: 3, projectId: 1, projectName: 'Owner only', projectArchived: false, title: 'Alpha task deleted', completed: true, priority: 'High', dueDate: '2000-02-29', notes: '', deleted: true },
+    { id: 4, projectId: 2, projectName: 'Archived owner', projectArchived: true, title: 'Alpha task archived', completed: false, priority: 'High', dueDate: '2000-02-29', notes: '', deleted: false },
+    { id: 5, projectId: 2, projectName: 'Archived owner', projectArchived: true, title: 'Alpha task archived deleted', completed: true, priority: 'High', dueDate: '2000-02-29', notes: '', deleted: true },
+  ];
+  const original = structuredClone(tasks);
+  const navigations = [];
+  function open() {
+    const app = new Node('main');
+    runInNewContext(source, {
+      document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+      location: { pathname: '/directory', assign(path) { navigations.push(path); } },
+      async fetch(path, options) {
+        assert.equal(options, undefined, 'Directory must never write');
+        assert.equal(path, '/api/directory');
+        return { ok: true, json: async () => structuredClone(tasks) };
+      },
+    });
+    return app;
+  }
+  const app = open();
+  await new Promise((resolve) => setImmediate(resolve));
+  const scope = app.children.find((node) => node.className === 'project-filter').children[1];
+  const filters = app.children.find((node) => node.className === 'task-filter');
+  const completion = filters.children[1];
+  const priority = filters.children[3];
+  const range = formWithLabel(app, 'Due from');
+  const search = formWithLabel(app, 'Directory search');
+  const list = app.querySelector('ul');
+  const titles = () => list.children.map((row) => row.children[0].textContent);
+  assert.deepEqual(scope.children.map((node) => node.textContent), ['Active', 'Archived']);
+  assert.deepEqual(completion.children.map((node) => node.textContent), ['All', 'Open', 'Completed', 'Deleted']);
+  assert.deepEqual(priority.children.map((node) => node.textContent), ['All', 'Low', 'Normal', 'High']);
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title]);
+  const row = list.children[0];
+  assert.equal(row.dataset.testid, 'directory-task-row');
+  assert.deepEqual(row.children.slice(0, 6).map((node) => node.dataset.testid), [
+    'directory-task-title', 'directory-project-name', 'directory-task-completion',
+    'directory-task-priority', 'directory-task-due-date', 'directory-task-notes',
+  ]);
+  assert.deepEqual(row.children.slice(0, 6).map((node) => node.textContent), [tasks[0].title, 'Owner only', 'Open', 'High', '2000-02-29', tasks[0].notes]);
+  assert.ok(list.children.every((row) => row.children.every((node) => ['div', 'button'].includes(node.tag))));
+  for (const query of ['hidden keyword', 'Owner only', '<b>']) {
+    search.children[1].value = query;
+    await search.fire('submit');
+    assert.deepEqual(titles(), []);
+  }
+  search.children[1].value = '  ALPHA\t  TASK  ';
+  await search.fire('submit');
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title]);
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  range.children[1].value = range.children[3].value = ' 2000-02-29 ';
+  await range.fire('submit');
+  assert.deepEqual(titles(), [tasks[0].title]);
+  range.children[1].value = '1900-02-29';
+  await range.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Due range must use valid YYYY-MM-DD dates');
+  assert.deepEqual(titles(), [tasks[0].title]);
+  range.children[1].value = '2000-03-01';
+  await range.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Due from must not be after Due through');
+  completion.value = 'Deleted';
+  await completion.fire('change');
+  assert.deepEqual(titles(), [tasks[2].title]);
+  scope.value = 'Archived';
+  await scope.fire('change');
+  assert.deepEqual(titles(), [tasks[4].title]);
+  assert.equal(priority.value, 'High');
+  assert.equal(completion.value, 'Deleted');
+  assert.equal(range.children[1].value, '2000-03-01');
+  assert.equal(search.children[1].value, 'ALPHA\t  TASK');
+  await list.children[0].children[6].fire('click');
+  await app.children.find((node) => node.textContent === 'Projects').fire('click');
+  assert.deepEqual(navigations, ['/projects/2', '/']);
+  const reopened = open();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(reopened.querySelector('ul').children.map((row) => row.children[0].textContent), [tasks[0].title, tasks[1].title]);
+  assert.equal(formWithLabel(reopened, 'Directory search').children[1].value, '');
+  assert.equal(formWithLabel(reopened, 'Due from').children[1].value, '');
+  assert.equal(formWithLabel(reopened, 'Due from').children[3].value, '');
+  assert.deepEqual(tasks, original);
+});
+
 for (const scenario of ['active', 'archived', 'no destinations']) {
   test(`task move controls: ${scenario}`, async () => {
     const app = new Node('main');
@@ -1129,4 +1218,8 @@ test('home import labels, rejected-input retention, and successful navigation', 
   await form.fire('submit');
   assert.deepEqual(navigations, ['/projects/42']);
   assert.equal(app.querySelector('[role="alert"]'), undefined);
+  const directory = app.children.find((node) => node.textContent === 'Task directory');
+  assert.equal(directory.tag, 'button');
+  await directory.fire('click');
+  assert.deepEqual(navigations, ['/projects/42', '/directory']);
 });

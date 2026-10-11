@@ -144,7 +144,10 @@ async function showProjects() {
       create.disabled = false;
     }
   });
-  app.append(form, projectImportControl(), filters, search.form, list);
+  const directory = element('button', 'Task directory');
+  directory.type = 'button';
+  directory.addEventListener('click', () => location.assign('/directory'));
+  app.append(directory, form, projectImportControl(), filters, search.form, list);
   // Enable creation only after the initial list has loaded, preserving ordering.
   create.disabled = true;
   try {
@@ -197,6 +200,128 @@ function projectImportControl() {
   return form;
 }
 
+// Shared controls keep directory and project filtering/validation semantics identical.
+function taskFilters(onChange) {
+  const filters = element('div');
+  filters.className = 'task-filter';
+  function selectControl(labelText, id, values) {
+    const label = element('label', labelText);
+    label.htmlFor = id;
+    const select = element('select');
+    select.id = id;
+    for (const value of values) {
+      const option = element('option', value);
+      option.value = value;
+      select.append(option);
+    }
+    select.addEventListener('change', onChange);
+    filters.append(label, select);
+    return select;
+  }
+  const completion = selectControl('Task filter', 'task-filter', ['All', 'Open', 'Completed', 'Deleted']);
+  const priority = selectControl('Priority filter', 'priority-filter', ['All', 'Low', 'Normal', 'High']);
+  const rangeForm = element('form');
+  function boundary(labelText, id) {
+    const label = element('label', labelText);
+    label.htmlFor = id;
+    const input = element('input');
+    input.id = id;
+    input.type = 'text';
+    rangeForm.append(label, input);
+    return input;
+  }
+  const fromInput = boundary('Due from', 'due-from');
+  const throughInput = boundary('Due through', 'due-through');
+  const apply = element('button', 'Apply due range');
+  apply.type = 'submit';
+  rangeForm.append(apply);
+  let from = '';
+  let through = '';
+  rangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    app.querySelector('[role="alert"]')?.remove();
+    const nextFrom = normalizeDueDate(fromInput.value);
+    const nextThrough = normalizeDueDate(throughInput.value);
+    if (nextFrom === null || nextThrough === null) {
+      showAlert('Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (nextFrom && nextThrough && nextFrom > nextThrough) {
+      showAlert('Due from must not be after Due through');
+      return;
+    }
+    fromInput.value = from = nextFrom;
+    throughInput.value = through = nextThrough;
+    onChange();
+  });
+  return {
+    filters, rangeForm,
+    matches: (task) =>
+      (completion.value === 'Deleted' ? task.deleted : !task.deleted
+        && (completion.value === 'All'
+          || (completion.value === 'Completed' ? task.completed : !task.completed)))
+      && (priority.value === 'All' || task.priority === priority.value)
+      && ((!from && !through) || (task.dueDate
+        && (!from || task.dueDate >= from)
+        && (!through || task.dueDate <= through))),
+  };
+}
+
+async function showDirectory() {
+  document.title = 'Task directory — Workboard';
+  app.replaceChildren(element('h1', 'Task directory'));
+  const back = element('button', 'Projects');
+  back.type = 'button';
+  back.addEventListener('click', () => location.assign('/'));
+  const scopeLabel = element('label', 'Project scope');
+  scopeLabel.htmlFor = 'project-scope';
+  const scope = element('select');
+  scope.id = scopeLabel.htmlFor;
+  for (const value of ['Active', 'Archived']) {
+    const option = element('option', value);
+    option.value = value;
+    scope.append(option);
+  }
+  const scopeControl = element('div');
+  scopeControl.className = 'project-filter';
+  scopeControl.append(scopeLabel, scope);
+  const controls = taskFilters(renderDirectory);
+  const search = searchControl('Directory search', 'Search directory', 'directory-search', renderDirectory);
+  const list = element('ul');
+  list.className = 'directory';
+  let tasks = [];
+  function renderDirectory() {
+    list.replaceChildren(...tasks.filter((task) =>
+      task.projectArchived === (scope.value === 'Archived')
+      && controls.matches(task) && search.matches(task.title)).map((task) => {
+      const row = element('li');
+      row.dataset.testid = 'directory-task-row';
+      for (const [field, text] of [
+        ['title', task.title], ['project-name', task.projectName],
+        ['completion', task.completed ? 'Completed' : 'Open'],
+        ['priority', task.priority], ['due-date', task.dueDate], ['notes', task.notes],
+      ]) {
+        const value = element('div', text);
+        value.dataset.testid = field === 'project-name' ? 'directory-project-name' : `directory-task-${field}`;
+        row.append(value);
+      }
+      const open = element('button', 'Open project');
+      open.type = 'button';
+      open.addEventListener('click', () => location.assign(`/projects/${task.projectId}`));
+      row.append(open);
+      return row;
+    }));
+  }
+  scope.addEventListener('change', renderDirectory);
+  app.append(back, scopeControl, controls.filters, controls.rangeForm, search.form, list);
+  try {
+    tasks = await api('/api/directory');
+    renderDirectory();
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
 async function showTasks(project) {
   const projectId = project.id;
   const archived = Boolean(project.archived);
@@ -216,76 +341,13 @@ async function showTasks(project) {
   create.disabled = true;
   form.append(titleLabel, input, create);
 
-  const filterLabel = element('label', 'Task filter');
-  filterLabel.htmlFor = 'task-filter';
-  const filter = element('select');
-  filter.id = 'task-filter';
-  for (const value of ['All', 'Open', 'Completed', 'Deleted']) {
-    const option = element('option', value);
-    option.value = value;
-    filter.append(option);
-  }
-  const filters = element('div');
-  filters.className = 'task-filter';
-  const priorityFilterLabel = element('label', 'Priority filter');
-  priorityFilterLabel.htmlFor = 'priority-filter';
-  const priorityFilter = element('select');
-  priorityFilter.id = 'priority-filter';
-  for (const value of ['All', 'Low', 'Normal', 'High']) {
-    const option = element('option', value);
-    option.value = value;
-    priorityFilter.append(option);
-  }
-  filters.append(filterLabel, filter, priorityFilterLabel, priorityFilter);
-  let appliedFrom = '';
-  let appliedThrough = '';
-  const rangeForm = element('form');
-  const fromLabel = element('label', 'Due from');
-  fromLabel.htmlFor = 'due-from';
-  const fromInput = element('input');
-  fromInput.id = fromLabel.htmlFor;
-  fromInput.type = 'text';
-  const throughLabel = element('label', 'Due through');
-  throughLabel.htmlFor = 'due-through';
-  const throughInput = element('input');
-  throughInput.id = throughLabel.htmlFor;
-  throughInput.type = 'text';
-  const applyRange = element('button', 'Apply due range');
-  applyRange.type = 'submit';
-  rangeForm.append(fromLabel, fromInput, throughLabel, throughInput, applyRange);
-  rangeForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    app.querySelector('[role="alert"]')?.remove();
-    const from = normalizeDueDate(fromInput.value);
-    const through = normalizeDueDate(throughInput.value);
-    if (from === null || through === null) {
-      showAlert('Due range must use valid YYYY-MM-DD dates');
-      return;
-    }
-    if (from && through && from > through) {
-      showAlert('Due from must not be after Due through');
-      return;
-    }
-    appliedFrom = from;
-    appliedThrough = through;
-    fromInput.value = from;
-    throughInput.value = through;
-    renderTasks();
-  });
+  const controls = taskFilters(renderTasks);
   const list = element('ul');
   list.className = 'tasks';
 
   const search = searchControl('Task search', 'Search tasks', 'task-search', renderTasks);
   function renderTasks() {
-    const visible = tasks.filter((task) =>
-      search.matches(task.title) &&
-      (filter.value === 'Deleted' ? task.deleted : !task.deleted
-        && (filter.value === 'All'
-          || (filter.value === 'Completed' ? task.completed : !task.completed)))
-      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
-      && ((!appliedFrom && !appliedThrough) || (task.dueDate
-        && (!appliedFrom || task.dueDate >= appliedFrom)
-        && (!appliedThrough || task.dueDate <= appliedThrough))));
+    const visible = tasks.filter((task) => search.matches(task.title) && controls.matches(task));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li');
       row.dataset.testid = 'task-row';
@@ -433,8 +495,6 @@ async function showTasks(project) {
     }));
   }
 
-  filter.addEventListener('change', renderTasks);
-  priorityFilter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;
@@ -462,7 +522,7 @@ async function showTasks(project) {
       create.disabled = archived;
     }
   });
-  app.append(form, filters, rangeForm, search.form, defaultPriorityControl(project), list);
+  app.append(form, controls.filters, controls.rangeForm, search.form, defaultPriorityControl(project), list);
   const [savedTasks, projects] = await Promise.all([api(endpoint), api('/api/projects')]);
   tasks = savedTasks;
   destinations = projects.filter((candidate) => !candidate.archived && candidate.id !== projectId);
@@ -575,6 +635,6 @@ async function showProject(id) {
 }
 
 const match = location.pathname.match(/^\/projects\/(\d+)$/);
-(match ? showProject(match[1]) : showProjects()).finally(() => {
+(match ? showProject(match[1]) : location.pathname === '/directory' ? showDirectory() : showProjects()).finally(() => {
   app.setAttribute('aria-busy', 'false');
 });
