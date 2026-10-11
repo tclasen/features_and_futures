@@ -144,6 +144,40 @@ function taskRenameForm(project, task, endpoint, onRename) {
   return form;
 }
 
+function taskPriorityControl(project, task, endpoint) {
+  const label = element('label', 'Task priority');
+  const select = element('select');
+  select.id = `task-priority-${task.id}`;
+  label.htmlFor = select.id;
+  select.disabled = project.archived;
+  for (const priority of ['Low', 'Normal', 'High']) {
+    const option = element('option', priority);
+    option.value = priority;
+    select.append(option);
+  }
+  select.value = task.priority;
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    try {
+      const updated = await request(`${endpoint}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: select.value }),
+      });
+      task.priority = updated.priority;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      select.value = task.priority;
+      select.disabled = project.archived;
+    }
+  });
+  const controls = element('div');
+  controls.append(label, select);
+  return controls;
+}
+
 async function renderTasks(project) {
   const endpoint = `/api/projects/${project.id}/tasks`;
   const form = element('form');
@@ -206,7 +240,8 @@ async function renderTasks(project) {
         }
       });
       row.append(element('span', task.title), checkbox,
-        taskRenameForm(project, task, endpoint, displayTasks));
+        taskRenameForm(project, task, endpoint, displayTasks),
+        taskPriorityControl(project, task, endpoint));
       list.append(row);
     }
   }

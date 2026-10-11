@@ -25,11 +25,16 @@ blank; renaming preserves task ownership, creation order, completion, filter
 membership, and project summaries. The completion checkbox label follows the new
 title. Archived projects disable task renaming until restored. Task titles persist
 across restarts.
+Each task has a Task priority selector with Low, Normal, and High options. Existing
+and new tasks default to Normal. Priority changes persist independently without
+changing completion, ownership, order, or summaries, and renaming preserves priority.
+Archived projects disable priority edits until restored.
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
-Run automated HTTP and persistence tests with `npm test`. Tests use a temporary
+Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
 SQLite database and verify validation, creation order, project lookup, page/asset
 routes, task ownership, completion updates, archive/restore restrictions, summaries,
-project and task rename validation and identity preservation, legacy database migration, and
+project and task rename validation and identity preservation, independent task priorities,
+priority validation and archive restrictions, legacy database migration, and
 persistence through process restarts.
