@@ -107,6 +107,9 @@ export function projectListPage(projects, error = '', filter = 'Active', search 
 
 export function taskDirectoryPage(tasks, state, errors = {}) {
   const { scope, filter, priority, range, search } = state;
+  const canEdit = scope === 'Active' && filter !== 'Deleted';
+  const canComplete = canEdit && tasks.some((task) => !task.completed);
+  const canReopen = canEdit && tasks.some((task) => task.completed);
   const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
   const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority);
   const boundaries = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
@@ -137,6 +140,12 @@ export function taskDirectoryPage(tasks, state, errors = {}) {
       <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}">
       <button type="submit">Search directory</button>
     </form>
+    <form class="task-filter" method="post" action="/directory/complete">
+      ${selections}${boundaries}${hidden('search', search)}
+      <button type="submit"${canComplete ? '' : ' disabled'}>Complete visible tasks</button>
+      <button type="submit" formaction="/directory/reopen"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
+    </form>
+    ${tasks.length === 0 ? '<p role="status">No matching tasks</p>' : ''}
     <div class="projects">
       ${tasks.map((task) => `<div class="task-row" data-testid="directory-task-row">
         <div class="directory-field" data-testid="directory-task-title">${escapeHtml(task.title)}</div>

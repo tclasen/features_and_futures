@@ -203,10 +203,33 @@ function directoryState(parameters) {
   };
 }
 
-function renderDirectory(state, errors = {}) {
-  const tasks = listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+function directoryTasks(state) {
+  return listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
     .filter((task) => matchesTask(task, state.filter, state.priority, state.range, state.search));
-  return taskDirectoryPage(tasks, state, errors);
+}
+
+function directoryLocation(state) {
+  const query = new URLSearchParams({
+    scope: state.scope, filter: state.filter, priorityFilter: state.priority,
+    dueFrom: state.range.from, dueThrough: state.range.through, search: state.search,
+  });
+  return `/directory?${query}`;
+}
+
+function renderDirectory(state, errors = {}) {
+  return taskDirectoryPage(directoryTasks(state), state, errors);
+}
+
+function setDirectoryCompletion(state, completed) {
+  // Resolve membership and update together, preserving all other task fields.
+  if (state.scope !== 'Active' || state.filter === 'Deleted') return;
+  inTransaction(() => {
+    for (const task of directoryTasks(state)) {
+      if (Boolean(task.completed) !== completed) {
+        updateTask.run(Number(completed), task.id, task.project_id);
+      }
+    }
+  });
 }
 
 function redirect(response, location) {
@@ -244,6 +267,10 @@ const server = createServer(async (request, response) => {
       send(response, 200, renderProjects(projectFilter(searchParams.get('filter')), '', normalizeSearch(searchParams.get('search'))));
     } else if (request.method === 'GET' && pathname === '/directory') {
       send(response, 200, renderDirectory(directoryState(searchParams)));
+    } else if (request.method === 'POST' && ['/directory/complete', '/directory/reopen'].includes(pathname)) {
+      const state = directoryState(await readForm(request));
+      setDirectoryCompletion(state, pathname === '/directory/complete');
+      redirect(response, directoryLocation(state));
     } else if (request.method === 'POST' && pathname === '/directory/due-range') {
       const form = await readForm(request);
       const state = directoryState(form);
@@ -256,11 +283,7 @@ const server = createServer(async (request, response) => {
         }));
         return;
       }
-      const query = new URLSearchParams({
-        scope: state.scope, filter: state.filter, priorityFilter: state.priority,
-        dueFrom: range.from, dueThrough: range.through, search: state.search,
-      });
-      redirect(response, `/directory?${query}`);
+      redirect(response, directoryLocation({ ...state, range }));
     } else if (request.method === 'POST' && pathname === '/projects/import') {
       const form = await readForm(request, 10 * 1024 * 1024);
       const json = form.get('json') ?? '';

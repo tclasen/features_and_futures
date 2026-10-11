@@ -148,7 +148,7 @@ Additional JSON properties cannot supply internal IDs or remembered positions.
 Imported tasks follow the same editing, restoration, movement, and persistence
 rules as other tasks. Import form bodies support up to 10 MiB.
 
-Task directory on the home page opens `/directory`, a read-only cross-project
+Task directory on the home page opens `/directory`, a cross-project
 view. Each opening starts with Active project scope, All task and priority filters,
 and empty search and due range. Scope, live/deleted status, priority, inclusive
 due boundaries, and title-only search intersect using the same rules as project
@@ -159,3 +159,14 @@ priority, dates, and literal multiline notes are displayed without editing contr
 Open project uses the owner's bare URL to reset project-page filters; Projects
 returns to the home page with its default filters. Viewing and filtering never
 write project or task data.
+
+Complete visible tasks and Reopen visible tasks change only the completion state
+of matching live tasks in Active scope. Each action resolves the current filters,
+search, and applied due range and saves changes in one transaction, then returns
+to those same selections. Controls are disabled for Archived scope, Deleted,
+or when no matching task needs that completion change. Direct requests also
+preserve archived and deleted tasks. Results and project summaries reflect saved
+completion immediately, and changes persist across restarts and later moves.
+An empty directory result displays No matching tasks. Pages are rendered on the
+server after results are resolved, so no empty announcement appears during a
+pending result update.
