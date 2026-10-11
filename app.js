@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskList = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const taskRenameAlert = document.querySelector('#task-rename-alert');
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
@@ -66,6 +67,8 @@ async function showProject(id) {
     return;
   }
   const project = await response.json();
+  taskFilter.value = 'All';
+  priorityFilter.value = 'All';
   document.querySelector('#detail-heading').textContent = project.name;
   activeProjectId = id;
   activeProjectArchived = project.archived;
@@ -85,9 +88,11 @@ async function refreshTasks() {
   if (!response.ok) throw new Error('Could not load tasks');
   const tasks = await response.json();
   const filter = taskFilter.value;
+  const selectedPriority = priorityFilter.value;
   taskList.replaceChildren();
   for (const task of tasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -167,7 +172,9 @@ async function refreshTasks() {
         priority.value = task.priority;
         taskAlert.textContent = 'Unable to update task priority';
         taskAlert.hidden = false;
+        return;
       }
+      await refreshTasks();
     });
 
     row.append(title, renameForm, priority, checkbox);
@@ -240,6 +247,7 @@ renameForm.addEventListener('submit', async (event) => {
   renameInput.value = '';
 });
 taskFilter.addEventListener('change', refreshTasks);
+priorityFilter.addEventListener('change', refreshTasks);
 projectFilter.addEventListener('change', async () => renderProjects(await fetchProjects()));
 taskForm.addEventListener('submit', async (event) => {
   event.preventDefault();
