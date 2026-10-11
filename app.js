@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const taskContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const projectFilter = document.querySelector('#project-filter');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
@@ -31,6 +32,8 @@ async function loadProjects() {
     open.type = 'button';
     open.textContent = 'Open project';
     open.addEventListener('click', () => {
+      taskFilter.value = 'all';
+      priorityFilter.value = 'all';
       history.pushState({}, '', `/projects/${project.id}`);
       showRoute();
     });
@@ -107,6 +110,7 @@ async function loadTasks(projectId, archived = false) {
   for (const task of tasks) {
     if (taskFilter.value === 'open' && task.completed) continue;
     if (taskFilter.value === 'completed' && !task.completed) continue;
+    if (priorityFilter.value !== 'all' && task.priority !== priorityFilter.value) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -196,6 +200,10 @@ taskForm.addEventListener('submit', async (event) => {
   }
 });
 taskFilter.addEventListener('change', () => {
+  const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
+  if (projectId) fetch(`/api/projects/${projectId}`).then((response) => response.json()).then((project) => loadTasks(Number(projectId), project.archived));
+});
+priorityFilter.addEventListener('change', () => {
   const projectId = location.pathname.match(/^\/projects\/(\d+)$/)?.[1];
   if (projectId) fetch(`/api/projects/${projectId}`).then((response) => response.json()).then((project) => loadTasks(Number(projectId), project.archived));
 });
