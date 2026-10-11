@@ -7,14 +7,19 @@ async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
   const projects = await response.json();
+  const filter = document.querySelector('#project-filter').value;
   const container = document.querySelector('#projects');
   container.replaceChildren();
-  for (const project of projects) {
+  for (const project of projects.filter(item => item.archived === (filter === 'Archived'))) {
     const row = document.createElement('div'); row.dataset.testid = 'project-row'; row.className = 'project-row';
     const name = document.createElement('span'); name.textContent = project.name;
     const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open project';
     button.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(name, button); container.append(row);
+    const summary = document.createElement('span'); summary.dataset.testid = 'project-summary'; summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+    row.append(name, summary, button);
+    const stateButton = document.createElement('button'); stateButton.type = 'button'; stateButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+    stateButton.addEventListener('click', async () => { const action = project.archived ? 'restore' : 'archive'; const result = await fetch(`/api/projects/${project.id}/${action}`, { method: 'POST' }); if (result.ok) await loadProjects(); });
+    row.append(stateButton); container.append(row);
   }
 }
 
@@ -28,7 +33,7 @@ async function loadTasks() {
   for (const task of shown) {
     const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'project-row';
     const title = document.createElement('span'); title.textContent = task.title;
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.disabled = Boolean(window.currentProjectArchived); checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
       if (result.ok) await loadTasks(); else checkbox.checked = task.completed;
@@ -43,7 +48,12 @@ async function showPage() {
   activeProjectId = match[1]; listView.hidden = true; detailView.hidden = false;
   const response = await fetch(`/api/projects/${activeProjectId}`);
   if (!response.ok) { document.querySelector('#project-title').textContent = 'Project not found'; return; }
-  const project = await response.json(); document.querySelector('#project-title').textContent = project.name; await loadTasks();
+  const project = await response.json(); window.currentProjectArchived = project.archived;
+  document.querySelector('#project-title').textContent = project.name;
+  document.querySelector('#archived-notice').hidden = !project.archived;
+  document.querySelector('#task-title').disabled = project.archived;
+  document.querySelector('#task-form button').disabled = project.archived;
+  await loadTasks();
 }
 
 document.querySelector('#create-form').addEventListener('submit', async event => {
@@ -62,5 +72,6 @@ document.querySelector('#task-form').addEventListener('submit', async event => {
   input.value = ''; message.hidden = true; await loadTasks();
 });
 document.querySelector('#task-filter').addEventListener('change', loadTasks);
+document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
 showPage().catch(() => { alert.textContent = 'Unable to load Workboard'; alert.hidden = false; listView.hidden = false; });
