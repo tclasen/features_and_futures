@@ -408,6 +408,11 @@ function directoryPage(scope, filter, prioritySelection, range, query, error = '
       <button type="submit" name="completed" value="1"${!editable || !tasks.some(task => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${!editable || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
+    <form action="/directory/deletion" method="post">
+      ${selections}${rangeFields(range)}${searchField(query)}
+      <button type="submit" name="deleted" value="1"${!editable || tasks.length === 0 ? ' disabled' : ''}>Delete visible tasks</button>
+      <button type="submit" name="deleted" value="0"${scope !== 'Active' || filter !== 'Deleted' || tasks.length === 0 ? ' disabled' : ''}>Restore visible tasks</button>
+    </form>
     <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
     <section aria-label="Directory projects">
       ${[...owners.values()].map(owner => `<div class="project" data-testid="directory-owner-row">
@@ -584,20 +589,26 @@ const server = http.createServer(async (request, response) => {
         dueRange(url.searchParams), searchQuery(url.searchParams), '', undefined, directoryOrder(url.searchParams.get('order'))));
       return;
     }
-    if (request.method === 'POST' && path === '/directory/completion') {
+    if (request.method === 'POST' && ['/directory/completion', '/directory/deletion'].includes(path)) {
       const form = await readForm(request);
       const scope = projectFilter(form.get('scope'));
       const filter = taskFilter(form.get('filter'));
       const prioritySelection = priorityFilter(form.get('priorityFilter'));
       const range = dueRange(form);
       const query = searchQuery(form);
-      const completed = form.get('completed');
-      if (scope === 'Active' && filter !== 'Deleted' && ['0', '1'].includes(completed)) {
+      const deletion = path === '/directory/deletion';
+      const value = form.get(deletion ? 'deleted' : 'completed');
+      const eligibleFilter = deletion
+        ? (value === '0' ? filter === 'Deleted' : filter !== 'Deleted')
+        : filter !== 'Deleted';
+      if (scope === 'Active' && eligibleFilter && ['0', '1'].includes(value)) {
         transaction(() => {
           const tasks = matchingDirectoryTasks(scope, filter, prioritySelection, range, query);
           for (const task of tasks) {
-            if (task.completed !== Number(completed)) {
-              updateTask.run(Number(completed), task.id, task.project_id);
+            if (deletion) {
+              setTaskDeleted.run(Number(value), task.id, task.project_id);
+            } else if (task.completed !== Number(value)) {
+              updateTask.run(Number(value), task.id, task.project_id);
             }
           }
         });

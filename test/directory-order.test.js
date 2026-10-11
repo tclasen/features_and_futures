@@ -59,8 +59,8 @@ test('directory ordering is stable, code-point based, retained by actions, and n
     const filtered = await get(`/directory?${new URLSearchParams(selection)}`);
     assert.deepEqual(titles(filtered), ['Beta', 'bETA']);
     assert.match(filtered, /<option selected>Title/);
-    // Search, range and bulk forms carry order; scope/filter/order share one form.
-    assert.equal((filtered.match(/name="order" value="Title"/g) || []).length, 3);
+    // Search, range and both bulk forms carry order; scope/filter/order share one form.
+    assert.equal((filtered.match(/name="order" value="Title"/g) || []).length, 4);
     const invalid = await post('/directory/due-range', { ...selection, rangeFrom: '2025-02-29', rangeThrough: '' });
     const invalidHtml = await invalid.text();
     assert.match(invalidHtml, /Due range must use valid/);
