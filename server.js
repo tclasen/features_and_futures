@@ -54,14 +54,16 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/directory/bulk') {
     let body;
     try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
-    if (!Array.isArray(body.ids) || (!['complete','delete','restore'].includes(body.action) && typeof body.completed !== 'boolean')) return json(400, { error: 'Invalid request' });
-    const update = body.action === 'delete'
+    if (!Array.isArray(body.ids) || (!['complete','delete','restore','priority'].includes(body.action) && typeof body.completed !== 'boolean') || (body.action === 'priority' && !['Low','Normal','High'].includes(body.priority))) return json(400, { error: 'Invalid request' });
+    const update = body.action === 'priority'
+      ? db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND deleted = 0 AND EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.archived = 0)')
+      : body.action === 'delete'
       ? db.prepare('UPDATE tasks SET deleted = 1 WHERE id = ? AND deleted = 0 AND EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.archived = 0)')
       : body.action === 'restore'
         ? db.prepare('UPDATE tasks SET deleted = 0 WHERE id = ? AND deleted = 1 AND EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.archived = 0)')
         : db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0 AND EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.archived = 0)');
     db.exec('BEGIN');
-    try { for (const id of body.ids) { if (body.action === 'delete' || body.action === 'restore') update.run(String(id)); else update.run(body.completed ? 1 : 0, String(id)); } db.exec('COMMIT'); }
+    try { for (const id of body.ids) { if (body.action === 'delete' || body.action === 'restore') update.run(String(id)); else if (body.action === 'priority') update.run(body.priority, String(id)); else update.run(body.completed ? 1 : 0, String(id)); } db.exec('COMMIT'); }
     catch (error) { db.exec('ROLLBACK'); throw error; }
     return json(200, { status: 'ok' });
   }
