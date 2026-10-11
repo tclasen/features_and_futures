@@ -154,6 +154,34 @@ const server = createServer(async (request, response) => {
     const project = findProject.get(Number(projectMatch[1]));
     return project ? sendJson(response, 200, { ...project, archived: Boolean(project.archived) }) : sendJson(response, 404, { error: 'Project not found' });
   }
+  const exportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (request.method === 'GET' && exportMatch) {
+    const project = findProject.get(Number(exportMatch[1]));
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    const tasks = listTasks.all(Number(exportMatch[1])).map(task => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: (task.notes || '').replace(/\r\n?/g, '\n'),
+      deleted: Boolean(task.deleted),
+    }));
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.defaultTaskPriority || 'Normal',
+        tasks,
+      },
+    };
+    response.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="workboard-project.json"',
+    });
+    return response.end(JSON.stringify(document));
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);

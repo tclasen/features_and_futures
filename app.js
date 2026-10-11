@@ -131,6 +131,7 @@ async function renderProject(id) {
     history.pushState({}, '', '/');
     renderList();
   });
+  const download = element('a', 'Download project', { href: `/api/projects/${encodeURIComponent(id)}/export`, download: 'workboard-project.json' });
   const renameForm = element('form');
   const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New project name', autocomplete: 'off' });
   const renameButton = element('button', 'Rename project', { type: 'submit' });
@@ -426,7 +427,7 @@ async function renderProject(id) {
   const taskResponse = await fetch(`/api/projects/${id}/tasks`);
   if (taskResponse.ok) taskData = await taskResponse.json();
   drawTasks();
-  view.append(back, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, dueRangeForm, dueRangeAlert, searchForm, tasks);
+  view.append(back, download, renameForm, renameAlert, defaultPriority, form, alert, filter, priorityFilter, dueRangeForm, dueRangeAlert, searchForm, tasks);
   app.replaceChildren(view);
 }
 
