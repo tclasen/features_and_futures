@@ -11,6 +11,7 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS tasks (
@@ -21,6 +22,11 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+// Upgrade databases created by earlier task checkpoints.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 
 const json = (response, status, body) => {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -46,7 +52,12 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    return json(response, 200, database.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return json(response, 200, database.prepare(`
+      SELECT p.id, p.name, p.archived,
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS totalCount,
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completedCount
+      FROM projects p ORDER BY p.id
+    `).all().map((project) => ({ ...project, archived: Boolean(project.archived) })));
   }
 
   if (url.pathname === '/api/projects' && request.method === 'POST') {
@@ -66,14 +77,24 @@ const server = createServer(async (request, response) => {
 
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
-    const project = database.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    if (project) project.archived = Boolean(project.archived);
     return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
+  }
+
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (archiveMatch && request.method === 'POST') {
+    const archived = archiveMatch[2] === 'archive';
+    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?')
+      .run(archived ? 1 : 0, Number(archiveMatch[1]));
+    if (!result.changes) return json(response, 404, { error: 'Project not found' });
+    return json(response, 200, { id: Number(archiveMatch[1]), archived });
   }
 
   const projectTasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (projectTasksMatch && request.method === 'GET') {
     const projectId = Number(projectTasksMatch[1]);
-    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     return json(response, 200, database.prepare(
       'SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id'
@@ -82,8 +103,9 @@ const server = createServer(async (request, response) => {
 
   if (projectTasksMatch && request.method === 'POST') {
     const projectId = Number(projectTasksMatch[1]);
-    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
+    if (project.archived) return json(response, 409, { error: 'Archived projects cannot have new tasks' });
     let body = '';
     for await (const chunk of request) body += chunk;
     try {
@@ -100,6 +122,8 @@ const server = createServer(async (request, response) => {
 
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskMatch && request.method === 'PATCH') {
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(Number(taskMatch[1]));
+    if (project?.archived) return json(response, 409, { error: 'Archived project tasks cannot be changed' });
     let body = '';
     for await (const chunk of request) body += chunk;
     try {
