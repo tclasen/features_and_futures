@@ -36,6 +36,7 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 
@@ -116,6 +117,11 @@ const server = createServer(async (request, response) => {
     const taskId = Number(taskMatch[2]);
     let body;
     try { body = await readRequestJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    if (typeof body.title === 'string') {
+      if (!body.title.trim()) return sendJson(response, 400, { error: 'Task title is required' });
+      const result = renameTask.run(body.title.trim(), taskId, projectId);
+      return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found' });
+    }
     if (typeof body.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
     const result = updateTask.run(body.completed ? 1 : 0, taskId, projectId);
     return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found' });

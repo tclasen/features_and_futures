@@ -173,6 +173,33 @@ async function renderProject(id) {
         }
       });
       row.append(checkbox);
+      const renameForm = element('form');
+      const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', autocomplete: 'off' });
+      const renameButton = element('button', 'Rename task', { type: 'submit' });
+      renameInput.disabled = project.archived;
+      renameButton.disabled = project.archived;
+      const renameAlert = element('span', '', { role: 'alert', hidden: '' });
+      renameForm.append(renameInput, renameButton);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const title = renameInput.value.trim();
+        if (!title) {
+          renameAlert.textContent = 'Task title is required';
+          renameAlert.hidden = false;
+          return;
+        }
+        const result = await fetch(`/api/projects/${id}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }),
+        });
+        if (!result.ok) {
+          renameAlert.textContent = 'Task title is required';
+          renameAlert.hidden = false;
+          return;
+        }
+        task.title = title;
+        drawTasks();
+      });
+      row.append(renameForm, renameAlert);
       tasks.append(row);
     }
   };
