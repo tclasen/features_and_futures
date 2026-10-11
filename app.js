@@ -43,8 +43,12 @@ async function renderList() {
   await populateProjects(list, false);
 }
 
+let projectListRequest = 0;
 async function populateProjects(list, archived) {
+  const requestId = ++projectListRequest;
   const projects = await request(`/api/projects?archived=${archived}`);
+  // A slower response for the previous filter must not replace the current rows.
+  if (requestId !== projectListRequest) return;
   list.replaceChildren(...projects.map(project => {
     const row = element('div', undefined, { 'data-testid': 'project-row' });
     const name = element('span', project.name);
