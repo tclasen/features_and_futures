@@ -38,6 +38,7 @@
       const project = projects.find(item => String(item.id) === projectPath[1]);
       if (!project) { app.innerHTML = '<h1>Project not found</h1>'; return; }
       app.innerHTML = `<button type="button" id="back">Projects</button><h1 id="project-name"></h1>
+        ${project.archived ? '<p>Archived project</p>' : ''}
         <form id="task-form"><label>Task title<input name="title" aria-label="Task title"></label><button type="submit">Create task</button></form>
         <div id="alert" role="alert" aria-live="polite"></div>
         <label>Task filter<select id="task-filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
@@ -47,6 +48,7 @@
       const alert = app.querySelector('#alert');
       const form = app.querySelector('#task-form');
       const filter = app.querySelector('#task-filter');
+      if (project.archived) form.querySelector('button').disabled = true;
       async function renderTasks() {
         const response = await fetch(`/api/projects/${project.id}/tasks`);
         if (!response.ok) throw new Error('Could not load tasks');
@@ -56,7 +58,7 @@
           const row = document.createElement('div'); row.className = 'task-row'; row.dataset.testid = 'task-row';
           const title = document.createElement('span'); title.textContent = task.title;
           const label = document.createElement('label');
-          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived); checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             const response = await fetch(`/api/projects/${project.id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
             if (!response.ok) { checkbox.checked = !checkbox.checked; alert.textContent = 'Unable to update task'; return; }
@@ -78,20 +80,30 @@
   } else {
     app.innerHTML = `<h1>Workboard</h1>
       <form id="create-form"><label>Project name<input name="name" aria-label="Project name"></label><button type="submit">Create project</button></form>
-      <div id="alert" role="alert" aria-live="polite"></div><section id="projects" aria-label="Projects"></section>`;
+      <div id="alert" role="alert" aria-live="polite"></div>
+      <label>Project filter<select id="project-filter" aria-label="Project filter"><option>Active</option><option>Archived</option></select></label>
+      <section id="projects" aria-label="Projects"></section>`;
     const alert = app.querySelector('#alert');
     const form = app.querySelector('#create-form');
     async function render() {
       const projects = await loadProjects();
       const list = app.querySelector('#projects'); list.replaceChildren();
-      for (const project of projects) {
+      for (const project of projects.filter(item => Boolean(item.archived) === (app.querySelector('#project-filter').value === 'Archived'))) {
         const row = document.createElement('div'); row.className = 'project-row'; row.dataset.testid = 'project-row';
         const name = document.createElement('span'); name.textContent = project.name;
-        const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open project';
-        button.addEventListener('click', () => go(`/projects/${project.id}`));
-        row.append(name, button); list.append(row);
+        const summary = document.createElement('span'); summary.dataset.testid = 'project-summary'; summary.textContent = `${project.completedCount}/${project.totalCount} completed`;
+        const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Open project';
+        open.addEventListener('click', () => go(`/projects/${project.id}`));
+        const action = document.createElement('button'); action.type = 'button'; action.textContent = project.archived ? 'Restore project' : 'Archive project';
+        action.addEventListener('click', async () => {
+          const response = await fetch(`/api/projects/${project.id}/archive`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: !project.archived }) });
+          if (!response.ok) { alert.textContent = 'Unable to update project'; return; }
+          await render();
+        });
+        row.append(name, summary, open, action); list.append(row);
       }
     }
+    app.querySelector('#project-filter').addEventListener('change', () => render().catch(() => { alert.textContent = 'Unable to load projects'; }));
     form.addEventListener('submit', async event => {
       event.preventDefault(); const input = form.elements.name; const name = input.value.trim();
       if (!name) { alert.textContent = 'Project name is required'; return; }
