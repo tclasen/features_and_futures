@@ -8,15 +8,17 @@ function element(tag, options = {}) {
   return node;
 }
 
-async function loadProjects() {
-  const response = await fetch('/api/projects');
+async function loadProjects(filter = 'Active') {
+  const response = await fetch(`/api/projects?filter=${filter}`);
   if (!response.ok) throw new Error('Could not load projects');
   return response.json();
 }
 
 async function showProject(projectId) {
-  const projects = await loadProjects();
-  const project = projects.find((item) => String(item.id) === projectId);
+  const [activeProjects, archivedProjects] = await Promise.all([
+    loadProjects('Active'), loadProjects('Archived'),
+  ]);
+  const project = [...activeProjects, ...archivedProjects].find((item) => String(item.id) === projectId);
   if (!project) {
     history.replaceState(null, '', '/');
     await render();
@@ -28,6 +30,7 @@ async function showProject(projectId) {
   back.type = 'button';
   back.addEventListener('click', () => { location.href = '/'; });
   app.append(back, element('h1', { text: project.name }));
+  if (project.archived) app.append(element('p', { text: 'Archived project', className: 'archive-notice' }));
 
   const alert = element('p', { className: 'alert' });
   alert.setAttribute('role', 'alert');
@@ -42,6 +45,7 @@ async function showProject(projectId) {
   label.append(input);
   const create = element('button', { text: 'Create task' });
   create.type = 'submit';
+  create.disabled = project.archived;
   form.append(label, create);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -96,6 +100,7 @@ async function showProject(projectId) {
       const checkbox = element('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -132,6 +137,19 @@ async function showProjects() {
   alert.hidden = true;
   app.append(alert);
 
+  const filterLabel = element('label', { text: 'Project filter', className: 'filter-label' });
+  const filter = element('select');
+  filter.setAttribute('aria-label', 'Project filter');
+  for (const value of ['Active', 'Archived']) {
+    const option = element('option', { text: value });
+    option.value = value;
+    filter.append(option);
+  }
+  filterLabel.append(filter);
+  app.append(filterLabel);
+  const projectList = element('section', { className: 'project-list' });
+  app.append(projectList);
+
   const form = element('form');
   const label = element('label', { text: 'Project name' });
   const input = element('input');
@@ -164,16 +182,42 @@ async function showProjects() {
   });
   app.append(form);
 
-  const projects = await loadProjects();
-  for (const project of projects) {
-    const row = element('div', { className: 'project-row', testId: 'project-row' });
-    row.append(element('span', { text: project.name, className: 'project-name' }));
-    const open = element('button', { text: 'Open project' });
-    open.type = 'button';
-    open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(open);
-    app.append(row);
+  async function renderProjects() {
+    const projects = await loadProjects(filter.value);
+    projectList.replaceChildren();
+    for (const project of projects) {
+      const row = element('div', { className: 'project-row', testId: 'project-row' });
+      const details = element('div', { className: 'project-details' });
+      details.append(element('span', { text: project.name, className: 'project-name' }));
+      details.append(element('span', { text: `${project.completedCount}/${project.totalCount} completed`, testId: 'project-summary' }));
+      const actions = element('div', { className: 'project-actions' });
+      const open = element('button', { text: 'Open project' });
+      open.type = 'button';
+      open.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
+      const stateButton = element('button', { text: project.archived ? 'Restore project' : 'Archive project', className: 'secondary-button' });
+      stateButton.type = 'button';
+      stateButton.addEventListener('click', async () => {
+        stateButton.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${project.id}/archive`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ archived: !project.archived }),
+          });
+          if (!response.ok) throw new Error('Could not update project');
+          await renderProjects();
+        } catch {
+          stateButton.disabled = false;
+          alert.textContent = 'Could not update project';
+          alert.hidden = false;
+        }
+      });
+      actions.append(open, stateButton);
+      row.append(details, actions);
+      projectList.append(row);
+    }
   }
+  filter.addEventListener('change', () => { renderProjects().catch(() => { alert.textContent = 'Could not load projects'; alert.hidden = false; }); });
+  await renderProjects();
 }
 
 async function render() {

@@ -11,9 +11,15 @@ const database = new DatabaseSync(databasePath);
 database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
   )
 `);
+// Upgrade databases created by earlier Workboard tasks.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 database.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,8 +56,41 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    const projects = database.prepare('SELECT id, name FROM projects ORDER BY id').all();
+    const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
+    const projects = database.prepare(`
+      SELECT p.id, p.name, p.archived,
+        COUNT(t.id) AS totalCount,
+        SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
+    `).all(filter).map((project) => ({
+      ...project,
+      archived: Boolean(project.archived),
+      totalCount: Number(project.totalCount),
+      completedCount: Number(project.completedCount ?? 0),
+    }));
     send(response, 200, 'application/json; charset=utf-8', JSON.stringify(projects));
+    return;
+  }
+
+  const projectStateRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (projectStateRoute && request.method === 'PATCH') {
+    try {
+      const payload = await readJson(request);
+      if (typeof payload.archived !== 'boolean') {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid archive state' }));
+        return;
+      }
+      const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?')
+        .run(payload.archived ? 1 : 0, Number(projectStateRoute[1]));
+      if (result.changes === 0) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ archived: payload.archived }));
+    } catch {
+      send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
+    }
     return;
   }
 
@@ -87,6 +126,11 @@ const server = createServer(async (request, response) => {
         send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
         return;
       }
+      const projectState = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (projectState.archived) {
+        send(response, 409, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+        return;
+      }
       const payload = await readJson(request);
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       if (!title) {
@@ -108,6 +152,15 @@ const server = createServer(async (request, response) => {
     try {
       const projectId = Number(taskRoute[1]);
       const taskId = Number(taskRoute[2]);
+      const projectState = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+      if (!projectState) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      if (projectState.archived) {
+        send(response, 409, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
+        return;
+      }
       const payload = await readJson(request);
       if (typeof payload.completed !== 'boolean') {
         send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid completion state' }));
