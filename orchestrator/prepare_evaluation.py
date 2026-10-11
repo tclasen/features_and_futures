@@ -15,6 +15,34 @@ from .storage import require_space
 PLAN=Path('experiments/instruction-effects/revisions/research-v001/analysis-plan.json')
 BUILDERS_ROOT=Path('/Users/Shared/projects/features-and-futures-builders')
 
+def verify_prepared_stream(source, run, revision, exact=False):
+    """Allow only the declared fresh observer revision; repeats remain exact."""
+    if exact or revision != 'research-v014':
+        return verify_replay(source, run)
+    from .task_stream import suite_for_stage, stream_input_hash
+    from .restore_readiness import verify_restore_only_delta
+    from .workload import phase_expectations
+    left, right = task_stream(source), task_stream(run)
+    if len(left) != len(right):
+        raise ValueError('Prospective preparation omits or adds checkpoints')
+    changes = []
+    for original, prepared in zip(left, right):
+        if any(original[k] != prepared[k] for k in ('task_id', 'stage', 'packet_sha256')):
+            raise ValueError('Prospective preparation changes public task packets')
+        if phase_expectations(original) != phase_expectations(prepared):
+            raise ValueError('Prospective preparation changes cumulative phase counts')
+        stage = original['stage']
+        if 'suite_files' not in prepared and prepared['suite_hash'] != digest_json(
+                file_hashes(suite_for_stage(run, stage))):
+            raise ValueError('Prospective base suite hash differs from delivered suite')
+        changed = verify_restore_only_delta(suite_for_stage(source, stage),
+                                            suite_for_stage(run, stage))
+        changes.append({'stage': stage, 'changed_suite_files': changed})
+    return {'verified': True, 'mode': 'declared-prospective-restore-readiness',
+            'checkpoints': len(left), 'changes': changes,
+            'source_input_sha256': stream_input_hash(source),
+            'prepared_input_sha256': stream_input_hash(run)}
+
 def research_inputs(original, revision=None, replay=False):
     selected=original['experiment_revision'] if replay else (revision or 'research-v001')
     if revision is not None and revision!=selected:raise InfrastructureError('Exact replay cannot change the research revision')
@@ -177,6 +205,10 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         manifest['pricing']=price_snapshot(run/'pricing',models={b['model'] for b in original['runtime']['builder_configurations']})
         write_json(run/'definitions/pricing-mappings.json',manifest['pricing'])
     manifest['provenance']['definition_hashes']=file_hashes(run/'definitions')
+    if selected == 'research-v014' and not confirmation and not recovery:
+        base_suite_hash = digest_json(file_hashes(run/'definitions/project/acceptance'))
+        for task in manifest['tasks']:
+            task['suite_hash'] = base_suite_hash
     manifest['research']=research
     if confirmation:manifest['research']['replay_source']='runs/instruction-effects/'+source_id
     if recovery:
@@ -186,12 +218,12 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
     manifest['evidence_policy'].update(purpose='longitudinal instruction comparison',stop='Independent confirmation of all36 primary decisions in two disjoint batches',main_run='explicit research entry point')
     write_json(run/'manifest.json',manifest);(run/'manifest.sha256').write_text(digest_json(manifest)+'\n')
     write_json(run/'state.json',{'status':'prepared','accepted':{},'last_error':None})
-    verify_replay(source,run)
+    prepared_stream = verify_prepared_stream(source,run,selected,confirmation or recovery)
     write_json(run/'preflight/preparation/verified.json',{'utc':timestamp(),'source_run':source_id,'revision':selected,
         'plan_sha256':research['analysis_plan']['sha256'],'manifest_sha256':digest_json(manifest),
         'starter_commit':manifest['provenance']['starter_commit'],'starter_tree':git(seed,'rev-parse','HEAD^{tree}'),
         'latest_stable_npm':latest or None,'runtime_selection':'Exact frozen source runtime' if confirmation or recovery else 'Latest stable registry versions match the source immutable image',
-        'replay':verify_replay(source,run),'fresh_builder_roots':str(sibling),'native_model_calls':0})
+        'replay':prepared_stream,'fresh_builder_roots':str(sibling),'native_model_calls':0})
     if selected in BOUNDED_REVISIONS and confirmation:register_confirmation(source,run,batch)
     return run
 
