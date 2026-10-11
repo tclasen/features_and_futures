@@ -245,6 +245,42 @@ function taskDueDateForm(project, task, endpoint, onDueDateChange) {
   return form;
 }
 
+function taskNotesForm(project, task, endpoint, onNotesChange) {
+  const form = element('form');
+  const label = element('label', 'Task notes');
+  const textarea = element('textarea');
+  textarea.id = `task-notes-${task.id}`;
+  label.htmlFor = textarea.id;
+  textarea.name = 'notes';
+  textarea.rows = 4;
+  textarea.value = task.notes ?? '';
+  textarea.disabled = project.archived;
+  const submit = element('button', 'Save notes');
+  submit.type = 'submit';
+  submit.disabled = project.archived;
+  form.append(label, textarea, submit);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    submit.disabled = true;
+    try {
+      const updated = await request(`${endpoint}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: textarea.value }),
+      });
+      task.notes = updated.notes;
+      app.querySelector('[role="alert"]')?.remove();
+      onNotesChange();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = project.archived;
+    }
+  });
+  return form;
+}
+
 function taskMoveForm(project, task, endpoint, destinations, onMove) {
   const form = element('form');
   const label = element('label', 'Destination project');
@@ -425,6 +461,7 @@ async function renderTasks(project) {
         taskRenameForm(project, task, endpoint, displayTasks),
         taskPriorityControl(project, task, endpoint, displayTasks),
         taskDueDateForm(project, task, endpoint, displayTasks),
+        taskNotesForm(project, task, endpoint, displayTasks),
         taskMoveForm(project, task, endpoint, destinations, () => {
           tasks.splice(tasks.indexOf(task), 1);
           displayTasks();

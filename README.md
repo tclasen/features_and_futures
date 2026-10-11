@@ -82,6 +82,14 @@ query without changing other filters, ordering, saved data, or summaries. Search
 remains usable in archived projects. Opening either page (including returning via
 Projects) starts with an empty query; queries are page-local, not persisted.
 
+Each task has an optional multiline Task notes textarea and Save notes button.
+Notes are plain text and preserve spaces, line breaks, Unicode, and literal markup
+without trimming. Empty text clears notes. Notes persist through reloads, restarts,
+renaming, moves, and remembered-position returns without changing other task data,
+filters, or summaries. Searches still match names/titles only, not notes. Archived
+projects display notes but disable editing until restored. Database upgrades add
+empty notes while preserving all pre-existing data.
+
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
@@ -96,4 +104,5 @@ invalid-range preservation, live membership updates, archived range controls, sh
 legacy database migration, move destination eligibility, first-arrival append ordering,
 remembered per-project positions, reverse-order returns, reserved absent positions,
 source filter retention, ownership and summary updates, search matching and filter intersections,
-search retention after edits, and persistence through process restarts.
+search retention after edits, literal multiline notes, notes migration and clearing,
+notes archive protection and movement, and persistence through process restarts.

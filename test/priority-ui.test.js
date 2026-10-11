@@ -348,8 +348,8 @@ test('archived projects keep both filters usable and task editing disabled', asy
   await ui.change('priority-filter', 'Normal');
   assert.deepEqual(ui.titles(), ['Normal done']);
   const controls = descendants(ui.rows()[0]).filter(node =>
-    ['input', 'button', 'select'].includes(node.tagName));
-  assert.equal(controls.length, 8);
+    ['input', 'button', 'select', 'textarea'].includes(node.tagName));
+  assert.equal(controls.length, 10);
   assert.ok(controls.every(control => control.disabled));
   assert.equal(JSON.stringify(ui.tasks), original);
   assert.equal(ui.requests.length, 0);
@@ -597,4 +597,54 @@ test('search collapses only ASCII spaces and tabs without rewriting task titles'
   assert.deepEqual(ui.titles(), titles);
   assert.equal(JSON.stringify(ui.tasks), original);
   assert.equal(ui.requests.length, 0);
+});
+
+test('notes controls preserve literal text and filters without adding search matches', async () => {
+  const ui = await projectUI(false, ['2028-02-29']);
+  await ui.change('task-filter', 'Open');
+  await ui.change('priority-filter', 'High');
+  ui.byId('due-from').value = '2028-02-29';
+  ui.byId('due-through').value = '2028-02-29';
+  ui.nodes().find(node => node.children.includes(ui.byId('due-from')))
+    .listeners.submit({ preventDefault() {} });
+  submitSearch(ui.app, 'task', 'high');
+  const original = { ...ui.tasks[0] };
+  const notes = '  雪 🌍\n\n<script>literal markup</script>\t  ';
+  for (const text of [notes, ' \t\n ', '']) {
+    const textarea = ui.byId('task-notes-1');
+    const form = ui.rows()[0].children.find(node => node.children.includes(textarea));
+    assert.equal(textarea.tagName, 'textarea');
+    assert.equal(form.children[0].textContent, 'Task notes');
+    assert.equal(form.children[0].htmlFor, textarea.id);
+    assert.equal(form.children[2].textContent, 'Save notes');
+    assert.equal(textarea.value, ui.tasks[0].notes ?? '');
+    textarea.value = text;
+    await form.listeners.submit({ preventDefault() {} });
+    assert.deepEqual(ui.tasks[0], { ...original, notes: text });
+    assert.equal(ui.byId('task-notes-1').value, text);
+    assert.deepEqual(ui.titles(), ['High open']);
+    assert.equal(ui.byId('task-filter').value, 'Open');
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.byId('due-from').value, '2028-02-29');
+    assert.equal(ui.byId('due-through').value, '2028-02-29');
+    assert.equal(ui.byId('task-search').value, 'high');
+    assert.deepEqual(ui.requests.at(-1).changes, { notes: text });
+  }
+  ui.tasks[0].notes = notes;
+  submitSearch(ui.app, 'task', 'literal markup');
+  assert.deepEqual(ui.titles(), []);
+  for (const archived of [true, false]) {
+    const other = await projectUI(archived);
+    other.tasks[0].notes = notes;
+    submitSearch(other.app, 'task', 'High open');
+    const textarea = other.byId('task-notes-1');
+    const form = other.rows()[0].children.find(node => node.children.includes(textarea));
+    assert.equal(textarea.value, notes);
+    assert.equal(textarea.disabled, archived);
+    assert.equal(form.children[2].disabled, archived);
+    if (archived) {
+      await form.listeners.submit({ preventDefault() {} });
+      assert.equal(other.requests.length, 0);
+    }
+  }
 });

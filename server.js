@@ -36,6 +36,10 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Notes are plain text; upgrades initialize only this new field.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Legacy ordering column is retained for migration compatibility.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id;');
@@ -55,10 +59,10 @@ INSERT INTO task_positions (project_id, task_id, position)
   SELECT project_id, id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY position, id) FROM tasks;
 COMMIT;`);
 }
-const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
   FROM tasks t JOIN task_positions p ON p.project_id = t.project_id AND p.task_id = t.id
   WHERE t.project_id = ? ORDER BY p.position`);
-const findTask = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
+const findTask = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const rememberPosition = db.prepare(`INSERT INTO task_positions (project_id, task_id, position)
   SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?
@@ -80,6 +84,7 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id =
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const setDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const setNotes = db.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 const taskJson = task => ({ ...task, completed: Boolean(task.completed) });
 const projectSelect = `SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
@@ -186,11 +191,16 @@ const server = http.createServer(async (request, response) => {
       if (taskId !== null && request.method === 'PATCH') {
         if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
         const body = await readJson(request);
-        const changes = ['title', 'completed', 'priority', 'due_date'].filter(key => Object.hasOwn(body ?? {}, key));
+        const changes = ['title', 'completed', 'priority', 'due_date', 'notes'].filter(key => Object.hasOwn(body ?? {}, key));
         if (changes.length > 1) {
           return json(response, 400, { error: 'Task edits must be separate changes' });
         }
-        if (changes[0] === 'due_date') {
+        if (changes[0] === 'notes') {
+          if (typeof body.notes !== 'string') {
+            return json(response, 400, { error: 'Task notes must be text' });
+          }
+          setNotes.run(body.notes, projectId, taskId);
+        } else if (changes[0] === 'due_date') {
           const dueDate = typeof body.due_date === 'string' ? body.due_date.trim() : null;
           if (dueDate === null || (dueDate !== '' && !isValidDueDate(dueDate))) {
             return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
