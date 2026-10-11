@@ -89,7 +89,16 @@ async function loadTasks() {
       const result = await fetch(`/api/tasks/${task.id}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destination_project_id: destination.value }) });
       if (result.ok) await loadTasks();
     });
-    row.append(destination, moveButton); container.append(row);
+    row.append(destination, moveButton);
+    const notes = document.createElement('textarea'); notes.setAttribute('aria-label', 'Task notes'); notes.value = task.notes || ''; notes.disabled = Boolean(window.currentProjectArchived);
+    const saveNotes = document.createElement('button'); saveNotes.type = 'button'; saveNotes.textContent = 'Save notes'; saveNotes.disabled = Boolean(window.currentProjectArchived);
+    saveNotes.addEventListener('click', async () => {
+      const message = document.querySelector('#task-alert');
+      const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
+      if (!result.ok) { message.textContent = 'Unable to save notes'; message.hidden = false; return; }
+      message.hidden = true; await loadTasks();
+    });
+    row.append(notes, saveNotes); container.append(row);
   }
 }
 
