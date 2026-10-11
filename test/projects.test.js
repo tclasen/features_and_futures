@@ -7,6 +7,125 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('notes migrate safely and preserve plain text, task data, filters, movement and archive restrictions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return {
+        tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all().map((row) => ({ ...row })),
+        positions: database.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all().map((row) => ({ ...row })),
+        projects: database.prepare('SELECT * FROM projects ORDER BY id').all().map((row) => ({ ...row })),
+      };
+    } finally {
+      database.close();
+    }
+  };
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    try {
+      legacy.exec(`
+        CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+          due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+        CREATE TABLE task_project_positions (task_id INTEGER NOT NULL REFERENCES tasks(id),
+          project_id INTEGER NOT NULL REFERENCES projects(id), position INTEGER NOT NULL,
+          PRIMARY KEY (task_id, project_id), UNIQUE (project_id, position));
+        INSERT INTO projects (name, default_task_priority) VALUES ('Source', 'High'), ('Destination', 'Low');
+        INSERT INTO tasks (project_id, title, completed, priority, due_date, position) VALUES
+          (1, 'First task', 1, 'High', '2028-02-29', 1), (1, 'Second task', 0, 'Normal', '', 2);
+        INSERT INTO task_project_positions VALUES (1, 1, 1), (1, 2, 3), (2, 1, 2);
+      `);
+    } finally {
+      legacy.close();
+    }
+    const beforeMigration = snapshot();
+    server = await startServer(databasePath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    assert.deepEqual(snapshot(), {
+      ...beforeMigration, tasks: beforeMigration.tasks.map((task) => ({ ...task, notes: '' })),
+    });
+    const state = {
+      filter: 'Completed', priorityFilter: 'High', dueFrom: '2028-02-01',
+      dueThrough: '2028-02-29', search: 'first TASK',
+    };
+    const path = `/projects/1?${new URLSearchParams(state)}`;
+    const notesForm = (html, id = 1) => html.match(new RegExp(`<form[^>]*action="/projects/\\d+/tasks/${id}/notes">[\\s\\S]*?</form>`))[0];
+    const initial = await get(path);
+    assert.match(notesForm(initial), /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(notesForm(initial), /<textarea[^>]*><\/textarea>/);
+    const summary = await get('/');
+    const otherTask = snapshot().tasks[1];
+    const notes = '\n  café 日本語 📝\r\n</textarea><script>alert("literal")</script> & \'text\'\n\t  ';
+    const response = await post('/projects/1/tasks/1/notes', { ...state, notes });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), path);
+    const saved = await get(path);
+    const form = notesForm(saved);
+    assert.match(form, /name="filter" value="Completed"/);
+    assert.match(form, /name="priorityFilter" value="High"/);
+    assert.match(form, /name="dueFrom" value="2028-02-01"/);
+    assert.match(form, /name="dueThrough" value="2028-02-29"/);
+    assert.match(form, /name="search" value="first TASK"/);
+    assert.match(form, />&#10;  café 日本語 📝&#13;&#10;&lt;\/textarea&gt;&lt;script&gt;/);
+    assert.doesNotMatch(saved, /<script>/);
+    assert.deepEqual(snapshot().tasks[0], { ...beforeMigration.tasks[0], notes });
+    assert.deepEqual(snapshot().tasks[1], otherTask);
+    assert.equal(await get('/'), summary);
+    assert.equal((await get('/projects/1?search=caf%C3%A9')).includes('data-testid="task-row"'), false);
+    assert.equal((await post('/projects/2/tasks/1/notes', { notes: 'Wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/notes', { notes: 'Missing' })).status, 404);
+    await post('/projects/1/tasks', { title: 'New task' });
+    assert.equal(snapshot().tasks[2].notes, '');
+    await post('/projects/1/tasks/1/rename', { ...state, title: 'First task renamed' });
+    assert.equal(snapshot().tasks[0].notes, notes);
+    const move = await post('/projects/1/tasks/1/move', { ...state, destination: '2' });
+    assert.equal(move.headers.get('location'), path);
+    assert.equal((await get(path)).includes('data-testid="task-row"'), false);
+    assert.ok(notesForm(await get('/projects/2')).includes('&lt;script&gt;'));
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(snapshot().positions.filter((position) => position.task_id === 1), beforeMigration.positions.filter((position) => position.task_id === 1));
+    assert.deepEqual(snapshot().tasks[0], { ...beforeMigration.tasks[0], title: 'First task renamed', notes });
+    const beforeArchive = await get(path);
+    await post('/projects/1/archive');
+    const archived = await get(path);
+    assert.match(notesForm(archived), /<textarea[^>]* disabled>/);
+    assert.match(notesForm(archived), /disabled>Save notes/);
+    assert.equal((await post('/projects/1/tasks/1/notes', { notes: 'Forbidden' })).status, 403);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await get(path), archived);
+    assert.equal(snapshot().tasks[0].notes, notes);
+    await post('/projects/1/restore');
+    assert.equal(await get(path), beforeArchive);
+    // Whitespace is content; only the empty string clears notes.
+    for (const value of [' \t\n ', '']) {
+      const cleared = await post('/projects/1/tasks/1/notes', { ...state, notes: value });
+      assert.equal(cleared.status, 303);
+      assert.equal(cleared.headers.get('location'), path);
+      assert.deepEqual(snapshot().tasks[0], { ...beforeMigration.tasks[0], title: 'First task renamed', notes: value });
+    }
+    const clearedPage = await get(path);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await get(path), clearedPage);
+    assert.equal(snapshot().tasks[0].notes, '');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('due dates migrate, validate and persist independently while preserving filters and archived data', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
   const databasePath = join(directory, 'workboard.sqlite');

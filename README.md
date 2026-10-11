@@ -111,3 +111,11 @@ Applied queries travel in the URL and form
 fields through edits, movement, and validation errors; task membership is immediately
 re-evaluated after changes. Task search stays usable on archived projects. Opening
 from the project list or returning via Projects uses a bare URL with an empty query.
+
+Each task has a multiline Task notes textarea and Save notes button. Notes are
+plain text saved without trimming, including whitespace, line breaks, Unicode,
+and literal markup. Empty text clears them. Existing databases add only an empty
+notes field to each task. Notes persist through restarts, edits, moves, and remembered
+return positions without affecting other task fields, summaries, or search matching.
+Saving retains all applied filters and search. Archived projects display saved
+notes but disable editing and reject direct saves until restored.
