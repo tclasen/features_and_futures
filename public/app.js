@@ -39,10 +39,12 @@ async function loadTasks(projectId) {
   if (!response.ok) return;
   const tasks = await response.json();
   const filter = document.querySelector('#task-filter').value;
+  const priorityFilter = document.querySelector('#priority-filter').value;
   const container = document.querySelector('#tasks');
   container.replaceChildren();
   for (const task of tasks) {
-    if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
+    if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -86,7 +88,7 @@ async function loadTasks(projectId) {
     priority.disabled = checkbox.disabled;
     priority.addEventListener('change', async () => {
       const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
-      if (!response.ok) await loadTasks(projectId);
+      await loadTasks(projectId);
     });
     row.append(title, checkbox, renameInput, renameButton, priority);
     container.append(row);
@@ -149,10 +151,12 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
 });
 document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
-document.querySelector('#task-filter').addEventListener('change', () => {
-  const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
-  if (match) loadTasks(match[1]);
-});
+for (const filterId of ['#task-filter', '#priority-filter']) {
+  document.querySelector(filterId).addEventListener('change', () => {
+    const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+    if (match) loadTasks(match[1]);
+  });
+}
 document.querySelector('#task-form').addEventListener('submit', async event => {
   event.preventDefault();
   const input = document.querySelector('#task-title');
