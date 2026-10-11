@@ -10,7 +10,8 @@ mkdirSync(dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,6 +19,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
+
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) throw error;
+}
 
 function sendJson(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -36,7 +41,13 @@ const server = http.createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    return sendJson(response, 200, db.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
+    return sendJson(response, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`).all(archived).map(project => ({
+        ...project, archived: Boolean(project.archived), totalCount: Number(project.totalCount), completedCount: Number(project.completedCount)
+      })));
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
     const body = await readBody(request);
@@ -47,18 +58,27 @@ const server = http.createServer(async (request, response) => {
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && request.method === 'GET') {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(projectMatch[1]));
+    if (project) project.archived = Boolean(project.archived);
     return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && request.method === 'PATCH') {
+    const body = await readBody(request);
+    if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state must be a boolean' });
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(body.archived ? 1 : 0, Number(archiveMatch[1]));
+    return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Project not found' });
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
-    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
       return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (request.method === 'POST') {
+      if (project.archived) return sendJson(response, 409, { error: 'Archived project cannot accept tasks' });
       const body = await readBody(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
@@ -70,7 +90,7 @@ const server = http.createServer(async (request, response) => {
   if (taskMatch && request.method === 'PATCH') {
     const body = await readBody(request);
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
-    const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, Number(taskMatch[1]));
+    const result = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(body.completed ? 1 : 0, Number(taskMatch[1]));
     if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
     return sendJson(response, 200, { ok: true });
   }
