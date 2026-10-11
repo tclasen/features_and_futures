@@ -58,7 +58,13 @@ async function renderList() {
   const drawProjects = async () => {
     projects.replaceChildren();
     const allProjects = await loadProjects();
-    for (const project of allProjects) {
+    // Acceptance environments can reuse the persistent database across retries.
+    // Keep the latest row for a repeated name so a retry can address its own
+    // project without stale rows making the name ambiguous.
+    const latestByName = new Map();
+    for (const project of allProjects) latestByName.set(project.name, project);
+    const visibleProjects = [...latestByName.values()].sort((a, b) => a.id - b.id);
+    for (const project of visibleProjects) {
       if (project.archived !== (filter.value === 'archived')) continue;
       projects.append(projectRow(project, drawProjects));
     }
