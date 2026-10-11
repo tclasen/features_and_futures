@@ -97,7 +97,11 @@ const page = `<!doctype html>
   (() => {
     const filter = document.querySelector('#project-filter');
     if (!filter) return;
-    filter.addEventListener('change', () => { window.location.search = '?filter=' + encodeURIComponent(filter.value); });
+    filter.addEventListener('change', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('filter', filter.value);
+      window.location.assign(url);
+    });
     document.querySelectorAll('[data-project-action]').forEach((button) => {
       button.addEventListener('click', async () => {
         const row = button.closest('[data-testid="project-row"]');
@@ -175,7 +179,7 @@ function escapeHtml(value) {
 function renderPage(pathname, search = '') {
   let content;
   if (pathname === '/') {
-    const archivedView = new URLSearchParams(search).get('filter') === 'Archived';
+    const archivedView = new URLSearchParams(search).get('filter')?.toLowerCase() === 'archived';
     const rows = listProjects.all(archivedView ? 1 : 0).map((project) => `
       <section data-testid="project-row" data-project-id="${project.id}"><span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
@@ -183,7 +187,7 @@ function renderPage(pathname, search = '') {
         ${project.archived ? '<button type="button" data-project-action="restore">Restore project</button>' : '<button type="button" data-project-action="archive">Archive project</button>'}
       </section>`).join('');
     content = `<h1>Workboard</h1>
-      <label for="project-filter">Project filter</label><select id="project-filter"><option${archivedView ? '' : ' selected'}>Active</option><option${archivedView ? ' selected' : ''}>Archived</option></select>
+      <label for="project-filter">Project filter</label><select id="project-filter"><option value="Active"${archivedView ? '' : ' selected'}>Active</option><option value="Archived"${archivedView ? ' selected' : ''}>Archived</option></select>
       <form id="project-form"><label for="project-name">Project name</label>
         <input id="project-name" name="name" type="text"><button type="submit">Create project</button>
       </form><p role="alert" aria-live="polite"></p>${rows}`;
