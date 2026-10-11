@@ -17,6 +17,9 @@ Rows summarize completed/total tasks. Archived projects remain readable with tas
 but cannot create tasks, change completion, or rename.
 Use New project name and Rename project on active project pages to rename without
 changing the URL, creation order, or tasks. Names are trimmed and must not be blank.
+Each task row provides New task title and Rename task. Task titles are trimmed and
+must not be blank; renaming preserves ownership, order, completion, and summaries.
+Archived projects disable task renaming until restored.
 Open an active project to create tasks, toggle completion, or filter All/Open/Completed. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -28,6 +31,6 @@ npm test
 
 The integration tests use temporary databases and verify project/task validation,
 creation order, escaped names and titles, navigation, project ownership, task
-filters and completion, archive/restore, summaries, renaming and identity preservation, database migration, health,
+filters and completion, archive/restore, summaries, project and task renaming and identity preservation, database migration, health,
 and persistence across server restarts.
 Temporary files are removed afterward.
