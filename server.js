@@ -21,10 +21,19 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+// Additive migration keeps databases created by earlier checkpoints usable.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -73,7 +82,8 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    sendJson(response, 200, listProjects.all());
+    const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
+    sendJson(response, 200, listProjects.all(archived));
     return;
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
@@ -99,7 +109,8 @@ const server = createServer(async (request, response) => {
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch) {
     const projectId = Number(tasksMatch[1]);
-    if (!getProject.get(projectId)) {
+    const project = getProject.get(projectId);
+    if (!project) {
       sendJson(response, 404, { error: 'Project not found' });
       return;
     }
@@ -108,6 +119,10 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST') {
+      if (project.archived) {
+        sendJson(response, 409, { error: 'Archived projects cannot have new tasks' });
+        return;
+      }
       try {
         const { title } = await readBody(request);
         if (typeof title !== 'string' || !title.trim()) {
@@ -122,6 +137,26 @@ const server = createServer(async (request, response) => {
       return;
     }
   }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (request.method === 'PATCH' && archiveMatch) {
+    try {
+      const projectId = Number(archiveMatch[1]);
+      const { archived } = await readBody(request);
+      if (typeof archived !== 'boolean') {
+        sendJson(response, 400, { error: 'Archive state must be a boolean' });
+        return;
+      }
+      if (!getProject.get(projectId)) {
+        sendJson(response, 404, { error: 'Project not found' });
+        return;
+      }
+      setProjectArchived.run(archived ? 1 : 0, projectId);
+      sendJson(response, 200, getProject.get(projectId));
+    } catch {
+      sendJson(response, 400, { error: 'Invalid request' });
+    }
+    return;
+  }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (request.method === 'PATCH' && taskMatch) {
     try {
@@ -134,6 +169,10 @@ const server = createServer(async (request, response) => {
       }
       if (!getTask.get(taskId, projectId)) {
         sendJson(response, 404, { error: 'Task not found' });
+        return;
+      }
+      if (getProject.get(projectId).archived) {
+        sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
         return;
       }
       updateTask.run(completed ? 1 : 0, taskId, projectId);
