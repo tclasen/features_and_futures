@@ -23,6 +23,7 @@ database.exec(`
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT,
     notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
     sort_order INTEGER NOT NULL DEFAULT 0
   )
   ;
@@ -50,6 +51,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 }
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
 }
 if (!taskColumns.some((column) => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
@@ -102,8 +106,8 @@ const server = createServer(async (request, response) => {
     const archived = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
     const projects = database.prepare(`
       SELECT p.id, p.name, p.archived,
-        COUNT(t.id) AS totalCount,
-        COALESCE(SUM(t.completed), 0) AS completedCount
+        COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS totalCount,
+        COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
     `).all(archived).map((project) => ({ ...project, archived: Boolean(project.archived) }));
@@ -156,8 +160,8 @@ const server = createServer(async (request, response) => {
   }
   const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksPath && request.method === 'GET') {
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(tasksPath[1]));
-    return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(tasksPath[1]));
+    return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) })));
   }
   if (tasksPath && request.method === 'POST') {
     let title;
@@ -187,14 +191,20 @@ const server = createServer(async (request, response) => {
     }
     const taskId = Number(taskPath[1]);
     const task = database.prepare(`
-      SELECT tasks.id, tasks.project_id AS projectId, tasks.completed, projects.archived
+      SELECT tasks.id, tasks.project_id AS projectId, tasks.completed, tasks.deleted, projects.archived
       FROM tasks JOIN projects ON projects.id = tasks.project_id WHERE tasks.id = ?
     `).get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (typeof changes.deleted === 'boolean') {
+      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot delete or restore tasks' });
+      database.prepare('UPDATE tasks SET deleted = ? WHERE id = ?').run(changes.deleted ? 1 : 0, taskId);
+      return sendJson(response, 200, { id: taskId, deleted: changes.deleted });
+    }
+    if (task.deleted) return sendJson(response, 409, { error: 'Deleted tasks are read-only until restored' });
     if (changes.destinationProjectId !== undefined) {
       const destinationId = Number(changes.destinationProjectId);
       if (!Number.isInteger(destinationId)) return sendJson(response, 400, { error: 'Invalid destination project' });
-      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot move tasks' });
+      if (task.archived || task.deleted) return sendJson(response, 409, { error: 'Archived or deleted tasks cannot be moved' });
       const destination = database.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
       if (!destination || destinationId === task.projectId) return sendJson(response, 400, { error: 'Invalid destination project' });
       let position = database.prepare('SELECT sort_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);

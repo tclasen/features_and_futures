@@ -136,6 +136,7 @@ async function loadTasks() {
   const activeProjects = await projectsResponse.json();
   tasksContainer.replaceChildren();
   for (const task of tasks) {
+    if (taskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
     if (taskFilter.value === 'Open' && task.completed) continue;
     if (taskFilter.value === 'Completed' && !task.completed) continue;
     if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -146,12 +147,13 @@ async function loadTasks() {
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
+    const taskReadOnly = currentProjectArchived || task.deleted;
     const title = document.createElement('span');
     title.textContent = task.title;
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
-    checkbox.disabled = currentProjectArchived;
+    checkbox.disabled = taskReadOnly;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       await fetch(`/api/tasks/${task.id}`, {
@@ -170,7 +172,7 @@ async function loadTasks() {
       priority.append(option);
     }
     priority.value = task.priority;
-    priority.disabled = currentProjectArchived;
+    priority.disabled = taskReadOnly;
     priority.addEventListener('change', async () => {
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -185,18 +187,18 @@ async function loadTasks() {
     renameInput.type = 'text';
     renameInput.value = task.title;
     renameInput.setAttribute('aria-label', 'New task title');
-    renameInput.disabled = currentProjectArchived;
+    renameInput.disabled = taskReadOnly;
     const renameButton = document.createElement('button');
     renameButton.type = 'submit';
     renameButton.textContent = 'Rename task';
-    renameButton.disabled = currentProjectArchived;
+    renameButton.disabled = taskReadOnly;
     const renameAlert = document.createElement('span');
     renameAlert.setAttribute('role', 'alert');
     renameAlert.hidden = true;
     renameForm.append(renameInput, renameButton, renameAlert);
     renameForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (currentProjectArchived) return;
+      if (taskReadOnly) return;
       const newTitle = renameInput.value.trim();
       if (!newTitle) {
         renameAlert.textContent = 'Task title is required';
@@ -216,18 +218,18 @@ async function loadTasks() {
     dueDateInput.type = 'text';
     dueDateInput.value = task.dueDate || '';
     dueDateInput.setAttribute('aria-label', 'Task due date');
-    dueDateInput.disabled = currentProjectArchived;
+    dueDateInput.disabled = taskReadOnly;
     const saveDueDate = document.createElement('button');
     saveDueDate.type = 'submit';
     saveDueDate.textContent = 'Save due date';
-    saveDueDate.disabled = currentProjectArchived;
+    saveDueDate.disabled = taskReadOnly;
     const dueDateAlert = document.createElement('span');
     dueDateAlert.setAttribute('role', 'alert');
     dueDateAlert.hidden = true;
     dueDateForm.append(dueDateInput, saveDueDate, dueDateAlert);
     dueDateForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (currentProjectArchived) return;
+      if (taskReadOnly) return;
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -247,15 +249,15 @@ async function loadTasks() {
     const notesInput = document.createElement('textarea');
     notesInput.setAttribute('aria-label', 'Task notes');
     notesInput.value = task.notes || '';
-    notesInput.disabled = currentProjectArchived;
+    notesInput.disabled = taskReadOnly;
     const saveNotes = document.createElement('button');
     saveNotes.type = 'submit';
     saveNotes.textContent = 'Save notes';
-    saveNotes.disabled = currentProjectArchived;
+    saveNotes.disabled = taskReadOnly;
     notesForm.append(notesInput, saveNotes);
     notesForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (currentProjectArchived) return;
+      if (taskReadOnly) return;
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -278,12 +280,12 @@ async function loadTasks() {
     moveButton.type = 'submit';
     moveButton.textContent = 'Move task';
     const noDestination = destination.options.length === 0;
-    destination.disabled = currentProjectArchived || noDestination;
-    moveButton.disabled = currentProjectArchived || noDestination;
+    destination.disabled = taskReadOnly || noDestination;
+    moveButton.disabled = taskReadOnly || noDestination;
     moveForm.append(destination, moveButton);
     moveForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (currentProjectArchived || !destination.value) return;
+      if (taskReadOnly || !destination.value) return;
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -291,7 +293,19 @@ async function loadTasks() {
       });
       if (response.ok) await loadTasks();
     });
-    row.append(title, checkbox, priority, renameForm, dueDateForm, notesForm, moveForm);
+    const taskAction = document.createElement('button');
+    taskAction.type = 'button';
+    taskAction.textContent = task.deleted ? 'Restore task' : 'Delete task';
+    taskAction.disabled = currentProjectArchived;
+    taskAction.addEventListener('click', async () => {
+      if (currentProjectArchived) return;
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ deleted: !task.deleted }),
+      });
+      if (response.ok) await loadTasks();
+    });
+    row.append(title, checkbox, priority, renameForm, dueDateForm, notesForm, moveForm, taskAction);
     tasksContainer.append(row);
   }
 }
