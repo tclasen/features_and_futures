@@ -9,14 +9,19 @@ database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 )`);
 if (!database.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
+const getProject = database.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefault = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,11 +35,11 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, (SELECT default_priority FROM projects WHERE id = ?))");
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
-const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
@@ -57,13 +62,20 @@ const server = http.createServer(async (req, res) => {
     try {
       let body = '';
       for await (const chunk of req) body += chunk;
-      const name = String(JSON.parse(body).name ?? '').trim();
-      if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+      const bodyData = JSON.parse(body);
       const id = Number(renameRoute[1]);
       const project = getProject.get(id);
       if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
-      if (project.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
-      renameProject.run(name, id);
+      if (Object.hasOwn(bodyData, 'defaultPriority')) {
+        if (!['Low', 'Normal', 'High'].includes(bodyData.defaultPriority)) return send(res, 400, JSON.stringify({ error: 'Invalid default priority' }));
+        if (project.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+        updateProjectDefault.run(bodyData.defaultPriority, id);
+      } else {
+        const name = String(bodyData.name ?? '').trim();
+        if (!name) return send(res, 400, JSON.stringify({ error: 'Project name is required' }));
+        if (project.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
+        renameProject.run(name, id);
+      }
       return send(res, 200, JSON.stringify(getProject.get(id)));
     } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -104,7 +116,7 @@ const server = http.createServer(async (req, res) => {
         const title = String(JSON.parse(body).title ?? '').trim();
         if (getProject.get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
-        const result = createTask.run(projectId, title);
+        const result = createTask.run(projectId, title, projectId);
         return send(res, 201, JSON.stringify(listTasks.all(projectId).find(task => task.id === Number(result.lastInsertRowid))));
       } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
     }
