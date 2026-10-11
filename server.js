@@ -90,6 +90,31 @@ const server = createServer(async (request, response) => {
     insertProject.run(project.id, project.name, Date.now());
     return send(response, 201, project);
   }
+  if (url.pathname === '/api/import' && request.method === 'POST') {
+    let input = '';
+    for await (const chunk of request) input += chunk;
+    let data;
+    try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid project JSON' }); }
+    const priorities = ['Low', 'Normal', 'High'];
+    const portable = data?.document;
+    const doc = portable && portable.format === 'workboard-project' && portable.version === 1 && Number.isInteger(portable.version) ? portable.project : null;
+    const valid = doc && typeof doc.name === 'string' && doc.name.trim() && typeof doc.archived === 'boolean' && priorities.includes(doc.defaultPriority) && Array.isArray(doc.tasks) && doc.tasks.every(task => task && typeof task.title === 'string' && task.title.trim() && typeof task.completed === 'boolean' && priorities.includes(task.priority) && typeof task.dueDate === 'string' && (!task.dueDate || validDate(task.dueDate)) && typeof task.notes === 'string' && typeof task.deleted === 'boolean');
+    if (!valid) return send(response, 400, { error: 'Invalid project JSON' });
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (!name) return send(response, 400, { error: 'Project name is required' });
+    const projectId = randomUUID();
+    database.exec('BEGIN');
+    try {
+      database.prepare('INSERT INTO projects (id, name, created_at, archived, default_priority) VALUES (?, ?, ?, ?, ?)').run(projectId, name, Date.now(), doc.archived ? 1 : 0, doc.defaultPriority);
+      doc.tasks.forEach((task, index) => {
+        const taskId = randomUUID();
+        database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority, due_date, notes, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(taskId, projectId, task.title, task.completed ? 1 : 0, Date.now() + index, task.priority, task.dueDate || null, task.notes.replace(/\\r\\n?/g, '\\n'), task.deleted ? 1 : 0);
+        database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, projectId, index + 1);
+      });
+      database.exec('COMMIT');
+    } catch (error) { database.exec('ROLLBACK'); throw error; }
+    return send(response, 201, { id: projectId, name });
+  }
   const tasksRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
   if (tasksRoute) {
     const projectId = decodeURIComponent(tasksRoute[1]);
