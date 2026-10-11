@@ -170,3 +170,12 @@ its matching-task completion total and an `Open project` button. Owner rows
 stay in project creation order regardless of task sorting. Projects with the
 same name retain separate identities and totals. Filters, searches, date ranges
 and bulk actions refresh both the global and per-project totals together.
+
+Use `Delete visible tasks` in an Active live-task directory view to delete every
+matching task across its original owners. In the Active Deleted view, use
+`Restore visible tasks` to return matching tasks to their reserved positions.
+Both actions retain the directory filters, search, due range and ordering, and
+refresh task rows, owner totals, global totals and action eligibility together.
+Archived scope and ineligible or empty views disable these actions. Bulk deletion
+and restoration preserve all other fields, ownership and remembered positions,
+and persist across restarts. Project summaries continue to count only live tasks.
