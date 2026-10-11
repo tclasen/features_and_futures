@@ -37,6 +37,7 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function taskFilter(value) {
   return ['Open', 'Completed'].includes(value) ? value : 'All';
@@ -107,6 +108,14 @@ function projectPage(project, filter = 'All', error = '') {
             aria-label="${escapeHtml(`Complete ${task.title}`)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}
             onchange="this.form.requestSubmit()">
           <noscript><button>Save completion</button></noscript>
+        </form>
+        <form action="/projects/${project.id}/tasks/${task.id}/rename" method="post">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="input-group">
+            <input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </div>
         </form>
       </li>`).join('');
   return page(project.name, `
@@ -227,7 +236,7 @@ const server = http.createServer(async (request, response) => {
       updateArchive.run(archiveMatch[2] === 'archive' ? 1 : 0, id);
       return redirect(response, archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived');
     }
-    const match = path.match(/^\/projects\/([1-9]\d*)(?:\/(tasks)(?:\/([1-9]\d*)\/completion)?)?$/);
+    const match = path.match(/^\/projects\/([1-9]\d*)(?:\/(tasks)(?:\/([1-9]\d*)\/(completion|rename))?)?$/);
     if (match) {
       const id = Number(match[1]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -241,7 +250,14 @@ const server = http.createServer(async (request, response) => {
         if (match[3]) {
           const taskId = Number(match[3]);
           if (!Number.isSafeInteger(taskId)) return send(response, 404, 'Task not found');
-          const result = updateCompletion.run(form.get('completed') === '1' ? 1 : 0, taskId, id);
+          let result;
+          if (match[4] === 'rename') {
+            const title = (form.get('title') || '').trim();
+            if (!title) return send(response, 400, projectPage(project, filter, 'Task title is required'));
+            result = renameTask.run(title, taskId, id);
+          } else {
+            result = updateCompletion.run(form.get('completed') === '1' ? 1 : 0, taskId, id);
+          }
           if (!result.changes) return send(response, 404, 'Task not found');
         } else {
           const title = (form.get('title') || '').trim();
