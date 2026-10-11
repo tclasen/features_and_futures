@@ -127,7 +127,9 @@ async function showProjects() {
   }
 }
 
-async function showTasks(projectId, archived) {
+async function showTasks(project) {
+  const projectId = project.id;
+  const archived = Boolean(project.archived);
   const endpoint = `/api/projects/${projectId}/tasks`;
   let tasks = [];
   const saving = new Set();
@@ -276,10 +278,45 @@ async function showTasks(projectId, archived) {
       create.disabled = archived;
     }
   });
-  app.append(form, filters, list);
+  app.append(form, filters, defaultPriorityControl(project), list);
   tasks = await api(endpoint);
   renderTasks();
   create.disabled = archived;
+}
+
+function defaultPriorityControl(project) {
+  const control = element('div');
+  const label = element('label', 'Default task priority');
+  label.htmlFor = 'default-task-priority';
+  const select = element('select');
+  select.id = label.htmlFor;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', value);
+    option.value = value;
+    select.append(option);
+  }
+  select.value = project.defaultTaskPriority;
+  select.disabled = project.archived;
+  select.addEventListener('change', async () => {
+    if (select.disabled) return;
+    select.disabled = true;
+    app.querySelector('[role="alert"]')?.remove();
+    try {
+      const saved = await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultTaskPriority: select.value }),
+      });
+      Object.assign(project, saved);
+    } catch (error) {
+      showAlert(error.message);
+    } finally {
+      select.value = project.defaultTaskPriority;
+      select.disabled = project.archived;
+    }
+  });
+  control.append(label, select);
+  return control;
 }
 
 function showRenameForm(project, heading) {
@@ -339,7 +376,7 @@ async function showProject(id) {
     app.prepend(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
     showRenameForm(project, heading);
-    await showTasks(id, Boolean(project.archived));
+    await showTasks(project);
   } catch (error) {
     if (!app.querySelector('h1')) app.prepend(element('h1', 'Workboard'));
     showAlert(error.message);

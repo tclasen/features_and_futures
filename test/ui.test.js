@@ -46,12 +46,21 @@ for (const archived of [false, true]) {
     ]);
     const originalTasks = structuredClone(tasks);
     let writes = 0;
+    const project = { id: 1, name: 'Example', archived, defaultTaskPriority: 'Normal' };
+    let failDefault = false;
     runInNewContext(source, {
       document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
       location: { pathname: '/projects/1', assign() {} },
       async fetch(path, options) {
         let data;
-        if (path === '/api/projects/1') data = { id: 1, name: 'Example', archived };
+        if (path === '/api/projects/1') {
+          if (options) {
+            assert.equal(archived, false);
+            if (failDefault) return { ok: false, json: async () => ({ error: 'Unable to save default' }) };
+            Object.assign(project, JSON.parse(options.body));
+          }
+          data = { ...project };
+        }
         else if (!options) data = tasks.map((task) => ({ ...task }));
         else {
           assert.equal(archived, false);
@@ -90,6 +99,32 @@ for (const archived of [false, true]) {
       assert.equal(priority.value, 'High');
     }
     assert.equal(writes, 0);
+    assert.deepEqual(tasks, originalTasks);
+    const defaults = app.children.find((node) => node.children[0]?.textContent === 'Default task priority');
+    const defaultSelect = defaults.children[1];
+    assert.equal(defaults.children[0].htmlFor, defaultSelect.id);
+    assert.deepEqual(defaultSelect.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+    assert.equal(defaultSelect.value, 'Normal');
+    assert.equal(defaultSelect.disabled, archived);
+    const visibleBeforeDefault = titles();
+    if (archived) {
+      await defaultSelect.fire('change');
+      assert.equal(project.defaultTaskPriority, 'Normal');
+    } else {
+      defaultSelect.value = 'High';
+      await defaultSelect.fire('change');
+      assert.equal(project.defaultTaskPriority, 'High');
+      assert.equal(defaultSelect.value, 'High');
+      assert.equal(defaultSelect.disabled, false);
+      failDefault = true;
+      defaultSelect.value = 'Low';
+      await defaultSelect.fire('change');
+      assert.equal(defaultSelect.value, 'High');
+      assert.equal(app.querySelector('[role="alert"]').textContent, 'Unable to save default');
+    }
+    assert.equal(completion.value, 'Completed');
+    assert.equal(priority.value, 'High');
+    assert.deepEqual(titles(), visibleBeforeDefault);
     assert.deepEqual(tasks, originalTasks);
     if (archived) {
       assert.equal(list.children.length, 1);

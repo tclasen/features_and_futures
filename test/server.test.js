@@ -48,7 +48,7 @@ test('legacy project databases migrate without losing IDs or tasks', async () =>
     `);
     legacy.close();
     server = await start(databasePath);
-    const expected = [{ id: 17, name: 'Legacy', archived: false, totalCount: 1, completedCount: 1 }];
+    const expected = [{ id: 17, name: 'Legacy', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 }];
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/tasks`)).json(), [
       { id: 23, title: 'Saved task', completed: true, priority: 'Normal' },
@@ -290,6 +290,65 @@ test('priorities default, validate, remain independent, and persist through rena
     server = await start(databasePath);
     assert.deepEqual(await (await request(path)).json(), [{ ...saved, priority: 'Low' }, next]);
     assert.deepEqual(await (await request(`/${first.id}`)).json(), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project defaults apply only to future tasks and survive rename, archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method, body) => fetch(`${server.url}/api/projects${path}`, method ? {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    } : undefined);
+    const first = await (await request('', 'POST', { name: 'First' })).json();
+    const other = await (await request('', 'POST', { name: 'Other' })).json();
+    assert.equal(first.defaultTaskPriority, 'Normal');
+    assert.equal(other.defaultTaskPriority, 'Normal');
+    const path = `/${first.id}`;
+    const createTask = async (title) => (await request(`${path}/tasks`, 'POST', { title })).json();
+    const original = await createTask('Original');
+    await request(`${path}/tasks/${original.id}`, 'PATCH', { completed: true });
+    const patchDefault = (defaultTaskPriority) => request(path, 'PATCH', { defaultTaskPriority });
+    for (const value of ['', 'high', ' High ', null, 42]) {
+      assert.equal((await patchDefault(value)).status, 400);
+    }
+    const tasks = [{ ...original, completed: true }];
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await patchDefault(priority);
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).defaultTaskPriority, priority);
+      assert.deepEqual(await (await request(`${path}/tasks`)).json(), tasks);
+      const task = await createTask(priority);
+      assert.equal(task.priority, priority);
+      tasks.push(task);
+    }
+    assert.deepEqual(await (await request(`/${other.id}`)).json(), other);
+    await request(path, 'PATCH', { name: 'Renamed' });
+    const summary = await (await request(path)).json();
+    assert.equal(summary.defaultTaskPriority, 'High');
+    assert.equal(summary.completedCount, 1);
+    assert.equal(summary.totalCount, 4);
+    await request(path, 'PATCH', { archived: true });
+    assert.equal((await patchDefault('Low')).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), { ...summary, archived: true });
+    assert.deepEqual(await (await request(`${path}/tasks`)).json(), tasks);
+    await request(path, 'PATCH', { archived: false });
+    assert.deepEqual(await (await request(path)).json(), summary);
+    const inherited = await createTask('After restore');
+    assert.equal(inherited.priority, 'High');
+    await patchDefault('Low');
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal((await (await request(path)).json()).defaultTaskPriority, 'Low');
+    assert.deepEqual(await (await request(`${path}/tasks`)).json(), [...tasks, inherited]);
+    assert.equal((await createTask('After restart')).priority, 'Low');
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
