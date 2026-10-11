@@ -1,15 +1,19 @@
 const list = document.querySelector('#project-list');
 const detail = document.querySelector('#project-detail');
 const alertBox = document.querySelector('#alert');
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
   const projects = await response.json();
   const filter = document.querySelector('#project-filter').value;
+  const query = appliedProjectQuery.toLowerCase();
   const container = document.querySelector('#projects');
   container.replaceChildren();
   for (const project of projects) {
     if (Boolean(project.archived) !== (filter === 'Archived')) continue;
+    if (!project.name.toLowerCase().includes(query)) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -59,6 +63,7 @@ async function loadTasks(projectId) {
   for (const task of tasks) {
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+    if (!task.title.toLowerCase().includes(appliedTaskQuery.toLowerCase())) continue;
     if (appliedDueRange.from || appliedDueRange.through) {
       if (!task.due_date) continue;
       if (appliedDueRange.from && task.due_date < appliedDueRange.from) continue;
@@ -154,6 +159,8 @@ async function render() {
     document.querySelector('#due-from').value = '';
     document.querySelector('#due-through').value = '';
     document.querySelector('#range-alert').hidden = true;
+    appliedTaskQuery = '';
+    document.querySelector('#task-search').value = '';
     const response = await fetch(`/api/projects/${match[1]}`);
     if (response.ok) {
       const project = await response.json();
@@ -234,8 +241,10 @@ document.querySelector('#due-range-form').addEventListener('submit', async event
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (match) await loadTasks(match[1]);
 });
-document.querySelector('#back').addEventListener('click', () => { location.href = '/'; });
+document.querySelector('#back').addEventListener('click', () => { appliedProjectQuery = ''; document.querySelector('#project-search').value = ''; location.href = '/'; });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
+document.querySelector('#project-search-form').addEventListener('submit', async event => { event.preventDefault(); appliedProjectQuery = document.querySelector('#project-search').value.trim(); await loadProjects(); });
+document.querySelector('#task-search-form').addEventListener('submit', async event => { event.preventDefault(); appliedTaskQuery = document.querySelector('#task-search').value.trim(); const match = location.pathname.match(/^\/projects\/(\d+)\/?$/); if (match) await loadTasks(match[1]); });
 for (const filterId of ['#task-filter', '#priority-filter']) {
   document.querySelector(filterId).addEventListener('change', () => {
     const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
