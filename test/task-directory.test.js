@@ -238,6 +238,119 @@ test('directory bulk completion targets only matching active live tasks and pers
   }
 });
 
+test('directory order survives controls and bulk actions without changing stored order', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return ['projects', 'tasks', 'task_project_positions'].map((table) =>
+        database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map((row) => ({ ...row })));
+    } finally { database.close(); }
+  };
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.url}${path}`)).text();
+    const post = (path, values) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const redirect = async (path, values) => {
+      const response = await post(path, values);
+      assert.equal(response.status, 303);
+      return response.headers.get('location');
+    };
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title">(.*?)<\/div>/g)].map((match) => match[1]);
+    const path = (state) => `/directory?${new URLSearchParams(state)}`;
+    const task = (title, priority, dueDate, deleted = false) => ({
+      title, priority, dueDate, completed: false, notes: 'literal <b>notes</b>\n', deleted,
+    });
+    for (const project of [
+      { name: 'First', archived: false, defaultPriority: 'Normal', tasks: [
+        task('beta', 'Low', ''), task('Alpha', 'High', '2028-02-29'),
+        task('alpha', 'Normal', '2027-01-01'), task('Deleted z', 'Low', '', true),
+        task('Deleted a', 'High', '2028-02-29', true),
+      ] },
+      { name: 'Second', archived: false, defaultPriority: 'Low', tasks: [
+        task('ALPHA', 'High', '2028-02-29'), task('Zeta', 'Normal', ''),
+      ] },
+      { name: 'Archived', archived: true, defaultPriority: 'High', tasks: [
+        task('Archive z', 'Low', ''), task('Archive a', 'High', '2028-02-29'),
+      ] },
+    ]) {
+      await redirect('/projects/import', { importedName: project.name, json: JSON.stringify({ format: 'workboard-project', version: 1, project }) });
+    }
+    const before = snapshot();
+    const original = ['beta', 'Alpha', 'alpha', 'ALPHA', 'Zeta'];
+    const exports = await Promise.all([1, 2, 3].map((id) => get(`/projects/${id}/export`)));
+    const projectPages = await Promise.all([1, 2, 3].map((id) => get(`/projects/${id}`)));
+    assert.match(await get('/directory'), /<option selected>Original<\/option><option>Priority<\/option><option>Due date<\/option><option>Title<\/option>/);
+    for (const [order, expected] of [
+      ['Original', original], ['Priority', ['Alpha', 'ALPHA', 'alpha', 'Zeta', 'beta']],
+      ['Due date', ['alpha', 'Alpha', 'ALPHA', 'beta', 'Zeta']],
+      ['Title', ['Alpha', 'alpha', 'ALPHA', 'beta', 'Zeta']],
+    ]) assert.deepEqual(titles(await get(path({ order }))), expected);
+    assert.deepEqual(titles(await get(path({ order: 'invalid' }))), original);
+    for (const order of ['Priority', 'Due date', 'Title']) {
+      assert.deepEqual(titles(await get(path({ order, scope: 'Archived' }))), ['Archive a', 'Archive z']);
+      assert.deepEqual(titles(await get(path({ order, filter: 'Deleted' }))), ['Deleted a', 'Deleted z']);
+    }
+    const state = { scope: 'Active', filter: 'Open', priorityFilter: 'All', dueFrom: '2027-01-01', dueThrough: '2028-02-29', search: 'alpha', order: 'Due date' };
+    const filtered = await get(path(state));
+    assert.deepEqual(titles(filtered), ['alpha', 'Alpha', 'ALPHA']);
+    // All directory forms carry ordering alongside applied filters/search/range.
+    for (const form of filtered.matchAll(/<form[^>]*>[\s\S]*?<\/form>/g)) {
+      if (!form[0].includes('/directory')) continue;
+      assert.match(form[0], /name="order"/);
+      assert.match(form[0], /(?:name="order" value="Due date"|<option selected>Due date<\/option>)/);
+      assert.match(form[0], /name="dueFrom" value="2027-01-01"/);
+      assert.match(form[0], /name="dueThrough" value="2028-02-29"/);
+      assert.match(form[0], /name="search"[^>]*value="alpha"/);
+    }
+    assert.deepEqual(titles(await get(path({ ...state, priorityFilter: 'High' }))), ['Alpha', 'ALPHA']);
+    assert.deepEqual(titles(await get(path({ ...state, search: 'beta' }))), []);
+    const invalidRange = await post('/directory/due-range', { ...state, rangeFrom: '2027-02-29', rangeThrough: '' });
+    assert.equal(invalidRange.status, 400);
+    const invalidHtml = await invalidRange.text();
+    assert.match(invalidHtml, /role="alert">Due range must use valid YYYY-MM-DD dates/);
+    assert.deepEqual(titles(invalidHtml), ['alpha', 'Alpha', 'ALPHA']);
+    assert.match(invalidHtml, /<option selected>Due date<\/option>/);
+    const rangeLocation = await redirect('/directory/due-range', { ...state, rangeFrom: '2028-02-29', rangeThrough: '' });
+    assert.deepEqual(Object.fromEntries(new URL(rangeLocation, server.url).searchParams), { ...state, dueFrom: '2028-02-29', dueThrough: '' });
+    assert.deepEqual(titles(await get(rangeLocation)), ['Alpha', 'ALPHA']);
+    assert.deepEqual(snapshot(), before);
+    assert.deepEqual(await Promise.all([1, 2, 3].map((id) => get(`/projects/${id}/export`))), exports);
+    assert.deepEqual(await Promise.all([1, 2, 3].map((id) => get(`/projects/${id}`))), projectPages);
+    const completedLocation = await redirect('/directory/complete', state);
+    assert.deepEqual(Object.fromEntries(new URL(completedLocation, server.url).searchParams), state);
+    assert.match(await get(completedLocation), /role="status">No matching tasks/);
+    const expected = structuredClone(before);
+    for (const row of expected[1]) if ([2, 3, 6].includes(row.id)) row.completed = 1;
+    assert.deepEqual(snapshot(), expected);
+    const completedState = { ...state, filter: 'Completed' };
+    assert.deepEqual(titles(await get(path(completedState))), ['alpha', 'Alpha', 'ALPHA']);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), expected);
+    assert.deepEqual(titles(await get(path(completedState))), ['alpha', 'Alpha', 'ALPHA']);
+    assert.deepEqual(titles(await get('/directory')), original);
+    const reopenedLocation = await redirect('/directory/reopen', completedState);
+    assert.deepEqual(Object.fromEntries(new URL(reopenedLocation, server.url).searchParams), completedState);
+    assert.match(await get(reopenedLocation), /role="status">No matching tasks/);
+    assert.deepEqual(snapshot(), before);
+    // Directory sorting never overwrites remembered return positions.
+    await redirect('/projects/1/tasks/2/move', { destination: '2' });
+    await get(path({ order: 'Title' }));
+    await redirect('/projects/2/tasks/2/move', { destination: '1' });
+    assert.deepEqual(titles(await get('/directory')), original);
+    assert.deepEqual(snapshot()[1], before[1]);
+    assert.deepEqual(await Promise.all([1, 2, 3].map((id) => get(`/projects/${id}/export`))), exports);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
     env: { ...process.env, PORT: '0', DB_PATH: databasePath },

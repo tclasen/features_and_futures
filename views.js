@@ -1,4 +1,5 @@
 import { TASK_PRIORITIES } from './task-priorities.js';
+import { DIRECTORY_ORDERS } from './task-directory-order.js';
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -106,12 +107,12 @@ export function projectListPage(projects, error = '', filter = 'Active', search 
 }
 
 export function taskDirectoryPage(tasks, state, errors = {}) {
-  const { scope, filter, priority, range, search } = state;
+  const { scope, filter, priority, range, search, order } = state;
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
   const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
-  const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority);
+  const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority) + hidden('order', order);
   const boundaries = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
   const options = (values, selected) => values.map((value) => `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('');
   return page('Task directory', `<h1>Task directory</h1>
@@ -124,6 +125,8 @@ export function taskDirectoryPage(tasks, state, errors = {}) {
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">${options(['All', 'Open', 'Completed', 'Deleted'], filter)}</select>
       <label for="priority-filter">Priority filter</label>
       <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${options(['All', ...TASK_PRIORITIES], priority)}</select>
+      <label for="directory-order">Directory order</label>
+      <select id="directory-order" name="order" onchange="this.form.requestSubmit()">${options(DIRECTORY_ORDERS, order)}</select>
     </form>
     <form class="task-filter" method="post" action="/directory/due-range">
       ${selections}${boundaries}${hidden('search', search)}

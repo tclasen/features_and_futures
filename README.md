@@ -170,3 +170,11 @@ completion immediately, and changes persist across restarts and later moves.
 An empty directory result displays No matching tasks. Pages are rendered on the
 server after results are resolved, so no empty announcement appears during a
 pending result update.
+
+Directory order offers Original, Priority, Due date, and Title, starting at Original
+on each new opening. Priority puts High before Normal before Low; Due date orders
+calendar dates ascending before undated tasks; Title compares literal titles by
+Unicode code point after folding only ASCII uppercase letters. Ties retain the
+original project/task order. This view selection survives filtering, search,
+range validation, and bulk completion actions without writing task positions or
+changing project pages, exports, or remembered return order.

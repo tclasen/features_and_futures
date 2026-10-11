@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { projectListPage, projectPage, taskDirectoryPage } from './views.js';
 import { matchesTask } from './task-filters.js';
+import { directoryOrder, orderDirectoryTasks } from './task-directory-order.js';
 import { projectExport } from './project-export.js';
 import { parseProjectImport } from './project-import.js';
 import { normalizeSearch, matchesSearch } from './search.js';
@@ -200,6 +201,7 @@ function directoryState(parameters) {
     priority: priorityFilter(parameters.get('priorityFilter')),
     range: appliedDueRange(parameters),
     search: normalizeSearch(parameters.get('search')),
+    order: directoryOrder(parameters.get('order')),
   };
 }
 
@@ -213,11 +215,12 @@ function directoryLocation(state) {
     scope: state.scope, filter: state.filter, priorityFilter: state.priority,
     dueFrom: state.range.from, dueThrough: state.range.through, search: state.search,
   });
+  if (state.order !== 'Original') query.set('order', state.order);
   return `/directory?${query}`;
 }
 
 function renderDirectory(state, errors = {}) {
-  return taskDirectoryPage(directoryTasks(state), state, errors);
+  return taskDirectoryPage(orderDirectoryTasks(directoryTasks(state), state.order), state, errors);
 }
 
 function setDirectoryCompletion(state, completed) {
