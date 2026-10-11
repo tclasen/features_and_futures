@@ -10,10 +10,14 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 )`);
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +34,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
   FROM projects p WHERE p.archived = ? ORDER BY p.id ASC`);
-const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
@@ -40,6 +44,7 @@ const findTask = db.prepare('SELECT id, project_id AS projectId, title, complete
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0');
 
 const page = `<!doctype html>
 <html lang="en">
@@ -212,6 +217,25 @@ const page = `<!doctype html>
       const archived = document.createElement('p');
       archived.textContent = 'Archived project';
       archived.hidden = !project.archived;
+      const defaultPriorityLabel = document.createElement('label');
+      defaultPriorityLabel.htmlFor = 'default-task-priority';
+      defaultPriorityLabel.textContent = 'Default task priority';
+      const defaultPriority = document.createElement('select');
+      defaultPriority.id = 'default-task-priority';
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        defaultPriority.append(option);
+      }
+      defaultPriority.value = project.defaultPriority || 'Normal';
+      defaultPriority.disabled = Boolean(project.archived);
+      defaultPriority.addEventListener('change', async () => {
+        try {
+          const updated = await request('/api/projects/' + encodeURIComponent(id) + '/default-priority', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: defaultPriority.value }) });
+          project.defaultPriority = updated.defaultPriority;
+        } catch { defaultPriority.value = project.defaultPriority || 'Normal'; }
+      });
       const form = document.createElement('form');
       form.className = 'task-controls';
       form.noValidate = true;
@@ -376,7 +400,7 @@ const page = `<!doctype html>
         }
       });
       drawTasks();
-      app.append(back, heading, archived, renameForm, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, tasksList);
+      app.append(back, heading, archived, renameForm, defaultPriorityLabel, defaultPriority, form, error, filterLabel, filter, priorityFilterLabel, priorityFilter, tasksList);
     }
 
     if (escPath) {
@@ -435,6 +459,23 @@ const server = http.createServer(async (request, response) => {
     } catch { sendJson(response, 400, { error: 'Invalid request' }); }
     return;
   }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (request.method === 'PATCH' && defaultPriorityMatch) {
+    try {
+      const projectId = Number(defaultPriorityMatch[1]);
+      const data = await readBody(request);
+      if (!['Low', 'Normal', 'High'].includes(data.priority)) {
+        sendJson(response, 400, { error: 'Invalid default task priority' });
+        return;
+      }
+      const project = findProject.get(projectId);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot change default task priority' }); return; }
+      updateDefaultPriority.run(data.priority, projectId);
+      sendJson(response, 200, { ...project, defaultPriority: data.priority, archived: false });
+    } catch { sendJson(response, 400, { error: 'Invalid request' }); }
+    return;
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
   if (request.method === 'PATCH' && archiveMatch) {
     try {
@@ -473,8 +514,10 @@ const server = http.createServer(async (request, response) => {
           sendJson(response, 400, { error: 'Task title is required' });
           return;
         }
-        const result = addTask.run(projectId, title);
-        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
+        const project = findProject.get(projectId);
+        if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot create tasks' }); return; }
+        const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.defaultPriority || 'Normal');
+        sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority || 'Normal' });
       } catch { sendJson(response, 400, { error: 'Invalid request' }); }
       return;
     }
