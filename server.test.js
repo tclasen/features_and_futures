@@ -8,6 +8,90 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runInNewContext } from 'node:vm';
 
+test('directory totals follow resolved intersections, ordering and bulk updates without mutating other data', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-summary-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const task = (title, completed, priority = 'High', dueDate = '2024-02-29', deleted = false) =>
+      ({ title, completed, priority, dueDate, notes: ' exact\n雪 <b> ', deleted });
+    for (const [name, archived, tasks] of [
+      ['First', false, [task('Needle  one', false), task('Needle two', true), task('Other', false, 'Low', ''), task('Deleted one', true, 'High', '', true)]],
+      ['Second', false, [task('Needle three', false), task('Deleted two', false, 'Low', '', true)]],
+      ['Archived', true, [task('Archived one', true), task('Archived two', false), task('Archived deleted', true, 'Normal', '', true)]],
+    ]) {
+      const response = await post('/projects/import', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Normal', tasks },
+      }) });
+      assert.equal(response.status, 303);
+    }
+    const snapshot = () => {
+      const db = new DatabaseSync(dbPath);
+      try { return ['projects', 'tasks', 'task_positions'].map((table) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map((row) => ({ ...row }))); }
+      finally { db.close(); }
+    };
+    const check = (body, completed, total) => {
+      const summaries = [...body.matchAll(/data-testid="directory-summary">([^<]*)<\/p>/g)];
+      assert.equal(summaries.length, 1);
+      assert.equal(summaries[0][1], `${completed}/${total} completed`);
+      assert.equal([...body.matchAll(/data-testid="directory-task-row"/g)].length, total);
+      assert.equal([...body.matchAll(/data-testid="directory-task-completion">Completed/g)].length, completed);
+      assert.equal(body.includes('role="status">No matching tasks'), total === 0);
+    };
+    const before = snapshot();
+    for (const [query, completed, total] of [
+      ['', 1, 4], ['filter=Open', 0, 3], ['filter=Completed', 1, 1],
+      ['filter=Deleted', 1, 2], ['scope=Archived', 1, 2],
+      ['scope=Archived&filter=Deleted', 1, 1], ['priorityFilter=Low', 0, 1],
+      ['dueFrom=2024-02-29&dueThrough=2024-02-29', 1, 3],
+      ['searchQuery=Needle', 1, 3], ['searchQuery=missing', 0, 0],
+    ]) {
+      for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+        check(await get('/directory?' + query + '&order=' + encodeURIComponent(order)), completed, total);
+      }
+    }
+    const selected = { scope: 'Active', filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', searchQuery: 'Needle', order: 'Title' };
+    const searched = await post('/directory/search', { ...selected, query: '  NEEDLE\t one  ' });
+    check(await get(searched.headers.get('location')), 0, 1);
+    const ranged = await post('/directory/due-range', { ...selected, rangeFrom: '2024-03-01', rangeThrough: '' });
+    check(await get(ranged.headers.get('location')), 0, 0);
+    const invalid = await post('/directory/due-range', { ...selected, rangeFrom: '2023-02-29' });
+    assert.equal(invalid.status, 422);
+    check(await invalid.text(), 0, 2);
+    assert.deepEqual(snapshot(), before);
+    const complete = await post('/directory/completion', { ...selected, completed: '1' });
+    const completePath = complete.headers.get('location');
+    check(await get(completePath), 0, 0);
+    assert.match(await get(completePath), /<option selected>Title/);
+    check(await get('/directory'), 3, 4);
+    assert.match(await get('/'), /data-testid="project-summary">2\/3 completed/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/1 completed/);
+    const expected = structuredClone(before);
+    expected[1][0].completed = 1;
+    expected[1][4].completed = 1;
+    assert.deepEqual(snapshot(), expected);
+    await app.stop();
+    app = await launch(dbPath);
+    check(await get(completePath), 0, 0);
+    check(await get('/directory'), 3, 4);
+    const reopen = await post('/directory/completion', { ...selected, filter: 'Completed', completed: '0' });
+    check(await get(reopen.headers.get('location')), 0, 0);
+    check(await get('/directory'), 0, 4);
+    check(await get('/directory?filter=Deleted'), 1, 2);
+    check(await get('/directory?scope=Archived'), 1, 2);
+    assert.match(await get('/'), /data-testid="project-summary">0\/3 completed/);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('filtered checkbox edits save without navigation or disconnecting the interacted control', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-checkbox-'));
   const dbPath = join(dir, 'workboard.sqlite');

@@ -363,6 +363,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <button type="submit" name="completed" value="0"${bulkDisabled || !tasks.some((task) => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
     <section class="projects" aria-label="Directory tasks">
+      <p data-testid="directory-summary">${tasks.filter((task) => task.completed).length}/${tasks.length} completed</p>
       ${tasks.length ? tasks.map((task) => `<div class="task" data-testid="directory-task-row">
         <h2 data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</h2>
         <p data-testid="directory-project-name" style="white-space: pre-wrap">${escapeHtml(task.project_name)}</p>

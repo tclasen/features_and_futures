@@ -159,3 +159,8 @@ whitespace. Ties retain original project/task order. The selection stays through
 filtering, searches, date ranges and bulk actions; each new directory opening
 starts at Original. Ordering never changes stored order, exports or remembered
 return positions.
+
+The directory summary shows completed tasks out of all tasks in the current
+filtered result, including retained completion flags in Deleted views. Sorting
+does not affect these totals. Empty resolved results show `0/0 completed` and
+`No matching tasks`; project summaries still count only their own live tasks.
