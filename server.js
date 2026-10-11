@@ -35,6 +35,16 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Preserve historical creation order, while allowing moves to append in a project.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
+}
+const destinationsFor = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+const moveTask = db.prepare(`
+  UPDATE tasks SET project_id = ?,
+    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE id = ? AND project_id = ?
+`);
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed
@@ -46,8 +56,9 @@ const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? 
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -178,6 +189,8 @@ function projectList(error = '', filter = 'Active') {
 }
 
 function projectPage(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }) {
+  const destinations = destinationsFor.all(project.id);
+  const moveDisabled = project.archived || destinations.length === 0;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${range.from}">
       <input type="hidden" name="dueThrough" value="${range.through}">`;
   const tasks = listTasks.all(project.id).filter(task =>
@@ -261,6 +274,16 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
         <label for="task-due-date-${task.id}">Task due date</label>
         <div class="fields"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
         <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button></div>
+      </form>
+      <form method="post" action="/projects/${project.id}/tasks/${task.id}/move">
+        ${rangeFields}
+        <input type="hidden" name="filter" value="${filter}">
+        <input type="hidden" name="priorityFilter" value="${priority}">
+        <label for="destination-project-${task.id}">Destination project</label>
+        <select id="destination-project-${task.id}" name="destination"${moveDisabled ? ' disabled' : ''}>
+          ${destinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+        </select>
+        <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
       </form>
       <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
         ${rangeFields}
@@ -379,7 +402,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
     }
-    const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?$/);
+    const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?$/);
     if (request.method === 'POST' && taskMatch) {
       const project = findProject.get(taskMatch[1]);
       if (project) {
@@ -407,7 +430,15 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           let result;
-          if (taskMatch[3] === 'due-date') {
+          if (taskMatch[3] === 'move') {
+            const destinationId = body.get('destination') || '';
+            const destination = /^[1-9]\d*$/.test(destinationId) ? findProject.get(destinationId) : null;
+            if (!destination || destination.archived || destination.id === project.id) {
+              sendHtml(response, 400, projectPage(project, filter, 'Choose an active destination project', selectedPriority, dueRange(body)));
+              return;
+            }
+            result = moveTask.run(destination.id, destination.id, taskMatch[2], project.id);
+          } else if (taskMatch[3] === 'due-date') {
             result = setTaskDueDate.run(dueDate, taskMatch[2], project.id);
           } else if (taskMatch[3] === 'rename') {
             result = renameTask.run(title, taskMatch[2], project.id);
@@ -426,7 +457,7 @@ const server = http.createServer(async (request, response) => {
             sendHtml(response, 400, projectPage(project, filter, 'Task title is required', selectedPriority, dueRange(body)));
             return;
           }
-          createTask.run(project.id, title, project.default_priority);
+          createTask.run(project.id, title, project.default_priority, project.id);
         }
         redirect(response, projectLocation(project.id, filter, selectedPriority, dueRange(body)));
         return;

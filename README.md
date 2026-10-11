@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open http://localhost:8080. The server binds to `0.0.0.0`; defaults are port
 8080 and database `data/workboard.sqlite`. Use the same `DB_PATH` across restarts
-to preserve projects, task titles, priorities, due dates, project priority defaults, completion state, and archive state. Existing databases
+to preserve projects, task titles, priorities, due dates, project priority defaults, completion state, archive state, and task ownership/order. Existing databases
 are migrated automatically. `GET /health` returns `{"status":"ok"}`.
 
 ## Verify
@@ -39,3 +39,6 @@ Due-range checks cover inclusive and unbounded boundaries, undated tasks, inters
 with completion and priority filters, invalid applications preserving the applied range,
 selection retention and immediate re-filtering across edits, and archived filtering.
 Reopening a project from the list resets all task filters and due-range boundaries.
+Move checks cover active destination options, disabled controls, source ownership validation,
+append ordering (including migrated tasks and subsequent creations), preserved task data,
+source filter retention, updated summaries, repeat moves, and restart persistence.
