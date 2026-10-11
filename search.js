@@ -1,6 +1,7 @@
-// Search folds only ASCII letters; punctuation and internal whitespace are literal.
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+// Normalize only for matching; stored text and applied queries stay unchanged.
+function matchingText(value) {
+  return value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 export function normalizeSearch(value) {
@@ -8,5 +9,5 @@ export function normalizeSearch(value) {
 }
 
 export function matchesSearch(value, query) {
-  return foldAscii(value).includes(foldAscii(normalizeSearch(query)));
+  return matchingText(value).includes(matchingText(normalizeSearch(query)));
 }

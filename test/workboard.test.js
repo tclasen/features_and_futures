@@ -1368,6 +1368,65 @@ test('per-project positions migrate current order, reserve absent slots, and res
   }
 });
 
+test('space and tab search preserves original project and task text across restart and archive', async () => {
+  const directory = await mkdtemp(join(process.cwd(), '.workboard-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let running;
+  try {
+    running = await start(databasePath);
+    const get = async (path) => (await fetch(`${running.baseUrl}${path}`)).text();
+    const post = (path, values = {}) => fetch(`${running.baseUrl}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const names = (html, kind) => [...html.matchAll(new RegExp(`data-testid="${kind}-row"[^>]*>\\s*<span>(.*?)</span>`, 'g'))]
+      .map((match) => match[1]);
+    const projectName = 'MiXeD \t  Board';
+    const taskTitle = 'Do\t \t  Work';
+    await post('/projects', { name: projectName });
+    await post('/projects', { name: 'Mixed Board' });
+    await post('/projects/1/tasks', { title: taskTitle });
+    await post('/projects/1/tasks', { title: 'Do Work' });
+    await post('/projects/1/tasks/1/completion', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2026-10-11' });
+    const projectPath = `/?${new URLSearchParams({ search: ' mixed\t \tboard ' })}`;
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-11', dueThrough: '2026-10-11', search: 'do \t  work' };
+    const taskPath = `/projects/1?${new URLSearchParams(filters)}`;
+    const list = await get(projectPath);
+    assert.deepEqual(names(list, 'project'), [projectName, 'Mixed Board']);
+    assert.match(list, /data-testid="project-summary">1\/2 completed/);
+    const page = await get(taskPath);
+    assert.deepEqual(names(page, 'task'), [taskTitle]);
+    assert.ok(page.includes(`aria-label="Complete ${taskTitle}" checked`));
+    assert.ok(page.includes(`id="task-search" name="search" type="text" value="${filters.search}"`));
+    assert.deepEqual(names(await get('/projects/1'), 'task'), [taskTitle, 'Do Work']);
+    assert.deepEqual(names(await get('/'), 'project'), [projectName, 'Mixed Board']);
+    await running.stop();
+    running = undefined;
+    running = await start(databasePath);
+    assert.equal(await get(projectPath), list);
+    assert.equal(await get(taskPath), page);
+    await post('/projects/1/archive');
+    assert.deepEqual(names(await get(`${projectPath}&filter=Archived`), 'project'), [projectName]);
+    const archived = await get(taskPath);
+    assert.deepEqual(names(archived, 'task'), [taskTitle]);
+    assert.ok(archived.includes(`aria-label="Complete ${taskTitle}" checked disabled`));
+    await post('/projects/1/restore');
+    assert.equal(await get(taskPath), page);
+    // Searches only affect matching, never the persisted presentation text.
+    const database = new DatabaseSync(databasePath);
+    try {
+      assert.equal(database.prepare('SELECT name FROM projects WHERE id = 1').get().name, projectName);
+      assert.equal(database.prepare('SELECT title FROM tasks WHERE id = 1').get().title, taskTitle);
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (running) await running.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('search intersects filters, survives edits and moves, and resets at navigation boundaries', async () => {
   const directory = await mkdtemp(join(process.cwd(), '.workboard-test-'));
   const databasePath = join(directory, 'workboard.sqlite');
@@ -1396,7 +1455,7 @@ test('search intersects filters, survives edits and moves, and resets at navigat
     assert.match(html, /<button type="submit">Search projects<\/button>/);
     assert.deepEqual(fields(formAt(html, '/')), { search: 'aLpHa' });
     assert.deepEqual(projectNames(await get('/?filter=Archived&search=aLpHa')), ['Archived alpha']);
-    assert.deepEqual(projectNames(await get('/?search=alpha++board')), ['Alpha  board']);
+    assert.deepEqual(projectNames(await get('/?search=alpha++board')), ['Alpha  board', 'ALPHA board']);
     assert.deepEqual(projectNames(await get('/?search=%20%20')), ['Alpha  board', 'ALPHA board', 'Beta']);
     assert.deepEqual(projectNames(await get('/')), ['Alpha  board', 'ALPHA board', 'Beta']);
     // Search and filter forms carry each other's applied values.
@@ -1432,7 +1491,7 @@ test('search intersects filters, survives edits and moves, and resets at navigat
     assert.deepEqual(fields(filterForm), { dueFrom: filters.dueFrom, dueThrough: filters.dueThrough, search: filters.search });
     const searchForm = [...html.matchAll(/<form[^>]*class="search-form">([\s\S]*?)<\/form>/g)][0][1];
     assert.deepEqual(fields(searchForm), { filter: filters.filter, priorityFilter: filters.priorityFilter, dueFrom: filters.dueFrom, dueThrough: filters.dueThrough });
-    assert.deepEqual(taskTitles(await get(path.replace('search=aLpHa', 'search=alpha++item'))), ['Alpha  item']);
+    assert.deepEqual(taskTitles(await get(path.replace('search=aLpHa', 'search=alpha++item'))), ['Alpha  item', 'ALPHA item']);
     assert.deepEqual(taskTitles(await get(path.replace('search=aLpHa', 'search='))), ['Alpha  item', 'ALPHA item', 'Beta item']);
     assert.deepEqual(taskTitles(await get(path.replace('filter=Completed', 'filter=Open'))), []);
     assert.deepEqual(taskTitles(await get(path.replace('priorityFilter=High', 'priorityFilter=Low'))), []);
