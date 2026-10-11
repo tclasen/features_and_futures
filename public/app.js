@@ -65,7 +65,7 @@ async function render() {
     form.append(label, input, submit, alert);
     const filterLabel = element('label', { for: 'task-filter' }, 'Task filter');
     const filter = element('select', { id: 'task-filter' });
-    for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', { value }, value));
+    for (const value of ['All', 'Open', 'Completed', 'Deleted']) filter.append(element('option', { value }, value));
     const priorityFilterLabel = element('label', { for: 'priority-filter' }, 'Priority filter');
     const priorityFilter = element('select', { id: 'priority-filter' });
     for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', { value }, value));
@@ -102,6 +102,7 @@ async function render() {
       tasks.replaceChildren();
       for (const task of items) {
         if (!normalizeSearch(task.title).includes(normalizeSearch(taskQuery))) continue;
+        if (filter.value === 'Deleted' ? !task.deleted : Boolean(task.deleted)) continue;
         if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
         if ((appliedFrom || appliedThrough) && (!task.dueDate ||
@@ -112,8 +113,8 @@ async function render() {
         const renameInput = element('input', { type: 'text', 'aria-label': 'New task title', value: task.title });
         const renameButton = element('button', { type: 'button' }, 'Rename task');
         const renameAlert = element('span', { role: 'alert', hidden: '' });
-        renameInput.disabled = Boolean(project.archived);
-        renameButton.disabled = Boolean(project.archived);
+        renameInput.disabled = Boolean(project.archived || task.deleted);
+        renameButton.disabled = Boolean(project.archived || task.deleted);
         renameButton.addEventListener('click', async () => {
           const title = renameInput.value.trim();
           if (!title) { renameAlert.textContent = 'Task title is required'; renameAlert.hidden = false; renameInput.focus(); return; }
@@ -126,7 +127,7 @@ async function render() {
         const priority = element('select', { 'aria-label': 'Task priority' });
         for (const value of ['Low', 'Normal', 'High']) priority.append(element('option', { value }, value));
         priority.value = task.priority || 'Normal';
-        priority.disabled = Boolean(project.archived);
+        priority.disabled = Boolean(project.archived || task.deleted);
         priority.addEventListener('change', async () => {
           try {
             await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
@@ -137,8 +138,8 @@ async function render() {
         const dueDate = element('input', { type: 'text', 'aria-label': 'Task due date', value: task.dueDate || '' });
         const saveDueDate = element('button', { type: 'button', 'aria-label': 'Save due date' }, 'Save due date');
         const dueDateAlert = element('span', { role: 'alert', hidden: '' });
-        dueDate.disabled = Boolean(project.archived);
-        saveDueDate.disabled = Boolean(project.archived);
+        dueDate.disabled = Boolean(project.archived || task.deleted);
+        saveDueDate.disabled = Boolean(project.archived || task.deleted);
         saveDueDate.addEventListener('click', async () => {
           try {
             await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dueDate: dueDate.value }) });
@@ -151,8 +152,8 @@ async function render() {
         notes.value = task.notes || '';
         const saveNotes = element('button', { type: 'button', 'aria-label': 'Save notes' }, 'Save notes');
         const notesAlert = element('span', { role: 'alert', hidden: '' });
-        notes.disabled = Boolean(project.archived);
-        saveNotes.disabled = Boolean(project.archived);
+        notes.disabled = Boolean(project.archived || task.deleted);
+        saveNotes.disabled = Boolean(project.archived || task.deleted);
         saveNotes.addEventListener('click', async () => {
           try {
             await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
@@ -163,7 +164,7 @@ async function render() {
         row.append(notes, saveNotes, notesAlert);
         const checkbox = element('input', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = Boolean(task.completed);
-        checkbox.disabled = Boolean(project.archived);
+        checkbox.disabled = Boolean(project.archived || task.deleted);
         checkbox.addEventListener('change', async () => {
           await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
           await refresh();
@@ -172,8 +173,8 @@ async function render() {
         const destination = element('select', { 'aria-label': 'Destination project' });
         for (const item of eligibleDestinations) destination.append(element('option', { value: item.id }, item.name));
         const moveButton = element('button', { type: 'button' }, 'Move task');
-        destination.disabled = Boolean(project.archived) || eligibleDestinations.length === 0;
-        moveButton.disabled = Boolean(project.archived) || eligibleDestinations.length === 0;
+        destination.disabled = Boolean(project.archived || task.deleted) || eligibleDestinations.length === 0;
+        moveButton.disabled = Boolean(project.archived || task.deleted) || eligibleDestinations.length === 0;
         moveButton.addEventListener('click', async () => {
           try {
             await request(`/api/tasks/${encodeURIComponent(task.id)}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationProjectId: destination.value }) });
@@ -181,7 +182,14 @@ async function render() {
           } catch (error) { moveAlert.textContent = error.message; moveAlert.hidden = false; }
         });
         const moveAlert = element('span', { role: 'alert', hidden: '' });
-        row.append(destination, moveButton, moveAlert); tasks.append(row);
+        row.append(destination, moveButton, moveAlert);
+        const deletionButton = element('button', { type: 'button' }, task.deleted ? 'Restore task' : 'Delete task');
+        deletionButton.disabled = Boolean(project.archived);
+        deletionButton.addEventListener('click', async () => {
+          await request(`/api/tasks/${encodeURIComponent(task.id)}/deletion`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleted: !task.deleted }) });
+          await refresh();
+        });
+        row.append(deletionButton); tasks.append(row);
       }
     };
     const validCalendarDate = value => {
