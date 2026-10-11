@@ -165,6 +165,8 @@
         list.replaceChildren();
         const tasks = await request(`/api/projects/${id}/tasks`);
         if (renderVersion !== taskRenderVersion) return;
+        const destinations = await request('/api/projects?filter=Active');
+        if (renderVersion !== taskRenderVersion) return;
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -222,6 +224,24 @@
           dueForm.addEventListener('submit', async event => {
             event.preventDefault();
             const result = await request(`/api/tasks/${task.id}/due-date`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: dueInput.value }) });
+            if (result.error) { alert.textContent = result.error; alert.hidden = false; return; }
+            alert.hidden = true;
+            await renderTasks();
+          });
+          const moveForm = element('form', undefined, row);
+          const destinationSelect = element('select', undefined, moveForm);
+          destinationSelect.setAttribute('aria-label', 'Destination project');
+          for (const destination of destinations.filter(item => item.id !== project.id)) {
+            const option = element('option', destination.name, destinationSelect);
+            option.value = destination.id;
+          }
+          const moveButton = element('button', 'Move task', moveForm);
+          moveButton.type = 'submit';
+          moveButton.disabled = project.archived || destinationSelect.options.length === 0;
+          destinationSelect.disabled = moveButton.disabled;
+          moveForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const result = await request(`/api/tasks/${task.id}/move`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: Number(destinationSelect.value) }) });
             if (result.error) { alert.textContent = result.error; alert.hidden = false; return; }
             alert.hidden = true;
             await renderTasks();

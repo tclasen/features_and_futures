@@ -115,6 +115,20 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority });
     }
   }
+  const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (moveMatch && request.method === 'PATCH') {
+    const body = await readBody(request);
+    const destinationId = Number(body?.projectId);
+    if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return sendJson(response, 400, { error: 'Invalid destination project' });
+    const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
+    if (!destination) return sendJson(response, 400, { error: 'Destination project must be active' });
+    const task = db.prepare('SELECT t.id, t.project_id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.archived = 0').get(Number(moveMatch[1]));
+    if (!task) return sendJson(response, 404, { error: 'Task not found or project archived' });
+    if (task.project_id === destinationId) return sendJson(response, 400, { error: 'Task is already in destination project' });
+    const nextId = Number(db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS id FROM tasks').get().id);
+    db.prepare('UPDATE tasks SET id = ?, project_id = ? WHERE id = ?').run(nextId, destinationId, task.id);
+    return sendJson(response, 200, { ok: true });
+  }
   const dueDateMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/due-date$/);
   if (dueDateMatch && request.method === 'PATCH') {
     const body = await readBody(request);
