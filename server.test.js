@@ -6,6 +6,124 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { runInNewContext } from 'node:vm';
+
+test('filtered checkbox edits save without navigation or disconnecting the interacted control', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-checkbox-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const post = (path, fields) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    await post('/projects/import', { name: 'Range intersections', json: JSON.stringify({
+      format: 'workboard-project', version: 1,
+      project: { name: 'Original', archived: false, defaultPriority: 'Low', tasks: [
+        { title: 'Range completed', completed: true, priority: 'High', dueDate: '2029-01-15', notes: ' exact\n雪 ', deleted: false },
+        { title: 'Outside', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+      ] },
+    }) });
+    const exportProject = async () => (await fetch(app.url + '/projects/1/download')).json();
+    const before = await exportProject();
+    const selection = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2029-01-01', dueThrough: '2029-01-31', searchQuery: 'range' };
+    const path = '/projects/1?' + new URLSearchParams(selection);
+    const page = await (await fetch(app.url + path)).text();
+    assert.match(page, /<script src="\/completion.js" defer><\/script>/);
+    const scriptResponse = await fetch(app.url + '/completion.js');
+    assert.match(scriptResponse.headers.get('content-type'), /text\/javascript/);
+    const script = await scriptResponse.text();
+    let handler;
+    let lastResponse;
+    // Exercise the shipped event handler against the real server with a minimal DOM
+    // adapter. Removing/replacing the control would break the retained-node assertion.
+    const checkbox = { checked: false, disabled: false };
+    const row = { hidden: false, testId: 'task-row',
+      removeAttribute(name) { assert.equal(name, 'data-testid'); this.testId = null; } };
+    const section = { children: [row],
+      querySelector(selector) {
+        if (selector === '[data-testid="task-row"]') return row.testId ? row : null;
+        if (selector === '.empty') return this.children.find((node) => node.className === 'empty');
+      },
+      append(node) { this.children.push(node); },
+    };
+    row.parentElement = section;
+    let alert;
+    const form = { dataset: { taskId: '1' }, action: app.url + '/projects/1/tasks/1',
+      matches(selector) { return selector === '[data-task-completion]'; },
+      querySelector(selector) { return selector === '[name="completed"]' ? checkbox : alert; },
+      closest() { return row; },
+      append(node) { alert = node; },
+    };
+    const context = {
+      document: {
+        addEventListener(type, listener) { assert.equal(type, 'submit'); handler = listener; },
+        createElement() { return { setAttribute(name, value) { this[name] = value; } }; },
+      },
+      URLSearchParams,
+      FormData: class {
+        constructor() { return Object.entries({ ...selection, ...(checkbox.checked ? { completed: '1' } : {}) }); }
+      },
+      DOMParser: class {
+        parseFromString(html) {
+          lastResponse = html;
+          return { querySelector: (selector) => html.includes(selector.slice(1, -1)) };
+        }
+      },
+      fetch,
+    };
+    runInNewContext(script, context);
+    let prevented = false;
+    await handler({ target: form, preventDefault() { prevented = true; } });
+    assert.ok(prevented);
+    assert.equal(form.querySelector('[name="completed"]'), checkbox);
+    assert.equal(row.parentElement, section);
+    assert.equal(checkbox.checked, false);
+    assert.equal(checkbox.disabled, false);
+    assert.equal(row.hidden, true);
+    assert.equal(row.testId, null);
+    assert.equal(section.children[1].textContent, 'No tasks to show.');
+    assert.match(lastResponse, /<option selected>Completed/);
+    assert.match(lastResponse, /<option selected>High/);
+    for (const [name, value] of Object.entries(selection)) {
+      assert.ok(lastResponse.includes('name="' + name + '" value="' + value + '"'));
+    }
+    const expected = structuredClone(before);
+    expected.project.tasks[0].completed = false;
+    assert.deepEqual(await exportProject(), expected);
+    assert.match(await (await fetch(app.url + '/')).text(), /project-summary">0\/2 completed/);
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(await exportProject(), expected);
+    assert.doesNotMatch(await (await fetch(app.url + path)).text(), /data-testid="task-row"/);
+
+    // Completing an Open result follows the same path; All retains the visible node.
+    for (const filter of ['Open', 'All']) {
+      selection.filter = filter;
+      form.action = app.url + '/projects/1/tasks/1';
+      row.hidden = false;
+      row.testId = 'task-row';
+      section.children = [row];
+      checkbox.checked = true;
+      await handler({ target: form, preventDefault() {} });
+      assert.equal(checkbox.checked, true);
+      assert.equal(row.hidden, filter === 'Open');
+      assert.equal(row.parentElement, section);
+    }
+    // A failed save restores the input and reports an accessible error without hiding it.
+    runInNewContext(script, { ...context, fetch: async () => { throw new Error('offline'); } });
+    checkbox.checked = false;
+    await handler({ target: form, preventDefault() {} });
+    assert.equal(checkbox.checked, true);
+    assert.equal(checkbox.disabled, false);
+    assert.equal(row.hidden, false);
+    assert.equal(alert.role, 'alert');
+    assert.match(alert.textContent, /Could not save task completion/);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('directory ordering is stable across owners, retained by actions, and never changes stored positions', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));

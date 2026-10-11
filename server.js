@@ -1,7 +1,9 @@
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+
+const completionScript = readFileSync(new URL('./completion.js', import.meta.url), 'utf8');
 
 const dbPath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(dbPath), { recursive: true });
@@ -452,7 +454,7 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
     </form>
     <section class="projects" aria-label="Tasks">
       ${tasks.length ? tasks.map((task) => `<div class="task" data-testid="task-row">
-        <form method="post" action="/projects/${project.id}/tasks/${task.id}">
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}" data-task-completion data-task-id="${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <input type="hidden" name="priorityFilter" value="${priority}">
       ${rangeFields}
@@ -509,7 +511,8 @@ ${escapeHtml(task.notes)}</textarea>
           <button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
         </form>
       </div>`).join('') : '<p class="empty">No tasks to show.</p>'}
-    </section>`);
+    </section>
+    <script src="/completion.js" defer></script>`);
 }
 
 async function readForm(req, maxBytes = 65536) {
@@ -557,7 +560,10 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
-    if (req.method === 'GET' && path === '/health') {
+    if (req.method === 'GET' && path === '/completion.js') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(completionScript);
+    } else if (req.method === 'GET' && path === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
     } else if (req.method === 'GET' && path === '/') {

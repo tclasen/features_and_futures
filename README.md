@@ -17,6 +17,8 @@ Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
 On a project page, create tasks, toggle their completion checkboxes, and use
 `Task filter` to view All, Open, Completed, or Deleted tasks. Projects and tasks persist
 in the configured SQLite file across server restarts.
+Completion checkboxes save in place and immediately hide tasks that no longer
+match the selected filters, preserving the current page controls and input drafts.
 
 Use `Project filter` to switch between Active and Archived projects. Project
 rows show completion totals and let you archive or restore a project. Archived
