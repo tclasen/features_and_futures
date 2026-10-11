@@ -1,5 +1,11 @@
 # Workboard
 
+Each project has a Default task priority selector with Low, Normal, and High
+options. Existing and new projects start with Normal. Changes apply only to
+subsequently created tasks in that project, preserve both selected task filters,
+and persist across reloads, server restarts, renaming, archive and restore.
+Archived projects show the saved default with the selector disabled.
+
 Project pages provide Task filter (All, Open, Completed) and Priority filter
 (All, Low, Normal, High). Both initially select All and display tasks matching
 both selections in creation order. Edits immediately reapply both filters without
@@ -7,7 +13,8 @@ resetting either selection; renaming preserves membership. Filtering leaves save
 task data and completion summaries unchanged. Both filters work in archived projects.
 
 Each task has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Changes persist across reloads and
+Existing tasks default to Normal; new tasks inherit their project's saved default.
+Changes persist across reloads and
 server restarts, and preserve task titles, completion, ownership, order, and
 completion summaries. Archived projects disable priority edits until restored.
 
@@ -62,3 +69,6 @@ rename and filter preservation, migration, restart persistence, and archive/rest
 Combined-filter checks cover every completion/priority combination, creation order,
 selection retention during edits and pending requests, defaults on opening a
 project, and filtering archived projects without changing their saved data.
+Project-default checks cover migration, independent defaults, inheritance of all
+three priorities, existing-task preservation, filter retention, restart persistence,
+rename preservation, and archive/restore protection.

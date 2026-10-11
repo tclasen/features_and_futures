@@ -86,7 +86,13 @@ async function browser(storage, projects, pending = {}) {
     },
     fetch: async (path, options) => {
       let result;
-      if (options?.method === 'PATCH') {
+      if (options?.method === 'POST' && path.endsWith('/tasks')) {
+        const owner = projects.find(project => path === `/api/projects/${project.id}/tasks`);
+        result = { id: Math.max(0, ...tasks.map(task => task.id)) + 1,
+          project_id: owner.id, title: JSON.parse(options.body).title,
+          completed: false, priority: owner.default_priority };
+        tasks.push(result);
+      } else if (options?.method === 'PATCH') {
         if (pending.wait) await pending.wait;
         const taskMatch = path.match(/\/tasks\/(\d+)$/);
         const item = taskMatch ? tasks.find(task => task.id === Number(taskMatch[1])) :
@@ -113,13 +119,83 @@ async function filter(app, value) {
   app.querySelector('select').value = value;
   await app.querySelector('select').emit('change');
 }
-const project = () => ({ id: 1, name: 'Archive lifecycle', archived: false, total_count: 1, completed_count: 1 });
+const project = () => ({ id: 1, name: 'Archive lifecycle', archived: false, default_priority: 'Normal', total_count: 1, completed_count: 1 });
 
 async function priorityFilter(app, value) {
   const select = app.querySelector('#priority-filter');
   select.value = value;
   await select.emit('change');
 }
+
+test('project defaults affect only new tasks and preserve filters, rows, reload and archive state', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Independent project' }];
+  const pending = { tasks: [
+    { id: 1, title: 'Existing completed', completed: true, priority: 'Normal' },
+    { id: 2, title: 'Existing open', completed: false, priority: 'High' },
+  ] };
+  const original = structuredClone(pending.tasks);
+  const storage = new Map();
+  let app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  const defaults = app.querySelector('#default-task-priority');
+  assert.deepEqual(defaults.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(defaults.value, 'Normal');
+  assert.equal(defaults.disabled, false);
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'Normal');
+  const previousRow = rows(app)[0];
+  defaults.value = 'High';
+  await defaults.emit('change');
+  assert.equal(rows(app)[0], previousRow);
+  assert.equal(app.querySelector('#task-filter').value, 'Completed');
+  assert.equal(app.querySelector('#priority-filter').value, 'Normal');
+  assert.deepEqual(pending.tasks, original);
+  assert.equal(projects[1].default_priority, 'Normal');
+  const create = app.querySelector('form');
+  create.querySelector('input').value = 'Inherits High';
+  await create.emit('submit');
+  assert.equal(pending.tasks[2].priority, 'High');
+  assert.equal(rows(app)[0].children[0].textContent, 'Existing completed');
+  assert.equal(rows(app)[0].querySelector('input').checked, true);
+  assert.equal(rows(app).length, 1);
+  assert.equal(app.querySelector('#task-filter').value, 'Completed');
+  assert.equal(app.querySelector('#priority-filter').value, 'Normal');
+  defaults.value = 'Low';
+  await defaults.emit('change');
+  assert.equal(pending.tasks[2].priority, 'High');
+  await filter(app, 'Open');
+  await priorityFilter(app, 'Low');
+  create.querySelector('input').value = 'Inherits Low';
+  await create.emit('submit');
+  assert.deepEqual(rows(app).map(row => row.children[0].textContent), ['Inherits Low']);
+  app = await browser(storage, projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#default-task-priority').value, 'Low');
+  assert.equal(app.querySelector('#task-filter').value, 'All');
+  assert.equal(app.querySelector('#priority-filter').value, 'All');
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#default-task-priority').disabled, true);
+  assert.equal(app.querySelector('#default-task-priority').value, 'Low');
+  await filter(app, 'Open');
+  await priorityFilter(app, 'High');
+  assert.equal(rows(app).length, 2);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(app.querySelector('#default-task-priority').disabled, false);
+  assert.equal(app.querySelector('#default-task-priority').value, 'Low');
+  assert.deepEqual(pending.tasks.slice(0, 2), original);
+});
 
 test('completion and priority filters intersect independently and preserve creation order and data', async () => {
   const projects = [{ ...project(), total_count: 6, completed_count: 3 }];

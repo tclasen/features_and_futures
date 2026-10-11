@@ -69,6 +69,7 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
     assert.equal(first.archived, false);
+    assert.equal(first.default_priority, 'Normal');
     assert.equal(first.total_count, 0);
     assert.equal(first.completed_count, 0);
     const second = await (await create('Second project')).json();
@@ -203,6 +204,51 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     });
     const third = await (await create('Third')).json();
     assert.ok(third.id > second.id);
+    assert.equal(third.default_priority, 'Normal');
+    const projectPath = `/api/projects/${first.id}`;
+    const originalTasks = [firstTask, secondTask];
+    for (const default_priority of ['', 'Urgent', null, 1]) {
+      assert.equal((await taskRequest(projectPath, 'PATCH', { default_priority })).status, 400);
+    }
+    let inheritedTasks = [];
+    for (const default_priority of ['High', 'Low', 'Normal']) {
+      const saved = await taskRequest(projectPath, 'PATCH', { default_priority });
+      assert.equal(saved.status, 200);
+      assert.deepEqual(await saved.json(), {
+        ...firstWithTasks, completed_count: 0,
+        total_count: 2 + inheritedTasks.length, default_priority,
+      });
+      assert.deepEqual(await (await fetch(base + taskPath)).json(), [...originalTasks, ...inheritedTasks]);
+      const created = await (await taskRequest(taskPath, 'POST', { title: `Inherited ${default_priority}` })).json();
+      assert.equal(created.priority, default_priority);
+      assert.equal(created.project_id, first.id);
+      assert.equal(created.completed, false);
+      inheritedTasks.push(created);
+    }
+    await taskRequest(projectPath, 'PATCH', { default_priority: 'High' });
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}`)).json(), second);
+    const independent = await (await taskRequest(otherTaskPath, 'POST', { title: 'Independent default' })).json();
+    assert.equal(independent.priority, 'Normal');
+    await taskRequest(projectPath, 'PATCH', { name: 'Default preserved by rename' });
+    await taskRequest(projectPath, 'PATCH', { archived: true });
+    assert.equal((await taskRequest(projectPath, 'PATCH', { default_priority: 'Low' })).status, 409);
+    await stop();
+    await start();
+    const savedProject = await (await fetch(base + projectPath)).json();
+    assert.equal(savedProject.default_priority, 'High');
+    assert.equal(savedProject.name, 'Default preserved by rename');
+    assert.equal(savedProject.archived, true);
+    assert.equal(savedProject.total_count, 5);
+    assert.equal(savedProject.completed_count, 0);
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [...originalTasks, ...inheritedTasks]);
+    await taskRequest(projectPath, 'PATCH', { archived: false });
+    const afterRestore = await (await taskRequest(taskPath, 'POST', { title: 'After restore' })).json();
+    assert.equal(afterRestore.priority, 'High');
+    await taskRequest(projectPath, 'PATCH', { default_priority: 'Low' });
+    await stop();
+    await start();
+    assert.equal((await (await fetch(base + projectPath)).json()).default_priority, 'Low');
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [...originalTasks, ...inheritedTasks, afterRestore]);
     assert.equal((await fetch(`${base}/api/projects/999999`)).status, 404);
     await stop();
     await rm(join(directory, 'projects.sqlite'));
@@ -217,7 +263,7 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     `);
     populatedLegacy.close();
     await start();
-    const migratedProject = { id: 7, name: 'Existing project', archived: false, total_count: 1, completed_count: 1 };
+    const migratedProject = { id: 7, name: 'Existing project', archived: false, default_priority: 'Normal', total_count: 1, completed_count: 1 };
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [migratedProject]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
       { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal' },

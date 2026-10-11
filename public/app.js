@@ -85,6 +85,12 @@ async function render() {
           <option>All</option><option>Low</option><option>Normal</option><option>High</option>
         </select>
       </div>
+      <div class="task-filter">
+        <label for="default-task-priority">Default task priority</label>
+        <select id="default-task-priority" disabled>
+          <option>Low</option><option>Normal</option><option>High</option>
+        </select>
+      </div>
       <ul id="task-list" aria-label="Tasks"></ul>`;
     app.querySelector('#projects').addEventListener('click', () => navigate('/'));
     const form = app.querySelector('form');
@@ -92,6 +98,7 @@ async function render() {
     const submit = form.querySelector('button');
     const filter = app.querySelector('#task-filter');
     const priorityFilter = app.querySelector('#priority-filter');
+    const defaultPriority = app.querySelector('#default-task-priority');
     const list = app.querySelector('ul');
     const renameForm = app.querySelector('#rename-form');
     const renameInput = app.querySelector('#new-project-name');
@@ -99,6 +106,28 @@ async function render() {
     const endpoint = `/api/projects/${match[1]}/tasks`;
     let tasks = [];
     let archived = false;
+    let savedDefaultPriority = 'Normal';
+    defaultPriority.addEventListener('change', async () => {
+      if (defaultPriority.disabled) return;
+      defaultPriority.disabled = true;
+      submit.disabled = true;
+      alertMessage('');
+      try {
+        const project = await request(`/api/projects/${match[1]}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ default_priority: defaultPriority.value }),
+        });
+        savedDefaultPriority = project.default_priority;
+        defaultPriority.value = savedDefaultPriority;
+      } catch (error) {
+        defaultPriority.value = savedDefaultPriority;
+        if (defaultPriority.isConnected) alertMessage(error.message);
+      } finally {
+        defaultPriority.disabled = archived;
+        submit.disabled = archived;
+      }
+    });
     renameForm.addEventListener('submit', async event => {
       event.preventDefault();
       if (renameSubmit.disabled) return;
@@ -267,6 +296,9 @@ async function render() {
       if (!form.isConnected) return;
       app.querySelector('h1').textContent = project.name;
       archived = project.archived;
+      savedDefaultPriority = project.default_priority;
+      defaultPriority.value = savedDefaultPriority;
+      defaultPriority.disabled = archived;
       renameInput.disabled = archived;
       renameSubmit.disabled = archived;
       app.querySelector('#archive-status').hidden = !archived;
