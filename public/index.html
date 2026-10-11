@@ -65,6 +65,7 @@
         <p id="alert" role="alert" aria-live="polite"></p>
         <label>Task filter<select id="task-filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
         <label>Priority filter<select id="priority-filter" aria-label="Priority filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></label>
+        <form id="due-range-form"><label>Due from<input id="due-from" aria-label="Due from"></label><label>Due through<input id="due-through" aria-label="Due through"></label><button type="submit">Apply due range</button></form>
         <ul class="task-list" id="tasks"></ul>`;
       app.querySelector('#projects').addEventListener('click', showProjects);
       if (!locked) app.querySelector('#rename-form').addEventListener('submit', async event => {
@@ -81,11 +82,29 @@
       });
       const filter = app.querySelector('#task-filter');
       const priorityFilter = app.querySelector('#priority-filter');
+      let appliedFrom = '', appliedThrough = '';
+      const isValidDate = value => {
+        const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const date = new Date(0); date.setUTCHours(0, 0, 0, 0); date.setUTCFullYear(year, month - 1, day);
+        return year >= 1 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+      };
+      app.querySelector('#due-range-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const from = app.querySelector('#due-from').value.trim();
+        const through = app.querySelector('#due-through').value.trim();
+        const alert = app.querySelector('#alert');
+        if ((from && !isValidDate(from)) || (through && !isValidDate(through))) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; return; }
+        if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; return; }
+        appliedFrom = from; appliedThrough = through; alert.textContent = ''; loadTasks();
+      });
       async function loadTasks() {
         const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(response => response.json());
         const shown = tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
-          (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+          (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+          ((!appliedFrom && !appliedThrough) || (Boolean(task.dueDate) && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough))));
         list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}${locked ? ' disabled' : ''}><label>New task title<input aria-label="New task title" data-rename-title="${task.id}"${locked ? ' disabled' : ''}></label><button type="button" data-rename-task="${task.id}"${locked ? ' disabled' : ''}>Rename task</button><label>Task priority<select aria-label="Task priority" data-priority="${task.id}"${locked ? ' disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select></label><label>Task due date<input type="text" aria-label="Task due date" placeholder="YYYY-MM-DD" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}"${locked ? ' disabled' : ''}></label><button type="button" data-save-due="${task.id}"${locked ? ' disabled' : ''}>Save due date</button></li>`).join('');
         list.querySelectorAll('[data-rename-task]').forEach(button => button.addEventListener('click', async () => {
           const title = list.querySelector(`[data-rename-title="${button.dataset.renameTask}"]`).value.trim();
