@@ -335,6 +335,40 @@ async function render() {
           }
         });
         dueDateForm.append(dueDateLabel, dueDateSubmit);
+        const notesForm = document.createElement('form');
+        notesForm.className = 'notes-controls';
+        const notesLabel = document.createElement('label');
+        notesLabel.textContent = 'Task notes';
+        const notesInput = document.createElement('textarea');
+        notesInput.setAttribute('aria-label', 'Task notes');
+        notesInput.rows = 4;
+        notesInput.value = task.notes ?? '';
+        notesInput.disabled = archived;
+        notesLabel.append(notesInput);
+        const notesSubmit = document.createElement('button');
+        notesSubmit.type = 'submit';
+        notesSubmit.textContent = 'Save notes';
+        notesSubmit.disabled = archived;
+        notesForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (notesSubmit.disabled) return;
+          notesSubmit.disabled = true;
+          alertMessage('');
+          try {
+            const saved = await request(`${endpoint}/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ notes: notesInput.value }),
+            });
+            tasks = tasks.map(item => item.id === saved.id ? saved : item);
+            if (list.isConnected) displayTasks();
+          } catch (error) {
+            if (list.isConnected) alertMessage(error.message);
+          } finally {
+            notesSubmit.disabled = archived;
+          }
+        });
+        notesForm.append(notesLabel, notesSubmit);
         const moveForm = document.createElement('form');
         moveForm.className = 'create-controls';
         const destinationLabel = document.createElement('label');
@@ -373,7 +407,7 @@ async function render() {
             destination.disabled = moveSubmit.disabled = archived || !destinations.length;
           }
         });
-        row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm, moveForm);
+        row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm, moveForm, notesForm);
         return row;
       }));
     }

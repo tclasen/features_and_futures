@@ -70,7 +70,8 @@ const settled = () => new Promise(resolve => setImmediate(resolve));
 
 async function browser(storage, projects, pending = {}) {
   const tasks = pending.tasks || [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];
-  const positions = new Map();
+  // Simulated database positions must survive recreating the browser as well.
+  const positions = pending.positions || (pending.positions = new Map());
   function remember(task, owner) {
     const key = `${owner}:${task.id}`;
     if (!positions.has(key)) {
@@ -104,7 +105,7 @@ async function browser(storage, projects, pending = {}) {
         const owner = projects.find(project => path === `/api/projects/${project.id}/tasks`);
         result = { id: Math.max(0, ...tasks.map(task => task.id)) + 1,
           project_id: owner.id, title: JSON.parse(options.body).title,
-          completed: false, priority: owner.default_priority };
+          completed: false, priority: owner.default_priority, notes: '' };
         tasks.push(result);
         remember(result, owner.id);
       } else if (options?.method === 'PATCH') {
@@ -1105,4 +1106,100 @@ test('task search intersects all filters, retains queries during edits and movem
   assert.equal(app.querySelector('#task-search').disabled, false);
   assert.equal(rows(app)[0].querySelector('input').disabled, true);
   assert.equal(moveForm(rows(app)[0]).querySelector('button').disabled, true);
+});
+
+const notesForm = row => row.children.find(child => child.tag === 'form' &&
+  child.querySelector('button').textContent === 'Save notes');
+
+test('multiline notes retain literal text, filters, ownership, order, and archive readability', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Destination' }];
+  const pending = { tasks: [
+    { id: 1, project_id: 1, title: 'Plan first', completed: true, priority: 'High', due_date: '2024-02-29', notes: '' },
+    { id: 2, project_id: 1, title: 'Plan second', completed: true, priority: 'High', due_date: '2024-03-01', notes: '' },
+  ] };
+  const original = structuredClone(pending.tasks);
+  let app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'High');
+  await dueRange(app, '2024-02-29', '2024-03-01');
+  await search(app, 'task', 'plan');
+  const text = '  Leading spaces\n\t雪 😀 <script>literal</script>\nTrailing spaces  ';
+  let form = notesForm(rows(app)[0]);
+  assert.equal(form.querySelector('textarea').attributes['aria-label'], 'Task notes');
+  assert.equal(form.querySelector('textarea').value, '');
+  form.querySelector('textarea').value = text;
+  await form.emit('submit');
+  assert.deepEqual(pending.tasks, [{ ...original[0], notes: text }, original[1]]);
+  assert.equal(notesForm(rows(app)[0]).querySelector('textarea').value, text);
+  assert.deepEqual(taskTitles(app), ['Plan first', 'Plan second']);
+  assert.equal(app.querySelector('#task-filter').value, 'Completed');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+  assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  assert.equal(app.querySelector('#task-search').value, 'plan');
+  await search(app, 'task', 'literal');
+  assert.equal(rows(app).length, 0);
+  await search(app, 'task', 'plan');
+
+  // Re-evaluate with filters selected while the notes request is pending.
+  let release;
+  pending.wait = new Promise(resolve => { release = resolve; });
+  form = notesForm(rows(app)[0]);
+  form.querySelector('textarea').value = text + '\nNext line';
+  const save = form.emit('submit');
+  await search(app, 'task', 'second');
+  release();
+  await save;
+  delete pending.wait;
+  assert.deepEqual(taskTitles(app), ['Plan second']);
+  assert.equal(app.querySelector('#task-search').value, 'second');
+  await search(app, 'task', 'plan');
+  const savedText = text + '\nNext line';
+  await moveForm(rows(app)[0]).emit('submit');
+  assert.deepEqual(taskTitles(app), ['Plan second']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[1], 'Open project').emit('click');
+  await settled();
+  assert.equal(notesForm(rows(app)[0]).querySelector('textarea').value, savedText);
+  await moveForm(rows(app)[0]).emit('submit');
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(taskTitles(app), ['Plan first', 'Plan second']);
+  form = notesForm(rows(app)[0]);
+  assert.equal(form.querySelector('textarea').value, savedText);
+  assert.equal(form.querySelector('textarea').disabled, true);
+  assert.equal(form.querySelector('button').disabled, true);
+  await form.emit('submit');
+  assert.equal(pending.tasks.find(task => task.id === 1).notes, savedText);
+  await search(app, 'task', 'first');
+  assert.deepEqual(taskTitles(app), ['Plan first']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  form = notesForm(rows(app)[0]);
+  assert.equal(form.querySelector('textarea').disabled, false);
+  assert.equal(form.querySelector('button').disabled, false);
+  form.querySelector('textarea').value = '';
+  await form.emit('submit');
+  assert.equal(notesForm(rows(app)[0]).querySelector('textarea').value, '');
+  assert.deepEqual(pending.tasks.find(task => task.id === 1), original[0]);
+  app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(taskTitles(app), ['Plan first', 'Plan second']);
+  assert.equal(notesForm(rows(app)[0]).querySelector('textarea').value, '');
+  const create = app.querySelector('form');
+  create.querySelector('input').value = 'New task';
+  await create.emit('submit');
+  assert.equal(notesForm(rows(app)[2]).querySelector('textarea').value, '');
 });

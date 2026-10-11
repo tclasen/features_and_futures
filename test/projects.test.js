@@ -266,13 +266,13 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     const migratedProject = { id: 7, name: 'Existing project', archived: false, default_priority: 'Normal', total_count: 1, completed_count: 1 };
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [migratedProject]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
-      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
+      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '' },
     ]);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects/7`)).json(), migratedProject);
     assert.deepEqual(await (await fetch(`${base}/api/projects/7/tasks`)).json(), [
-      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '' },
+      { id: 9, project_id: 7, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '' },
     ]);
     const migratedTaskPath = '/api/projects/7/tasks/9';
     let savedTask = (await (await fetch(`${base}/api/projects/7/tasks`)).json())[0];

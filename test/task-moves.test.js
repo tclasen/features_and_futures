@@ -7,6 +7,7 @@ import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { request as httpRequest } from 'node:http';
 
 for (const hasPositions of [false, true]) {
 test(`moves remember project order, preserve data and archives, and persist (Task ${hasPositions ? '011' : '010'} migration)`, async () => {
@@ -78,6 +79,36 @@ test(`moves remember project order, preserve data and archives, and persist (Tas
   try {
     await start();
     const original = (await tasks(1)).find(task => task.id === 1);
+    assert.equal(original.notes, '');
+    const notes = '  First line\n\tUnicode: 雪 😀\n<script>literal markup</script>\n  ';
+    const savedNotes = await write('/api/projects/1/tasks/1', { notes });
+    assert.equal(savedNotes.status, 200);
+    assert.deepEqual(await savedNotes.json(), { ...original, notes });
+    original.notes = notes;
+    // HTTP chunks may split a multibyte character inside a notes string.
+    const body = Buffer.from(JSON.stringify({ notes }));
+    const split = body.indexOf(Buffer.from('雪')) + 1;
+    await new Promise((resolve, reject) => {
+      const req = httpRequest(`${base}/api/projects/1/tasks/1`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      }, res => {
+        res.resume();
+        res.on('end', () => {
+          try { assert.equal(res.statusCode, 200); resolve(); } catch (error) { reject(error); }
+        });
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.write(body.subarray(0, split));
+      delay(25).then(() => req.end(body.subarray(split)));
+    });
+    assert.deepEqual((await tasks(1)).find(task => task.id === 1), original);
+    assert.equal((await tasks(1)).find(task => task.id === 2).notes, '');
+    for (const invalid of [null, 1, false, {}]) {
+      assert.equal((await write('/api/projects/1/tasks/1', { notes: invalid })).status, 400);
+      assert.deepEqual((await tasks(1)).find(task => task.id === 1), original);
+    }
+    assert.equal((await write('/api/projects/2/tasks/1', { notes: 'Wrong owner' })).status, 404);
     assert.deepEqual(ids(await tasks(1)), sourceOrder);
     for (const invalid of [1, 0, -1, 1.5, '2', null]) {
       assert.equal((await move(1, 1, invalid)).status, 400);
@@ -96,6 +127,7 @@ test(`moves remember project order, preserve data and archives, and persist (Tas
     assert.equal((await move(1, 1, 2)).status, 404);
     const newTask = await (await write('/api/projects/2/tasks', { title: 'After move' }, 'POST')).json();
     assert.equal(newTask.priority, 'Low');
+    assert.equal(newTask.notes, '');
     assert.deepEqual(ids(await tasks(2)), [3, 1, newTask.id]);
     assert.equal((await write('/api/projects/2/tasks/1', { title: 'Renamed moved task' })).status, 200);
     assert.deepEqual(ids(await tasks(2)), [3, 1, newTask.id]);
@@ -104,6 +136,8 @@ test(`moves remember project order, preserve data and archives, and persist (Tas
     assert.deepEqual(ids(await tasks(2)), [3, 1, newTask.id]);
     assert.deepEqual((await tasks(2))[1], { ...original, project_id: 2, title: 'Renamed moved task' });
     await write('/api/projects/2', { archived: true });
+    assert.equal((await write('/api/projects/2/tasks/1', { notes: 'Archived edit' })).status, 409);
+    assert.equal((await tasks(2)).find(task => task.id === 1).notes, notes);
     assert.equal((await move(2, 1, 1)).status, 409);
     assert.equal((await move(1, 2, 2)).status, 409);
     await write('/api/projects/2', { archived: false });
@@ -137,6 +171,7 @@ test(`moves remember project order, preserve data and archives, and persist (Tas
     assert.deepEqual(ids(await tasks(1)), [...sourceOrder, afterDeparture.id]);
     assert.deepEqual((await tasks(1)).find(task => task.id === 2), { ...blank, title: 'Updated away', completed: true,
       priority: 'High', due_date: '2024-02-29' });
+    assert.equal((await tasks(1)).find(task => task.id === 1).notes, notes);
     await move(2, 3, 1);
     assert.deepEqual(ids(await tasks(1)), [...sourceOrder, afterDeparture.id, 3]);
     await move(1, 2, 2);
@@ -166,6 +201,15 @@ test(`moves remember project order, preserve data and archives, and persist (Tas
     assert.deepEqual(ids(await tasks(2)), [3, 1, newTask.id, 2, fresh.id]);
     projects = await get('/api/projects');
     assert.deepEqual(projects.map(p => [p.completed_count, p.total_count]), [[0, 1], [2, 5], [0, 0]]);
+    const beforeClear = (await tasks(2)).find(task => task.id === 1);
+    for (const value of ['   \t\n', '']) {
+      const response = await write('/api/projects/2/tasks/1', { notes: value });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ...beforeClear, notes: value });
+    }
+    await stop();
+    await start();
+    assert.deepEqual((await tasks(2)).find(task => task.id === 1), { ...beforeClear, notes: '' });
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

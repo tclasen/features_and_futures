@@ -32,6 +32,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
@@ -56,8 +59,8 @@ const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?'
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const projectValue = project => ({ ...project, archived: Boolean(project.archived) });
-const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
-const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const getTask = db.prepare('SELECT id, project_id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, ?)`);
 const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
@@ -80,6 +83,7 @@ const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id =
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 const taskValue = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(join(root, 'public', 'index.html'))]],
@@ -103,15 +107,18 @@ function validDueDate(value) {
 }
 
 async function readInput(req) {
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of req) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 65536) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size > 65536) {
       throw Object.assign(new Error('Request is too large'), { status: 413 });
     }
   }
   try {
-    return JSON.parse(body);
+    // Decode once so a Unicode character split across HTTP chunks stays intact.
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch {
     throw Object.assign(new Error('Invalid JSON'), { status: 400 });
   }
@@ -186,6 +193,13 @@ const server = http.createServer(async (req, res) => {
         if (!getTask.get(projectId, taskId)) return json(res, 404, { error: 'Task not found' });
         const input = await readInput(req);
         if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project' });
+        if (input && Object.hasOwn(input, 'notes')) {
+          if (typeof input.notes !== 'string') {
+            return json(res, 400, { error: 'Task notes must be text' });
+          }
+          updateNotes.run(input.notes, projectId, taskId);
+          return json(res, 200, taskValue(getTask.get(projectId, taskId)));
+        }
         if (input && Object.hasOwn(input, 'destination_project_id')) {
           const destinationId = input.destination_project_id;
           if (!Number.isSafeInteger(destinationId) || destinationId < 1 || destinationId === Number(projectId)) {

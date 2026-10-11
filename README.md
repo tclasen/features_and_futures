@@ -1,5 +1,14 @@
 # Workboard
 
+Each task row provides a multiline Task notes textarea and Save notes button.
+Notes are optional plain text, saved exactly as entered, including whitespace,
+line breaks, Unicode and literal markup. Empty text clears them. Notes persist
+across reloads and restarts and travel with tasks during moves and returns.
+Saving notes retains all filters and search queries without changing other task
+data, ordering or summaries. Search still matches only names and titles.
+Archived notes remain visible with editing disabled until restoration. Database
+upgrades preserve existing task data and initialize notes to empty.
+
 The project list provides Project search and Search projects; project pages
 provide Task search and Search tasks. Applying a query trims surrounding
 whitespace and matches name/title substrings ignoring ASCII letter case and
