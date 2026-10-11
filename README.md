@@ -23,4 +23,5 @@ Tests use an isolated temporary SQLite database and check project creation,
 blank-name alerts, name trimming/escaping, ordering, navigation markup,
 health, task validation and completion, project isolation, filtering, and
 persistence across server restarts, archive/restore, read-only archived tasks,
-completion summaries, and migration from the previous database schema.
+completion summaries, migration from the previous database schema, and project
+renaming with stable identity, validation, persistence, and archived restrictions.
