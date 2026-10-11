@@ -21,6 +21,12 @@ Open a project to create tasks, check or uncheck their completion, and filter by
 All, Open, or Completed. Tasks belong to their project and retain their titles,
 creation order, and completion state across page reloads and server restarts.
 
+Filter projects by Active or Archived. Archive and restore projects from their
+rows; archived projects keep their tasks visible but disable task creation and
+completion changes. Each project row shows completed tasks out of all tasks.
+Archive state and summaries persist with the configured database. Existing
+databases are migrated automatically, with existing projects initially active.
+
 Run the integration checks (using an isolated temporary database):
 
 ```sh

@@ -5,8 +5,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
-test('projects and tasks support validation, ownership, filtering, and persistence', async () => {
+test('projects and tasks support validation, ownership, archives, summaries, and persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   let child;
   let base;
@@ -49,6 +50,8 @@ test('projects and tasks support validation, ownership, filtering, and persisten
     assert.match(initial, /<h1>Workboard<\/h1>/);
     assert.match(initial, /<label for="project-name">Project name<\/label>/);
     assert.match(initial, /<button type="submit">Create project<\/button>/);
+    assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(initial, /<option selected>Active<\/option><option>Archived<\/option>/);
     for (const name of ['', '  \t\n ']) {
       const invalid = await create(name);
       assert.equal(invalid.status, 400);
@@ -66,6 +69,9 @@ test('projects and tasks support validation, ownership, filtering, and persisten
     assert.ok(listing.indexOf('>Alpha</span>') < listing.indexOf('>Beta &lt;script&gt;'));
     assert.match(listing, /Beta &lt;script&gt; &amp; &quot;test&quot;/);
     assert.match(listing, /action="\/projects\/1"/);
+    assert.equal((listing.match(/data-testid="project-summary">0\/0 completed/g) || []).length, 2);
+    assert.equal((listing.match(/>Archive project<\/button>/g) || []).length, 2);
+    assert.doesNotMatch(listing, />Restore project<\/button>/);
     const detail = await (await get('/projects/1')).text();
     assert.match(detail, /<h1>Alpha<\/h1>/);
     assert.match(detail, /action="\/" method="get"><button type="submit">Projects<\/button>/);
@@ -113,12 +119,58 @@ test('projects and tasks support validation, ownership, filtering, and persisten
     await post('/projects/1/tasks/1', { completed: '1' });
     const savedDetail = await (await get('/projects/1')).text();
     const savedOtherProject = await (await get('/projects/2')).text();
+    const savedListing = await (await get('/')).text();
+    assert.match(savedListing, /data-testid="project-summary">1\/2 completed/);
+    assert.match(savedListing, /data-testid="project-summary">0\/1 completed/);
     await stop();
+    // Recreate the Task 002 schema to verify migration preserves existing data.
+    const legacyDatabase = new DatabaseSync(join(directory, 'projects.sqlite'));
+    legacyDatabase.exec('ALTER TABLE projects DROP COLUMN archived');
+    legacyDatabase.close();
     await start();
-    assert.equal(await (await get('/')).text(), listing);
+    assert.equal(await (await get('/')).text(), savedListing);
     assert.equal(await (await get('/projects/1')).text(), savedDetail);
     assert.equal(await (await get('/projects/2')).text(), savedOtherProject);
     assert.equal(taskRows(await (await get('/projects/1?filter=Completed')).text()).length, 1);
+    assert.equal((await post('/projects/999/archive', {})).status, 404);
+    const archived = await post('/projects/1/archive', {});
+    assert.equal(archived.status, 303);
+    const activeListing = await (await get('/')).text();
+    assert.doesNotMatch(activeListing, /class="project-name">Alpha/);
+    assert.match(activeListing, /Beta &lt;script&gt;/);
+    const archivedListing = await (await get('/?filter=Archived')).text();
+    assert.match(archivedListing, /<option selected>Archived<\/option>/);
+    assert.match(archivedListing, /class="project-name">Alpha/);
+    assert.match(archivedListing, />Open project<\/button>/);
+    assert.match(archivedListing, />Restore project<\/button>/);
+    assert.doesNotMatch(archivedListing, />Archive project<\/button>/);
+    assert.match(archivedListing, /data-testid="project-summary">1\/2 completed/);
+    assert.doesNotMatch(archivedListing, /Beta &lt;script&gt;/);
+    const archivedDetail = await (await get('/projects/1')).text();
+    assert.match(archivedDetail, /<p>Archived project<\/p>/);
+    assert.match(archivedDetail, /<button type="submit" disabled>Create task<\/button>/);
+    rows = taskRows(archivedDetail);
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every(row => /type="checkbox"[^>]* disabled/.test(row)));
+    assert.match(rows[0], /aria-label="Complete First task" checked disabled/);
+    assert.equal(taskRows(await (await get('/projects/1?filter=Open')).text()).length, 1);
+    assert.equal(taskRows(await (await get('/projects/1?filter=Completed')).text()).length, 1);
+    assert.equal((await post('/projects/1/tasks', { title: 'Forbidden task' })).status, 403);
+    assert.equal((await post('/projects/1/tasks/1', {})).status, 403);
+    assert.equal(await (await get('/projects/1')).text(), archivedDetail);
+    await stop();
+    await start();
+    assert.equal(await (await get('/')).text(), activeListing);
+    assert.equal(await (await get('/?filter=Archived')).text(), archivedListing);
+    assert.equal(await (await get('/projects/1')).text(), archivedDetail);
+    assert.equal((await post('/projects/1/restore', {})).status, 303);
+    assert.equal(await (await get('/')).text(), savedListing);
+    assert.equal(await (await get('/projects/1')).text(), savedDetail);
+    assert.doesNotMatch(await (await get('/?filter=Archived')).text(), /data-testid="project-row"/);
+    await stop();
+    await start();
+    assert.equal(await (await get('/')).text(), savedListing);
+    assert.equal(await (await get('/projects/1')).text(), savedDetail);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
