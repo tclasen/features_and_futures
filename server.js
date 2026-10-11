@@ -24,6 +24,7 @@ const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -86,9 +87,17 @@ const server = http.createServer(async (req, res) => {
       if (getProject.get(projectId).archived) { res.writeHead(403); res.end('Archived project'); return; }
       try {
         let body = ''; for await (const chunk of req) body += chunk;
-        const completed = JSON.parse(body).completed ? 1 : 0;
-        const result = updateTask.run(completed, decodeURIComponent(taskRoute[2]), projectId);
-        if (!result.changes) { res.writeHead(404); res.end('Not found'); return; }
+        const data = JSON.parse(body);
+        const id = decodeURIComponent(taskRoute[2]);
+        if (Object.hasOwn(data, 'title')) {
+          const title = String(data.title ?? '').trim();
+          if (!title) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Task title is required' })); return; }
+          const result = renameTask.run(title, id, projectId);
+          if (!result.changes) { res.writeHead(404); res.end('Not found'); return; }
+        } else {
+          const result = updateTask.run(data.completed ? 1 : 0, id, projectId);
+          if (!result.changes) { res.writeHead(404); res.end('Not found'); return; }
+        }
         res.writeHead(204); res.end(); return;
       } catch { res.writeHead(400); res.end('Invalid request'); return; }
     }
