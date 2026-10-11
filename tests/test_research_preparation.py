@@ -13,10 +13,10 @@ from orchestrator.bounded_confirmation import METHOD
 
 class ResearchPreparationTests(unittest.TestCase):
     def plans(self, root):
-        for revision in ('research-v001','research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010','research-v011','research-v012'):
+        for revision in ('research-v001','research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010','research-v011','research-v012','research-v013'):
             plan={'revision_id':revision,'status':'frozen-before-main-dispatch','execution':{}}
-            if revision in ('research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010','research-v011','research-v012'):plan.update(analysis_method=METHOD,submission_outcome_definition=ASSESSMENT,execution={'provider_incident_policy':POLICY})
-            if revision in ('research-v007','research-v008','research-v009','research-v010','research-v011','research-v012'):plan['execution']['inference_observation_lifecycle']='drain-upstream-and-partial-response-v1'
+            if revision in ('research-v002','research-v003','research-v004','research-v005','research-v006','research-v007','research-v008','research-v009','research-v010','research-v011','research-v012','research-v013'):plan.update(analysis_method=METHOD,submission_outcome_definition=ASSESSMENT,execution={'provider_incident_policy':POLICY})
+            if revision in ('research-v007','research-v008','research-v009','research-v010','research-v011','research-v012','research-v013'):plan['execution']['inference_observation_lifecycle']='drain-upstream-and-partial-response-v1'
             write_json(root/'experiments/instruction-effects/revisions'/revision/'analysis-plan.json',plan)
 
     def test_new_revision_selects_bound_rules_while_default_and_replays_preserve_their_plan(self):
@@ -59,7 +59,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v003')
-                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v013')
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v014')
 
     def test_positive_anchor_revision_preserves_bounds_and_refuses_cross_revision_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -76,7 +76,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 path=root/research['analysis_plan']['path']
                 plan=json.loads(path.read_text());plan['status']='draft';write_json(path,plan)
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v004')
-                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v013')
+                with self.assertRaises(InfrastructureError):research_inputs(source,'research-v014')
 
     def test_action_revision_requires_own_freeze_and_exact_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -179,7 +179,7 @@ class ResearchPreparationTests(unittest.TestCase):
                 with self.assertRaises(InfrastructureError):research_inputs(source,'research-v010')
 
     def test_observer_revisions_require_own_freeze_and_exact_replay(self):
-        for selected,prior in [('research-v011','research-v010'),('research-v012','research-v011')]:
+        for selected,prior in [('research-v011','research-v010'),('research-v012','research-v011'),('research-v013','research-v012')]:
             with tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);self.plans(root)
                 source={'experiment_revision':'pilot-v015','execution':{'timing_revision':'harness-return-v2'}}
