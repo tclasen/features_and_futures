@@ -92,6 +92,12 @@ function projectPage(project, tasks, filter, error = '') {
           <input type="hidden" name="filter" value="${filter}">
           <input type="checkbox" name="completed" value="1" aria-label="${escapeHtml(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename" class="task-rename">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="input-group"><input id="new-task-title-${task.id}" name="title" type="text"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
+        </form>
       </div>`).join('')}
     </section>`);
 }
@@ -142,6 +148,7 @@ export function createWorkboardServer(databasePath) {
     WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+  const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   function tasksFor(projectId, filter) {
     const completed = filter === 'All' ? null : Number(filter === 'Completed');
     return listTasks.all(projectId, completed, completed);
@@ -183,7 +190,7 @@ export function createWorkboardServer(databasePath) {
           return response.end();
         }
       }
-      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/completion)?)?$/.exec(url.pathname);
+      const match = /^\/projects\/([1-9]\d*)(?:\/rename|\/tasks(?:\/([1-9]\d*)\/(completion|rename))?)?$/.exec(url.pathname);
       if (match) {
         const id = Number(match[1]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -207,7 +214,14 @@ export function createWorkboardServer(databasePath) {
               if (!Number.isSafeInteger(taskId)) {
                 return send(404, page('Not found', '<h1>Task not found</h1>'));
               }
-              const result = updateCompletion.run(Number(form.get('completed') === '1'), taskId, id);
+              let result;
+              if (match[3] === 'rename') {
+                const title = (form.get('title') ?? '').trim();
+                if (!title) return send(400, projectPage(project, tasksFor(id, filter), filter, 'Task title is required'));
+                result = renameTask.run(title, taskId, id);
+              } else {
+                result = updateCompletion.run(Number(form.get('completed') === '1'), taskId, id);
+              }
               if (!result.changes) return send(404, page('Not found', '<h1>Task not found</h1>'));
             } else {
               const title = (form.get('title') ?? '').trim();

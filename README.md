@@ -29,3 +29,7 @@ Active projects can be renamed with surrounding whitespace trimmed. Blank names
 are rejected. Renaming preserves the project's URL, list position, tasks, and
 completion state, and the new name persists across restarts. Archived projects
 cannot be renamed until restored.
+Each task can also be renamed within its row. New titles are trimmed and blank
+titles are rejected. Renaming preserves task order, ownership, completion state,
+and filter membership. Task rename controls are disabled while the project is
+archived, and renamed titles persist across restarts.
