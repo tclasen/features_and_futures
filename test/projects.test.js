@@ -171,6 +171,99 @@ test('directory bulk completion targets only matching live active tasks and pers
   }
 });
 
+test('directory summary counts only resolved matches across scopes, filters, ordering and bulk updates', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'directory-summary-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const path = values => `/directory?${new URLSearchParams(values)}`;
+    const task = (title, completed, priority = 'High', dueDate = '2026-10-11', deleted = false) => ({
+      title, completed, priority, dueDate, deleted, notes: 'Find this in notes only',
+    });
+    for (const [name, archived, tasks] of [
+      ['First', false, [task('Find  THIS\t open', false), task('Find this completed', true),
+        task('Find this low', true, 'Low'), task('Find this undated', false, 'High', ''),
+        task('Other title', true), task('Find this deleted', true, 'High', '2026-10-11', true)]],
+      ['Second', false, [task('Find this second', false), task('Deleted open', false, 'Low', '', true)]],
+      ['Archived', true, [task('Archived open', false), task('Archived completed', true),
+        task('Archived deleted', true, 'High', '', true)]],
+    ]) {
+      assert.equal((await post('/projects/import', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Normal', tasks },
+      }) })).status, 303);
+    }
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_positions'].map(table =>
+          database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(record => ({ ...record })));
+      } finally { database.close(); }
+    };
+    const checkSummary = (page, expected) => {
+      const summaries = [...page.matchAll(/data-testid="directory-summary">([^<]*)<\/p>/g)];
+      assert.deepEqual(summaries.map(match => match[1]), [expected]);
+      const total = Number(expected.split('/')[1].split(' ')[0]);
+      assert.equal((page.match(/data-testid="directory-task-row"/g) ?? []).length, total);
+      assert.equal(page.includes('No matching tasks'), total === 0);
+    };
+    const view = { scope: 'Active', filter: 'All', priorityFilter: 'High',
+      dueFrom: '2026-10-11', dueThrough: '2026-10-11', directorySearch: '  FIND\t this  ', order: 'Title' };
+    const before = snapshot();
+    for (const [values, expected] of [
+      [{}, '3/6 completed'], [{ filter: 'Open' }, '0/3 completed'],
+      [{ filter: 'Completed' }, '3/3 completed'], [{ filter: 'Deleted' }, '1/2 completed'],
+      [{ priorityFilter: 'Low' }, '1/1 completed'], [{ dueFrom: '2026-10-11' }, '3/5 completed'],
+      [{ directorySearch: 'find this' }, '2/5 completed'], [view, '1/3 completed'],
+      [{ ...view, filter: 'Deleted' }, '1/1 completed'],
+      [{ scope: 'Archived' }, '1/2 completed'], [{ scope: 'Archived', filter: 'Deleted' }, '1/1 completed'],
+      [{ directorySearch: 'missing' }, '0/0 completed'],
+      [{ ...view, dueFrom: '2026-10-12', dueThrough: '2026-10-12' }, '0/0 completed'],
+    ]) {
+      for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+        checkSummary(await html(path({ ...values, order })), expected);
+      }
+    }
+    const rangeResponse = await post('/directory/due-range', view);
+    checkSummary(await html(rangeResponse.headers.get('location')), '1/3 completed');
+    const invalidRange = await post('/directory/due-range', { ...view,
+      appliedDueFrom: view.dueFrom, appliedDueThrough: view.dueThrough, dueFrom: '2026-02-29' });
+    assert.equal(invalidRange.status, 400);
+    checkSummary(await invalidRange.text(), '1/3 completed');
+    assert.deepEqual(snapshot(), before);
+    assert.deepEqual([...(await html('/')).matchAll(/data-testid="project-summary">([^<]*)/g)]
+      .map(match => match[1]), ['3/5 completed', '0/1 completed']);
+
+    const complete = await post('/directory/completion', { ...view, filter: 'Open', completed: '1' });
+    checkSummary(await html(complete.headers.get('location')), '0/0 completed');
+    checkSummary(await html(path(view)), '3/3 completed');
+    checkSummary(await html(path({ scope: 'Archived' })), '1/2 completed');
+    checkSummary(await html(path({ filter: 'Deleted' })), '1/2 completed');
+    await server.stop();
+    server = await startServer(dbPath);
+    checkSummary(await html(path(view)), '3/3 completed');
+    const reopen = await post('/directory/completion', { ...view, filter: 'Completed', completed: '0' });
+    checkSummary(await html(reopen.headers.get('location')), '0/0 completed');
+    checkSummary(await html(path(view)), '0/3 completed');
+    const after = snapshot();
+    assert.deepEqual(after[0], before[0]);
+    assert.deepEqual(after[2], before[2]);
+    assert.deepEqual(after[1], before[1].map(record => record.id === 2 ? { ...record, completed: 0 } : record));
+    await server.stop();
+    server = await startServer(dbPath);
+    checkSummary(await html(path(view)), '0/3 completed');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task priorities migrate, remain independent, and persist through renaming, restarts and restoration', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data', 'priority-test-'));

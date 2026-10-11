@@ -548,6 +548,7 @@ function directoryPage(state, error = '', rangeInput = state.range) {
       <button type="submit" name="completed" value="0"${canEdit && tasks.some(task => task.completed) ? '' : ' disabled'}>Reopen visible tasks</button>
     </form>
     <section aria-label="Directory results">
+      <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
       ${tasks.length ? tasks.map(task => `
         <div data-testid="directory-task-row" class="directory-row">
           <h2 data-testid="directory-task-title">${escapeHtml(task.title)}</h2>
