@@ -28,6 +28,12 @@ function page(title, content) {
     .project form { flex-shrink: 0; }
     [role="alert"] { color: #9c2020; padding: 12px; background: #fff0f0; border-radius: 6px; }
     .empty { color: #596779; margin-top: 28px; }
+    .task-create, .task-filter { margin-top: 24px; }
+    select { font: inherit; padding: 8px; }
+    .tasks { list-style: none; padding: 0; }
+    .task { padding: 16px 0; border-top: 1px solid #dce2ec; }
+    .task label { display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; }
+    input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
     @media (max-width: 600px) { main { margin: 16px; padding: 20px; } .project { align-items: flex-start; flex-direction: column; } }
   </style>
 </head>
@@ -54,12 +60,38 @@ export function renderProjects(projects, error = '') {
   `);
 }
 
-export function renderProject(project) {
+export function renderProject(project, tasks = [], filter = 'All', error = '') {
+  const projectPath = `/projects/${escapeHtml(project.id)}`;
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     <form method="get" action="/">
       <button type="submit">Projects</button>
     </form>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create task-create" method="post" action="${projectPath}/tasks">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <label for="task-title">Task title</label>
+      <input id="task-title" name="title" type="text">
+      <button type="submit">Create task</button>
+    </form>
+    <form class="task-filter" method="get" action="${projectPath}">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['All', 'Open', 'Completed'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <noscript><button type="submit">Apply filter</button></noscript>
+    </form>
+    ${tasks.length ? `<ul class="tasks">${tasks.map((task) => `
+      <li class="task" data-testid="task-row">
+        <form method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}">
+          <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+          <label>
+            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+            <span>${escapeHtml(task.title)}</span>
+          </label>
+          <noscript><button type="submit">Save completion</button></noscript>
+        </form>
+      </li>`).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
   `);
 }
 

@@ -14,11 +14,37 @@ database.exec(`
     position INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL
-  )
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+  );
+  CREATE INDEX IF NOT EXISTS tasks_project_order ON tasks(project_id, position);
 `);
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY position');
 const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
+const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY position');
+const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title) VALUES (?, ?, ?)');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function projectPage(project, filter = 'All', error = '') {
+  const tasks = listTasks.all(project.id).filter((task) =>
+    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+  return renderProject(project, tasks, filter, error);
+}
+
+function redirect(response, location) {
+  response.writeHead(303, { Location: location });
+  response.end();
+}
 
 function sendHtml(response, status, html) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -42,7 +68,7 @@ async function readForm(request) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    const { pathname } = new URL(request.url, 'http://localhost');
+    const { pathname, searchParams } = new URL(request.url, 'http://localhost');
     if (request.method === 'GET' && pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
@@ -67,7 +93,34 @@ const server = http.createServer(async (request, response) => {
     const match = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)$/);
     if (request.method === 'GET' && match) {
       const project = findProject.get(match[1]);
-      sendHtml(response, project ? 200 : 404, project ? renderProject(project) : renderNotFound());
+      sendHtml(response, project ? 200 : 404, project ? projectPage(project, taskFilter(searchParams.get('filter'))) : renderNotFound());
+      return;
+    }
+    const taskMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/tasks(?:\/([a-zA-Z0-9-]+))?$/);
+    if (request.method === 'POST' && taskMatch) {
+      const project = findProject.get(taskMatch[1]);
+      if (!project) {
+        sendHtml(response, 404, renderNotFound());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      if (taskMatch[2]) {
+        const completed = form.get('completed') === '1' ? 1 : 0;
+        const result = updateTask.run(completed, project.id, taskMatch[2]);
+        if (!result.changes) {
+          sendHtml(response, 404, renderNotFound());
+          return;
+        }
+      } else {
+        const title = (form.get('title') ?? '').trim();
+        if (!title) {
+          sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
+          return;
+        }
+        insertTask.run(randomUUID(), project.id, title);
+      }
+      redirect(response, `/projects/${project.id}?filter=${filter}`);
       return;
     }
     sendHtml(response, 404, renderNotFound());
