@@ -562,7 +562,7 @@ test('combined filters retain selections, re-evaluate edits, and work through ar
     const titles = page => rows(page).map(row => /<span>(.*?)<\/span>/.exec(row)[1]);
     const assertFilters = (page, completion, priority) => {
       for (const [id, options, selected] of [
-        ['task-filter', ['All', 'Open', 'Completed'], completion],
+        ['task-filter', ['All', 'Open', 'Completed', 'Deleted'], completion],
         ['priority-filter', ['All', 'Low', 'Normal', 'High'], priority],
       ]) {
         const select = new RegExp(`<select id="${id}"[\\s\\S]*?<\\/select>`).exec(page)[0];
@@ -593,13 +593,13 @@ test('combined filters retain selections, re-evaluate edits, and work through ar
     assert.match(summary, /3\/6 completed/);
     assert.match(await html('/projects/1'), /<label for="priority-filter">Priority filter<\/label>/);
     assertFilters(await html('/projects/1'), 'All', 'All');
-    for (const filter of ['All', 'Open', 'Completed']) {
+    for (const filter of ['All', 'Open', 'Completed', 'Deleted']) {
       for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
         const path = `/projects/1?${new URLSearchParams({ filter, priorityFilter })}`;
         const page = await html(path);
         assertFilters(page, filter, priorityFilter);
         assert.deepEqual(titles(page), tasks.filter(task =>
-          (filter === 'All' || task.completed === (filter === 'Completed')) &&
+          filter !== 'Deleted' && (filter === 'All' || task.completed === (filter === 'Completed')) &&
           (priorityFilter === 'All' || task.priority === priorityFilter)).map(task => task.title));
       }
     }
@@ -959,7 +959,7 @@ test('inclusive due ranges intersect filters, retain applied state through edits
     const otherProject = await html('/projects/2');
     assertState(unfiltered, 'All', 'All', '', '');
     for (const [from, through] of [['', ''], ['2024-02-29', '2024-03-01'], ['2024-02-29', ''], ['', '2024-03-01'], ['2024-02-29', '2024-02-29'], ['0001-01-01', '9999-12-31']]) {
-      for (const filter of ['All', 'Open', 'Completed']) {
+      for (const filter of ['All', 'Open', 'Completed', 'Deleted']) {
         for (const priority of ['All', 'Low', 'Normal', 'High']) {
           const response = await submit(unfiltered, '/projects/1/due-range', {
             filter, priorityFilter: priority, dueFrom: ` ${from} `, dueThrough: ` ${through} `,
@@ -967,7 +967,7 @@ test('inclusive due ranges intersect filters, retain applied state through edits
           const page = await follow(response);
           assertState(page, filter, priority, from, through);
           assert.deepEqual(titles(page), tasks.filter(task =>
-            (filter === 'All' || task.completed === (filter === 'Completed')) &&
+            filter !== 'Deleted' && (filter === 'All' || task.completed === (filter === 'Completed')) &&
             (priority === 'All' || task.priority === priority) &&
             ((!from && !through) || (task.date && (!from || task.date >= from) && (!through || task.date <= through))))
             .map(task => task.title));
@@ -1547,7 +1547,7 @@ test('notes migrate without data loss and preserve exact text, filters, ownershi
         .find(match => match[0].includes(`action="/projects/1/tasks/${id}/notes"`));
       if (form) assert.ok(form[0].includes(`<button type="submit"${disabled ? ' disabled' : ''}>Save notes</button>`));
     };
-    assert.deepEqual(snapshot(), before.map(task => ({ ...task, notes: '' })));
+    assert.deepEqual(snapshot(), before.map(task => ({ ...task, notes: '', deleted: 0 })));
     assert.deepEqual(snapshot('task_positions'), positionsBefore);
     const initial = await html('/projects/1');
     assertNotes(initial, 1, '');
@@ -1609,6 +1609,124 @@ test('notes migrate without data loss and preserve exact text, filters, ownershi
     server = await startServer(dbPath);
     assertNotes(await html('/projects/1'), 1, '');
     assert.deepEqual(snapshot()[0], { ...current[0], title: 'Renamed', notes: '' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('deletion migrates live tasks and restores fields, reserved order, filters and summaries across restarts', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'deletion-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, position)
+      VALUES (1, 'Keep  Title', 1, 'High', '2026-10-11', '  Notes 雪
+<literal>  ', 1), (1, 'Second', 0, 'Normal', '', '', 2);
+  `);
+  const before = legacy.prepare('SELECT * FROM tasks ORDER BY id').all().map(row => ({ ...row }));
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const snapshot = (table = 'tasks') => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return database.prepare(`SELECT * FROM ${table} ORDER BY ${table === 'tasks' ? 'id' : 'project_id, position'}`).all().map(row => ({ ...row }));
+      } finally { database.close(); }
+    };
+    const titles = page => [...page.matchAll(/data-testid="task-row"[^>]*>\s*<span>([^<]*)/g)].map(match => match[1]);
+    const summary = async () => [...(await html('/')).matchAll(/data-testid="project-summary">([^<]*)/g)].map(match => match[1]);
+    const view = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-11', dueThrough: '2026-10-11', taskSearch: 'keep\t title' };
+    const viewPath = `/projects/1?${new URLSearchParams(view)}`;
+    const deletedView = { ...view, filter: 'Deleted' };
+    const deletedPath = `/projects/1?${new URLSearchParams(deletedView)}`;
+    assert.deepEqual(snapshot(), before.map(task => ({ ...task, deleted: 0 })));
+    const filter = /<select id="task-filter"[\s\S]*?<\/select>/.exec(await html('/projects/1'))[0];
+    assert.deepEqual([...filter.matchAll(/<option(?: selected)?>([^<]*)/g)].map(match => match[1]), ['All', 'Open', 'Completed', 'Deleted']);
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    const positions = snapshot('task_positions');
+    const original = snapshot();
+    const deleted = await post('/projects/1/tasks/1/delete', view);
+    assert.equal(deleted.status, 303);
+    assert.equal(deleted.headers.get('location'), viewPath);
+    assert.deepEqual(titles(await html(viewPath)), []);
+    assert.deepEqual(titles(await html('/projects/1')), ['Second']);
+    assert.deepEqual(titles(await html('/projects/1?filter=Open')), ['Second']);
+    assert.deepEqual(await summary(), ['0/1 completed', '0/0 completed']);
+    assert.deepEqual(snapshot(), original.map(task => task.id === 1 ? { ...task, deleted: 1 } : task));
+    assert.deepEqual(snapshot('task_positions'), positions);
+    let page = await html(deletedPath);
+    assert.deepEqual(titles(page), ['Keep  Title']);
+    const controls = [...page.matchAll(/<form\b[^>]*action="\/projects\/1\/tasks\/1[^"\s]*"[^>]*>[\s\S]*?<\/form>/g)].map(match => match[0]);
+    assert.equal(controls.length, 7);
+    for (const form of controls) {
+      const elements = [...form.matchAll(/<(?:input|select|textarea|button)\b[^>]*>/g)]
+        .map(match => match[0]).filter(element => !element.includes('type="hidden"'));
+      assert.ok(elements.length);
+      for (const element of elements) assert.equal(element.includes(' disabled'), !form.includes('/restore"'));
+    }
+    assert.match(page, /  Notes 雪\n&lt;literal&gt;  <\/textarea>/);
+    for (const values of [{ priorityFilter: 'Low' }, { dueFrom: '2026-10-12', dueThrough: '' }, { taskSearch: 'Notes' }]) {
+      assert.deepEqual(titles(await html(`/projects/1?${new URLSearchParams({ ...deletedView, ...values })}`)), []);
+    }
+    for (const [suffix, values] of [
+      ['', { completed: '0' }], ['/rename', { title: 'Changed' }], ['/priority', { priority: 'Low' }],
+      ['/due-date', { dueDate: '' }], ['/notes', { notes: 'Changed' }], ['/move', { destinationProject: '2' }],
+    ]) assert.equal((await post(`/projects/1/tasks/1${suffix}`, values)).status, 403);
+    assert.equal((await post('/projects/2/tasks/1/restore')).status, 404);
+    assert.deepEqual(snapshot(), original.map(task => task.id === 1 ? { ...task, deleted: 1 } : task));
+    assert.deepEqual(snapshot('task_positions'), positions);
+    await post('/projects/1/tasks/2/delete');
+    assert.deepEqual(await summary(), ['0/0 completed', '0/0 completed']);
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Later' });
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(titles(await html('/projects/1')), ['Later']);
+    assert.deepEqual(titles(await html('/projects/1?filter=Deleted')), ['Keep  Title', 'Second']);
+    await post('/projects/1/archive');
+    page = await html(deletedPath);
+    assert.deepEqual(titles(page), ['Keep  Title']);
+    assert.match(page, /<button type="submit" disabled>Restore task/);
+    assert.match(await html('/projects/1'), /<button type="submit" disabled>Delete task/);
+    const readingControls = [...page.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)]
+      .map(match => match[0]).filter(form => /id="task-filter"|id="task-search"|id="due-from"/.test(form));
+    for (const form of readingControls) assert.doesNotMatch(form, /disabled/);
+    assert.equal((await post('/projects/1/tasks/1/restore', deletedView)).status, 403);
+    assert.equal((await post('/projects/1/tasks/3/delete')).status, 403);
+    await post('/projects/1/restore');
+    await post('/projects/1/tasks/2/restore', { filter: 'Deleted' });
+    const restored = await post('/projects/1/tasks/1/restore', deletedView);
+    assert.equal(restored.status, 303);
+    assert.equal(restored.headers.get('location'), deletedPath);
+    assert.deepEqual(titles(await html(deletedPath)), []);
+    assert.deepEqual(titles(await html('/projects/1')), ['Keep  Title', 'Second', 'Later']);
+    assert.deepEqual(titles(await html(viewPath)), ['Keep  Title']);
+    assert.deepEqual(snapshot().slice(0, 2), original);
+    assert.deepEqual(await summary(), ['1/3 completed', '0/0 completed']);
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/delete');
+    await post('/projects/2/tasks/1/restore', { filter: 'Deleted' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(titles(await html('/projects/1')), ['Keep  Title', 'Second', 'Later']);
+    assert.deepEqual(snapshot().slice(0, 2), original);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
