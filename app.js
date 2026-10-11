@@ -101,6 +101,7 @@ async function refreshTasks() {
   const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`);
   if (!response.ok) throw new Error('Could not load tasks');
   const tasks = await response.json();
+  const destinations = (await fetchProjects()).filter((project) => !project.archived && String(project.id) !== String(activeProjectId));
   const filter = taskFilter.value;
   const selectedPriority = priorityFilter.value;
   taskList.replaceChildren();
@@ -223,7 +224,38 @@ async function refreshTasks() {
       await refreshTasks();
     });
 
-    row.append(title, renameForm, priority, dueDateForm, checkbox);
+    const moveForm = document.createElement('form');
+    moveForm.className = 'task-move-form';
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    for (const project of destinations) {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    destination.disabled = activeProjectArchived || destinations.length === 0;
+    const moveButton = document.createElement('button');
+    moveButton.type = 'submit';
+    moveButton.textContent = 'Move task';
+    moveButton.disabled = destination.disabled;
+    moveForm.append(destination, moveButton);
+    moveForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const moved = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}/move`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+      });
+      if (!moved.ok) {
+        taskAlert.textContent = 'Unable to move task';
+        taskAlert.hidden = false;
+        return;
+      }
+      await refreshTasks();
+    });
+
+    row.append(title, renameForm, priority, dueDateForm, moveForm, checkbox);
     taskList.append(row);
   }
 }
