@@ -160,6 +160,30 @@ async function renderTasks(project) {
   submit.disabled = Boolean(project.archived);
 }
 
+function renderDefaultPriority(project) {
+  const controls = element('div', '', { class: 'rename-form' });
+  const select = element('select', '', { id: 'default-task-priority' });
+  for (const value of ['Low', 'Normal', 'High']) select.append(element('option', value, { value }));
+  select.value = project.default_priority;
+  select.disabled = Boolean(project.archived);
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    try {
+      Object.assign(project, await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: select.value }),
+      }));
+      showAlert('');
+    } catch (error) { showAlert(error.message); }
+    finally {
+      select.value = project.default_priority;
+      select.disabled = Boolean(project.archived);
+    }
+  });
+  controls.append(element('label', 'Default task priority', { for: select.id }), select);
+  app.append(controls);
+}
+
 function renderRename(project, heading) {
   const form = element('form', '', { class: 'rename-form' });
   const input = element('input', '', { id: 'new-project-name', type: 'text', autocomplete: 'off' });
@@ -203,6 +227,7 @@ async function render() {
     app.append(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
     renderRename(project, heading);
+    renderDefaultPriority(project);
     await renderTasks(project);
     return;
   }

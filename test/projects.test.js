@@ -21,7 +21,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
   legacy.exec("INSERT INTO projects (name) VALUES ('Existing project')");
   legacy.exec("INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing task', 1)");
   legacy.close();
-  const existing = { id: 1, name: 'Existing project', archived: 0, total: 1, completed: 1 };
+  const existing = { id: 1, name: 'Existing project', archived: 0, default_priority: 'Normal', total: 1, completed: 1 };
   let child;
   async function start() {
     child = spawn(process.execPath, ['server.js'], {
@@ -67,7 +67,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.equal(firstResponse.status, 201);
     const first = await firstResponse.json();
     assert.equal(first.name, 'First project');
-    assert.deepEqual(first, { id: first.id, name: 'First project', archived: 0, total: 0, completed: 0 });
+    assert.deepEqual(first, { id: first.id, name: 'First project', archived: 0, default_priority: 'Normal', total: 0, completed: 0 });
     const second = await (await create('Second project')).json();
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [existing, first, second]);
@@ -79,6 +79,9 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     });
     const rename = (project, name) => fetch(`${base}/api/projects/${project.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    const setDefault = (project, default_priority) => fetch(`${base}/api/projects/${project.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_priority }),
     });
     const tasksUrl = project => `${base}/api/projects/${project.id}/tasks`;
     const listTasks = async project => (await fetch(tasksUrl(project))).json();
@@ -111,7 +114,24 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.ok(secondTask.id > firstTask.id);
     assert.deepEqual(await listTasks(first), [firstTask, secondTask]);
     assert.deepEqual(await listTasks(second), []);
+    for (const value of ['', 'Urgent', 'high', null, 42]) {
+      assert.equal((await setDefault(first, value)).status, 400);
+      assert.equal((await projectData(first)).default_priority, 'Normal');
+    }
+    assert.equal((await setDefault({ id: 999999 }, 'Low')).status, 404);
+    for (const value of ['Low', 'Normal', 'High']) {
+      const response = await setDefault(first, value);
+      assert.equal(response.status, 200);
+      first.default_priority = value;
+      assert.equal((await response.json()).default_priority, value);
+      assert.deepEqual(await listTasks(first), [firstTask, secondTask]);
+      assert.equal((await projectData(second)).default_priority, 'Normal');
+      assert.deepEqual(await projectData(first), { ...first, total: 2, completed: 0 });
+    }
+    assert.equal((await setDefault(second, 'Low')).status, 200);
+    second.default_priority = 'Low';
     const foreignTask = await (await createTask(second, 'Other project task')).json();
+    assert.equal(foreignTask.priority, 'Low');
     assert.equal((await complete(second, firstTask, true)).status, 404);
     const completedResponse = await complete(first, firstTask, true);
     assert.equal(completedResponse.status, 200);
@@ -185,6 +205,8 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.equal(archivedRename.status, 409);
     assert.equal((await archivedRename.json()).error, 'Archived project');
     assert.deepEqual(await projectData(first), first);
+    assert.equal((await setDefault(first, 'Low')).status, 409);
+    assert.equal((await projectData(first)).default_priority, 'High');
     assert.equal((await createTask(first, 'Cannot create')).status, 409);
     assert.equal((await complete(first, firstTask, false)).status, 409);
     assert.equal((await setPriority(first, firstTask, 'Low')).status, 409);
@@ -199,6 +221,7 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
     assert.deepEqual(await listTasks(first), [{ ...firstTask, completed: true }, secondTask]);
     assert.deepEqual(await listTasks(second), [foreignTask]);
+    assert.equal((await setDefault(first, 'Normal')).status, 409);
     assert.equal((await createTask(first, 'Still archived')).status, 409);
     assert.equal((await rename(first, 'Still archived')).status, 409);
     assert.equal((await renameTask(first, secondTask, 'Still archived')).status, 409);
@@ -226,7 +249,26 @@ test('projects and tasks validate, rename, set priorities, archive, restore, and
     base = await start();
     assert.deepEqual(await listTasks(first), [firstTask, secondTask]);
     assert.deepEqual(await projectData(first), first);
+    const inherited = await (await createTask(first, 'Inherited after restart')).json();
+    assert.equal(inherited.priority, 'High');
+    assert.equal(inherited.completed, false);
+    assert.ok(inherited.id > secondTask.id);
+    assert.deepEqual(await listTasks(first), [firstTask, secondTask, inherited]);
+    assert.deepEqual(await listTasks(second), [foreignTask]);
+    Object.assign(first, { total: 3 });
+    assert.deepEqual(await projectData(first), first);
+    assert.equal((await setDefault(first, 'Normal')).status, 200);
+    first.default_priority = 'Normal';
+    assert.deepEqual(await listTasks(first), [firstTask, secondTask, inherited]);
+    await stop();
+    base = await start();
+    assert.deepEqual(await projectData(first), first);
+    assert.deepEqual(await listTasks(first), [firstTask, secondTask, inherited]);
+    assert.equal((await projectData(second)).default_priority, 'Low');
+    const normal = await (await createTask(first, 'New normal task')).json();
+    assert.equal(normal.priority, 'Normal');
     const third = await (await create('Third project')).json();
+    assert.equal(third.default_priority, 'Normal');
     assert.ok(third.id > second.id);
   } finally {
     if (child) await stop();

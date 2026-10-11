@@ -34,13 +34,14 @@ class Node {
   }
 }
 
-async function projectPage(archived = false) {
+async function projectPage(archived = false, defaultPriority = 'Normal') {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, priority, completed: false },
     { id: index * 2 + 2, title: `${priority} completed`, priority, completed: true },
   ]);
   const mutations = [];
+  const project = { id: 1, name: 'Example', archived: Number(archived), default_priority: defaultPriority, total: 6, completed: 3 };
   const document = {
     querySelector: () => app,
     createElement: tag => new Node(tag),
@@ -53,15 +54,19 @@ async function projectPage(archived = false) {
       let data;
       if (options?.method === 'PATCH') {
         assert.equal(archived, false);
-        const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
+        const task = path === '/api/projects/1' ? project : tasks.find(task => task.id === Number(path.split('/').at(-1)));
         const changes = JSON.parse(options.body);
         mutations.push(changes);
         Object.assign(task, changes);
         data = task;
+      } else if (options?.method === 'POST') {
+        assert.equal(archived, false);
+        data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: project.default_priority };
+        tasks.push(data);
       } else if (path.endsWith('/tasks')) {
         data = tasks;
       } else {
-        data = { id: 1, name: 'Example', archived: Number(archived), total: 6, completed: 3 };
+        data = project;
       }
       return { ok: true, json: async () => JSON.parse(JSON.stringify(data)) };
     },
@@ -78,7 +83,7 @@ async function projectPage(archived = false) {
     control.value = value;
     await control.fire('change');
   };
-  return { app, tasks, mutations, byId, rows, titles, change };
+  return { app, project, tasks, mutations, byId, rows, titles, change };
 }
 
 test('both task filters intersect in creation order and remain independent on active and archived pages', async () => {
@@ -157,4 +162,39 @@ test('priority, completion, and rename edits refresh matching rows without reset
   assert.deepEqual(page.mutations, [
     { priority: 'Low' }, { title: 'Renamed task' }, { completed: true }, { completed: false },
   ]);
+});
+
+
+test('default changes preserve both filters and existing tasks, and new tasks inherit the saved default', async () => {
+  const page = await projectPage();
+  const select = page.byId('default-task-priority');
+  assert.deepEqual(select.children.map(option => option.value), ['Low', 'Normal', 'High']);
+  assert.equal(select.value, 'Normal');
+  assert.equal(select.disabled, false);
+  const label = page.app.find(node => node.attributes.for === select.id);
+  assert.equal(label.textContent, 'Default task priority');
+  await page.change('task-filter', 'Open');
+  await page.change('priority-filter', 'High');
+  const original = structuredClone(page.tasks);
+  await page.change('default-task-priority', 'High');
+  assert.equal(page.project.default_priority, 'High');
+  assert.equal(page.byId('task-filter').value, 'Open');
+  assert.equal(page.byId('priority-filter').value, 'High');
+  assert.deepEqual(page.tasks, original);
+  assert.deepEqual(page.titles(), ['High open']);
+  assert.equal(page.project.total, 6);
+  assert.equal(page.project.completed, 3);
+  page.byId('task-title').value = '  Inherited high  ';
+  const form = page.app.find(node => node.tag === 'form' && node.find(child => child.id === 'task-title'));
+  await form.fire('submit');
+  assert.deepEqual(page.titles(), ['High open', 'Inherited high']);
+  assert.equal(page.tasks.at(-1).priority, 'High');
+  await page.change('default-task-priority', 'Low');
+  assert.equal(page.tasks.at(-1).priority, 'High');
+  assert.deepEqual(page.titles(), ['High open', 'Inherited high']);
+  assert.equal(page.byId('task-filter').value, 'Open');
+  assert.equal(page.byId('priority-filter').value, 'High');
+  const archived = await projectPage(true, 'High');
+  assert.equal(archived.byId('default-task-priority').disabled, true);
+  assert.equal(archived.byId('default-task-priority').value, 'High');
 });
