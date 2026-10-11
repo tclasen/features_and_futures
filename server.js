@@ -23,6 +23,18 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER'); } catch {}
 db.exec('UPDATE tasks SET task_order = id WHERE task_order IS NULL');
+// Keep a stable slot for each task in every project it has visited. The live
+// task_order column describes current ordering; this table remembers ordering
+// across moves away from and back to a project.
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_order INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id),
+  UNIQUE (project_id, task_order)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, task_order)
+  SELECT id, project_id, task_order FROM tasks`);
 
 const page = `<!doctype html>
 <html lang="en">
@@ -375,6 +387,8 @@ const server = http.createServer(async (req, res) => {
       if (owner.archived) return sendJson(res, 409, { error: 'Archived projects cannot accept tasks' });
       const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(tasksMatch[1]).value);
       const result = db.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, ?)').run(tasksMatch[1], title, owner.default_task_priority, nextOrder);
+      const rememberedOrder = Number(db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(tasksMatch[1]).value);
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, task_order) VALUES (?, ?, ?)').run(result.lastInsertRowid, tasksMatch[1], rememberedOrder);
       return sendJson(res, 201, { id: String(result.lastInsertRowid), title, completed: false, priority: owner.default_task_priority });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
@@ -390,8 +404,23 @@ const server = http.createServer(async (req, res) => {
       if (task.archived) return sendJson(res, 409, { error: 'Archived projects cannot move tasks' });
       const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(destinationId);
       if (!destination || String(task.project_id) === destinationId) return sendJson(res, 400, { error: 'Invalid destination project' });
-      const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value);
-      db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ?').run(destinationId, nextOrder, moveMatch[1]);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        let remembered = db.prepare('SELECT task_order FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(moveMatch[1], destinationId);
+        if (!remembered) {
+          const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(task_order), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value);
+          db.prepare('INSERT INTO task_project_positions (task_id, project_id, task_order) VALUES (?, ?, ?)').run(moveMatch[1], destinationId, nextOrder);
+          remembered = { task_order: nextOrder };
+        }
+        const position = Number(remembered.task_order);
+        // Vacate the historical slot before restoring the task into it.
+        db.prepare('UPDATE tasks SET task_order = task_order + 1 WHERE project_id = ? AND task_order >= ?').run(destinationId, position);
+        db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ?').run(destinationId, position, moveMatch[1]);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
       return sendJson(res, 200, { status: 'ok' });
     } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
