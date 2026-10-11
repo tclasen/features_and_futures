@@ -85,7 +85,7 @@ const server = http.createServer(async (req, res) => {
       const project = getProject.get(projectMatch[1]);
       return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Project not found' }));
     }
-    if (req.method === 'GET' && url.pathname === '/') return send(200, indexHtml, 'text/html; charset=utf-8');
+    if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/[^/]+\/?$/.test(url.pathname))) return send(200, indexHtml, 'text/html; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/app.js') return send(200, appJs, 'text/javascript; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/style.css') return send(200, appCss, 'text/css; charset=utf-8');
     return send(404, JSON.stringify({ error: 'Not found' }));
