@@ -267,6 +267,20 @@ ${escapeHtml(task.notes)}</textarea>
 
 export function renderDirectory(tasks, { scope, filter, priority, range, query, order = 'Original' }, error = '') {
   const completedCount = tasks.filter((task) => task.completed).length;
+  // Group by identity, not name; task display order may span all owners.
+  const ownersById = new Map();
+  for (const task of tasks) {
+    if (!ownersById.has(task.project_id)) {
+      ownersById.set(task.project_id, {
+        id: task.project_id, name: task.project_name, position: task.project_position,
+        total: 0, completed: 0,
+      });
+    }
+    const owner = ownersById.get(task.project_id);
+    owner.total += 1;
+    if (task.completed) owner.completed += 1;
+  }
+  const owners = [...ownersById.values()].sort((a, b) => a.position - b.position);
   const canEdit = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canEdit && tasks.some((task) => !task.completed);
   const canReopen = canEdit && tasks.some((task) => task.completed);
@@ -320,6 +334,14 @@ export function renderDirectory(tasks, { scope, filter, priority, range, query, 
       <button type="submit"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
     </form>
     <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
+    <ul class="projects" aria-label="Matching projects">${owners.map((owner) => `
+      <li class="project" data-testid="directory-owner-row">
+        <span data-testid="directory-owner-name">${escapeHtml(owner.name)}</span>
+        <span data-testid="directory-owner-summary">${owner.completed}/${owner.total} completed</span>
+        <form method="get" action="/projects/${escapeHtml(owner.id)}">
+          <button type="submit">Open project</button>
+        </form>
+      </li>`).join('')}</ul>
     ${tasks.length ? `<ul class="tasks">${tasks.map((task) => `
       <li class="task" data-testid="directory-task-row">
         <div data-testid="directory-task-title">${escapeHtml(task.title)}</div>

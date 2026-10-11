@@ -44,6 +44,8 @@ The home page provides `Project JSON`, `Imported project name`, and `Import proj
 
 The read-only `directory-summary` displays `{completed}/{total} completed` for exactly the resolved matching rows, including retained completion flags in Deleted views. It updates with filters, search, range and bulk actions; ordering does not affect counts. Empty results show `0/0 completed` alongside `No matching tasks`. Project summaries still count only their own live tasks.
 
+The separate matching-project list provides one `directory-owner-row` per represented project, with its literal name, matching-task completion summary, and `Open project` navigation. Owners remain in project creation order regardless of directory task ordering. Counts use only the current resolved intersection, including Deleted and Archived results; empty results have no owner rows. Grouping uses project IDs, so duplicate names remain independent. Project creation and renaming allow duplicate names without changing identities or order.
+
 Directory ordering and summary tests cover cross-project sorting, stable ties, Unicode and literal whitespace, archived/deleted views, combined filters, validation errors, bulk updates, empty counts, view-state retention, unchanged exports, movement/returns and process restarts.
 
 Directory integration tests cover imported live/deleted tasks, active/archived scopes, combined filters, title-only matching, exact escaped notes, invalid-range preservation, default navigation, unchanged exports, bulk-action eligibility, cross-project completion/reopening, read-only enforcement, all-field and remembered-position preservation, subsequent movement/returns, empty results, and real restart persistence.

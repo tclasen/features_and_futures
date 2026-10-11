@@ -1737,7 +1737,7 @@ test('directory summary counts resolved intersections, retained deleted completi
       task('Match one', false), task('Match two', true),
       task('Other', true, 'Low', ''), task('Removed', true, 'High', '', true),
     ]);
-    const second = await importCopy('Second', false, [
+    const second = await importCopy('First', false, [
       task('MATCH three', false), task('Match low', true, 'Low'),
       task('Removed open', false, 'High', '', true),
     ]);
@@ -1753,6 +1753,24 @@ test('directory summary counts resolved intersections, retained deleted completi
       assert.deepEqual(summaries.map((match) => match[1]), [`${completed}/${total} completed`]);
       assert.equal((html.match(/data-testid="directory-task-row"/g) ?? []).length, total);
       assert.equal(html.includes('role="status">No matching tasks'), total === 0);
+      const expectedOwners = new Map();
+      for (const row of html.matchAll(/<li class="task" data-testid="directory-task-row">([\s\S]*?)<\/li>/g)) {
+        const path = row[1].match(/action="([^"]+)"/)[1];
+        const counts = expectedOwners.get(path) ?? { total: 0, completed: 0 };
+        counts.total += 1;
+        if (row[1].includes('directory-task-completion">Completed')) counts.completed += 1;
+        expectedOwners.set(path, counts);
+      }
+      const ownerRows = [...html.matchAll(/<li class="project" data-testid="directory-owner-row">([\s\S]*?)<\/li>/g)];
+      const paths = ownerRows.map((row) => row[1].match(/action="([^"]+)"/)[1]);
+      assert.deepEqual(paths, [first, second, archived].filter((path) => expectedOwners.has(path)));
+      for (const row of ownerRows) {
+        const path = row[1].match(/action="([^"]+)"/)[1];
+        const counts = expectedOwners.get(path);
+        assert.match(row[1], new RegExp(`directory-owner-summary">${counts.completed}/${counts.total} completed`));
+        const name = path === archived ? 'Archived' : 'First';
+        assert.ok(row[1].includes(`directory-owner-name">${name}</span>`));
+      }
     };
     check(await get('/directory'), 3, 5);
     const state = { scope: 'Active', filter: 'All', priorityFilter: 'High',

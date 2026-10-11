@@ -90,7 +90,7 @@ const listTasks = database.prepare(`
 `);
 const listDirectoryTasks = database.prepare(`
   SELECT tasks.id, tasks.title, tasks.completed, tasks.priority, tasks.due_date, tasks.notes, tasks.deleted,
-    projects.id AS project_id, projects.name AS project_name
+    projects.id AS project_id, projects.name AS project_name, projects.position AS project_position
   FROM tasks JOIN projects ON projects.id = tasks.project_id
   JOIN task_project_positions AS ordering
     ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
