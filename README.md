@@ -70,3 +70,15 @@ alert and leave saved data unchanged. Calendar dates are stored as text without
 timezone conversion. Existing and new tasks start with no due date. Dates persist
 through restarts and renaming; saving preserves both filters and other task data.
 Archived projects disable date editing and reject direct saves until restored.
+
+Project pages provide Due from and Due through textboxes and an Apply due range
+button. Boundaries use the same calendar validation as task due dates and are
+inclusive. Either blank boundary is unbounded; with both blank, undated tasks
+also match. Otherwise undated tasks are excluded. The range intersects the
+completion and priority filters while preserving task order and all-task summaries.
+Invalid applications display an alert and preserve the previously applied range
+and visible rows. Applied boundaries travel in the page URL and hidden form
+fields, separately from draft range inputs, so task edits, validation errors,
+renaming, creation, default changes, and combobox changes retain the applied range.
+Range controls remain available while archived. Reopening from the project list
+uses the bare project URL and resets both boundaries to empty.
