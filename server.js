@@ -32,6 +32,7 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -154,6 +155,12 @@ function projectPage(project, filter = 'All', error = '') {
           ${project.archived ? 'disabled' : ''}
           onchange="this.form.requestSubmit()"><span>${escapeHtml(task.title)}</span></label>
       </form>
+      <form class="task-form" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-task-title-${task.id}">New task title</label>
+        <div class="create"><input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button></div>
+      </form>
     </li>`).join('')}</ul>` : '<p>No tasks to show.</p>'}`);
 }
 
@@ -192,7 +199,7 @@ const server = http.createServer(async (request, response) => {
       }
       createProject.run(name);
       redirect(response, '/');
-    } else if (/^\/projects\/\d+(?:\/tasks(?:\/\d+)?|\/archive|\/restore|\/rename)?$/.test(url.pathname)) {
+    } else if (/^\/projects\/\d+(?:\/tasks(?:\/\d+(?:\/rename)?)?|\/archive|\/restore|\/rename)?$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
       if (!project) {
@@ -236,7 +243,18 @@ const server = http.createServer(async (request, response) => {
           createTask.run(project.id, title);
         } else {
           const taskId = Number(parts[4]);
-          if (!Number.isSafeInteger(taskId) || !updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id).changes) {
+          let result;
+          if (parts[5] === 'rename') {
+            const title = (form.get('title') || '').trim();
+            if (!title) {
+              sendHtml(response, 400, projectPage(project, filter, 'Task title is required'));
+              return;
+            }
+            if (Number.isSafeInteger(taskId)) result = renameTask.run(title, taskId, project.id);
+          } else if (Number.isSafeInteger(taskId)) {
+            result = updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, project.id);
+          }
+          if (!result?.changes) {
             sendHtml(response, 404, page('Task not found', '<h1>Task not found</h1>'));
             return;
           }

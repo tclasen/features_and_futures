@@ -28,6 +28,11 @@ Names are trimmed and must not be blank. Renaming preserves the project URL,
 creation order, tasks, and completion summary. Archived projects cannot be renamed
 until restored. Project names persist across restarts.
 
+Each task row has New task title and Rename task controls. Titles are trimmed and
+must not be blank. Renaming preserves ownership, creation order, completion state,
+filter membership, and completion summaries. Archived projects disable task
+renaming until restored. Renamed titles persist across restarts.
+
 Run the integration checks:
 
 ```sh
@@ -37,5 +42,5 @@ npm test
 The checks use a temporary SQLite file and verify validation, creation order,
 project pages, safe rendering, task completion and filters, project isolation,
 health, database migration, archive/restore, completion summaries, archived write
-protection, renaming with identity and data preservation, and persistence after
+protection, project and task renaming with identity and data preservation, and persistence after
 server restarts.
