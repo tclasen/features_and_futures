@@ -109,6 +109,31 @@ async function renderProject(id) {
     history.pushState({}, '', '/');
     renderList();
   });
+  const renameForm = element('form');
+  const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New project name', autocomplete: 'off' });
+  const renameButton = element('button', 'Rename project', { type: 'submit' });
+  renameInput.disabled = project.archived;
+  renameButton.disabled = project.archived;
+  renameForm.append(renameInput, renameButton);
+  const renameAlert = element('p', '', { role: 'alert', hidden: '' });
+  renameForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const name = renameInput.value.trim();
+    if (!name) {
+      renameAlert.textContent = 'Project name is required';
+      renameAlert.hidden = false;
+      return;
+    }
+    const result = await fetch(`/api/projects/${id}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    if (!result.ok) {
+      renameAlert.textContent = 'Project name is required';
+      renameAlert.hidden = false;
+      return;
+    }
+    renderProject(id);
+  });
   const form = element('form');
   const input = element('input', undefined, { type: 'text', 'aria-label': 'Task title', autocomplete: 'off' });
   const submit = element('button', 'Create task', { type: 'submit' });
@@ -176,7 +201,7 @@ async function renderProject(id) {
   const taskResponse = await fetch(`/api/projects/${id}/tasks`);
   if (taskResponse.ok) taskData = await taskResponse.json();
   drawTasks();
-  view.append(back, form, alert, filter, tasks);
+  view.append(back, renameForm, renameAlert, form, alert, filter, tasks);
   app.replaceChildren(view);
 }
 

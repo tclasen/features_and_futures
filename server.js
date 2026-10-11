@@ -37,6 +37,7 @@ const listTasks = database.prepare('SELECT id, project_id AS projectId, title, c
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 
 function sendJson(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -82,6 +83,11 @@ const server = createServer(async (request, response) => {
   if (request.method === 'PATCH' && projectMatch) {
     let body;
     try { body = await readRequestJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    if (typeof body.name === 'string') {
+      if (!body.name.trim()) return sendJson(response, 400, { error: 'Project name is required' });
+      const result = renameProject.run(body.name.trim(), Number(projectMatch[1]));
+      return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Active project not found' });
+    }
     if (typeof body.archived !== 'boolean') return sendJson(response, 400, { error: 'Invalid archive state' });
     const result = updateArchive.run(body.archived ? 1 : 0, Number(projectMatch[1]));
     return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Project not found' });
