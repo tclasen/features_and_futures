@@ -41,6 +41,136 @@ async function startServer(dbPath) {
   };
 }
 
+test('directory bulk completion targets only matching live active tasks and persists without changing other data', async () => {
+  await mkdir('data', { recursive: true });
+  const directory = await mkdtemp(resolve('data', 'bulk-test-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(dbPath);
+    const post = (path, values = {}) => fetch(`${server.base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.base}${path}`)).text();
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return {
+          projects: database.prepare('SELECT * FROM projects ORDER BY id').all(),
+          tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
+          positions: database.prepare('SELECT * FROM task_positions ORDER BY project_id, position').all(),
+        };
+      } finally { database.close(); }
+    };
+    const buttonDisabled = (page, label) => {
+      const button = new RegExp(`<button[^>]*>${label}</button>`).exec(page);
+      assert.ok(button, `Missing ${label}`);
+      return button[0].includes(' disabled');
+    };
+    const view = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      dueFrom: '2000-02-29', dueThrough: '2000-03-01', directorySearch: '  FIND\t this  ' };
+    const path = values => `/directory?${new URLSearchParams(values)}`;
+    const document = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Portable', archived: false, defaultPriority: 'Low', tasks: [
+        { title: 'Find  THIS\t first', completed: false, priority: 'High', dueDate: '2000-02-29', notes: '  雪 <markup>\nline  ', deleted: false },
+        { title: 'Find this completed', completed: true, priority: 'High', dueDate: '2000-03-01', notes: '', deleted: false },
+        { title: 'Find this low', completed: false, priority: 'Low', dueDate: '2000-02-29', notes: '', deleted: false },
+        { title: 'Find this undated', completed: false, priority: 'High', dueDate: '', notes: '', deleted: false },
+        { title: 'Find this late', completed: false, priority: 'High', dueDate: '2000-03-02', notes: '', deleted: false },
+        { title: 'Different title', completed: false, priority: 'High', dueDate: '2000-02-29', notes: 'Find this', deleted: false },
+        { title: 'Find this deleted', completed: false, priority: 'High', dueDate: '2000-02-29', notes: '', deleted: true },
+      ] },
+    };
+    await post('/projects/import', { json: JSON.stringify(document), name: 'First' });
+    document.project.tasks = [document.project.tasks[0]];
+    await post('/projects/import', { json: JSON.stringify(document), name: 'Second' });
+    document.project.archived = true;
+    await post('/projects/import', { json: JSON.stringify(document), name: 'Archived' });
+    // Establish remembered return positions before the bulk action.
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    const before = snapshot();
+    let page = await html(path(view));
+    assert.equal((page.match(/data-testid="directory-task-row"/g) ?? []).length, 2);
+    assert.equal(buttonDisabled(page, 'Complete visible tasks'), false);
+    assert.equal(buttonDisabled(page, 'Reopen visible tasks'), true);
+    assert.doesNotMatch(page, /No matching tasks/);
+    const bulkForm = /<form method="post" action="\/directory\/completion">[\s\S]*?<\/form>/.exec(page)[0];
+    for (const [key, value] of Object.entries({ ...view, directorySearch: view.directorySearch.trim() })) {
+      assert.ok(bulkForm.includes(`name="${key}" value="${value}"`));
+    }
+    const response = await post('/directory/completion', { ...view, completed: '1' });
+    assert.equal(response.status, 303);
+    const location = response.headers.get('location');
+    for (const [key, value] of Object.entries(view)) {
+      assert.equal(new URL(location, server.base).searchParams.get(key), value.trim());
+    }
+    page = await html(location);
+    assert.doesNotMatch(page, /data-testid="directory-task-row"/);
+    assert.match(page, /role="status">No matching tasks/);
+    assert.match(page, /if \(empty\) empty.hidden = true/);
+    assert.equal(buttonDisabled(page, 'Complete visible tasks'), true);
+    assert.equal(buttonDisabled(page, 'Reopen visible tasks'), true);
+    const completed = snapshot();
+    assert.deepEqual(completed.projects, before.projects);
+    assert.deepEqual(completed.positions, before.positions);
+    assert.deepEqual(completed.tasks, before.tasks.map(task => [1, 8].includes(task.id) ? { ...task, completed: 1 } : task));
+    assert.match(await html('/'), /project-summary">2\/6 completed/);
+    assert.match(await html('/'), /project-summary">1\/1 completed/);
+    // Ineligible scopes and deletion filters are enforced even for direct POSTs.
+    for (const values of [{ ...view, scope: 'Archived' }, { ...view, filter: 'Deleted' }]) {
+      page = await html(path(values));
+      assert.equal(buttonDisabled(page, 'Complete visible tasks'), true);
+      assert.equal(buttonDisabled(page, 'Reopen visible tasks'), true);
+      await post('/directory/completion', { ...values, completed: '1' });
+      await post('/directory/completion', { ...values, completed: '0' });
+      assert.deepEqual(snapshot(), completed);
+    }
+    assert.equal((await post('/directory/completion', { ...view, completed: 'invalid' })).status, 400);
+    assert.deepEqual(snapshot(), completed);
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), completed);
+    const completedView = { ...view, filter: 'Completed' };
+    page = await html(path(completedView));
+    assert.equal(buttonDisabled(page, 'Complete visible tasks'), true);
+    assert.equal(buttonDisabled(page, 'Reopen visible tasks'), false);
+    const reopened = await post('/directory/completion', { ...completedView, completed: '0' });
+    page = await html(reopened.headers.get('location'));
+    assert.match(page, /No matching tasks/);
+    assert.match(page, /<option selected>Completed/);
+    assert.deepEqual(snapshot().tasks, before.tasks.map(task => task.id === 2 ? { ...task, completed: 0 } : task));
+    // All supports both actions, including already completed/open matches.
+    const allView = { ...view, filter: 'All' };
+    await post('/directory/completion', { ...allView, completed: '1' });
+    const saved = snapshot();
+    await post('/directory/completion', { ...allView, completed: '1' });
+    assert.deepEqual(snapshot(), saved);
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), saved);
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    let moved = snapshot().tasks.find(task => task.id === 1);
+    assert.equal(moved.completed, 1);
+    assert.equal(moved.notes, before.tasks[0].notes);
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(snapshot(), saved);
+    await post('/directory/completion', { ...allView, completed: '0' });
+    page = await html(path(allView));
+    assert.equal(buttonDisabled(page, 'Complete visible tasks'), false);
+    assert.equal(buttonDisabled(page, 'Reopen visible tasks'), true);
+    const final = snapshot();
+    await server.stop();
+    server = await startServer(dbPath);
+    assert.deepEqual(snapshot(), final);
+    assert.deepEqual(await (await fetch(`${server.base}/health`)).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task priorities migrate, remain independent, and persist through renaming, restarts and restoration', async () => {
   await mkdir('data', { recursive: true });
   const directory = await mkdtemp(resolve('data', 'priority-test-'));

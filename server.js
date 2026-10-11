@@ -464,10 +464,15 @@ function directoryPath(state) {
   return `/directory?${params}`;
 }
 
+function directoryTasks(state) {
+  return listDirectoryTasks.all(state.scope === 'Archived' ? 1 : 0)
+    .filter(task => matchesTask(task, state.filter, state.priority, state.range, state.query));
+}
+
 function directoryPage(state, error = '', rangeInput = state.range) {
   const { scope, filter, priority, range, query } = state;
-  const tasks = listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
-    .filter(task => matchesTask(task, filter, priority, range, query));
+  const tasks = directoryTasks(state);
+  const canEdit = scope === 'Active' && filter !== 'Deleted';
   const selections = `<input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priority}">`;
@@ -510,6 +515,11 @@ function directoryPage(state, error = '', rangeInput = state.range) {
         <button type="submit">Apply due range</button>
       </form>
     </section>
+    <form method="post" action="/directory/completion">
+      ${selections}${rangeInputs}${searchField('directorySearch', query)}
+      <button type="submit" name="completed" value="1"${canEdit && tasks.some(task => !task.completed) ? '' : ' disabled'}>Complete visible tasks</button>
+      <button type="submit" name="completed" value="0"${canEdit && tasks.some(task => task.completed) ? '' : ' disabled'}>Reopen visible tasks</button>
+    </form>
     <section aria-label="Directory results">
       ${tasks.length ? tasks.map(task => `
         <div data-testid="directory-task-row" class="directory-row">
@@ -522,8 +532,14 @@ function directoryPage(state, error = '', rangeInput = state.range) {
           <form method="get" action="/projects/${task.project_id}">
             <button type="submit" class="secondary">Open project</button>
           </form>
-        </div>`).join('') : '<p class="muted">No tasks to show.</p>'}
-    </section>`);
+        </div>`).join('') : '<p class="muted" id="directory-empty" role="status">No matching tasks</p>'}
+    </section>
+    <script>
+      document.addEventListener('submit', () => {
+        const empty = document.getElementById('directory-empty');
+        if (empty) empty.hidden = true;
+      });
+    </script>`);
 }
 
 async function readForm(request) {
@@ -565,6 +581,30 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/directory') {
       sendHtml(response, 200, directoryPage(directoryState(url.searchParams)));
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/directory/completion') {
+      const form = await readForm(request);
+      if (!form) {
+        sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+        return;
+      }
+      const state = directoryState(form);
+      const completed = form.get('completed');
+      if (completed !== '0' && completed !== '1') {
+        sendHtml(response, 400, directoryPage(state, 'Invalid completion state'));
+        return;
+      }
+      if (state.scope === 'Active' && state.filter !== 'Deleted') {
+        transaction(() => {
+          for (const task of directoryTasks(state)) {
+            if (task.completed !== Number(completed)) {
+              updateTask.run(Number(completed), task.id, task.project_id);
+            }
+          }
+        });
+      }
+      redirect(response, directoryPath(state));
       return;
     }
     if (request.method === 'POST' && url.pathname === '/directory/due-range') {
