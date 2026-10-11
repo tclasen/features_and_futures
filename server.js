@@ -34,6 +34,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const page = `<!doctype html>
 <html lang="en">
@@ -61,6 +62,7 @@ const page = `<!doctype html>
     [data-testid="task-row"] { display: flex; align-items: center; gap: .75rem; padding: .8rem 0; border-top: 1px solid #e5e9f0; }
     [data-testid="task-row"] label { margin: 0; font-weight: 400; }
     [data-testid="task-row"] input { width: auto; }
+    [data-testid="task-row"] input[type="text"] { flex: 1; min-width: 5rem; }
     [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 0; border-top: 1px solid #e5e9f0; }
     .project-name { overflow-wrap: anywhere; }
     @media (max-width: 480px) { body { padding: 1rem .75rem; } main { padding: 1.25rem; } form { align-items: stretch; flex-direction: column; } }
@@ -284,7 +286,34 @@ const page = `<!doctype html>
           const title = document.createElement('label');
           title.htmlFor = checkbox.id;
           title.textContent = task.title;
-          row.append(checkbox, title);
+          const renameInput = document.createElement('input');
+          renameInput.type = 'text';
+          renameInput.value = task.title;
+          renameInput.setAttribute('aria-label', 'New task title');
+          renameInput.disabled = Boolean(project.archived);
+          const renameButton = document.createElement('button');
+          renameButton.type = 'button';
+          renameButton.textContent = 'Rename task';
+          renameButton.disabled = Boolean(project.archived);
+          renameButton.addEventListener('click', async () => {
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) {
+              error.textContent = 'Task title is required';
+              error.hidden = false;
+              renameInput.focus();
+              return;
+            }
+            try {
+              const updated = await request('/api/projects/' + encodeURIComponent(id) + '/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newTitle }) });
+              tasks = tasks.map(item => item.id === updated.id ? updated : item);
+              error.hidden = true;
+              drawTasks();
+            } catch {
+              error.textContent = 'Unable to rename task';
+              error.hidden = false;
+            }
+          });
+          row.append(checkbox, title, renameInput, renameButton);
           tasksList.append(row);
         }
       }
@@ -415,12 +444,33 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'PATCH' && tasksMatch[2]) {
       try {
         const data = await readBody(request);
+        const taskId = Number(tasksMatch[2]);
+        const project = findProject.get(projectId);
+        if (typeof data.title === 'string') {
+          if (project.archived) {
+            sendJson(response, 409, { error: 'Archived projects cannot rename tasks' });
+            return;
+          }
+          const title = data.title.trim();
+          if (!title) {
+            sendJson(response, 400, { error: 'Task title is required' });
+            return;
+          }
+          const existing = findTask.get(taskId, projectId);
+          if (!existing) {
+            sendJson(response, 404, { error: 'Task not found' });
+            return;
+          }
+          renameTask.run(title, taskId, projectId);
+          sendJson(response, 200, { ...existing, title, completed: Boolean(existing.completed) });
+          return;
+        }
         if (typeof data.completed !== 'boolean') {
           sendJson(response, 400, { error: 'Completion state is required' });
           return;
         }
-        updateTask.run(data.completed ? 1 : 0, Number(tasksMatch[2]), projectId);
-        const task = findTask.get(Number(tasksMatch[2]), projectId);
+        updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+        const task = findTask.get(taskId, projectId);
         if (!task) sendJson(response, 404, { error: 'Task not found' });
         else sendJson(response, 200, { ...task, completed: Boolean(task.completed) });
       } catch { sendJson(response, 400, { error: 'Invalid request' }); }
