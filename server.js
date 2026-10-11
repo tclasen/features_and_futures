@@ -31,6 +31,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -41,7 +42,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 database.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at, rowid)
   FROM tasks`);
-const listTasks = database.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate FROM tasks t LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(pos.position, t.created_at), t.created_at, t.rowid');
+const listTasks = database.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes FROM tasks t LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(pos.position, t.created_at), t.created_at, t.rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -119,6 +120,10 @@ const server = createServer(async (request, response) => {
     for await (const chunk of request) input += chunk;
     let data;
     try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    if (typeof data.notes === 'string') {
+      database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(data.notes, taskId, projectId);
+      return send(response, 200, { ok: true });
+    }
     if (typeof data.destinationProjectId === 'string') {
       const destination = findProject.get(data.destinationProjectId);
       if (!destination || destination.archived || data.destinationProjectId === projectId) return send(response, 400, { error: 'Invalid destination project' });
