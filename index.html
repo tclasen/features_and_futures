@@ -131,7 +131,7 @@
           <div id="rename-message" role="alert" aria-live="polite"></div>
           <form id="create-task"><label for="task-title" class="visually-hidden">Task title</label><input id="task-title" type="text" aria-label="Task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
           <div id="task-message" role="alert" aria-live="polite"></div>
-          <div class="task-controls"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select></div>
+          <div class="task-controls"><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option><option>Deleted</option></select></div>
           <div class="task-controls"><label for="priority-filter">Priority filter</label><select id="priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select></div>
           <form id="task-search" class="task-controls"><label for="task-search-query">Task search</label><input id="task-search-query" type="text" autocomplete="off"><button type="submit">Search tasks</button></form>
           <div class="task-controls"><label for="due-from">Due from</label><input id="due-from" type="text" autocomplete="off"><label for="due-through">Due through</label><input id="due-through" type="text" autocomplete="off"><button id="apply-due-range" type="button">Apply due range</button></div>
@@ -155,11 +155,11 @@
           const selectedPriority = priorityFilter.value;
           const hasDueRange = Boolean(appliedDueFrom || appliedDueThrough);
           const visible = tasks.filter((task) =>
-            (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed)) &&
+            (mode === 'Deleted' ? task.deleted : !task.deleted && (mode === 'All' || (mode === 'Completed' ? task.completed : !task.completed))) &&
             (selectedPriority === 'All' || task.priority === selectedPriority) &&
             normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskSearch)) &&
             (!hasDueRange || (task.due_date && (!appliedDueFrom || task.due_date >= appliedDueFrom) && (!appliedDueThrough || task.due_date <= appliedDueThrough))));
-          list.innerHTML = visible.map((task) => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Rename task</button><textarea data-task-notes-id="${task.id}" aria-label="Task notes" ${project.archived ? 'disabled' : ''}>${escapeText(task.notes || '')}</textarea><button type="button" data-save-notes-task-id="${task.id}" ${project.archived ? 'disabled' : ''}>Save notes</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${project.archived || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button></div>`).join('');
+          list.innerHTML = visible.map((task) => { const locked = project.archived || task.deleted; return `<div class="task-row" data-testid="task-row"><input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}" ${task.completed ? 'checked' : ''} ${locked ? 'disabled' : ''}><span class="task-name">${escapeText(task.title)}</span><select data-priority-task-id="${task.id}" aria-label="Task priority" ${locked ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select><input type="text" data-due-date-task-id="${task.id}" aria-label="Task due date" value="${escapeText(task.due_date || '')}" autocomplete="off" ${locked ? 'disabled' : ''}><button type="button" data-save-due-date-task-id="${task.id}" ${locked ? 'disabled' : ''}>Save due date</button><input type="text" data-rename-task-id="${task.id}" aria-label="New task title" autocomplete="off" ${locked ? 'disabled' : ''}><button type="button" data-rename-task-id="${task.id}" ${locked ? 'disabled' : ''}>Rename task</button><textarea data-task-notes-id="${task.id}" aria-label="Task notes" ${locked ? 'disabled' : ''}>${escapeText(task.notes || '')}</textarea><button type="button" data-save-notes-task-id="${task.id}" ${locked ? 'disabled' : ''}>Save notes</button><select data-destination-task-id="${task.id}" aria-label="Destination project" ${locked || activeProjects.length === 0 ? 'disabled' : ''}>${activeProjects.map((destination) => `<option value="${destination.id}">${escapeText(destination.name)}</option>`).join('')}</select><button type="button" data-move-task-id="${task.id}" ${locked || activeProjects.length === 0 ? 'disabled' : ''}>Move task</button><button type="button" data-task-state-id="${task.id}" ${project.archived ? 'disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button></div>`; }).join('');
         };
         const loadTasks = async () => {
           const result = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`);
@@ -238,6 +238,21 @@
           renderTasks();
         });
         list.addEventListener('click', async (event) => {
+          const stateButton = event.target.closest('button[data-task-state-id]');
+          if (stateButton) {
+            const taskId = Number(stateButton.dataset.taskStateId);
+            const task = tasks.find((item) => item.id === taskId);
+            const action = task.deleted ? 'restore' : 'delete';
+            const result = await fetch(`/api/tasks/${taskId}/${action}`, { method: 'POST' });
+            if (!result.ok) {
+              app.querySelector('#task-message').textContent = (await result.json()).error || 'Could not update task';
+              return;
+            }
+            task.deleted = action === 'delete';
+            app.querySelector('#task-message').textContent = '';
+            renderTasks();
+            return;
+          }
           const notesButton = event.target.closest('button[data-save-notes-task-id]');
           if (notesButton) {
             const taskId = Number(notesButton.dataset.saveNotesTaskId);

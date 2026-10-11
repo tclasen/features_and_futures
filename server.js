@@ -44,6 +44,9 @@ if (!taskColumns.some((column) => column.name === 'position')) {
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+}
 // Keep an ordering slot for every project a task has belonged to. The current
 // tasks.position remains the fast path for listing the task's present project.
 database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -69,7 +72,8 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     const projects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority,
-      COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
+      COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS total_count,
+      COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id`).all();
     for (const project of projects) {
@@ -92,7 +96,8 @@ const server = createServer(async (request, response) => {
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {
     const project = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority,
-      COUNT(t.id) AS total_count, COALESCE(SUM(t.completed), 0) AS completed_count
+      COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS total_count,
+      COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       WHERE p.id = ? GROUP BY p.id`).get(Number(projectMatch[1]));
     if (project) {
@@ -143,8 +148,8 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksMatch[1]);
     const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
-    const tasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId);
-    return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
+    const tasks = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id').all(projectId);
+    return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) })));
   }
   if (tasksMatch && request.method === 'POST') {
     const projectId = Number(tasksMatch[1]);
@@ -165,6 +170,18 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
   }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  const deletionMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/(delete|restore)$/);
+  if (deletionMatch && request.method === 'POST') {
+    const taskId = Number(deletionMatch[1]);
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(taskId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
+      return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
+    }
+    const deleted = deletionMatch[2] === 'delete';
+    database.prepare('UPDATE tasks SET deleted = ? WHERE id = ?').run(deleted ? 1 : 0, taskId);
+    return sendJson(response, 200, { id: taskId, deleted });
+  }
   const moveTaskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
   if (moveTaskMatch && request.method === 'POST') {
     let body = '';
@@ -173,13 +190,14 @@ const server = createServer(async (request, response) => {
     try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
     const taskId = Number(moveTaskMatch[1]);
     const destinationId = Number(payload.destination_project_id);
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
     const source = database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id);
     const destination = database.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
     if (source.archived || !destination || destination.archived) {
       return sendJson(response, 409, { error: 'Tasks can only move between active projects' });
     }
+    if (task.deleted) return sendJson(response, 409, { error: 'Deleted tasks cannot be moved' });
     if (task.project_id === destinationId) return sendJson(response, 400, { error: 'Destination must be another project' });
     const rememberedPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
     const nextPosition = rememberedPosition?.position ?? database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_project_positions WHERE project_id = ?').get(destinationId).position;
@@ -199,11 +217,12 @@ const server = createServer(async (request, response) => {
     let dueDate = rawDate || null;
     if (dueDate && !isValidDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
     const taskId = Number(dueDateMatch[1]);
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
     if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
       return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
     }
+    if (task.deleted) return sendJson(response, 409, { error: 'Deleted tasks cannot be changed' });
     database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, taskId);
     return sendJson(response, 200, { id: taskId, due_date: dueDate });
   }
@@ -215,11 +234,12 @@ const server = createServer(async (request, response) => {
     try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
     if (typeof payload.notes !== 'string') return sendJson(response, 400, { error: 'Notes must be text' });
     const taskId = Number(notesMatch[1]);
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
     if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
       return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
     }
+    if (task.deleted) return sendJson(response, 409, { error: 'Deleted tasks cannot be changed' });
     database.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(payload.notes, taskId);
     return sendJson(response, 200, { id: taskId, notes: payload.notes });
   }
@@ -232,11 +252,12 @@ const server = createServer(async (request, response) => {
     const priorities = ['Low', 'Normal', 'High'];
     if (!priorities.includes(payload.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
     const taskId = Number(priorityMatch[1]);
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
     if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
       return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
     }
+    if (task.deleted) return sendJson(response, 409, { error: 'Deleted tasks cannot be changed' });
     database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(payload.priority, taskId);
     return sendJson(response, 200, { id: taskId, priority: payload.priority });
   }
@@ -249,11 +270,12 @@ const server = createServer(async (request, response) => {
     const title = typeof payload.title === 'string' ? payload.title.trim() : '';
     if (!title) return sendJson(response, 400, { error: 'Task title is required' });
     const taskId = Number(renameTaskMatch[1]);
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(taskId);
     if (!task) return sendJson(response, 404, { error: 'Task not found' });
     if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
       return sendJson(response, 409, { error: 'Archived project tasks cannot be renamed' });
     }
+    if (task.deleted) return sendJson(response, 409, { error: 'Deleted tasks cannot be renamed' });
     database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
     return sendJson(response, 200, { id: taskId, title });
   }
@@ -263,10 +285,11 @@ const server = createServer(async (request, response) => {
     let payload;
     try { payload = JSON.parse(body); } catch { return sendJson(response, 400, { error: 'Invalid JSON' }); }
     if (typeof payload.completed !== 'boolean') return sendJson(response, 400, { error: 'Invalid completion state' });
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
+    const task = database.prepare('SELECT project_id, deleted FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
     if (task && database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id).archived) {
       return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
     }
+    if (task?.deleted) return sendJson(response, 409, { error: 'Deleted tasks cannot be changed' });
     const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(payload.completed ? 1 : 0, Number(taskMatch[1]));
     if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
     return sendJson(response, 200, { id: Number(taskMatch[1]), completed: payload.completed });
