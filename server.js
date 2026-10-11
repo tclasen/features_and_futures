@@ -124,7 +124,8 @@ function searchQuery(value) {
 }
 
 function matchesSearch(text, query) {
-  const fold = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  // Normalize only for matching; saved text and the applied query stay intact.
+  const fold = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
   return fold(text).includes(fold(query));
 }
 

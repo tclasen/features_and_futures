@@ -41,7 +41,7 @@ test('ASCII substring searches intersect filters and survive edits without chang
     for (const name of ['Alpha  Board', 'alpha Board', 'Other', 'Ärea']) await post('/projects', { name });
     assert.deepEqual(projects(await get('/?search=%20ALPHA%20')), ['Alpha  Board', 'alpha Board']);
     assert.deepEqual(projects(await get('/?search=alpha%20%20')), ['Alpha  Board', 'alpha Board']); // trailing spaces trimmed
-    assert.deepEqual(projects(await get('/?search=alpha%20%20board')), ['Alpha  Board']);
+    assert.deepEqual(projects(await get('/?search=alpha%20%20board')), ['Alpha  Board', 'alpha Board']);
     assert.deepEqual(projects(await get('/?search=ärea')), []); // ASCII-only folding
     await post('/projects/2/archive', { search: 'alpha' });
     assert.deepEqual(projects(await get('/?search=alpha')), ['Alpha  Board']);
@@ -108,6 +108,59 @@ test('ASCII substring searches intersect filters and survive edits without chang
     assert.match(await get('/projects/1'), /id="task-search"[^>]*value=""/);
     await post('/projects/1/restore');
     assert.match(await get('/'), /1\/5 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('search collapses only ASCII spaces and tabs without rewriting persistent text', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-spaces-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'db.sqlite');
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = async (path, values = {}) => (await fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values)
+    })).text();
+    const projects = html => [...html.matchAll(/data-testid="project-row">\s*<span>([^<]*)/g)].map(match => match[1]);
+    const tasks = html => [...html.matchAll(/aria-label="Complete ([^"]*)"/g)].map(match => match[1]);
+    const projectNames = ['Alpha  \t Board', 'ALPHA Board', 'Alpha\nBoard', 'Alpha\u00a0Board'];
+    for (const name of projectNames) await post('/projects', { name });
+    const projectPath = '/?' + new URLSearchParams({ search: ' \talpha\t  board\t ' });
+    assert.deepEqual(projects(await get(projectPath)), projectNames.slice(0, 2));
+    await post('/projects/2/archive');
+    assert.deepEqual(projects(await get(projectPath)), projectNames.slice(0, 1));
+    assert.deepEqual(projects(await get(projectPath + '&filter=Archived')), projectNames.slice(1, 2));
+    assert.deepEqual(projects(await get('/')), [projectNames[0], ...projectNames.slice(2)]);
+
+    const titles = ['Read \t  BOOK', 'Read Book', 'Read\nBook', 'Read\u00a0Book'];
+    for (const title of titles) await post('/projects/1/tasks', { title });
+    const query = 'read\t \tbook';
+    assert.deepEqual(tasks(await post('/projects/1/search', { query })), titles.slice(0, 2));
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const state = { search: query, filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29' };
+    const filteredPath = '/projects/1?' + new URLSearchParams(state);
+    assert.deepEqual(tasks(await get(filteredPath)), titles.slice(0, 1));
+    let html = await post('/projects/1/tasks/1/rename', { ...state, title: 'READ\t\t  Book' });
+    assert.deepEqual(tasks(html), ['READ\t\t  Book']);
+    assert.match(html, /name="dueFrom" value="2024-02-29"/);
+    html = await post('/projects/1/tasks/1/priority', { ...state, priority: 'Low' });
+    assert.deepEqual(tasks(html), []);
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/archive');
+    assert.deepEqual(tasks(await get(filteredPath)), ['READ\t\t  Book']);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(projects(await get(projectPath + '&filter=Archived')), projectNames.slice(0, 2));
+    assert.deepEqual(tasks(await get(filteredPath)), ['READ\t\t  Book']);
+    assert.deepEqual(tasks(await get('/projects/1')), ['READ\t\t  Book', ...titles.slice(1)]);
+    await post('/projects/1/restore');
+    assert.deepEqual(projects(await get('/')), [projectNames[0], ...projectNames.slice(2)]);
+    assert.match(await get('/'), /1\/4 completed/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

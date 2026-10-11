@@ -52,7 +52,9 @@ cannot send or receive tasks; controls are disabled when no destination is avail
 Project search and Search projects match project names within the selected archive
 filter. Task search and Search tasks match titles within all selected task filters.
 Both use substring matching with ASCII case ignored and surrounding query whitespace
-trimmed; internal whitespace is significant. Searches retain other filters and task
+trimmed; runs of ASCII spaces and horizontal tabs in queries and names/titles match
+as one space without rewriting saved text. Other internal whitespace remains significant.
+Searches retain other filters and task
 search survives edits and moves. Archived pages still support searching. Opening the
 list (including Projects) or opening a project from the list resets its search to empty.
 Search never changes saved data or all-task summaries.
