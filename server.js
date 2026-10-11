@@ -84,6 +84,21 @@ const server = createServer(async (req, res) => {
     const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, priority);
     return json(res, 201, { id: Number(result.lastInsertRowid), title, completed: 0, priority });
   }
+  const moveMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/move$/);
+  if (moveMatch && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let data;
+    try { data = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
+    const taskId = Number(moveMatch[1]);
+    const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(taskId);
+    if (!task) return json(res, 404, { error: 'Task not found' });
+    if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
+    const destination = db.prepare('SELECT id FROM projects WHERE id=? AND archived=0').get(Number(data.destination_id));
+    if (!destination || destination.id === task.project_id) return json(res, 400, { error: 'Invalid destination project' });
+    db.prepare('UPDATE tasks SET project_id=? WHERE id=?').run(destination.id, taskId);
+    return json(res, 200, { ok: true });
+  }
   const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskMatch && req.method === 'PATCH') {
     let body = '';
