@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(720px, calc(100% - 40px)); margin: 64px auto; }
+    h1 { margin: 0 0 28px; font-size: 2rem; }
+    form { display: flex; gap: 10px; align-items: end; margin-bottom: 24px; }
+    label { display: block; font-weight: 600; margin-bottom: 7px; }
+    .field { flex: 1; }
+    input { width: 100%; border: 1px solid #aab4c5; border-radius: 6px; padding: 11px 12px; font: inherit; background: white; }
+    button { border: 0; border-radius: 6px; padding: 11px 16px; font: inherit; font-weight: 600; cursor: pointer; background: #2458c6; color: white; }
+    button:hover { background: #1948a8; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #dce2ec; border-radius: 7px; margin: 10px 0; }
+    .project-name { overflow-wrap: anywhere; }
+    .alert { color: #a32323; margin: -12px 0 18px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 520px) { main { margin-top: 36px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+    async function renderList() {
+      const response = await fetch('/api/projects');
+      const projects = await response.json();
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form">
+          <div class="field"><label for="project-name">Project name</label><input id="project-name" name="name" type="text" autocomplete="off"></div>
+          <button type="submit">Create project</button>
+        </form>
+        <p class="alert" id="project-alert" role="alert" hidden></p>
+        <section aria-label="Projects" id="project-list"></section>`;
+      const list = app.querySelector('#project-list');
+      list.innerHTML = projects.map((project) => `<div class="project-row" data-testid="project-row">
+        <span class="project-name">${esc(project.name)}</span>
+        <button type="button" data-project-id="${project.id}">Open project</button>
+      </div>`).join('');
+      app.querySelector('#create-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = app.querySelector('#project-name');
+        const alert = app.querySelector('#project-alert');
+        const name = input.value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; input.focus(); return; }
+        const created = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!created.ok) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+        history.pushState({}, '', '/');
+        await renderList();
+      });
+      list.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-project-id]');
+        if (button) navigate(`/projects/${button.dataset.projectId}`);
+      });
+    }
+
+    async function renderProject(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) { history.replaceState({}, '', '/'); return renderList(); }
+      const project = await response.json();
+      app.innerHTML = `<button id="back" type="button">Projects</button><h1>${esc(project.name)}</h1>`;
+      app.querySelector('#back').addEventListener('click', () => navigate('/'));
+    }
+
+    function navigate(path) {
+      history.pushState({}, '', path);
+      renderRoute();
+    }
+    function renderRoute() {
+      const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
+      return match ? renderProject(match[1]) : renderList();
+    }
+    window.addEventListener('popstate', renderRoute);
+    renderRoute();
+  </script>
+</body>
+</html>
