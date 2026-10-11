@@ -51,7 +51,7 @@ test('legacy project databases migrate without losing IDs or tasks', async () =>
     const expected = [{ id: 17, name: 'Legacy', archived: false, defaultTaskPriority: 'Normal', totalCount: 1, completedCount: 1 }];
     assert.deepEqual(await (await fetch(`${server.url}/api/projects`)).json(), expected);
     assert.deepEqual(await (await fetch(`${server.url}/api/projects/17/tasks`)).json(), [
-      { id: 23, title: 'Saved task', completed: true, priority: 'Normal' },
+      { id: 23, title: 'Saved task', completed: true, priority: 'Normal', dueDate: '' },
     ]);
     await server.stop();
     server = await start(databasePath);
@@ -290,6 +290,56 @@ test('priorities default, validate, remain independent, and persist through rena
     server = await start(databasePath);
     assert.deepEqual(await (await request(path)).json(), [{ ...saved, priority: 'Low' }, next]);
     assert.deepEqual(await (await request(`/${first.id}`)).json(), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('due dates validate, clear, remain independent and persist through edits/archive/restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(databasePath);
+    const request = (path, method, body) => fetch(`${server.url}/api/projects${path}`, method ? {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    } : undefined);
+    const project = await (await request('', 'POST', { name: 'Dates' })).json();
+    const other = await (await request('', 'POST', { name: 'Other' })).json();
+    const path = `/${project.id}/tasks`;
+    const task = await (await request(path, 'POST', { title: 'First' })).json();
+    const next = await (await request(path, 'POST', { title: 'Next' })).json();
+    assert.equal(task.dueDate, '');
+    const patch = (body) => request(`${path}/${task.id}`, 'PATCH', body);
+    await patch({ completed: true });
+    await patch({ priority: 'High' });
+    const summary = await (await request(`/${project.id}`)).json();
+    let saved = { ...task, completed: true, priority: 'High', dueDate: '2000-02-29' };
+    assert.deepEqual(await (await patch({ dueDate: ' 2000-02-29 ' })).json(), saved);
+    for (const dueDate of ['1900-02-29', '0000-01-01', '2024-04-31', '2025-1-01', null, 123]) {
+      const invalid = await patch({ dueDate });
+      assert.equal(invalid.status, 400);
+      assert.equal((await invalid.json()).error, 'Due date must be a valid YYYY-MM-DD date');
+      assert.deepEqual(await (await request(path)).json(), [saved, next]);
+    }
+    assert.equal((await request(`/${other.id}/tasks/${task.id}`, 'PATCH', { dueDate: '2025-01-01' })).status, 404);
+    saved = { ...saved, title: 'Renamed' };
+    assert.deepEqual(await (await patch({ title: ' Renamed ' })).json(), saved);
+    assert.deepEqual(await (await request(`/${project.id}`)).json(), summary);
+    await request(`/${project.id}`, 'PATCH', { archived: true });
+    assert.equal((await patch({ dueDate: '' })).status, 409);
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [saved, next]);
+    await request(`/${project.id}`, 'PATCH', { archived: false });
+    for (const dueDate of ['', ' \t\n ']) {
+      assert.deepEqual(await (await patch({ dueDate })).json(), { ...saved, dueDate: '' });
+    }
+    await server.stop();
+    server = await start(databasePath);
+    assert.deepEqual(await (await request(path)).json(), [{ ...saved, dueDate: '' }, next]);
+    assert.deepEqual(await (await request(`/${project.id}`)).json(), summary);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

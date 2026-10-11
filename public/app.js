@@ -188,6 +188,8 @@ async function showTasks(project) {
         renameInput.disabled = true;
         renameButton.disabled = true;
         priority.disabled = true;
+        dueDateInput.disabled = true;
+        dueDateButton.disabled = true;
         app.querySelector('[role="alert"]')?.remove();
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
@@ -244,7 +246,25 @@ async function showTasks(project) {
         if (archived || saving.has(task.id)) return;
         return saveTask({ priority: priority.value });
       });
-      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority);
+      const dueDateForm = element('form');
+      const dueDateLabel = element('label', 'Task due date');
+      dueDateLabel.htmlFor = `task-due-date-${task.id}`;
+      const dueDateInput = element('input');
+      dueDateInput.id = dueDateLabel.htmlFor;
+      dueDateInput.name = 'dueDate';
+      dueDateInput.type = 'text';
+      dueDateInput.value = task.dueDate || '';
+      dueDateInput.disabled = archived || saving.has(task.id);
+      const dueDateButton = element('button', 'Save due date');
+      dueDateButton.type = 'submit';
+      dueDateButton.disabled = archived || saving.has(task.id);
+      dueDateForm.append(dueDateLabel, dueDateInput, dueDateButton);
+      dueDateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (archived || saving.has(task.id)) return;
+        await saveTask({ dueDate: dueDateInput.value.trim() });
+      });
+      row.append(checkbox, element('span', task.title), renameForm, priorityLabel, priority, dueDateForm);
       return row;
     }));
   }

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { normalizeDueDate } from './due-date.js';
 
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -32,6 +33,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'defaultTaskPriority')) {
   database.exec("ALTER TABLE projects ADD COLUMN defaultTaskPriority TEXT NOT NULL DEFAULT 'Normal' CHECK (defaultTaskPriority IN ('Low', 'Normal', 'High'))");
 }
+// Empty dates represent tasks without a scheduled calendar day.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'dueDate')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN dueDate TEXT NOT NULL DEFAULT ''");
+}
 const projectQuery = `SELECT p.id, p.name, p.archived, p.defaultTaskPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id`;
@@ -40,13 +45,14 @@ const getProject = database.prepare(`${projectQuery} WHERE p.id = ? GROUP BY p.i
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const getTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+const getTask = database.prepare('SELECT id, title, completed, priority, dueDate FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET defaultTaskPriority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const setTaskDueDate = database.prepare('UPDATE tasks SET dueDate = ? WHERE project_id = ? AND id = ?');
 
 function projectJson(project) {
   return { ...project, archived: Boolean(project.archived) };
@@ -131,6 +137,12 @@ const server = createServer(async (request, response) => {
             return json(response, 400, { error: 'Priority must be Low, Normal, or High' });
           }
           setTaskPriority.run(input.priority, projectId, taskId);
+        } else if (input && Object.hasOwn(input, 'dueDate')) {
+          const dueDate = normalizeDueDate(input.dueDate);
+          if (dueDate === null) {
+            return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+          setTaskDueDate.run(dueDate, projectId, taskId);
         } else {
           if (typeof input?.completed !== 'boolean') {
             return json(response, 400, { error: 'Completed must be a boolean' });

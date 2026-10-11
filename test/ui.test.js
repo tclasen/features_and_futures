@@ -38,6 +38,59 @@ class Node {
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 
 for (const archived of [false, true]) {
+  test(`due date controls preserve filters and saved values (${archived ? 'archived' : 'active'})`, async () => {
+    const app = new Node('main');
+    const task = { id: 1, title: 'Task', completed: true, priority: 'High', dueDate: '2000-02-29' };
+    let writes = 0;
+    runInNewContext(source, {
+      document: { querySelector: () => app, createElement: (tag) => new Node(tag) },
+      location: { pathname: '/projects/1', assign() {} },
+      async fetch(path, options) {
+        if (path === '/api/projects/1') return { ok: true, json: async () => ({ id: 1, name: 'Dates', archived, defaultTaskPriority: 'Normal' }) };
+        if (!options) return { ok: true, json: async () => [{ ...task }] };
+        writes++;
+        const changes = JSON.parse(options.body);
+        if (changes.dueDate === 'bad') return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+        Object.assign(task, changes);
+        return { ok: true, json: async () => ({ ...task }) };
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const filters = app.children.find((node) => node.className === 'task-filter');
+    filters.children[1].value = 'Completed';
+    await filters.children[1].fire('change');
+    filters.children[3].value = 'High';
+    await filters.children[3].fire('change');
+    const dateForm = () => app.querySelector('ul').children[0].children[5];
+    assert.equal(dateForm().children[0].textContent, 'Task due date');
+    assert.equal(dateForm().children[0].htmlFor, dateForm().children[1].id);
+    assert.equal(dateForm().children[1].type, 'text');
+    assert.equal(dateForm().children[1].value, '2000-02-29');
+    assert.equal(dateForm().children[2].textContent, 'Save due date');
+    assert.equal(dateForm().children[1].disabled, archived);
+    assert.equal(dateForm().children[2].disabled, archived);
+    if (archived) {
+      await dateForm().fire('submit');
+      assert.equal(writes, 0);
+      return;
+    }
+    for (const [input, expected] of [[' 0001-01-01 ', '0001-01-01'], ['bad', '0001-01-01'], [' \t ', '']]) {
+      dateForm().children[1].value = input;
+      await dateForm().fire('submit');
+      assert.equal(dateForm().children[1].value, expected);
+      assert.equal(task.dueDate, expected);
+      assert.equal(filters.children[1].value, 'Completed');
+      assert.equal(filters.children[3].value, 'High');
+      assert.equal(app.querySelector('ul').children.length, 1);
+      if (input === 'bad') assert.equal(app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
+    }
+    assert.equal(task.completed, true);
+    assert.equal(task.priority, 'High');
+    assert.equal(writes, 3);
+  });
+}
+
+for (const archived of [false, true]) {
   test(`combined task filters: ${archived ? 'archived' : 'active'} project`, async () => {
     const app = new Node('main');
     const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
