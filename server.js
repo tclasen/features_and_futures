@@ -94,6 +94,11 @@ function projectPage(res, project, filter = 'All', error = '') {
 <form method="get" action="/"><button type="submit">Projects</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
 ${error ? `<p role="alert">${escape(error)}</p>` : ''}
+<form class="task-create" method="post" action="/projects/${project.id}/rename">
+<input type="hidden" name="filter" value="${filter}">
+<label for="new-project-name">New project name</label>
+<div class="create"><input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+</form>
 <form class="task-create" method="post" action="/projects/${project.id}/tasks">
 <input type="hidden" name="filter" value="${filter}">
 <label for="task-title">Task title</label>
@@ -149,6 +154,27 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(303, { Location: '/' });
       res.end();
       return;
+    }
+    const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(url.pathname);
+    if (req.method === 'POST' && renameMatch) {
+      const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(renameMatch[1]);
+      if (project) {
+        if (project.archived) {
+          sendHtml(res, 403, page('Archived project', '<h1>Archived project</h1><p>Archived projects cannot be changed.</p>'));
+          return;
+        }
+        const body = await formBody(req);
+        const filter = taskFilter(body.get('filter'));
+        const name = (body.get('name') || '').trim();
+        if (!name) {
+          projectPage(res, project, filter, 'Project name is required');
+          return;
+        }
+        db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, project.id);
+        res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        res.end();
+        return;
+      }
     }
     const archiveMatch = /^\/projects\/(\d+)\/(archive|restore)$/.exec(url.pathname);
     if (req.method === 'POST' && archiveMatch) {
