@@ -3,17 +3,17 @@ const detailView = document.querySelector('#project-detail');
 const alert = document.querySelector('#alert');
 let activeProjectId = null;
 let appliedDueRange = { from: '', through: '' };
-const foldAsciiCase = value => value.replace(/[A-Z]/g, character => character.toLowerCase());
+const normalizeSearch = value => value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
   const projects = await response.json();
   const filter = document.querySelector('#project-filter').value;
-  const query = foldAsciiCase(document.querySelector('#project-search').value.trim());
+  const query = normalizeSearch(document.querySelector('#project-search').value.trim());
   const container = document.querySelector('#projects');
   container.replaceChildren();
-  for (const project of projects.filter(item => item.archived === (filter === 'Archived') && foldAsciiCase(item.name).includes(query))) {
+  for (const project of projects.filter(item => item.archived === (filter === 'Archived') && normalizeSearch(item.name).includes(query))) {
     const row = document.createElement('div'); row.dataset.testid = 'project-row'; row.className = 'project-row';
     const name = document.createElement('span'); name.textContent = project.name;
     const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open project';
@@ -35,12 +35,12 @@ async function loadTasks() {
   const filter = document.querySelector('#task-filter').value;
   const priorityFilter = document.querySelector('#priority-filter').value;
   const { from, through } = appliedDueRange;
-  const query = foldAsciiCase(document.querySelector('#task-search').value.trim());
+  const query = normalizeSearch(document.querySelector('#task-search').value.trim());
   const shown = tasks.filter(task => {
     const completionMatches = filter === 'All' || (filter === 'Completed') === task.completed;
     const priorityMatches = priorityFilter === 'All' || task.priority === priorityFilter;
     const dateMatches = !from && !through ? true : Boolean(task.due_date) && (!from || task.due_date >= from) && (!through || task.due_date <= through);
-    return completionMatches && priorityMatches && dateMatches && foldAsciiCase(task.title).includes(query);
+    return completionMatches && priorityMatches && dateMatches && normalizeSearch(task.title).includes(query);
   });
   const container = document.querySelector('#tasks'); container.replaceChildren();
   for (const task of shown) {
