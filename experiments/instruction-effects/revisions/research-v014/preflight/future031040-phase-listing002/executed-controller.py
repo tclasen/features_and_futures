@@ -1,0 +1,11 @@
+import json,os,re,subprocess,hashlib,shutil
+from pathlib import Path
+from orchestrator.prepare import file_hashes
+from orchestrator.evidence import timestamp
+v=Path('experiments/instruction-effects/revisions/research-v014');draft=v/'decisions/future031040-preparation002';out=v/'preflight/future031040-phase-listing002';source=json.loads((draft/'prepared.json').read_text());suite=draft/'cumulative-suite';assert file_hashes(suite)==source['suite_files'];expected={31:103,32:107,33:111,34:115,35:120,36:124,37:128,38:132,39:136,40:140};out.mkdir(exist_ok=False);shutil.copy2(__file__,out/'executed-controller.py');rows=[]
+for task in source['requirements']:
+ stage=task['stage'];requirement=draft/f'task-{stage:03d}/requirements.md';assert hashlib.sha256(requirement.read_bytes()).hexdigest()==task['requirements_sha256']
+ for phase,n in [('acceptance',expected[stage]),('upgrade',1),('postrestart',1),(f'observation-{stage}',1)]:
+  tested=stage-1 if phase=='upgrade' else stage;tested_suite=Path('runs/instruction-effects/eval-014/tasks/task-030/suite') if tested==30 else suite;env=dict(os.environ,FF_STAGE=str(tested),FF_PHASE=phase,FF_FIXTURE_PREFIX=f'task-{tested:03d}',FF_BASE_URL='http://127.0.0.1:1');p=subprocess.run(['node_modules/.bin/playwright','test','--list','--reporter=line','--config',str(tested_suite/'playwright.config.mjs')],env=env,capture_output=True,text=True,check=True);match=re.search(r'Total: (\d+) tests?',p.stdout);assert match and int(match[1])==n,(stage,phase,p.stdout,p.stderr);(out/f'{stage:03d}-{phase}.log').write_text(p.stdout+p.stderr);rows.append({'target_stage':stage,'phase':phase,'tested_stage':tested,'expected':n,'listed':int(match[1]),'suite_files':file_hashes(tested_suite),'requirement_sha256':task['requirements_sha256']})
+assert file_hashes(suite)==source['suite_files']
+(out/'verified.json').write_text(json.dumps({'verified':True,'utc':timestamp(),'native_calls':0,'frozen':False,'dispatched':False,'controller_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'preparation_sha256':hashlib.sha256((draft/'prepared.json').read_bytes()).hexdigest(),'phase_listings':rows,'limitations':'Listings only. Full140positive baseline, directed faults and per-round native upgrade/actual restart remain pending.'},indent=2)+'\n');print('Verified40prospective phase listings031–040')
