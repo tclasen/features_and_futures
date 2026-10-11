@@ -136,15 +136,16 @@ function page(title, content) {
     // A filtered-out checkbox must remain attached through the click action.
     const settled = new Promise(resolve => setTimeout(resolve, 150));
     try {
-      const response = await fetch(form.action, { method: 'POST', body, keepalive: true });
+      const response = await fetch(form.action, {
+        method: 'POST', body, keepalive: true, headers: { Accept: 'application/json' }
+      });
       if (!response.ok) throw new Error('Completion save failed');
-      const html = await response.text();
+      const saved = await response.json();
       await settled;
       if (completionSaves.get(checkbox) !== save || !row.isConnected) return;
-      const updated = new DOMParser().parseFromString(html, 'text/html');
-      if (!updated.querySelector('[data-task-id="' + row.dataset.taskId + '"]')) {
-        row.remove();
-      }
+      const filter = document.querySelector('#task-filter').value;
+      if ((filter === 'Open' && saved.completed) ||
+          (filter === 'Completed' && !saved.completed)) row.remove();
     } catch (error) {
       if (completionSaves.get(checkbox) !== save || !row.isConnected) return;
       checkbox.checked = !checkbox.checked;
@@ -587,7 +588,13 @@ const server = http.createServer(async (req, res) => {
           }
           updatePriority.run(priority, taskId, projectId);
         } else {
-          updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, projectId);
+          const completed = form.get('completed') === '1';
+          updateTask.run(completed ? 1 : 0, taskId, projectId);
+          if (req.headers.accept === 'application/json') {
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ completed }));
+            return;
+          }
         }
       } else {
         const title = (form.get('title') || '').trim();

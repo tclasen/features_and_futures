@@ -29,6 +29,39 @@ async function start(dbPath) {
   };
 }
 
+test('JSON completion saves acknowledge persisted state without redirected HTML', async () => {
+  const server = await start(':memory:');
+  try {
+    const post = (path, fields, json = false) => fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(fields),
+      headers: json ? { Accept: 'application/json' } : {}, redirect: 'manual'
+    });
+    await post('/projects', { name: 'Completion' });
+    await post('/projects/1/tasks', { title: 'Filtered' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2029-01-15' });
+    const filters = {
+      filter: 'Open', priorityFilter: 'High', dueFrom: '2029-01-01',
+      dueThrough: '2029-01-31', search: 'filtered'
+    };
+    for (const completed of [true, false]) {
+      const response = await post('/projects/1/tasks/1', {
+        ...filters, ...(completed ? { completed: '1' } : {})
+      }, true);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { completed });
+      const html = await (await fetch(server.url + '/projects/1?' + new URLSearchParams(filters))).text();
+      assert.equal(html.includes('data-testid="task-row"'), !completed);
+      assert.match(html, /id="task-filter"[\s\S]*?<option selected>Open/);
+      assert.match(html, /id="priority-filter"[\s\S]*?<option selected>High/);
+      assert.match(html, /id="due-from"[^>]*value="2029-01-01"/);
+      assert.match(html, /id="task-search"[^>]*value="filtered"/);
+    }
+  } finally {
+    await server.stop();
+  }
+});
+
 test('task moves remember positions, preserve data and filters, and reject archived projects', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   let server;

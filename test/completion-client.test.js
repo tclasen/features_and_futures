@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 
-async function client(matching) {
+async function client(matching, filter = 'Completed') {
   const source = await readFile(new URL('../server.js', import.meta.url), 'utf8');
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
   let change, settle, saved, removed = false;
@@ -14,20 +14,16 @@ async function client(matching) {
     FormData: class { constructor(form) { return Object.entries(form.fields); } },
     document: {
       addEventListener(type, callback) { assert.equal(type, 'change'); change = callback; },
-      querySelector() { throw new Error('Must not replace the page or its controls'); }
+      querySelector(selector) {
+        assert.equal(selector, '#task-filter', 'Only read the current filter; never replace controls');
+        return { value: filter };
+      }
     },
     setTimeout(callback, delay) { assert.ok(delay >= 100); settle = callback; },
     fetch: async (url, options) => {
       saved = { url, method: options.method, fields: Object.fromEntries(options.body) };
-      return { ok: true, text: async () => '<main>Saved tasks</main>' };
-    },
-    DOMParser: class {
-      parseFromString() {
-        return { querySelector(selector) {
-          assert.equal(selector, '[data-task-id="1"]');
-          return matching ? {} : null;
-        } };
-      }
+      assert.equal(options.headers.Accept, 'application/json');
+      return { ok: true, json: async () => ({ completed: filter === 'Completed' ? matching : !matching }) };
     }
   });
   const checkbox = {
@@ -46,13 +42,17 @@ async function client(matching) {
 }
 
 test('completion removes only its own filtered-out row after the click settles', async () => {
-  const saving = await client(false);
-  assert.equal(await saving.finish(), true);
+  for (const filter of ['Open', 'Completed']) {
+    const saving = await client(false, filter);
+    assert.equal(await saving.finish(), true);
+  }
 });
 
 test('completion preserves matching rows and all current controls instead of replacing a stale page snapshot', async () => {
-  const saving = await client(true);
-  assert.equal(await saving.finish(), false);
+  for (const filter of ['All', 'Open', 'Completed']) {
+    const saving = await client(true, filter);
+    assert.equal(await saving.finish(), false);
+  }
 });
 
 test('completion response cannot modify a row from an obsolete page after another navigation', async () => {
