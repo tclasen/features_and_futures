@@ -127,6 +127,8 @@ const completeVisibleButton = document.querySelector('#complete-visible-tasks');
 const reopenVisibleButton = document.querySelector('#reopen-visible-tasks');
 const deleteVisibleButton = document.querySelector('#delete-visible-tasks');
 const restoreVisibleButton = document.querySelector('#restore-visible-tasks');
+const visiblePriority = document.querySelector('#visible-tasks-priority');
+const setVisiblePriorityButton = document.querySelector('#set-visible-priority');
 let directoryQuery = '';
 let directoryRange = { from: '', through: '' };
 let visibleDirectoryTasks = [];
@@ -137,6 +139,7 @@ async function loadDirectory() {
   reopenVisibleButton.disabled = true;
   deleteVisibleButton.disabled = true;
   restoreVisibleButton.disabled = true;
+  setVisiblePriorityButton.disabled = true;
   const response = await fetch('/api/directory');
   if (!response.ok) return;
   const tasks = await response.json();
@@ -237,7 +240,20 @@ async function loadDirectory() {
   reopenVisibleButton.disabled = !eligible.some((task) => task.completed);
   deleteVisibleButton.disabled = directoryScope.value !== 'Active' || directoryTaskFilter.value === 'Deleted' || !visibleDirectoryTasks.some((task) => !task.deleted);
   restoreVisibleButton.disabled = directoryScope.value !== 'Active' || directoryTaskFilter.value !== 'Deleted' || !visibleDirectoryTasks.some((task) => task.deleted);
+  setVisiblePriorityButton.disabled = directoryScope.value !== 'Active' || directoryTaskFilter.value === 'Deleted' || eligible.length === 0;
 }
+
+async function updateVisibleDirectoryPriority() {
+  const taskIds = visibleDirectoryTasks.filter((task) => !task.deleted && task.priority !== visiblePriority.value).map((task) => task.id);
+  if (!taskIds.length) return;
+  setVisiblePriorityButton.disabled = true;
+  const response = await fetch('/api/directory/bulk', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ taskIds, priority: visiblePriority.value }),
+  });
+  if (response.ok) await loadDirectory();
+}
+setVisiblePriorityButton.addEventListener('click', updateVisibleDirectoryPriority);
 
 async function updateVisibleDirectoryTasks(completed) {
   const taskIds = visibleDirectoryTasks.filter((task) => !task.deleted && task.completed !== completed).map((task) => task.id);
@@ -280,6 +296,7 @@ document.querySelector('#directory-apply-range').addEventListener('click', () =>
 document.querySelector('#directory-button').addEventListener('click', () => {
   directoryScope.value = 'Active'; directoryTaskFilter.value = 'All'; directoryPriority.value = 'All';
   directoryOrder.value = 'Original';
+  visiblePriority.value = 'Normal';
   directorySearch.value = ''; directoryQuery = ''; directoryRange = { from: '', through: '' };
   document.querySelector('#directory-due-from').value = ''; document.querySelector('#directory-due-through').value = '';
   history.pushState({}, '', '/directory'); showRoute();

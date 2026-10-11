@@ -101,18 +101,24 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let data;
     try { data = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
-    const validCompletion = typeof data.completed === 'boolean';
-    const validDeletion = typeof data.deleted === 'boolean';
-    if ((!validCompletion && !validDeletion) || (validCompletion && validDeletion) || !Array.isArray(data.taskIds) || data.taskIds.some((id) => !Number.isInteger(id))) {
+    const hasCompletion = Object.hasOwn(data, 'completed');
+    const hasDeletion = Object.hasOwn(data, 'deleted');
+    const hasPriority = Object.hasOwn(data, 'priority');
+    const validCompletion = hasCompletion && typeof data.completed === 'boolean';
+    const validDeletion = hasDeletion && typeof data.deleted === 'boolean';
+    const validPriority = hasPriority && ['Low', 'Normal', 'High'].includes(data.priority);
+    const updateKinds = [hasCompletion, hasDeletion, hasPriority].filter(Boolean).length;
+    if (updateKinds !== 1 || !(validCompletion || validDeletion || validPriority) || !Array.isArray(data.taskIds) || data.taskIds.some((id) => !Number.isInteger(id))) {
       return sendJson(res, 400, { error: 'Invalid bulk update' });
     }
-    const column = validDeletion ? 'deleted' : 'completed';
-    const liveOnly = validCompletion ? 'AND deleted = 0' : '';
+    const column = validDeletion ? 'deleted' : validPriority ? 'priority' : 'completed';
+    const liveOnly = validCompletion || validPriority ? 'AND deleted = 0' : '';
     const update = database.prepare(`UPDATE tasks SET ${column} = ? WHERE id = ? ${liveOnly}
       AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const id of new Set(data.taskIds)) update.run(data[validDeletion ? 'deleted' : 'completed'] ? 1 : 0, id);
+      const value = validPriority ? data.priority : data[validDeletion ? 'deleted' : 'completed'] ? 1 : 0;
+      for (const id of new Set(data.taskIds)) update.run(value, id);
       database.exec('COMMIT');
     } catch (error) {
       database.exec('ROLLBACK');
