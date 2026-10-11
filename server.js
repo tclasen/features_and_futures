@@ -87,6 +87,36 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, JSON.stringify(listProjects.all()));
   }
+  const exportRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (req.method === 'GET' && exportRoute) {
+    const projectId = Number(exportRoute[1]);
+    const project = getProject.get(projectId);
+    if (!project) return send(res, 404, JSON.stringify({ error: 'Project not found' }));
+    const tasks = database.prepare(`SELECT title, completed, priority, due_date AS dueDate, notes, deleted
+      FROM tasks WHERE project_id = ? ORDER BY sort_order, id`).all(projectId);
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.defaultPriority,
+        tasks: tasks.map(task => ({
+          title: task.title,
+          completed: Boolean(task.completed),
+          priority: task.priority || 'Normal',
+          dueDate: task.dueDate || '',
+          notes: (task.notes || '').replace(/\\r\\n?/g, '\\n'),
+          deleted: Boolean(task.deleted)
+        }))
+      }
+    };
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="workboard-project.json"'
+    });
+    return res.end(JSON.stringify(document));
+  }
   const renameRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (renameRoute && req.method === 'PATCH') {
     try {
