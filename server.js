@@ -94,9 +94,21 @@ const server = http.createServer(async (req, res) => {
   };
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(200, JSON.stringify({ status: 'ok' }));
+    if (req.method === 'PATCH' && url.pathname === '/api/directory/completion') {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      let payload;
+      try { payload = JSON.parse(raw); } catch { return send(400, JSON.stringify({ error: 'Invalid JSON' })); }
+      if (typeof payload?.completed !== 'boolean' || !Array.isArray(payload.taskIds) || payload.taskIds.some(id => typeof id !== 'string')) return send(400, JSON.stringify({ error: 'Invalid completion update' }));
+      transaction(() => {
+        const update = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0 AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+        for (const id of new Set(payload.taskIds)) update.run(payload.completed ? 1 : 0, id);
+      });
+      return send(200, JSON.stringify({ status: 'ok' }));
+    }
     if (req.method === 'GET' && url.pathname === '/api/directory') {
       const rows = db.prepare(`SELECT p.id AS projectId, p.name AS projectName, p.archived,
-        t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+        t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
         FROM projects p JOIN task_project_positions pos ON pos.project_id = p.id
         JOIN tasks t ON t.id = pos.task_id AND t.project_id = p.id
         ORDER BY p.created_at, p.rowid, pos.position`).all();

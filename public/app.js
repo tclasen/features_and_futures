@@ -326,12 +326,19 @@ async function renderDirectory() {
   const through = element('input', { type: 'text', 'aria-label': 'Due through' });
   const apply = element('button', { type: 'button' }, 'Apply due range');
   const alert = element('p', { role: 'alert', hidden: '' });
+  const completeVisible = element('button', { type: 'button' }, 'Complete visible tasks');
+  const reopenVisible = element('button', { type: 'button' }, 'Reopen visible tasks');
+  const emptyMessage = element('p', {}, 'No matching tasks');
+  emptyMessage.hidden = true;
   const rows = element('section', { 'aria-label': 'Directory results' });
-  app.append(scope, taskFilter, priorityFilter, search, searchButton, from, through, apply, alert, rows);
+  app.append(scope, taskFilter, priorityFilter, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, emptyMessage, rows);
   let query = '', appliedFrom = '', appliedThrough = '';
+  let matchingTasks = [];
   const renderRows = async () => {
+    emptyMessage.hidden = true;
     const data = await request('/api/directory');
     rows.replaceChildren();
+    matchingTasks = [];
     for (const task of data) {
       if ((scope.value === 'Archived') !== Boolean(task.archived)) continue;
       if (taskFilter.value === 'Deleted' ? !task.deleted : Boolean(task.deleted)) continue;
@@ -339,6 +346,7 @@ async function renderDirectory() {
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       if (!normalizeSearch(task.title).includes(normalizeSearch(query))) continue;
       if ((appliedFrom || appliedThrough) && (!task.dueDate || (appliedFrom && task.dueDate < appliedFrom) || (appliedThrough && task.dueDate > appliedThrough))) continue;
+      matchingTasks.push(task);
       const row = element('div', { 'data-testid': 'directory-task-row' });
       row.append(element('span', { 'data-testid': 'directory-task-title' }, task.title));
       row.append(element('span', { 'data-testid': 'directory-project-name' }, task.projectName));
@@ -350,7 +358,20 @@ async function renderDirectory() {
       open.addEventListener('click', () => { projectViewState.delete(String(task.projectId)); history.pushState({}, '', `/projects/${encodeURIComponent(task.projectId)}`); render(); });
       row.append(open); rows.append(row);
     }
+    emptyMessage.hidden = matchingTasks.length !== 0;
+    const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted' ? matchingTasks.filter(task => !task.deleted) : [];
+    const openTasks = eligible.filter(task => !task.completed);
+    const completedTasks = eligible.filter(task => Boolean(task.completed));
+    completeVisible.disabled = openTasks.length === 0;
+    reopenVisible.disabled = completedTasks.length === 0;
   };
+  const bulkCompletion = async (tasks, completed) => {
+    completeVisible.disabled = reopenVisible.disabled = true;
+    await request('/api/directory/completion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed, taskIds: tasks.map(task => task.id) }) });
+    await renderRows();
+  };
+  completeVisible.addEventListener('click', () => bulkCompletion(matchingTasks.filter(task => !task.deleted && !task.completed), true));
+  reopenVisible.addEventListener('click', () => bulkCompletion(matchingTasks.filter(task => !task.deleted && task.completed), false));
   const refresh = () => renderRows();
   for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', refresh);
   searchButton.addEventListener('click', () => { query = search.value.trim(); refresh(); });
