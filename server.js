@@ -116,6 +116,20 @@ const page = `<!doctype html>
       back.addEventListener('click', () => { location.href = '/'; });
       section.append(heading, back);
       if (project.archived) { const archived = document.createElement('p'); archived.textContent = 'Archived project'; section.append(archived); }
+      const renameForm = document.createElement('form'); renameForm.className = 'task-controls';
+      const renameLabel = document.createElement('label'); renameLabel.textContent = 'New project name';
+      const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New project name'); renameInput.value = project.name;
+      const renameButton = document.createElement('button'); renameButton.type = 'submit'; renameButton.textContent = 'Rename project';
+      if (project.archived) { renameInput.disabled = true; renameButton.disabled = true; }
+      renameLabel.append(renameInput); renameForm.append(renameLabel, renameButton);
+      const renameAlert = document.createElement('p'); renameAlert.setAttribute('role', 'alert'); renameAlert.hidden = true;
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault(); const name = renameInput.value.trim();
+        if (!name) { renameAlert.textContent = 'Project name is required'; renameAlert.hidden = false; renameInput.focus(); return; }
+        const result = await fetch('/api/projects/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        if (!result.ok) { renameAlert.textContent = 'Could not rename project'; renameAlert.hidden = false; return; }
+        project.name = name; heading.textContent = name; renameInput.value = name; renameAlert.hidden = true;
+      });
       const form = document.createElement('form'); form.className = 'task-controls';
       const label = document.createElement('label'); label.textContent = 'Task title';
       const input = document.createElement('input'); input.type = 'text'; input.setAttribute('aria-label', 'Task title'); label.append(input);
@@ -153,7 +167,7 @@ const page = `<!doctype html>
         if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
         alert.hidden = true; input.value = ''; await refreshTasks();
       });
-      section.append(form, alert, filterLabel, list); app.replaceChildren(section); await refreshTasks();
+      section.append(renameForm, renameAlert, form, alert, filterLabel, list); app.replaceChildren(section); await refreshTasks();
     }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
@@ -203,6 +217,19 @@ const server = http.createServer(async (req, res) => {
     }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (req.method === 'PATCH' && projectMatch) {
+    try {
+      const body = await readJson(req);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return sendJson(res, 400, { error: 'Project name is required' });
+      const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, projectMatch[1]);
+      if (!result.changes) {
+        const exists = db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectMatch[1]);
+        return exists ? sendJson(res, 409, { error: 'Archived projects cannot be renamed' }) : sendJson(res, 404, { error: 'Project not found' });
+      }
+      return sendJson(res, 200, { status: 'ok', name });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
   if (req.method === 'GET' && projectMatch) {
     const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(projectMatch[1]);
     return project ? sendJson(res, 200, {...project, id: String(project.id), archived: Boolean(project.archived)}) : sendJson(res, 404, { error: 'Project not found' });
