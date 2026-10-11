@@ -41,13 +41,26 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET sort_order = id');
 }
+database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (project_id, task_id),
+  UNIQUE (project_id, sort_order)
+)`);
+database.exec(`INSERT OR IGNORE INTO task_project_positions (project_id, task_id, sort_order)
+  SELECT project_id, id, sort_order FROM tasks ORDER BY sort_order, id`);
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
 const createTask = database.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, (SELECT default_priority FROM projects WHERE id = ?), COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1))");
+const rememberPosition = database.prepare('INSERT INTO task_project_positions (project_id, task_id, sort_order) VALUES (?, ?, ?)');
+const getRememberedPosition = database.prepare('SELECT sort_order AS sortOrder FROM task_project_positions WHERE project_id = ? AND task_id = ?');
+const nextProjectPosition = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS position FROM task_project_positions WHERE project_id = ?');
+const updateTaskProject = database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
-const moveTask = database.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1) WHERE id = ? AND project_id = ?');
+
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -126,7 +139,11 @@ const server = http.createServer(async (req, res) => {
         if (getProject.get(projectId).archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
         if (!title) return send(res, 400, JSON.stringify({ error: 'Task title is required' }));
         const result = createTask.run(projectId, title, projectId, projectId);
-        return send(res, 201, JSON.stringify(listTasks.all(projectId).find(task => task.id === Number(result.lastInsertRowid))));
+        const taskId = Number(result.lastInsertRowid);
+        const position = nextProjectPosition.get(projectId).position;
+        rememberPosition.run(projectId, taskId, position);
+        database.prepare('UPDATE tasks SET sort_order = ? WHERE id = ?').run(position, taskId);
+        return send(res, 201, JSON.stringify(listTasks.all(projectId).find(task => task.id === taskId)));
       } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
     }
     if (req.method === 'PATCH' && taskRoute[2] && taskRoute[3]) {
@@ -138,8 +155,15 @@ const server = http.createServer(async (req, res) => {
         const destination = getProject.get(destinationId);
         if (source.archived) return send(res, 403, JSON.stringify({ error: 'Project is archived' }));
         if (!destination || destination.archived || destinationId === projectId) return send(res, 400, JSON.stringify({ error: 'Invalid destination project' }));
-        const result = moveTask.run(destinationId, destinationId, Number(taskRoute[2]), projectId);
-        if (!result.changes) return send(res, 404, JSON.stringify({ error: 'Task not found' }));
+        const taskId = Number(taskRoute[2]);
+        const position = getRememberedPosition.get(destinationId, taskId)?.sortOrder ?? nextProjectPosition.get(destinationId).position;
+        database.exec('BEGIN');
+        try {
+          const result = updateTaskProject.run(destinationId, position, taskId, projectId);
+          if (!result.changes) { database.exec('ROLLBACK'); return send(res, 404, JSON.stringify({ error: 'Task not found' })); }
+          if (!getRememberedPosition.get(destinationId, taskId)) rememberPosition.run(destinationId, taskId, position);
+          database.exec('COMMIT');
+        } catch (error) { database.exec('ROLLBACK'); throw error; }
         return send(res, 200, JSON.stringify({ success: true }));
       } catch { return send(res, 400, JSON.stringify({ error: 'Invalid request' })); }
     }
