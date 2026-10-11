@@ -761,6 +761,38 @@ function searchPage(pathname, projects, tasks = []) {
   return { app, writes };
 }
 
+for (const kind of ['project', 'task']) {
+  test(`${kind} search collapses only spaces/tabs and preserves original display on reopening`, async () => {
+    const originals = ['MiXeD \t  Space', 'mixed space', 'mixed\nspace', 'mixed\u00a0space', 'MIXED\t\tSPACE'];
+    const projects = kind === 'project'
+      ? originals.map((name, index) => ({ id: index + 1, name, archived: false, completedCount: 0, totalCount: 0 }))
+      : [{ id: 1, name: 'Project', archived: false, defaultTaskPriority: 'Normal' }];
+    const tasks = kind === 'task'
+      ? originals.map((title, index) => ({ id: index + 1, title, completed: false, priority: 'Normal', dueDate: '' }))
+      : [];
+    const pathname = kind === 'project' ? '/' : '/projects/1';
+    const { app, writes } = searchPage(pathname, projects, tasks);
+    await new Promise((resolve) => setImmediate(resolve));
+    const search = formWithLabel(app, kind === 'project' ? 'Project search' : 'Task search');
+    const displayed = (page) => page.querySelector('ul').children.map((row) => row.children[kind === 'project' ? 0 : 1].textContent);
+    for (const query of ['mixed space', '\t MiXeD\t \tSPACE \n', 'mixed   space']) {
+      await applySearch(search, query);
+      assert.deepEqual(displayed(app), [originals[0], originals[1], originals[4]]);
+    }
+    await applySearch(search, 'mixed\nspace');
+    assert.deepEqual(displayed(app), [originals[2]]);
+    await applySearch(search, 'mixed\u00a0space');
+    assert.deepEqual(displayed(app), [originals[3]]);
+    await applySearch(search, '\t  ');
+    assert.deepEqual(displayed(app), originals);
+    assert.equal(writes.length, 0);
+    assert.deepEqual(kind === 'project' ? projects.map((project) => project.name) : tasks.map((task) => task.title), originals);
+    const reopened = searchPage(pathname, projects, tasks);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(displayed(reopened.app), originals);
+  });
+}
+
 const formWithLabel = (app, label) => app.children.find((node) => node.children[0]?.textContent === label);
 async function applySearch(form, query) {
   form.children[1].value = query;
@@ -793,11 +825,11 @@ test('project search is applied, ASCII-only, ordered and intersects archive filt
   filter.value = 'Active';
   await filter.fire('change');
   await applySearch(search, 'alpha  ');
-  await applySearch(search, 'alpha  p');
-  assert.deepEqual(names(), ['Alpha  PLAN']);
+  await applySearch(search, 'alpha \t  p');
+  assert.deepEqual(names(), ['Alpha  PLAN', 'alpha plan']);
   search.children[1].value = 'draft';
   await filter.fire('change');
-  assert.deepEqual(names(), ['Alpha  PLAN']);
+  assert.deepEqual(names(), ['Alpha  PLAN', 'alpha plan']);
   await applySearch(search, 'älpha');
   assert.deepEqual(names(), []);
   await applySearch(search, 'ÄLPHA');
@@ -843,8 +875,8 @@ for (const archived of [false, true]) {
     range.children[1].value = range.children[3].value = '2000-02-29';
     await range.fire('submit');
     assert.deepEqual(titles(), ['Alpha  PLAN']);
-    await applySearch(search, 'alpha p');
-    assert.deepEqual(titles(), []);
+    await applySearch(search, 'alpha \t p');
+    assert.deepEqual(titles(), ['Alpha  PLAN']);
     await applySearch(search, '   ');
     assert.deepEqual(titles(), ['Alpha  PLAN']);
     await applySearch(search, 'alpha');

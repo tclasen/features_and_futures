@@ -25,9 +25,9 @@ function showAlert(message) {
   alert.textContent = message;
 }
 
-// Fold ASCII letters only; non-ASCII characters and internal whitespace stay literal.
-function asciiLower(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+// Normalize only for matching; saved names and titles remain untouched.
+function normalizeSearchText(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 function searchControl(labelText, buttonText, id, onApply) {
@@ -44,10 +44,10 @@ function searchControl(labelText, buttonText, id, onApply) {
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     input.value = input.value.trim();
-    query = asciiLower(input.value);
+    query = normalizeSearchText(input.value);
     onApply();
   });
-  return { form, matches: (text) => asciiLower(text).includes(query) };
+  return { form, matches: (text) => normalizeSearchText(text).includes(query) };
 }
 
 function projectRow(project, onArchiveChange) {
