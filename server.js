@@ -30,7 +30,8 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal'
 )`);
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
+try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -40,6 +41,16 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
+
+function validDate(value) {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
 
 function send(response, status, body, type = 'application/json; charset=utf-8') {
   response.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -101,6 +112,12 @@ const server = createServer(async (request, response) => {
     if (['Low', 'Normal', 'High'].includes(data.priority)) {
       updateTaskPriority.run(data.priority, taskId, projectId);
       return send(response, 200, { ok: true });
+    }
+    if (typeof data.dueDate === 'string') {
+      const dueDate = data.dueDate.trim();
+      if (dueDate && !validDate(dueDate)) return send(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate || null, taskId, projectId);
+      return send(response, 200, { ok: true, dueDate: dueDate || null });
     }
     return send(response, 400, { error: 'Invalid task update' });
   }
