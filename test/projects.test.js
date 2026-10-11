@@ -1182,6 +1182,122 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
       assert.equal(notesContent(rows(await projectHtml(filtered))[0]), '');
     }
 
+    {
+      const source = await newProject('Deletion source');
+      const destination = await newProject('Deletion destination');
+      for (const title of ['First retained', 'Second retained', 'Third undated']) {
+        await post(`${source}/tasks`, { title });
+      }
+      const ids = rows(await projectHtml(source)).map(taskId);
+      const taskPath = id => `${source}/tasks/${id}`;
+      await post(`${taskPath(ids[0])}/completion`, { completed: '1' });
+      await post(`${taskPath(ids[0])}/priority`, { priority: 'High' });
+      await post(`${taskPath(ids[0])}/due-date`, { dueDate: '2040-02-29' });
+      await post(`${taskPath(ids[0])}/notes`, { notes: '  Saved\n日本語 <markup>  ' });
+      await post(`${taskPath(ids[1])}/priority`, { priority: 'Low' });
+      const before = await projectHtml(source);
+      assert.match(before, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option><option>Deleted<\/option>/);
+      const snapshot = () => {
+        const db = new DatabaseSync(join(directory, 'projects.sqlite'));
+        const tasks = db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY id').all(source.split('/').at(-1));
+        const positions = db.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all();
+        db.close();
+        return { tasks, positions };
+      };
+      const saved = snapshot();
+      const state = {
+        filter: 'Completed', priorityFilter: 'High', dueFrom: '2040-02-01',
+        dueThrough: '2040-03-01', search: 'FIRST RETAINED',
+      };
+      const filtered = `${source}?${new URLSearchParams(state)}`;
+      const deletedState = { ...state, filter: 'Deleted' };
+      const deletedFiltered = `${source}?${new URLSearchParams(deletedState)}`;
+      assert.equal((await post(`${taskPath(ids[0])}/delete`, state)).headers.get('location'), filtered);
+      assert.deepEqual(taskTitles(await projectHtml(filtered)), []);
+      assert.deepEqual(taskTitles(await projectHtml(deletedFiltered)), ['First retained']);
+      assert.equal(await summaryFor(source), '0/2 completed');
+      for (const filter of ['All', 'Open', 'Completed']) {
+        assert.ok(!taskTitles(await projectHtml(`${source}?filter=${filter}`)).includes('First retained'));
+      }
+      for (const id of ids.slice(1)) await post(`${taskPath(id)}/delete`, {});
+      assert.equal(await summaryFor(source), '0/0 completed');
+      assert.deepEqual(taskTitles(await projectHtml(`${source}?filter=Deleted`)), ['First retained', 'Second retained', 'Third undated']);
+      for (const changes of [{ priorityFilter: 'Low' }, { search: 'Second' }, { dueFrom: '2040-03-01' }]) {
+        assert.deepEqual(taskTitles(await projectHtml(`${source}?${new URLSearchParams({ ...deletedState, ...changes })}`)), []);
+      }
+      assert.deepEqual(taskTitles(await projectHtml(`${source}?filter=Deleted&dueThrough=9999-12-31`)), ['First retained']);
+      const deletedRow = rows(await projectHtml(deletedFiltered))[0];
+      assert.equal([...deletedRow.matchAll(/<button[^>]*>/g)].filter(match => !match[0].includes('disabled')).length, 1);
+      for (const control of deletedRow.matchAll(/<(?:input|select|textarea|button)\b[^>]*>/g)) {
+        if (control[0].includes('type="hidden"')) continue;
+        if (control[0].startsWith('<button') && !control[0].includes('disabled')) continue;
+        assert.match(control[0], / disabled/);
+      }
+      assert.match(deletedRow, /<button type="submit">Restore task<\/button>/);
+      assert.doesNotMatch(deletedRow, />Delete task<\/button>/);
+      for (const [action, fields] of [
+        ['rename', { title: 'Forbidden' }], ['completion', {}], ['priority', { priority: 'Low' }],
+        ['due-date', { dueDate: '' }], ['notes', { notes: 'Forbidden' }],
+        ['move', { destinationProject: destination.split('/').at(-1) }],
+      ]) {
+        assert.equal((await post(`${taskPath(ids[0])}/${action}`, fields)).status, 403);
+      }
+      assert.equal((await post(`${destination}/tasks/${ids[0]}/restore`, {})).status, 404);
+      assert.equal((await post(`${source}/tasks/999999/delete`, {})).status, 404);
+      const deletedSnapshot = snapshot();
+      assert.deepEqual(deletedSnapshot.tasks.map(({ deleted, ...task }) => task), saved.tasks.map(({ deleted, ...task }) => task));
+      assert.deepEqual(deletedSnapshot.positions, saved.positions);
+      const deletedHtml = await projectHtml(deletedFiltered);
+      await stop();
+      await start();
+      assert.equal(await projectHtml(deletedFiltered), deletedHtml);
+      assert.deepEqual(snapshot(), deletedSnapshot);
+      await post(`${source}/archive`, {});
+      const archivedRow = rows(await projectHtml(deletedFiltered))[0];
+      assert.match(archivedRow, /<button type="submit" disabled>Restore task<\/button>/);
+      for (const action of ['delete', 'restore']) {
+        assert.equal((await post(`${taskPath(ids[0])}/${action}`, {})).status, 403);
+      }
+      assert.deepEqual(taskTitles(await projectHtml(deletedFiltered)), ['First retained']);
+      await post(`${source}/restore`, {});
+      await post(`${source}/default-task-priority`, { priority: 'Low' });
+      await post(`${source}/tasks`, { title: 'New after deletion' });
+      for (const id of [...ids].reverse()) {
+        assert.equal((await post(`${taskPath(id)}/restore`, deletedState)).headers.get('location'), deletedFiltered);
+      }
+      assert.deepEqual(taskTitles(await projectHtml(deletedFiltered)), []);
+      assert.deepEqual(taskTitles(await projectHtml(source)), ['First retained', 'Second retained', 'Third undated', 'New after deletion']);
+      assert.equal(await summaryFor(source), '1/4 completed');
+      const restored = snapshot();
+      assert.deepEqual(restored.tasks.slice(0, 3), saved.tasks);
+      await post(`${taskPath(ids[0])}/move`, { destinationProject: destination.split('/').at(-1) });
+      await post(`${destination}/tasks/${ids[0]}/delete`, {});
+      await post(`${destination}/tasks`, { title: 'Destination new' });
+      await stop();
+      await start();
+      await post(`${destination}/tasks/${ids[0]}/restore`, { filter: 'Deleted' });
+      assert.deepEqual(taskTitles(await projectHtml(destination)), ['First retained', 'Destination new']);
+      await post(`${destination}/tasks/${ids[0]}/move`, { destinationProject: source.split('/').at(-1) });
+      assert.deepEqual(taskTitles(await projectHtml(source)), ['First retained', 'Second retained', 'Third undated', 'New after deletion']);
+      assert.deepEqual(snapshot().tasks, restored.tasks);
+
+      // Upgrade a populated Requirement015 database without rewriting older fields or positions.
+      await stop();
+      const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
+      legacy.exec('ALTER TABLE tasks DROP COLUMN deleted');
+      const oldTasks = legacy.prepare('SELECT * FROM tasks ORDER BY id').all();
+      const oldPositions = legacy.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all();
+      legacy.close();
+      await start();
+      const upgraded = new DatabaseSync(join(directory, 'projects.sqlite'));
+      const newTasks = upgraded.prepare('SELECT * FROM tasks ORDER BY id').all();
+      assert.ok(newTasks.every(task => task.deleted === 0));
+      assert.deepEqual(newTasks.map(({ deleted, ...task }) => task), oldTasks.map(task => ({ ...task })));
+      assert.deepEqual(upgraded.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(), oldPositions);
+      upgraded.close();
+      assert.deepEqual(taskTitles(await projectHtml(`${source}?filter=Deleted`)), []);
+    }
+
     // Replace the fixture with a populated Task 005 database to check backfilled priorities.
     await stop();
     await rm(join(directory, 'projects.sqlite'));
