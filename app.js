@@ -116,6 +116,24 @@ async function loadTasks() {
       });
       await loadTasks();
     });
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority;
+    priority.disabled = currentProjectArchived;
+    priority.addEventListener('change', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ priority: priority.value }),
+      });
+      if (response.ok) await loadTasks();
+    });
     const renameForm = document.createElement('form');
     renameForm.className = 'task-rename-form';
     const renameInput = document.createElement('input');
@@ -147,7 +165,7 @@ async function loadTasks() {
       });
       if (response.ok) await loadTasks();
     });
-    row.append(title, checkbox, renameForm);
+    row.append(title, checkbox, priority, renameForm);
     tasksContainer.append(row);
   }
 }

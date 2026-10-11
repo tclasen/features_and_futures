@@ -18,13 +18,18 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   )
 `);
 // Upgrade databases created by earlier task checkpoints.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 
 async function readBody(request) {
@@ -101,7 +106,7 @@ const server = createServer(async (request, response) => {
   }
   const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksPath && request.method === 'GET') {
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksPath[1]));
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksPath[1]));
     return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksPath && request.method === 'POST') {
@@ -116,7 +121,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(tasksPath[1]);
     if (!database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
     const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal' });
   }
   const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskPath && request.method === 'PATCH') {
@@ -138,6 +143,12 @@ const server = createServer(async (request, response) => {
       if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot rename tasks' });
       database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
       return sendJson(response, 200, { id: taskId, title, completed: Boolean(task.completed) });
+    }
+    if (typeof changes.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(changes.priority)) return sendJson(response, 400, { error: 'Invalid task priority' });
+      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot change task priorities' });
+      database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(changes.priority, taskId);
+      return sendJson(response, 200, { id: taskId, priority: changes.priority });
     }
     if (typeof changes.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
     database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(changes.completed ? 1 : 0, taskId);
