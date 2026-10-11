@@ -52,9 +52,13 @@ const server = createServer(async (request, response) => {
     const tasksMatch = path.match(/^\/api\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
     if (tasksMatch) {
       const [, projectId, taskId] = tasksMatch;
-      if (!projects.get(projectId)) return json(response, 404, { error: 'Project not found' });
+      const project = projects.get(projectId);
+      if (!project) return json(response, 404, { error: 'Project not found' });
       if (!taskId && request.method === 'GET') {
         return json(response, 200, projects.tasks.list(projectId));
+      }
+      if (project.archived && (request.method === 'POST' || request.method === 'PATCH')) {
+        return json(response, 409, { error: 'Archived project cannot be changed' });
       }
       if (!taskId && request.method === 'POST') {
         const body = await readJson(request);
@@ -73,6 +77,14 @@ const server = createServer(async (request, response) => {
       }
     }
     const projectMatch = path.match(/^\/api\/projects\/([1-9]\d*)$/);
+    if (request.method === 'PATCH' && projectMatch) {
+      const body = await readJson(request);
+      if (typeof body?.archived !== 'boolean') {
+        return json(response, 400, { error: 'Archive state must be a boolean' });
+      }
+      const project = projects.setArchived(projectMatch[1], body.archived);
+      return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });
+    }
     if (request.method === 'GET' && projectMatch) {
       const project = projects.get(projectMatch[1]);
       return project ? json(response, 200, project) : json(response, 404, { error: 'Project not found' });

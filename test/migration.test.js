@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openProjects } from '../projects.js';
+import { createTaskStore } from '../tasks.js';
 
 test('adding tasks preserves an existing Task 001 project database', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
@@ -24,7 +25,7 @@ test('adding tasks preserves an existing Task 001 project database', async () =>
       previousDatabase.close();
     }
     store = openProjects(path);
-    assert.deepEqual(store.list().map((project) => ({ ...project })), [{ id: 42, name: 'Existing project' }]);
+    assert.deepEqual(store.list(), [{ id: 42, name: 'Existing project', archived: false, total_count: 0, completed_count: 0 }]);
     assert.deepEqual(store.tasks.list(42), []);
     const task = store.tasks.create(42, '  Existing project task  ');
     assert.equal(task.title, 'Existing project task');
@@ -32,7 +33,52 @@ test('adding tasks preserves an existing Task 001 project database', async () =>
     assert.throws(() => store.tasks.create(999, 'Orphan'), /FOREIGN KEY/);
     assert.throws(() => store.tasks.create(42, ' \t\n '), /Task title is required/);
     assert.deepEqual(store.tasks.list(42), [task]);
+    store.tasks.setCompleted(42, task.id, true);
+    assert.equal(store.get(42).completed_count, 1);
+    assert.equal(store.get(42).total_count, 1);
+    store.setArchived(42, true);
+    store.close();
+    store = openProjects(path);
+    assert.equal(store.get(42).archived, true);
+    assert.deepEqual(store.tasks.list(42), [{ ...task, completed: true }]);
+    store.setArchived(42, false);
+    assert.equal(store.get(42).completed_count, 1);
     assert.ok(store.create('Next project').id > 42);
+  } finally {
+    store?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive migration preserves existing Task 002 tasks and completion counts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-migration-'));
+  const path = join(directory, 'existing.sqlite');
+  let store;
+  try {
+    const previousDatabase = new DatabaseSync(path);
+    try {
+      previousDatabase.exec(`
+        CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+        INSERT INTO projects (id, name) VALUES (7, 'Existing tasks');
+      `);
+      const tasks = createTaskStore(previousDatabase);
+      const completed = tasks.create(7, 'Completed task');
+      tasks.setCompleted(7, completed.id, true);
+      tasks.create(7, 'Open task');
+    } finally {
+      previousDatabase.close();
+    }
+    store = openProjects(path);
+    assert.deepEqual(store.get(7), {
+      id: 7, name: 'Existing tasks', archived: false, total_count: 2, completed_count: 1,
+    });
+    assert.deepEqual(store.tasks.list(7).map((task) => task.completed), [true, false]);
+    store.setArchived(7, true);
+    store.close();
+    store = openProjects(path);
+    assert.equal(store.get(7).archived, true);
+    assert.equal(store.get(7).completed_count, 1);
+    assert.deepEqual(store.tasks.list(7).map((task) => task.title), ['Completed task', 'Open task']);
   } finally {
     store?.close();
     await rm(directory, { recursive: true, force: true });

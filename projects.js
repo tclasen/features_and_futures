@@ -13,18 +13,33 @@ export function openProjects(databasePath) {
       name TEXT NOT NULL CHECK (length(trim(name)) > 0)
     )
   `);
-  const list = database.prepare('SELECT id, name FROM projects ORDER BY id');
-  const get = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+    database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+  }
+  const tasks = createTaskStore(database);
+  const projectFields = `SELECT id, name, archived,
+    (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id) AS total_count,
+    (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND completed = 1) AS completed_count
+    FROM projects`;
+  const list = database.prepare(`${projectFields} ORDER BY id`);
+  const get = database.prepare(`${projectFields} WHERE id = ?`);
   const insert = database.prepare('INSERT INTO projects (name) VALUES (?)');
+  const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const projectValue = (row) => row ? { ...row, archived: Boolean(row.archived) } : undefined;
 
   return {
-    tasks: createTaskStore(database),
-    list: () => list.all(),
-    get: (id) => get.get(id),
+    tasks,
+    list: () => list.all().map(projectValue),
+    get: (id) => projectValue(get.get(id)),
     create(name) {
       const trimmedName = typeof name === 'string' ? name.trim() : '';
       if (!trimmedName) throw new Error('Project name is required');
-      return get.get(insert.run(trimmedName).lastInsertRowid);
+      return projectValue(get.get(insert.run(trimmedName).lastInsertRowid));
+    },
+    setArchived(id, archived) {
+      if (typeof archived !== 'boolean') throw new Error('Archive state must be a boolean');
+      updateArchive.run(Number(archived), id);
+      return projectValue(get.get(id));
     },
     close: () => database.close(),
   };

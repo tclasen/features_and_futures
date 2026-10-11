@@ -12,7 +12,7 @@ function showError(container, message) {
   container.hidden = false;
 }
 
-async function renderTasks(projectId) {
+async function renderTasks(project) {
   const section = document.createElement('section');
   section.setAttribute('aria-label', 'Tasks');
   section.innerHTML = `
@@ -41,7 +41,7 @@ async function renderTasks(projectId) {
   const alert = section.querySelector('[role="alert"]');
   const filter = section.querySelector('select');
   const list = section.querySelector('#tasks');
-  const endpoint = `/api/projects/${projectId}/tasks`;
+  const endpoint = `/api/projects/${project.id}/tasks`;
   let tasks = [];
 
   function displayTasks() {
@@ -57,6 +57,7 @@ async function renderTasks(projectId) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -73,7 +74,7 @@ async function renderTasks(projectId) {
           checkbox.checked = task.completed;
           showError(alert, error.message);
         } finally {
-          checkbox.disabled = false;
+          checkbox.disabled = project.archived;
         }
       });
       row.append(title, checkbox);
@@ -84,6 +85,7 @@ async function renderTasks(projectId) {
   filter.addEventListener('change', displayTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (project.archived) return;
     alert.hidden = true;
     if (!input.value.trim()) {
       showError(alert, 'Task title is required');
@@ -102,14 +104,14 @@ async function renderTasks(projectId) {
     } catch (error) {
       showError(alert, error.message);
     } finally {
-      button.disabled = false;
+      button.disabled = project.archived;
     }
   });
 
   try {
     tasks = await request(endpoint);
     displayTasks();
-    button.disabled = false;
+    button.disabled = project.archived;
   } catch (error) {
     showError(alert, error.message);
   }
@@ -124,7 +126,12 @@ async function render() {
       const project = await request(`/api/projects/${match[1]}`);
       app.querySelector('h1').textContent = project.name;
       document.title = `${project.name} — Workboard`;
-      await renderTasks(project.id);
+      if (project.archived) {
+        const notice = document.createElement('p');
+        notice.textContent = 'Archived project';
+        app.append(notice);
+      }
+      await renderTasks(project);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';
       showError(app.querySelector('[role="alert"]'), error.message);
@@ -142,12 +149,28 @@ async function render() {
       </div>
     </form>
     <p role="alert" hidden></p>
+    <div class="project-filter">
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter">
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
+      </select>
+    </div>
     <section aria-label="Projects" id="projects"></section>
   `;
   const form = app.querySelector('form');
   const input = app.querySelector('input');
   const alert = app.querySelector('[role="alert"]');
   const list = app.querySelector('#projects');
+  const filter = app.querySelector('select');
+  let projects = [];
+
+  function displayProjects() {
+    list.replaceChildren();
+    projects.filter((project) => project.archived === (filter.value === 'archived')).forEach(appendProject);
+  }
+
+  filter.addEventListener('change', displayProjects);
 
   function appendProject(project) {
     const row = document.createElement('div');
@@ -155,11 +178,33 @@ async function render() {
     row.className = 'project-row';
     const name = document.createElement('span');
     name.textContent = project.name;
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'project-summary';
+    summary.textContent = `${project.completed_count}/${project.total_count} completed`;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'Open project';
     button.addEventListener('click', () => location.assign(`/projects/${project.id}`));
-    row.append(name, button);
+    const archiveButton = document.createElement('button');
+    archiveButton.type = 'button';
+    archiveButton.textContent = project.archived ? 'Restore project' : 'Archive project';
+    archiveButton.addEventListener('click', async () => {
+      archiveButton.disabled = true;
+      alert.hidden = true;
+      try {
+        Object.assign(project, await request(`/api/projects/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived: !project.archived }),
+        }));
+        displayProjects();
+      } catch (error) {
+        showError(alert, error.message);
+      } finally {
+        archiveButton.disabled = false;
+      }
+    });
+    row.append(name, summary, button, archiveButton);
     list.append(row);
   }
 
@@ -178,7 +223,8 @@ async function render() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: input.value }),
       });
-      appendProject(project);
+      projects.push(project);
+      displayProjects();
       input.value = '';
       input.focus();
     } catch (error) {
@@ -190,7 +236,8 @@ async function render() {
 
   form.querySelector('button').disabled = true;
   try {
-    (await request('/api/projects')).forEach(appendProject);
+    projects = await request('/api/projects');
+    displayProjects();
   } catch (error) {
     showError(alert, error.message);
   } finally {
