@@ -36,6 +36,10 @@ if (!taskColumns.some(column => column.name === 'priority')) {
 if (!taskColumns.some(column => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some(column => column.name === 'sort_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
+  db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
+}
 
 const sendJson = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -119,7 +123,7 @@ const server = createServer(async (req, res) => {
   }
   const taskRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskRoute && req.method === 'GET') {
-    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(Number(taskRoute[1]));
+    const tasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(Number(taskRoute[1]));
     return sendJson(res, 200, tasks.map(task => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (taskRoute && req.method === 'POST') {
@@ -131,7 +135,8 @@ const server = createServer(async (req, res) => {
       const payload = await readJson(req);
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_priority);
+      const sortOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(projectId).next);
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_priority, sortOrder);
       return sendJson(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.default_priority });
     } catch {
       return sendJson(res, 400, { error: 'Invalid request' });
@@ -142,10 +147,18 @@ const server = createServer(async (req, res) => {
     try {
       const payload = await readJson(req);
       const taskId = Number(taskUpdate[1]);
-      const task = db.prepare(`SELECT t.id, t.completed, p.archived
+      const task = db.prepare(`SELECT t.id, t.completed, t.project_id AS projectId, p.archived
         FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ?`).get(taskId);
       if (!task) return sendJson(res, 404, { error: 'Task not found' });
       if (task.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
+      if (Object.hasOwn(payload, 'destinationProjectId')) {
+        const destinationId = Number(payload.destinationProjectId);
+        const destination = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
+        if (!destination || destination.archived || destinationId === Number(task.projectId)) return sendJson(res, 400, { error: 'Invalid destination project' });
+        const nextOrder = Number(db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM tasks WHERE project_id = ?').get(destinationId).next);
+        db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destinationId, nextOrder, taskId);
+        return sendJson(res, 200, { id: taskId, projectId: destinationId });
+      }
       if (Object.hasOwn(payload, 'title')) {
         const title = typeof payload.title === 'string' ? payload.title.trim() : '';
         if (!title) return sendJson(res, 400, { error: 'Task title is required' });

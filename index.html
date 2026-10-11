@@ -271,7 +271,10 @@
       return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
     }
     async function loadTasks(projectId, list, filter, priorityFilter, dueRange, archived = false) {
-      const tasks = await fetch(`/api/projects/${projectId}/tasks`).then(response => response.json());
+      const [tasks, projects] = await Promise.all([
+        fetch(`/api/projects/${projectId}/tasks`).then(response => response.json()),
+        fetch('/api/projects').then(response => response.json())
+      ]);
       const visibleTasks = tasks.filter(task =>
         (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
         (priorityFilter === 'All' || task.priority === priorityFilter) &&
@@ -358,7 +361,23 @@
           alert.hidden = true;
           await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
         });
-        row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate);
+        const destinations = projects.filter(project => !project.archived && Number(project.id) !== Number(projectId));
+        const destination = element('select', undefined, { 'aria-label': 'Destination project' });
+        for (const project of destinations) {
+          destination.append(element('option', project.name, { value: project.id }));
+        }
+        destination.disabled = archived || destinations.length === 0;
+        const move = element('button', 'Move task', { type: 'button' });
+        move.disabled = archived || destinations.length === 0;
+        move.addEventListener('click', async () => {
+          if (!destination.value) return;
+          const response = await fetch(`/api/tasks/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destinationProjectId: Number(destination.value) })
+          });
+          if (response.ok) await loadTasks(projectId, list, filter, priorityFilter, dueRange, archived);
+        });
+        row.append(checkbox, title, priority, renameForm, dueDateInput, saveDueDate, destination, move);
         return row;
       }));
     }
