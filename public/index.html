@@ -59,6 +59,8 @@
       if (!response.ok) return showProjects();
       const project = await response.json();
       const locked = Boolean(project.archived);
+      const activeProjects = await fetch('/api/projects?archived=false').then(response => response.json());
+      const destinations = activeProjects.filter(item => String(item.id) !== String(id));
       app.innerHTML = `<button type="button" id="projects">Projects</button><h1>${escapeHtml(project.name)}</h1>
         ${locked ? '<p>Archived project</p>' : ''}<label>Default task priority<select id="default-priority" aria-label="Default task priority"${locked ? ' disabled' : ''}><option${project.defaultPriority === 'Low' ? ' selected' : ''}>Low</option><option${project.defaultPriority === 'Normal' ? ' selected' : ''}>Normal</option><option${project.defaultPriority === 'High' ? ' selected' : ''}>High</option></select></label><form id="rename-form"><label>New project name<input name="name" aria-label="New project name"${locked ? ' disabled' : ''}></label><button type="submit"${locked ? ' disabled' : ''}>Rename project</button></form>
         <form id="task-form"><label>Task title<input name="title" aria-label="Task title"${locked ? ' disabled' : ''}></label><button type="submit"${locked ? ' disabled' : ''}>Create task</button></form>
@@ -105,7 +107,7 @@
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
           (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
           ((!appliedFrom && !appliedThrough) || (Boolean(task.dueDate) && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough))));
-        list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}${locked ? ' disabled' : ''}><label>New task title<input aria-label="New task title" data-rename-title="${task.id}"${locked ? ' disabled' : ''}></label><button type="button" data-rename-task="${task.id}"${locked ? ' disabled' : ''}>Rename task</button><label>Task priority<select aria-label="Task priority" data-priority="${task.id}"${locked ? ' disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select></label><label>Task due date<input type="text" aria-label="Task due date" placeholder="YYYY-MM-DD" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}"${locked ? ' disabled' : ''}></label><button type="button" data-save-due="${task.id}"${locked ? ' disabled' : ''}>Save due date</button></li>`).join('');
+        list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}${locked ? ' disabled' : ''}><label>New task title<input aria-label="New task title" data-rename-title="${task.id}"${locked ? ' disabled' : ''}></label><button type="button" data-rename-task="${task.id}"${locked ? ' disabled' : ''}>Rename task</button><label>Task priority<select aria-label="Task priority" data-priority="${task.id}"${locked ? ' disabled' : ''}><option${task.priority === 'Low' ? ' selected' : ''}>Low</option><option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option><option${task.priority === 'High' ? ' selected' : ''}>High</option></select></label><label>Task due date<input type="text" aria-label="Task due date" placeholder="YYYY-MM-DD" data-due-date="${task.id}" value="${escapeHtml(task.dueDate || '')}"${locked ? ' disabled' : ''}></label><button type="button" data-save-due="${task.id}"${locked ? ' disabled' : ''}>Save due date</button><label>Destination project<select aria-label="Destination project" data-destination="${task.id}"${locked || !destinations.length ? ' disabled' : ''}>${destinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}</select></label><button type="button" data-move-task="${task.id}"${locked || !destinations.length ? ' disabled' : ''}>Move task</button></li>`).join('');
         list.querySelectorAll('[data-rename-task]').forEach(button => button.addEventListener('click', async () => {
           const title = list.querySelector(`[data-rename-title="${button.dataset.renameTask}"]`).value.trim();
           const alert = app.querySelector('#alert');
@@ -121,6 +123,11 @@
           const alert = app.querySelector('#alert');
           if (!result.ok) { alert.textContent = 'Due date must be a valid YYYY-MM-DD date'; return; }
           alert.textContent = '';
+          await loadTasks();
+        }));
+        list.querySelectorAll('[data-move-task]').forEach(button => button.addEventListener('click', async () => {
+          const destination = list.querySelector(`[data-destination="${button.dataset.moveTask}"]`).value;
+          await fetch(`/api/tasks/${button.dataset.moveTask}`, { method: 'PATCH', headers: {'content-type':'application/json'}, body: JSON.stringify({destinationProject: destination}) });
           await loadTasks();
         }));
         list.querySelectorAll('[data-priority]').forEach(select => select.addEventListener('change', async () => {

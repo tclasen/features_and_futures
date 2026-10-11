@@ -21,8 +21,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low','Normal','High')),
-  due_date TEXT
+  due_date TEXT,
+  sort_order INTEGER
 );`);
+
+try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+db.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
 
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
@@ -84,7 +90,7 @@ const server = http.createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
     if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
-    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1])));
+    return send(200, JSON.stringify(db.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(tasksMatch[1])));
   }
   if (tasksMatch && req.method === 'POST') {
     let raw = '';
@@ -95,7 +101,7 @@ const server = http.createServer(async (req, res) => {
       if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       const title = String(JSON.parse(raw).title ?? '').trim();
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(tasksMatch[1], title, project.default_priority);
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 1))').run(tasksMatch[1], title, project.default_priority, tasksMatch[1]);
       return send(201, JSON.stringify({ id: Number(result.lastInsertRowid), title, completed: 0, priority: project.default_priority }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -105,6 +111,14 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     try {
       const payload = JSON.parse(raw);
+      if (Object.hasOwn(payload, 'destinationProject')) {
+        const destination = db.prepare('SELECT id FROM projects WHERE id = ? AND archived = 0').get(payload.destinationProject);
+        const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').get(taskMatch[1]);
+        if (!destination || !task) return send(404, JSON.stringify({ error: 'Not found' }));
+        const next = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destination.id).value;
+        db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ?').run(destination.id, next, taskMatch[1]);
+        return send(200, JSON.stringify({ ok: true }));
+      }
       if (Object.hasOwn(payload, 'dueDate')) {
         const rawDate = String(payload.dueDate ?? '').trim();
         let dueDate = null;
