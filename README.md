@@ -16,4 +16,6 @@ Run the integration checks:
 npm test
 ```
 
-Tests start isolated server processes and remove their temporary database directories after checking validation, creation order, navigation, task filters, project isolation, and restart persistence for both completed and open tasks, database migration, archive/restore, editing protection, and completion summaries.
+On an active project page, enter a New project name and select Rename project. Names are trimmed and saved without changing the project URL, creation order, tasks, or completion counts. Blank names show an alert. Archived projects cannot be renamed until restored.
+
+Tests start isolated server processes and remove their temporary database directories after checking validation, creation order, navigation, task filters, project isolation, and restart persistence for both completed and open tasks, database migration, archive/restore, editing protection, completion summaries, and renaming with preserved project identity.

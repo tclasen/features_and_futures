@@ -31,6 +31,7 @@ const listProjects = db.prepare(`
 `);
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -106,6 +107,16 @@ function projectPage(project, filter, error = '') {
     <header><p class="eyebrow">PROJECT</p><h1>${escapeHtml(project.name)}</h1>
       ${project.archived ? '<p>Archived project</p>' : ''}
     </header>
+    ${error ? `<p role="alert" class="alert">${escapeHtml(error)}</p>` : ''}
+    <section aria-labelledby="rename-project-heading">
+      <h2 id="rename-project-heading">Rename project</h2>
+      <form method="post" action="/projects/${project.id}/rename" class="create-form">
+        <input type="hidden" name="filter" value="${filter}">
+        <div class="field"><label for="new-project-name">New project name</label>
+        <input id="new-project-name" name="name" type="text" autocomplete="off"${project.archived ? ' disabled' : ''}></div>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </form>
+    </section>
     <section aria-labelledby="create-task-heading">
       <h2 id="create-task-heading">Create a task</h2>
       <form method="post" action="/projects/${project.id}/tasks" class="create-form">
@@ -114,7 +125,6 @@ function projectPage(project, filter, error = '') {
         <input id="task-title" name="title" type="text" autocomplete="off"></div>
         <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
       </form>
-      ${error ? `<p role="alert" class="alert">${escapeHtml(error)}</p>` : ''}
     </section>
     <section aria-labelledby="tasks-heading">
       <h2 id="tasks-heading">Tasks</h2>
@@ -202,6 +212,30 @@ const server = createServer(async (request, response) => {
       const project = findProject.get(projectRoute[1]);
       if (project) {
         sendHtml(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+        return;
+      }
+    }
+    const renameRoute = /^\/projects\/([1-9]\d*)\/rename$/.exec(url.pathname);
+    if (request.method === 'POST' && renameRoute) {
+      const project = findProject.get(renameRoute[1]);
+      if (project) {
+        const form = await readForm(request);
+        if (!form) {
+          sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, 'Archived project cannot be changed'));
+          return;
+        }
+        const name = (form.get('name') ?? '').trim();
+        if (!name) {
+          sendHtml(response, 400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        redirect(response, projectPath(project.id, filter));
         return;
       }
     }
