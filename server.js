@@ -8,6 +8,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0
+)`);
 
 const page = `<!doctype html>
 <html lang="en">
@@ -30,6 +36,10 @@ const page = `<!doctype html>
     [data-testid="project-row"] { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #d0d5dd; border-radius: 8px; background: white; }
     [data-testid="project-row"] button { background: #344054; }
     .detail h1 { margin-bottom: 20px; }
+    #tasks { display: grid; gap: 10px; }
+    [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid #d0d5dd; border-radius: 8px; background: white; }
+    [data-testid="task-row"] input { width: auto; }
+    .task-controls { margin-top: 22px; }
     @media (max-width: 520px) { main { padding: 28px 16px; } form { align-items: stretch; flex-direction: column; } }
   </style>
 </head>
@@ -87,7 +97,43 @@ const page = `<!doctype html>
       const heading = document.createElement('h1'); heading.textContent = project.name;
       const back = document.createElement('button'); back.type = 'button'; back.textContent = 'Projects';
       back.addEventListener('click', () => { location.href = '/'; });
-      section.append(heading, back); app.replaceChildren(section);
+      section.append(heading, back);
+      const form = document.createElement('form'); form.className = 'task-controls';
+      const label = document.createElement('label'); label.textContent = 'Task title';
+      const input = document.createElement('input'); input.type = 'text'; input.setAttribute('aria-label', 'Task title'); label.append(input);
+      const submit = document.createElement('button'); submit.type = 'submit'; submit.textContent = 'Create task'; form.append(label, submit);
+      const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.hidden = true;
+      const filterLabel = document.createElement('label'); filterLabel.textContent = 'Task filter';
+      const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) { const option = document.createElement('option'); option.textContent = value; option.value = value; filter.append(option); }
+      filterLabel.append(filter);
+      const list = document.createElement('section'); list.id = 'tasks';
+      async function refreshTasks() {
+        const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks');
+        if (!result.ok) throw new Error('Could not load tasks');
+        const tasks = await result.json(); list.replaceChildren();
+        for (const task of tasks) {
+          if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+          const row = document.createElement('div'); row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed;
+          checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+          checkbox.addEventListener('change', async () => {
+            const update = await fetch('/api/tasks/' + encodeURIComponent(task.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            if (!update.ok) { checkbox.checked = !checkbox.checked; return; }
+            await refreshTasks();
+          });
+          const title = document.createElement('span'); title.textContent = task.title; row.append(checkbox, title); list.append(row);
+        }
+      }
+      filter.addEventListener('change', () => refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; }));
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault(); const title = input.value.trim();
+        if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; input.focus(); return; }
+        const created = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+        if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
+        alert.hidden = true; input.value = ''; await refreshTasks();
+      });
+      section.append(form, alert, filterLabel, list); app.replaceChildren(section); await refreshTasks();
     }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
@@ -136,6 +182,31 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && projectMatch) {
     const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(projectMatch[1]);
     return project ? sendJson(res, 200, project) : sendJson(res, 404, { error: 'Project not found' });
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && req.method === 'GET') {
+    if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(tasksMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
+    const tasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(tasksMatch[1]);
+    return sendJson(res, 200, tasks.map((task) => ({ ...task, id: String(task.id), completed: Boolean(task.completed) })));
+  }
+  if (tasksMatch && req.method === 'POST') {
+    try {
+      const body = await readJson(req);
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(tasksMatch[1])) return sendJson(res, 404, { error: 'Project not found' });
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(tasksMatch[1], title);
+      return sendJson(res, 201, { id: String(result.lastInsertRowid), title, completed: false });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
+  }
+  const taskMatch = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (taskMatch && req.method === 'PATCH') {
+    try {
+      const body = await readJson(req);
+      if (typeof body.completed !== 'boolean') return sendJson(res, 400, { error: 'Invalid completion state' });
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(body.completed ? 1 : 0, taskMatch[1]);
+      return result.changes ? sendJson(res, 200, { status: 'ok' }) : sendJson(res, 404, { error: 'Task not found' });
+    } catch { return sendJson(res, 400, { error: 'Invalid request' }); }
   }
   if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
