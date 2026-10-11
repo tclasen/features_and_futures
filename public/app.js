@@ -151,7 +151,19 @@ async function loadTasks(projectId) {
       const response = await fetch(`/api/tasks/${task.id}/move`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_id: Number(destination.value) }) });
       if (response.ok) await loadTasks(projectId);
     });
-    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDate, destination, moveButton);
+    const notes = document.createElement('textarea');
+    notes.setAttribute('aria-label', 'Task notes');
+    notes.value = task.notes || '';
+    notes.disabled = checkbox.disabled;
+    const saveNotes = document.createElement('button');
+    saveNotes.type = 'button';
+    saveNotes.textContent = 'Save notes';
+    saveNotes.disabled = checkbox.disabled;
+    saveNotes.addEventListener('click', async () => {
+      const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
+      if (response.ok) await loadTasks(projectId);
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDate, notes, saveNotes, destination, moveButton);
     container.append(row);
   }
 }

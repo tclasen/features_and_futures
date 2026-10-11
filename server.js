@@ -26,6 +26,7 @@ try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -76,7 +77,7 @@ const server = createServer(async (req, res) => {
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return json(res, 404, { error: 'Project not found' });
-    return json(res, 200, db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+    return json(res, 200, db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
       FROM tasks t JOIN task_positions p ON p.task_id=t.id AND p.project_id=t.project_id
       WHERE t.project_id = ? ORDER BY p.position, t.id`).all(projectId));
   }
@@ -127,6 +128,11 @@ const server = createServer(async (req, res) => {
     const task = db.prepare('SELECT project_id FROM tasks WHERE id=?').get(Number(taskMatch[1]));
     if (!task) return json(res, 404, { error: 'Task not found' });
     if (db.prepare('SELECT archived FROM projects WHERE id=?').get(task.project_id)?.archived) return json(res, 403, { error: 'Project is archived' });
+    if (Object.hasOwn(data, 'notes')) {
+      if (typeof data.notes !== 'string') return json(res, 400, { error: 'Invalid notes' });
+      db.prepare('UPDATE tasks SET notes=? WHERE id=?').run(data.notes, Number(taskMatch[1]));
+      return json(res, 200, { ok: true, notes: data.notes });
+    }
     if (Object.hasOwn(data, 'due_date')) {
       const raw = typeof data.due_date === 'string' ? data.due_date.trim() : '';
       let dueDate = null;
