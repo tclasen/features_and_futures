@@ -136,3 +136,14 @@ default priority, and all current live/deleted tasks in stored order. Export ign
 page filters and includes each task's title, completion, priority, due date, notes,
 and deletion state. Notes line endings become LF in the portable document only.
 Downloading does not change stored data, remembered positions, or page controls.
+
+The home page's Project JSON textarea and Imported project name field import a
+version 1 portable document into a new independent project. The override name is
+trimmed and required. The complete document is validated before any writes, then
+the project, tasks, and initial remembered positions are saved in one SQLite
+transaction. Invalid imports retain both submitted fields and change no data.
+Imports preserve task order, exact titles, completion, explicit priorities, dates,
+notes (with LF line endings), deletion state, project default, and archive state.
+Additional JSON properties cannot supply internal IDs or remembered positions.
+Imported tasks follow the same editing, restoration, movement, and persistence
+rules as other tasks. Import form bodies support up to 10 MiB.

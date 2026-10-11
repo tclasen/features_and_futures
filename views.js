@@ -54,10 +54,22 @@ function page(title, content) {
 </html>`;
 }
 
-export function projectListPage(projects, error = '', filter = 'Active', search = '') {
+export function projectListPage(projects, error = '', filter = 'Active', search = '', importForm = {}) {
   const searchInput = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
   return page('Projects', `
     <h1>Workboard</h1>
+    <form class="create-form task-create" method="post" action="/projects/import">
+      ${searchInput}
+      <input type="hidden" name="filter" value="${filter}">
+      ${importForm.error ? `<p role="alert">${escapeHtml(importForm.error)}</p>` : ''}
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json" rows="8">${escapeTextarea(importForm.json ?? '')}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <div class="form-controls">
+        <input id="imported-project-name" name="importedName" type="text" value="${escapeHtml(importForm.name ?? '')}">
+        <button type="submit">Import project</button>
+      </div>
+    </form>
     <form class="task-filter" method="get" action="/">
       <input type="hidden" name="filter" value="${filter}">
       <label for="project-search">Project search</label>
