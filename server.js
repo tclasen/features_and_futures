@@ -12,24 +12,26 @@ try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DE
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (task_id TEXT NOT NULL, project_id TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id))`);
 // Preserve each task's existing order as its initial position in its current project.
 db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
  SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at, rowid)
  FROM tasks`);
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const getProjects = db.prepare(`SELECT p.id, p.name, p.archived, SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completed, COUNT(t.id) AS total FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
+const getProjects = db.prepare(`SELECT p.id, p.name, p.archived, COALESCE(SUM(CASE WHEN t.deleted = 0 AND t.completed = 1 THEN 1 ELSE 0 END), 0) AS completed, COALESCE(SUM(CASE WHEN t.deleted = 0 THEN 1 ELSE 0 END), 0) AS total FROM projects p LEFT JOIN tasks t ON t.project_id = p.id WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const getTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position, t.created_at, t.rowid');
+const getTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position, t.created_at, t.rowid');
 const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const addTaskPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const setTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?');
 const getTaskPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
@@ -115,6 +117,15 @@ const server = http.createServer(async (req, res) => {
     addTaskPositionAtEnd.run(taskId, destination.id, destination.id);
     moveTask.run(destination.id, taskId, sourceId);
     return json(200, { status: 'ok' });
+  }
+  const deletionMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/(delete|restore)$/);
+  if (req.method === 'POST' && deletionMatch) {
+    const projectId = decodeURIComponent(deletionMatch[1]), taskId = decodeURIComponent(deletionMatch[2]);
+    const project = getProject.get(projectId);
+    if (!project) return json(404, { error: 'Not found' });
+    if (project.archived) return json(403, { error: 'Archived project' });
+    const result = setTaskDeleted.run(deletionMatch[3] === 'delete' ? 1 : 0, taskId, projectId);
+    return result.changes ? json(200, { status: 'ok' }) : json(404, { error: 'Not found' });
   }
   const renameTaskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/rename$/);
   if (req.method === 'POST' && renameTaskMatch) {
