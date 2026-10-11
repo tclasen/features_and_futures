@@ -69,7 +69,7 @@ const server = http.createServer(async (req, res) => {
       if (!title) return json(400, { error: 'Task title is required' });
       const id = randomUUID();
       insertTask.run(id, projectId, title, Date.now());
-      return json(201, { id, title, completed: 0 });
+      return json(201, { id, title, completed: 0, priority: 'Normal' });
     }
   }
   const renameTaskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/rename$/);
