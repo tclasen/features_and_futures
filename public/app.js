@@ -147,6 +147,20 @@ async function render() {
           } catch (error) { dueDateAlert.textContent = error.message; dueDateAlert.hidden = false; }
         });
         row.append(dueDate, saveDueDate, dueDateAlert);
+        const notes = element('textarea', { 'aria-label': 'Task notes', rows: '3' });
+        notes.value = task.notes || '';
+        const saveNotes = element('button', { type: 'button', 'aria-label': 'Save notes' }, 'Save notes');
+        const notesAlert = element('span', { role: 'alert', hidden: '' });
+        notes.disabled = Boolean(project.archived);
+        saveNotes.disabled = Boolean(project.archived);
+        saveNotes.addEventListener('click', async () => {
+          try {
+            await request(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: notes.value }) });
+            notesAlert.hidden = true;
+            await refresh();
+          } catch (error) { notesAlert.textContent = error.message; notesAlert.hidden = false; }
+        });
+        row.append(notes, saveNotes, notesAlert);
         const checkbox = element('input', { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
         checkbox.checked = Boolean(task.completed);
         checkbox.disabled = Boolean(project.archived);

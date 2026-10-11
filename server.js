@@ -36,6 +36,9 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -60,10 +63,10 @@ function transaction(callback) {
 
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
-const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const setTaskCompletion = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ?');
@@ -190,6 +193,11 @@ const server = http.createServer(async (req, res) => {
       if (typeof payload?.completed === 'boolean') {
         setTaskCompletion.run(payload.completed ? 1 : 0, task.id);
         return send(200, JSON.stringify({ ...task, completed: payload.completed ? 1 : 0 }));
+      }
+      if (Object.hasOwn(payload ?? {}, 'notes')) {
+        if (typeof payload.notes !== 'string') return send(400, JSON.stringify({ error: 'Notes must be text' }));
+        db.prepare('UPDATE tasks SET notes = ? WHERE id = ?').run(payload.notes, task.id);
+        return send(200, JSON.stringify({ ...task, notes: payload.notes }));
       }
       if (Object.hasOwn(payload ?? {}, 'dueDate')) {
         if (typeof payload.dueDate !== 'string') return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
