@@ -21,6 +21,7 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     task_order INTEGER
   );
@@ -51,6 +52,9 @@ if (!taskColumns.some((column) => column.name === 'task_order')) {
 }
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
 }
 database.exec(`
   WITH ordered AS (
@@ -104,8 +108,8 @@ const server = createServer(async (request, response) => {
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     return json(response, 200, database.prepare(`
       SELECT p.id, p.name, p.archived,
-        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS totalCount,
-        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completedCount
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND deleted = 0) AS totalCount,
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1 AND deleted = 0) AS completedCount
       FROM projects p ORDER BY p.id
     `).all().map((project) => ({ ...project, archived: Boolean(project.archived) })));
   }
@@ -173,7 +177,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return json(response, 404, { error: 'Project not found' });
     return json(response, 200, database.prepare(
-      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY task_order, id'
+      'SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY task_order, id'
     ).all(projectId).map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
 
@@ -216,8 +220,9 @@ const server = createServer(async (request, response) => {
       if (!destination || destination.archived || destinationId === sourceId) {
         return json(response, 400, { error: 'Invalid destination project' });
       }
-      const task = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+      const task = database.prepare('SELECT id, deleted FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
       if (!task) return json(response, 404, { error: 'Task not found' });
+      if (task.deleted) return json(response, 409, { error: 'Deleted tasks cannot be moved' });
       let position = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?')
         .get(taskId, destinationId)?.position;
       if (position === undefined) {
@@ -232,6 +237,20 @@ const server = createServer(async (request, response) => {
       if (error instanceof SyntaxError) return json(response, 400, { error: 'Invalid JSON' });
       throw error;
     }
+  }
+
+  const deletionMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/(delete|restore)$/);
+  if (deletionMatch && request.method === 'POST') {
+    const [, projectText, taskText, action] = deletionMatch;
+    const projectId = Number(projectText);
+    const taskId = Number(taskText);
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return json(response, 404, { error: 'Project not found' });
+    if (project.archived) return json(response, 409, { error: 'Archived projects cannot change task deletion state' });
+    const result = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?')
+      .run(action === 'delete' ? 1 : 0, taskId, projectId);
+    if (!result.changes) return json(response, 404, { error: 'Task not found' });
+    return json(response, 200, { id: taskId, deleted: action === 'delete' });
   }
 
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
@@ -251,6 +270,9 @@ const server = createServer(async (request, response) => {
       const task = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?')
         .get(taskId, projectId);
       if (!task) return json(response, 404, { error: 'Task not found' });
+      if (database.prepare('SELECT deleted FROM tasks WHERE id = ?').get(taskId).deleted) {
+        return json(response, 409, { error: 'Deleted tasks cannot be edited' });
+      }
 
       if (Object.hasOwn(input, 'title')) {
         const title = typeof input.title === 'string' ? input.title.trim() : '';

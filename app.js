@@ -122,6 +122,8 @@ async function refreshTasks() {
   const selectedPriority = priorityFilter.value;
   taskList.replaceChildren();
   for (const task of tasks) {
+    const isDeleted = Boolean(task.deleted);
+    if (filter === 'Deleted' ? !isDeleted : isDeleted) continue;
     if (!includesSearch(task.title, appliedTaskQuery)) continue;
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
@@ -136,7 +138,7 @@ async function refreshTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
-    checkbox.disabled = activeProjectArchived;
+    checkbox.disabled = activeProjectArchived || isDeleted;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
@@ -159,11 +161,11 @@ async function refreshTasks() {
     renameInput.type = 'text';
     renameInput.setAttribute('aria-label', 'New task title');
     renameInput.value = task.title;
-    renameInput.disabled = activeProjectArchived;
+    renameInput.disabled = activeProjectArchived || isDeleted;
     const renameButton = document.createElement('button');
     renameButton.type = 'submit';
     renameButton.textContent = 'Rename task';
-    renameButton.disabled = activeProjectArchived;
+    renameButton.disabled = activeProjectArchived || isDeleted;
     renameForm.append(renameInput, renameButton);
     renameForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -196,7 +198,7 @@ async function refreshTasks() {
       priority.append(option);
     }
     priority.value = task.priority;
-    priority.disabled = activeProjectArchived;
+    priority.disabled = activeProjectArchived || isDeleted;
     priority.addEventListener('change', async () => {
       const update = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}`, {
         method: 'PATCH',
@@ -219,11 +221,11 @@ async function refreshTasks() {
     dueDateInput.setAttribute('aria-label', 'Task due date');
     dueDateInput.placeholder = 'YYYY-MM-DD';
     dueDateInput.value = task.dueDate || '';
-    dueDateInput.disabled = activeProjectArchived;
+    dueDateInput.disabled = activeProjectArchived || isDeleted;
     const saveDueDate = document.createElement('button');
     saveDueDate.type = 'submit';
     saveDueDate.textContent = 'Save due date';
-    saveDueDate.disabled = activeProjectArchived;
+    saveDueDate.disabled = activeProjectArchived || isDeleted;
     dueDateForm.append(dueDateInput, saveDueDate);
     dueDateForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -251,7 +253,7 @@ async function refreshTasks() {
       option.textContent = project.name;
       destination.append(option);
     }
-    destination.disabled = activeProjectArchived || destinations.length === 0;
+    destination.disabled = activeProjectArchived || isDeleted || destinations.length === 0;
     const moveButton = document.createElement('button');
     moveButton.type = 'submit';
     moveButton.textContent = 'Move task';
@@ -279,11 +281,11 @@ async function refreshTasks() {
     const notesInput = document.createElement('textarea');
     notesInput.setAttribute('aria-label', 'Task notes');
     notesInput.value = task.notes || '';
-    notesInput.disabled = activeProjectArchived;
+    notesInput.disabled = activeProjectArchived || isDeleted;
     const saveNotes = document.createElement('button');
     saveNotes.type = 'submit';
     saveNotes.textContent = 'Save notes';
-    saveNotes.disabled = activeProjectArchived;
+    saveNotes.disabled = activeProjectArchived || isDeleted;
     notesForm.append(notesLabel, notesInput, saveNotes);
     notesForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -301,7 +303,17 @@ async function refreshTasks() {
       await refreshTasks();
     });
 
-    row.append(title, renameForm, priority, dueDateForm, moveForm, notesForm, checkbox);
+    const deletionButton = document.createElement('button');
+    deletionButton.type = 'button';
+    deletionButton.textContent = isDeleted ? 'Restore task' : 'Delete task';
+    deletionButton.disabled = activeProjectArchived;
+    deletionButton.addEventListener('click', async () => {
+      const action = isDeleted ? 'restore' : 'delete';
+      const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${task.id}/${action}`, { method: 'POST' });
+      if (response.ok) await refreshTasks();
+    });
+
+    row.append(title, renameForm, priority, dueDateForm, moveForm, notesForm, checkbox, deletionButton);
     taskList.append(row);
   }
 }
