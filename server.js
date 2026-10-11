@@ -48,6 +48,9 @@ try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DE
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column')) throw error;
 }
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) throw error;
+}
 
 function sendJson(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -115,7 +118,7 @@ const server = http.createServer(async (request, response) => {
     const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      return sendJson(response, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+      return sendJson(response, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
         FROM tasks t JOIN task_positions position ON position.task_id = t.id AND position.project_id = t.project_id
         WHERE t.project_id = ? ORDER BY position.position`).all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
@@ -165,6 +168,13 @@ const server = http.createServer(async (request, response) => {
     if (!task) return sendJson(response, 404, { error: 'Task not found or project archived' });
     db.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate, task.id);
     return sendJson(response, 200, { ok: true, dueDate });
+  }
+  const notesMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/notes$/);
+  if (notesMatch && request.method === 'PATCH') {
+    const body = await readBody(request);
+    if (typeof body?.notes !== 'string') return sendJson(response, 400, { error: 'Notes must be text' });
+    const result = db.prepare(`UPDATE tasks SET notes = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(body.notes, Number(notesMatch[1]));
+    return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found or project archived' });
   }
   const taskRenameMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/rename$/);
   if (taskRenameMatch && request.method === 'PATCH') {
