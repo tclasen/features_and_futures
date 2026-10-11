@@ -161,7 +161,33 @@ const page = `<!doctype html>
       const priorityFilter = document.createElement('select'); priorityFilter.setAttribute('aria-label', 'Priority filter');
       for (const value of ['All', 'Low', 'Normal', 'High']) { const option = document.createElement('option'); option.textContent = value; option.value = value; priorityFilter.append(option); }
       priorityFilterLabel.append(priorityFilter);
+      const dueRange = { from: '', through: '' };
+      const rangeLabelFrom = document.createElement('label'); rangeLabelFrom.textContent = 'Due from';
+      const rangeFrom = document.createElement('input'); rangeFrom.type = 'text'; rangeFrom.setAttribute('aria-label', 'Due from'); rangeLabelFrom.append(rangeFrom);
+      const rangeLabelThrough = document.createElement('label'); rangeLabelThrough.textContent = 'Due through';
+      const rangeThrough = document.createElement('input'); rangeThrough.type = 'text'; rangeLabelThrough.append(rangeThrough);
+      const applyRange = document.createElement('button'); applyRange.type = 'button'; applyRange.textContent = 'Apply due range';
+      const rangeAlert = document.createElement('p'); rangeAlert.setAttribute('role', 'alert'); rangeAlert.hidden = true;
       const list = document.createElement('section'); list.id = 'tasks';
+      function isCalendarDate(value) {
+        const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+      }
+      applyRange.addEventListener('click', () => {
+        const from = rangeFrom.value.trim(), through = rangeThrough.value.trim();
+        if ((from && !isCalendarDate(from)) || (through && !isCalendarDate(through))) {
+          rangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates'; rangeAlert.hidden = false; return;
+        }
+        if (from && through && from > through) {
+          rangeAlert.textContent = 'Due from must not be after Due through'; rangeAlert.hidden = false; return;
+        }
+        dueRange.from = from; dueRange.through = through; rangeAlert.hidden = true;
+        refreshTasks().catch(() => { list.textContent = 'Could not load tasks'; });
+      });
       async function refreshTasks() {
         const result = await fetch('/api/projects/' + encodeURIComponent(id) + '/tasks');
         if (!result.ok) throw new Error('Could not load tasks');
@@ -169,6 +195,9 @@ const page = `<!doctype html>
         for (const task of tasks) {
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if ((dueRange.from || dueRange.through) && !task.due_date) continue;
+          if (dueRange.from && task.due_date < dueRange.from) continue;
+          if (dueRange.through && task.due_date > dueRange.through) continue;
           const row = document.createElement('div'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed;
           checkbox.disabled = project.archived;
@@ -223,7 +252,7 @@ const page = `<!doctype html>
         if (!created.ok) { alert.textContent = 'Could not create task'; alert.hidden = false; return; }
         alert.hidden = true; input.value = ''; await refreshTasks();
       });
-      section.append(renameForm, renameAlert, defaultLabel, form, alert, filterLabel, priorityFilterLabel, list); app.replaceChildren(section); await refreshTasks();
+      section.append(renameForm, renameAlert, defaultLabel, form, alert, filterLabel, priorityFilterLabel, rangeLabelFrom, rangeLabelThrough, applyRange, rangeAlert, list); app.replaceChildren(section); await refreshTasks();
     }
     const match = location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) renderDetail(match[1]).catch(() => { app.textContent = 'Could not load project'; });
