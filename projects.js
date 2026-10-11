@@ -33,6 +33,15 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+    // Existing IDs already represent each project's creation order.
+    database.exec(`
+      BEGIN;
+      ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+      UPDATE tasks SET position = id;
+      COMMIT;
+    `);
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -49,11 +58,13 @@ export function openProjects(databasePath) {
     WHERE project_id = ? AND (? IS NULL OR completed = ?)
       AND (? IS NULL OR priority = ?)
       AND (? = '' OR due_date >= ?)
-      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY id
+      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY position, id
   `);
   const insertTask = database.prepare(`
-    INSERT INTO tasks (project_id, title, priority)
-    SELECT id, ?, default_task_priority FROM projects WHERE id = ? AND archived = 0
+    INSERT INTO tasks (project_id, title, priority, position)
+    SELECT id, ?, default_task_priority,
+      (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = projects.id)
+    FROM projects WHERE id = ? AND archived = 0
   `);
   const updateTask = database.prepare(`
     UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?
@@ -70,6 +81,13 @@ export function openProjects(databasePath) {
   const updateTaskDueDate = database.prepare(`
     UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
+  const moveTask = database.prepare(`
+    UPDATE tasks SET project_id = ?,
+      position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE id = ? AND project_id = ? AND project_id != ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+      AND EXISTS (SELECT 1 FROM projects WHERE id = ? AND archived = 0)
   `);
 
   return {
@@ -121,6 +139,11 @@ export function openProjects(databasePath) {
       const date = normalizeDueDate(value);
       if (date === null) return false;
       return updateTaskDueDate.run(date, taskId, projectId).changes > 0;
+    },
+    moveTask(projectId, taskId, destinationId) {
+      if (!Number.isSafeInteger(destinationId) || destinationId < 1) return false;
+      return moveTask.run(destinationId, destinationId, taskId, projectId,
+        destinationId, destinationId).changes > 0;
     },
     close: () => database.close(),
   };

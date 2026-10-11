@@ -29,7 +29,8 @@ function projectFilters(parameters) {
 
 function renderProject(project, filters, error = '') {
   return projectPage(project, projects.listTasks(project.id, filters.completion, filters.priority, filters),
-    filters.completion, error, filters.priority, filters);
+    filters.completion, error, filters.priority, filters,
+    projects.list().filter((destination) => destination.id !== project.id));
 }
 
 function projectLocation(projectId, filters) {
@@ -155,7 +156,7 @@ const server = createServer(async (request, response) => {
         return redirect(response, projectLocation(project.id, filters));
       }
     }
-    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?$/);
+    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?$/);
     if (request.method === 'POST' && taskMatch &&
         Number.isSafeInteger(Number(taskMatch[1])) &&
         (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
@@ -166,7 +167,14 @@ const server = createServer(async (request, response) => {
         }
         const form = await readForm(request);
         const filters = projectFilters(form);
-        if (taskMatch[3] === 'rename') {
+        if (taskMatch[3] === 'move') {
+          const destination = form.get('destination');
+          if (!/^[1-9]\d*$/.test(destination || '') ||
+              !projects.moveTask(project.id, Number(taskMatch[2]), Number(destination))) {
+            return send(response, 400, 'text/html; charset=utf-8',
+              renderProject(project, filters, 'Task cannot be moved to that project'));
+          }
+        } else if (taskMatch[3] === 'rename') {
           const title = (form.get('title') || '').trim();
           if (!title) {
             return send(response, 400, 'text/html; charset=utf-8',

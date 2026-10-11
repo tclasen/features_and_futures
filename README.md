@@ -69,3 +69,13 @@ and preserves creation order and all-task summaries. Invalid or reversed ranges
 show an alert and retain the previously applied range. The applied range stays in
 the URL and all editing forms, including validation errors, and remains usable
 in archived projects. Opening a project from the list starts with empty boundaries.
+
+Each task row offers a Destination project selection containing only other active
+projects in project creation order, using their current names. Move task appends
+the task to its destination while preserving its ID, title, completion, priority
+and due date. The source page stays open with all filters retained, and both
+project summaries reflect the new ownership. Moving again appends it again;
+subsequent new tasks follow the destination's existing tasks. SQLite migrates
+existing task order into a saved per-project position. Moves update ownership and
+position atomically. Archived sources and destinations are rejected by the server.
+Move controls are disabled for archived sources or when no destination is eligible.
