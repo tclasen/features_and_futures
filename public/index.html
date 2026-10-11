@@ -9,13 +9,12 @@
     h1 { margin-bottom: 1.5rem; }
     form { display: flex; gap: .6rem; align-items: end; }
     label { display: grid; gap: .35rem; }
-    input, button { font: inherit; padding: .55rem .75rem; }
+    input, button, select { font: inherit; padding: .55rem .75rem; }
     button { cursor: pointer; }
+    button:disabled, input:disabled { cursor: not-allowed; }
     #alert { color: #b42318; margin: 1rem 0; }
-    .project-list { padding: 0; list-style: none; }
-    [data-testid="project-row"], [data-testid="task-row"] { display: flex; align-items: center; justify-content: space-between; border: 1px solid #d0d5dd; border-radius: 6px; padding: .75rem; margin: .6rem 0; }
-    .task-list { padding: 0; list-style: none; }
-    #task-filter { font: inherit; padding: .55rem .75rem; }
+    .project-list, .task-list { padding: 0; list-style: none; }
+    [data-testid="project-row"], [data-testid="task-row"] { display: flex; align-items: center; justify-content: space-between; gap: .75rem; border: 1px solid #d0d5dd; border-radius: 6px; padding: .75rem; margin: .6rem 0; }
   </style>
 </head>
 <body>
@@ -26,11 +25,19 @@
 
     async function showProjects(navigate = true) {
       if (navigate && location.pathname !== '/') history.pushState({}, '', '/');
-      const projects = await fetch('/api/projects').then(response => response.json());
+      const archived = new URLSearchParams(location.search).get('filter') === 'Archived';
+      const projects = await fetch(`/api/projects?archived=${archived}`).then(response => response.json());
       app.innerHTML = `<h1>Workboard</h1>
         <form id="create-form"><label>Project name<input name="name" aria-label="Project name"></label><button type="submit">Create project</button></form>
-        <p id="alert" role="alert" aria-live="polite"></p><ul class="project-list">${projects.map(project =>
-          `<li class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-open="${project.id}">Open project</button></li>`).join('')}</ul>`;
+        <p id="alert" role="alert" aria-live="polite"></p>
+        <label>Project filter<select id="project-filter" aria-label="Project filter"><option${archived ? '' : ' selected'}>Active</option><option${archived ? ' selected' : ''}>Archived</option></select></label>
+        <ul class="project-list">${projects.map(project =>
+          `<li class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><button type="button" data-open="${project.id}">Open project</button><button type="button" data-archive="${project.id}" data-value="${archived ? 'false' : 'true'}">${archived ? 'Restore project' : 'Archive project'}</button></li>`).join('')}</ul>`;
+      app.querySelector('#project-filter').addEventListener('change', event => {
+        const search = event.currentTarget.value === 'Archived' ? '?filter=Archived' : '';
+        history.pushState({}, '', '/' + search);
+        showProjects(false);
+      });
       app.querySelector('#create-form').addEventListener('submit', async event => {
         event.preventDefault();
         const name = new FormData(event.currentTarget).get('name').trim();
@@ -40,6 +47,10 @@
         await showProjects();
       });
       app.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openProject(button.dataset.open)));
+      app.querySelectorAll('[data-archive]').forEach(button => button.addEventListener('click', async () => {
+        await fetch(`/api/projects/${button.dataset.archive}/archive`, { method: 'PATCH', headers: {'content-type':'application/json'}, body: JSON.stringify({archived: button.dataset.value === 'true'}) });
+        await showProjects(false);
+      }));
     }
 
     async function openProject(id, navigate = true) {
@@ -47,8 +58,10 @@
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (!response.ok) return showProjects();
       const project = await response.json();
+      const locked = Boolean(project.archived);
       app.innerHTML = `<button type="button" id="projects">Projects</button><h1>${escapeHtml(project.name)}</h1>
-        <form id="task-form"><label>Task title<input name="title" aria-label="Task title"></label><button type="submit">Create task</button></form>
+        ${locked ? '<p>Archived project</p>' : ''}
+        <form id="task-form"><label>Task title<input name="title" aria-label="Task title"${locked ? ' disabled' : ''}></label><button type="submit"${locked ? ' disabled' : ''}>Create task</button></form>
         <p id="alert" role="alert" aria-live="polite"></p>
         <label>Task filter<select id="task-filter" aria-label="Task filter"><option>All</option><option>Open</option><option>Completed</option></select></label>
         <ul class="task-list" id="tasks"></ul>`;
@@ -58,7 +71,7 @@
       async function loadTasks() {
         const tasks = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks`).then(response => response.json());
         const shown = tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed));
-        list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}></li>`).join('');
+        list.innerHTML = shown.map(task => `<li class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}${locked ? ' disabled' : ''}></li>`).join('');
         list.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', async () => {
           await fetch(`/api/tasks/${box.dataset.task}`, { method: 'PATCH', headers: {'content-type':'application/json'}, body: JSON.stringify({completed: box.checked}) });
           await loadTasks();
@@ -67,6 +80,7 @@
       filter.addEventListener('change', loadTasks);
       app.querySelector('#task-form').addEventListener('submit', async event => {
         event.preventDefault();
+        if (locked) return;
         const form = event.currentTarget;
         const title = new FormData(form).get('title').trim();
         if (!title) { app.querySelector('#alert').textContent = 'Task title is required'; return; }

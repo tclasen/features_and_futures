@@ -10,7 +10,8 @@ db.exec('PRAGMA foreign_keys = ON');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,6 +20,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`);
+
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 
 const indexHtml = await readFile(new URL('./public/index.html', import.meta.url));
 const server = http.createServer(async (req, res) => {
@@ -32,7 +37,21 @@ const server = http.createServer(async (req, res) => {
     return send(200, JSON.stringify({ status: 'ok' }));
   }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return send(200, JSON.stringify(db.prepare('SELECT id, name FROM projects ORDER BY id').all()));
+    const archived = url.searchParams.get('archived') === 'true' ? 1 : 0;
+    return send(200, JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p WHERE p.archived = ? ORDER BY p.id`).all(archived)));
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    try {
+      const archived = JSON.parse(raw).archived ? 1 : 0;
+      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived, archiveMatch[1]);
+      return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let raw = '';
@@ -56,8 +75,9 @@ const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     try {
-      const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(tasksMatch[1]);
+      const project = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(tasksMatch[1]);
       if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+      if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       const title = String(JSON.parse(raw).title ?? '').trim();
       if (!title) return send(400, JSON.stringify({ error: 'Task title is required' }));
       const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(tasksMatch[1], title);
@@ -70,13 +90,13 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     try {
       const completed = JSON.parse(raw).completed ? 1 : 0;
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(completed, taskMatch[1]);
+      const result = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`).run(completed, taskMatch[1]);
       return result.changes ? send(200, JSON.stringify({ ok: true })) : send(404, JSON.stringify({ error: 'Not found' }));
     } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (projectMatch && req.method === 'GET') {
-    const project = db.prepare('SELECT id, name FROM projects WHERE id = ?').get(projectMatch[1]);
+    const project = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(projectMatch[1]);
     return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Not found' }));
   }
   if (url.pathname === '/' || url.pathname.startsWith('/projects/')) {
