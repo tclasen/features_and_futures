@@ -64,3 +64,11 @@ all dates and undated tasks. Invalid dates or reversed boundaries show an alert
 and preserve the previously applied range. Task edits immediately refresh the
 matching rows while retaining all filters. Range controls also work in archived
 projects. Reopening a project starts with empty range boundaries.
+
+Use Destination project and Move task in a task row to move it to another
+active project. Destinations use current project names in project creation
+order. The task appends after the destination's existing tasks, preserving its
+identity, title, completion, priority, and due date. The source page stays open
+with all filters retained, and both project summaries reflect the move.
+Archived projects cannot send or receive tasks. Move controls are disabled
+when the source is archived or no eligible destination exists.

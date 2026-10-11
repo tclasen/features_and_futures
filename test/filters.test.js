@@ -34,7 +34,7 @@ class Node {
   }
 }
 
-async function projectPage(archived = false, defaultPriority = 'Normal', dates) {
+async function projectPage(archived = false, defaultPriority = 'Normal', dates, otherProjects = []) {
   const app = new Node('main');
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, priority, completed: false, due_date: '' },
@@ -61,12 +61,17 @@ async function projectPage(archived = false, defaultPriority = 'Normal', dates) 
           return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
         }
         mutations.push(changes);
-        Object.assign(task, changes);
+        if (Object.hasOwn(changes, 'destination_project_id')) {
+          assert.ok(otherProjects.some(project => project.id === changes.destination_project_id && !project.archived));
+          tasks.splice(tasks.indexOf(task), 1);
+        } else Object.assign(task, changes);
         data = task;
       } else if (options?.method === 'POST') {
         assert.equal(archived, false);
         data = { id: tasks.length + 1, title: JSON.parse(options.body).title, completed: false, priority: project.default_priority, due_date: '' };
         tasks.push(data);
+      } else if (path === '/api/projects') {
+        data = [project, ...otherProjects];
       } else if (path.endsWith('/tasks')) {
         data = tasks;
       } else {
@@ -374,4 +379,63 @@ test('due-date saves, errors, clearing, and renaming preserve both filters and t
   assert.deepEqual(page.titles(), ['Renamed dated task']);
   assert.equal(page.project.total, 6);
   assert.equal(page.project.completed, 3);
+});
+
+test('move controls list only other active projects and moving retains all source filters', async () => {
+  const destinations = [
+    { id: 2, name: 'Renamed destination', archived: 0 },
+    { id: 3, name: 'Archived destination', archived: 1 },
+    { id: 4, name: 'Last destination', archived: 0 },
+  ];
+  const page = await projectPage(false, 'Normal', undefined, destinations);
+  const select = page.byId('destination-project-1');
+  assert.equal(page.app.find(node => node.attributes.for === select.id).textContent, 'Destination project');
+  assert.deepEqual(select.children.map(option => [option.value, option.textContent]), [
+    ['2', 'Renamed destination'], ['4', 'Last destination'],
+  ]);
+  assert.equal(select.disabled, false);
+  await page.change('task-filter', 'Completed');
+  await page.change('priority-filter', 'High');
+  page.byId('due-from').value = '2026-10-11';
+  page.byId('due-through').value = '2026-10-11';
+  await page.app.find(node => node.attributes.class === 'due-range-form').fire('submit');
+  assert.deepEqual(page.titles(), ['High completed']);
+  const before = structuredClone(page.tasks);
+  page.byId('destination-project-6').value = '4';
+  const move = page.rows()[0].find(node => node.attributes.class === 'task-move-form');
+  assert.equal(move.find(node => node.tag === 'button').textContent, 'Move task');
+  assert.equal(move.find(node => node.tag === 'button').disabled, false);
+  await move.fire('submit');
+  assert.deepEqual(page.titles(), []);
+  assert.deepEqual(page.tasks, before.slice(0, -1));
+  assert.deepEqual(page.mutations, [{ destination_project_id: 4 }]);
+  assert.equal(page.byId('task-filter').value, 'Completed');
+  assert.equal(page.byId('priority-filter').value, 'High');
+  assert.equal(page.byId('due-from').value, '2026-10-11');
+  assert.equal(page.byId('due-through').value, '2026-10-11');
+  await page.change('task-filter', 'All');
+  await page.change('priority-filter', 'All');
+  page.byId('due-from').value = '';
+  page.byId('due-through').value = '';
+  await page.app.find(node => node.attributes.class === 'due-range-form').fire('submit');
+  assert.deepEqual(page.titles(), before.slice(0, -1).map(task => task.title));
+});
+
+test('moves are disabled for archived sources and when no active destination exists', async () => {
+  for (const [archived, destinations] of [
+    [true, [{ id: 2, name: 'Active', archived: 0 }]],
+    [false, []],
+    [false, [{ id: 2, name: 'Archived', archived: 1 }]],
+  ]) {
+    const page = await projectPage(archived, 'Normal', undefined, destinations);
+    for (const row of page.rows()) {
+      const form = row.find(node => node.attributes.class === 'task-move-form');
+      assert.equal(form.find(node => node.tag === 'select').disabled, true);
+      assert.equal(form.find(node => node.tag === 'button').disabled, true);
+      await form.fire('submit');
+    }
+    assert.deepEqual(page.mutations, []);
+  }
+  const restored = await projectPage(false, 'Normal', undefined, [{ id: 2, name: 'Active', archived: 0 }]);
+  assert.equal(restored.byId('destination-project-1').disabled, false);
 });

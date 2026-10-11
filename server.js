@@ -33,9 +33,17 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE tasks SET position = id');
+}
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?`);
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -99,13 +107,23 @@ const server = http.createServer(async (req, res) => {
         const input = await readJson(req);
         const title = typeof input?.title === 'string' ? input.title.trim() : '';
         if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-        const result = createTask.run(projectId, title, project.default_priority);
+        const result = createTask.run(projectId, title, project.default_priority, projectId);
         return sendJson(res, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
       }
       if (req.method === 'PATCH' && taskId) {
         if (!findTask.get(projectId, taskId)) return sendJson(res, 404, { error: 'Task not found' });
         const input = await readJson(req);
-        if (input && Object.hasOwn(input, 'title')) {
+        if (input && Object.hasOwn(input, 'destination_project_id')) {
+          const destinationId = input.destination_project_id;
+          if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === Number(projectId)) {
+            return sendJson(res, 400, { error: 'Choose another active project' });
+          }
+          const destination = findProject.get(destinationId);
+          if (!destination) return sendJson(res, 404, { error: 'Destination project not found' });
+          if (destination.archived) return sendJson(res, 409, { error: 'Archived project' });
+          moveTask.run(destinationId, destinationId, projectId, taskId);
+          return sendJson(res, 200, taskData(findTask.get(destinationId, taskId)));
+        } else if (input && Object.hasOwn(input, 'title')) {
           const title = typeof input.title === 'string' ? input.title.trim() : '';
           if (!title) return sendJson(res, 400, { error: 'Task title is required' });
           renameTask.run(title, projectId, taskId);

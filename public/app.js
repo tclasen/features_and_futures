@@ -81,6 +81,7 @@ async function renderTasks(project) {
   const list = element('section', '', { 'aria-label': 'Tasks', class: 'tasks' });
   app.append(form, element('p', '', { role: 'alert', hidden: '' }), filters, rangeForm, list);
   let tasks = [];
+  let destinations = [];
   let appliedFrom = '';
   let appliedThrough = '';
   function drawTasks() {
@@ -179,6 +180,36 @@ async function renderTasks(project) {
         finally { dueButton.disabled = Boolean(project.archived); }
       });
       row.append(dueForm);
+      const moveForm = element('form', '', { class: 'task-move-form' });
+      const destination = element('select', '', { id: `destination-project-${task.id}` });
+      for (const target of destinations) {
+        destination.append(element('option', target.name, { value: String(target.id) }));
+      }
+      const moveButton = element('button', 'Move task', { type: 'submit' });
+      const cannotMove = Boolean(project.archived) || destinations.length === 0;
+      destination.disabled = cannotMove;
+      moveButton.disabled = cannotMove;
+      moveForm.append(element('label', 'Destination project', { for: destination.id }), destination, moveButton);
+      moveForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (cannotMove) return;
+        moveButton.disabled = true;
+        destination.disabled = true;
+        try {
+          await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+          });
+          tasks = tasks.filter(candidate => candidate.id !== task.id);
+          showAlert('');
+          drawTasks();
+        } catch (error) {
+          showAlert(error.message);
+          moveButton.disabled = cannotMove;
+          destination.disabled = cannotMove;
+        }
+      });
+      row.append(moveForm);
       list.append(row);
     }
   }
@@ -218,7 +249,9 @@ async function renderTasks(project) {
     } catch (error) { showAlert(error.message); }
     finally { submit.disabled = Boolean(project.archived); }
   });
-  tasks = await request(endpoint);
+  const [savedTasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
+  tasks = savedTasks;
+  destinations = projects.filter(target => !target.archived && target.id !== project.id);
   drawTasks();
   submit.disabled = Boolean(project.archived);
 }
