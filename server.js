@@ -382,6 +382,11 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <button type="submit" name="completed" value="1"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => !task.completed) ? ' disabled' : ''}>Complete visible tasks</button>
       <button type="submit" name="completed" value="0"${scope === 'Archived' || filter === 'Deleted' || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
+    <form class="filter" method="post" action="/directory/deletion">
+      ${hidden({ ...state, ...rangeState })}
+      <button type="submit" name="deleted" value="1"${scope === 'Archived' || filter === 'Deleted' || !tasks.length ? ' disabled' : ''}>Delete visible tasks</button>
+      <button type="submit" name="deleted" value="0"${scope === 'Archived' || filter !== 'Deleted' || !tasks.length ? ' disabled' : ''}>Restore visible tasks</button>
+    </form>
     <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
     <section class="projects" aria-label="Directory owners">${owners.map(owner => `
       <div class="project" data-testid="directory-owner-row">
@@ -556,6 +561,27 @@ const server = http.createServer(async (req, res) => {
           for (const task of directoryTasks.all(0)) {
             if (matchesTask(task, filter, priority, range)) {
               updateTask.run(Number(completed), task.id, task.project_id);
+            }
+          }
+        });
+      }
+      res.writeHead(303, { Location: directoryLocation(scope, filter, priority, range, directoryOrder(form.get('order'))) });
+      res.end();
+    } else if (req.method === 'POST' && url.pathname === '/directory/deletion') {
+      const form = await readForm(req);
+      const scope = projectFilter(form.get('scope'));
+      const filter = taskFilter(form.get('filter'));
+      const priority = priorityFilter(form.get('priorityFilter'));
+      const range = dueRange(form);
+      const deleted = form.get('deleted');
+      if (scope === 'Active' && ((deleted === '1' && filter !== 'Deleted') ||
+          (deleted === '0' && filter === 'Deleted'))) {
+        // Resolve the intersection on the server, preserving owners and reserved
+        // positions; only the deletion flag changes, atomically across projects.
+        transaction(() => {
+          for (const task of directoryTasks.all(0)) {
+            if (matchesTask(task, filter, priority, range)) {
+              setDeleted.run(Number(deleted), task.id, task.project_id);
             }
           }
         });
