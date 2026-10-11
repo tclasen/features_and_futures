@@ -22,7 +22,11 @@ must not be blank; renaming preserves ownership, order, completion, and summarie
 Each task row has a Task priority selector: Low, Normal (the default), or High.
 Priorities are independent and preserved through renaming, completion changes, and restarts.
 Archived projects disable task renaming and priority changes until restored.
-Open an active project to create tasks, toggle completion, or filter All/Open/Completed. `GET /health` returns
+Task filter (All/Open/Completed) and Priority filter (All/Low/Normal/High) combine
+without resetting each other. Edits immediately re-evaluate matching rows while preserving
+both selections and creation order. Filters remain usable on archived projects and never
+change the completion summary. Opening from the project list starts both filters at All.
+Open an active project to create tasks or toggle completion. `GET /health` returns
 `{"status":"ok"}`.
 
 ## Verify
@@ -34,5 +38,6 @@ npm test
 The integration tests use temporary databases and verify project/task validation,
 creation order, escaped names and titles, navigation, project ownership, task
 filters and completion, archive/restore, summaries, project and task renaming and identity preservation, database migration, health,
-task priority defaults, edits, isolation, archive restrictions, and persistence across server restarts.
+task priority defaults, edits, isolation, combined filters and selection preservation,
+archive restrictions, and persistence across server restarts.
 Temporary files are removed afterward.

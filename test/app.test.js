@@ -29,6 +29,67 @@ async function start(dbPath) {
   };
 }
 
+test('combined filters preserve selections through edits, archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'db.sqlite');
+    server = await start(dbPath);
+    const get = async path => (await fetch(server.url + path)).text();
+    const post = async (path, values = {}) => (await fetch(server.url + path, {
+      method: 'POST', body: new URLSearchParams(values)
+    })).text();
+    await post('/projects', { name: 'Filters' });
+    const path = '/projects/1';
+    for (const title of ['First', 'Second', 'Third']) await post(path + '/tasks', { title });
+    await post(path + '/tasks/1/priority', { priority: 'High' });
+    await post(path + '/tasks/2/priority', { priority: 'High' });
+    await post(path + '/tasks/2', { completed: '1' });
+    const selected = { filter: 'Open', priorityFilter: 'High' };
+    const query = '?filter=Open&priorityFilter=High';
+    const check = html => {
+      assert.match(html, /<option selected>Open<\/option>/);
+      assert.match(html, /id="priority-filter"[\s\S]*?<option selected>High<\/option>/);
+    };
+    let html = await get(path + query);
+    check(html);
+    assert.match(html, /Complete First/);
+    assert.doesNotMatch(html, /Complete Second|Complete Third/);
+    html = await post(path + '/tasks/1/rename', { ...selected, title: ' Renamed ' });
+    check(html);
+    assert.match(html, /Complete Renamed/);
+    html = await post(path + '/tasks/1/rename', { ...selected, title: ' ' });
+    check(html);
+    assert.match(html, /Task title is required/);
+    html = await post(path + '/tasks/1', { ...selected, completed: '1' });
+    check(html);
+    assert.doesNotMatch(html, /data-testid="task-row"/);
+    html = await post(path + '/tasks/3/priority', { ...selected, priority: 'High' });
+    check(html);
+    assert.match(html, /Complete Third/);
+    html = await post(path + '/tasks/3/priority', { ...selected, priority: 'Low' });
+    check(html);
+    assert.doesNotMatch(html, /data-testid="task-row"/);
+    assert.match(await get('/'), /2\/3 completed/);
+    await post(path + '/archive');
+    html = await get(path + '?filter=Completed&priorityFilter=High');
+    assert.match(html, /Archived project/);
+    assert.equal((html.match(/data-testid="task-row"/g) || []).length, 2);
+    assert.match(html, /aria-label="Complete Renamed" checked disabled/);
+    assert.match(html, /id="priority-filter" name="priorityFilter" onchange=/);
+    await post(path + '/restore');
+    html = await get(path + '?filter=Completed&priorityFilter=High');
+    assert.ok(html.indexOf('Complete Renamed') < html.indexOf('Complete Second'));
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get(path + '?filter=Completed&priorityFilter=High'), html);
+    assert.match(await get(path), /id="priority-filter"[^>]*>\s*<option selected>All/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('tasks validate, remain project-owned, filter, toggle and persist', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
   let server;
