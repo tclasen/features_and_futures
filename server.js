@@ -358,7 +358,18 @@ function orderDirectoryTasks(tasks, order) {
 }
 
 function directoryPage(scope, filter, prioritySelection, range, query, error = '', rangeInput = range, order = 'Original') {
-  const tasks = orderDirectoryTasks(matchingDirectoryTasks(scope, filter, prioritySelection, range, query), order);
+  const tasks = matchingDirectoryTasks(scope, filter, prioritySelection, range, query);
+  // Group by identity in Original order before applying the task-only view sort.
+  const owners = new Map();
+  for (const task of tasks) {
+    if (!owners.has(task.project_id)) {
+      owners.set(task.project_id, { id: task.project_id, name: task.project_name, total: 0, completed: 0 });
+    }
+    const owner = owners.get(task.project_id);
+    owner.total++;
+    if (task.completed) owner.completed++;
+  }
+  orderDirectoryTasks(tasks, order);
   const editable = scope === 'Active' && filter !== 'Deleted';
   const selections = `<input type="hidden" name="order" value="${order}">
     <input type="hidden" name="scope" value="${scope}">
@@ -398,6 +409,13 @@ function directoryPage(scope, filter, prioritySelection, range, query, error = '
       <button type="submit" name="completed" value="0"${!editable || !tasks.some(task => task.completed) ? ' disabled' : ''}>Reopen visible tasks</button>
     </form>
     <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
+    <section aria-label="Directory projects">
+      ${[...owners.values()].map(owner => `<div class="project" data-testid="directory-owner-row">
+        <span data-testid="directory-owner-name">${escapeHtml(owner.name)}</span>
+        <span data-testid="directory-owner-summary">${owner.completed}/${owner.total} completed</span>
+        <form action="/projects/${owner.id}" method="get"><button type="submit">Open project</button></form>
+      </div>`).join('')}
+    </section>
     <section aria-label="Directory tasks">
       ${tasks.length === 0 ? '<p id="directory-empty" role="status">No matching tasks</p>' : ''}
       ${tasks.map(task => `<div class="project" data-testid="directory-task-row">
