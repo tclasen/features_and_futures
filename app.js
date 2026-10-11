@@ -11,6 +11,11 @@ const defaultTaskPriority = document.querySelector('#default-task-priority');
 const tasksContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
+const dueRangeAlert = document.querySelector('#due-range-alert');
+let appliedDueFrom = '';
+let appliedDueThrough = '';
 const projectFilter = document.querySelector('#project-filter');
 const archiveNotice = document.querySelector('#archive-notice');
 const createTaskButton = taskForm.querySelector('button');
@@ -39,6 +44,7 @@ async function loadProjects() {
       // when reopening the project that was just viewed.
       taskFilter.value = 'All';
       priorityFilter.value = 'All';
+      resetDueRange();
       navigate(`/projects/${project.id}`);
     });
     const summary = document.createElement('span');
@@ -87,6 +93,7 @@ async function showRoute() {
   if (currentProjectId !== project.id) {
     taskFilter.value = 'All';
     priorityFilter.value = 'All';
+    resetDueRange();
   }
   document.title = `${project.name} · Workboard`;
   document.querySelector('#project-heading').textContent = project.name;
@@ -113,6 +120,9 @@ async function loadTasks() {
     if (taskFilter.value === 'Open' && task.completed) continue;
     if (taskFilter.value === 'Completed' && !task.completed) continue;
     if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+    if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
+    if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
+    if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -222,6 +232,47 @@ function navigate(path) {
   showRoute();
 }
 
+function resetDueRange() {
+  appliedDueFrom = '';
+  appliedDueThrough = '';
+  dueFromInput.value = '';
+  dueThroughInput.value = '';
+  dueRangeAlert.hidden = true;
+}
+
+function isValidCalendarDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
+
+document.querySelector('#apply-due-range').addEventListener('click', async () => {
+  const dueFrom = dueFromInput.value.trim();
+  const dueThrough = dueThroughInput.value.trim();
+  if ((dueFrom && !isValidCalendarDate(dueFrom)) || (dueThrough && !isValidCalendarDate(dueThrough))) {
+    dueRangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+    dueRangeAlert.hidden = false;
+    return;
+  }
+  if (dueFrom && dueThrough && dueFrom > dueThrough) {
+    dueRangeAlert.textContent = 'Due from must not be after Due through';
+    dueRangeAlert.hidden = false;
+    return;
+  }
+  appliedDueFrom = dueFrom;
+  appliedDueThrough = dueThrough;
+  dueFromInput.value = dueFrom;
+  dueThroughInput.value = dueThrough;
+  dueRangeAlert.hidden = true;
+  await loadTasks();
+});
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const name = nameInput.value.trim();
@@ -280,7 +331,6 @@ taskForm.addEventListener('submit', async (event) => {
   if (!response.ok) return;
   taskAlert.hidden = true;
   taskInput.value = '';
-  taskFilter.value = 'All';
   await loadTasks();
 });
 taskFilter.addEventListener('change', loadTasks);
